@@ -25,3 +25,5 @@ AI agents MUST follow this sequence for all changes.
 - Keep commit messages and descriptions very short and concise. Use bulletpoints if you need to, and, as with comments, prioritize timelessness, objectivity, and conciseness.
 - Use uv to add and remove dependencies. Unless ABSOLUTELY necessary, do NOT manage pyproject.toml manually. Pin dependencies with `~=` to ensure targetting of the same major version.
 - Always prefer chaining exceptions to keep the full chain of events leading to us raising our custom exceptions.
+- Prefer strict domain separation and use typing in your favor to avoid seas of complex branching that are brittle and hard to maintain and extend.
+- Make illegal states unrepresentable.
