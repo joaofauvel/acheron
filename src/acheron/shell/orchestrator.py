@@ -12,7 +12,9 @@ from acheron.core.errors import AcheronError
 from acheron.core.models import EpubRequest
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
+from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import JobStore, TrackedJob
+from acheron.shell.step_handler import create_step_handler
 
 if TYPE_CHECKING:
     from acheron.core.models import ExecutorStrategy, JobRequest, WorkerCapabilities
@@ -39,13 +41,22 @@ class Orchestrator:
         self,
         registry: WorkerRegistry,
         cache: PlanCache,
-        handler: StepHandler,
+        handler: StepHandler | None = None,
     ) -> None:
         self._registry = registry
         self._cache = cache
-        self._handler = handler
+        self._handler = handler or create_step_handler(registry)
         self._job_store = JobStore()
         self._tasks: set[asyncio.Task[None]] = set()
+        self._health_monitor = HealthMonitor(registry)
+
+    async def start(self) -> None:
+        """Start background tasks."""
+        await self._health_monitor.start()
+
+    async def shutdown(self) -> None:
+        """Stop background tasks."""
+        await self._health_monitor.stop()
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
