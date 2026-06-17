@@ -65,11 +65,12 @@ def create_step_handler(
             msg = f"No worker for {step.type.value} ({src} → {dst})"
             raise WorkerError(msg)
 
+        chapter_id = step.payload.get("chapter_id", "")
         job = Job(
             job_id=f"{plan.job_id}-{step.step_id}",
             job_type=step.type,
             payload=step.payload,
-            chapter_id=step.payload.get("chapter_id", ""),
+            chapter_id=str(chapter_id) if chapter_id is not None else "",
         )
 
         logger.info("Dispatching %s to %s", step.step_id, match.worker_id)

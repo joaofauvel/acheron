@@ -31,9 +31,9 @@ class TestHealthMonitor:
         reg = WorkerRegistry()
         monitor = HealthMonitor(reg, interval=0.01)
         await monitor.start()
-        assert monitor._task is not None
+        assert monitor._task is not None  # noqa: SLF001
         await monitor.stop()
-        assert monitor._task.done()
+        assert monitor._task.done()  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_records_success_for_healthy_worker(self) -> None:

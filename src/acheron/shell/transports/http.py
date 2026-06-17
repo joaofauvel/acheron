@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from pydantic import TypeAdapter
@@ -38,7 +38,7 @@ class HttpWorker(StreamingWorker):
         self._client = client
         self._poll_interval = poll_interval
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:  # noqa: ANN401
         """Make an HTTP request, raising WorkerError on failure."""
         url = f"{self._base_url}{path}"
         try:
@@ -48,7 +48,6 @@ class HttpWorker(StreamingWorker):
                 async with httpx.AsyncClient() as client:
                     resp = await client.request(method, url, **kwargs)
             resp.raise_for_status()
-            return resp
         except httpx.ConnectError as exc:
             msg = f"Worker unreachable: {self._base_url}"
             raise WorkerUnavailableError(msg) from exc
@@ -56,35 +55,38 @@ class HttpWorker(StreamingWorker):
             detail = exc.response.text
             msg = f"Worker error {exc.response.status_code}: {detail}"
             raise WorkerError(msg) from exc
+        else:
+            return resp
 
-    async def capabilities(self) -> WorkerCapabilities:
+    async def capabilities(self) -> WorkerCapabilities:  # noqa: D102
         resp = await self._request("GET", "/capabilities")
         return _caps_adapter.validate_json(resp.content)
 
-    async def execute(self, job: Job) -> JobResult:
+    async def execute(self, job: Job) -> JobResult:  # noqa: D102
         resp = await self._request("POST", "/execute", json=_job_to_dict(job))
         return _result_adapter.validate_json(resp.content)
 
-    async def health(self) -> bool:
+    async def health(self) -> bool:  # noqa: D102
         try:
             resp = await self._request("GET", "/health")
-            return resp.status_code == httpx.codes.OK
-        except (WorkerError, WorkerUnavailableError):
+        except WorkerError, WorkerUnavailableError:
             return False
+        else:
+            return resp.status_code == httpx.codes.OK
 
-    async def submit_batch(self, batch: BatchJob) -> str:
+    async def submit_batch(self, batch: BatchJob) -> str:  # noqa: D102
         resp = await self._request(
             "POST",
             "/submit-batch",
             json={"batch_id": batch.batch_id, "jobs": [_job_to_dict(j) for j in batch.jobs]},
         )
-        return resp.json()["batch_handle"]
+        return cast("str", resp.json()["batch_handle"])
 
-    async def poll_batch(self, batch_handle: str) -> BatchStatus:
+    async def poll_batch(self, batch_handle: str) -> BatchStatus:  # noqa: D102
         resp = await self._request("GET", f"/poll/{batch_handle}")
         return _batch_status_adapter.validate_json(resp.content)
 
-    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:
+    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:  # noqa: D102
         resp = await self._request("GET", f"/poll/{batch_handle}")
         status = _batch_status_adapter.validate_json(resp.content)
         return status.results

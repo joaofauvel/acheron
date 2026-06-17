@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
@@ -13,9 +13,13 @@ from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.registry import WorkerRegistry
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Manage orchestrator lifecycle — start on startup, stop on shutdown."""
     orch: Orchestrator = app.state.orchestrator
     await orch.start()
     yield

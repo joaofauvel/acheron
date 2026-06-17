@@ -7,12 +7,8 @@ import respx
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
     BatchJob,
-    BatchStatus,
     Job,
-    JobMetrics,
-    JobResult,
     JobStatus,
-    WorkerCapabilities,
     WorkerType,
 )
 from acheron.shell.transports.http import HttpWorker

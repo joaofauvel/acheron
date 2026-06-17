@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+
+import httpx
 
 if TYPE_CHECKING:
     from acheron.shell.registry import WorkerRegistry
@@ -17,13 +20,11 @@ type HealthCheckFn = Callable[[str], Awaitable[bool]]
 
 async def _default_health_check(endpoint: str) -> bool:
     """Check worker health via HTTP GET /health."""
-    import httpx
-
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{endpoint}/health", timeout=5.0)
-            return resp.status_code == 200
-    except (httpx.HTTPError, OSError):
+            return resp.status_code == httpx.codes.OK
+    except httpx.HTTPError, OSError:
         return False
 
 
@@ -49,10 +50,8 @@ class HealthMonitor:
         """Stop the health check background task."""
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
     async def _run(self) -> None:
         """Run health checks in a loop."""
