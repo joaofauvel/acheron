@@ -12,9 +12,12 @@ from acheron.core.models import (
     StepStatus,
     WorkerType,
 )
-from acheron.shell.executors.async_executor import AsyncExecutor
-from acheron.shell.executors.batch_async import BatchAsyncExecutor
-from acheron.shell.executors.sequential import SequentialExecutor
+from acheron.shell.executors import (
+    AsyncExecutor,
+    BatchAsyncExecutor,
+    SequentialExecutor,
+    create_executor,
+)
 
 
 def _step(step_id: str, depends_on: tuple[str, ...] = ()) -> PlanStep:
@@ -257,3 +260,78 @@ class TestBatchAsyncExecutor:
         result = await BatchAsyncExecutor(handler).run(plan)
         assert result.status == "failed"
         assert result.completed_steps == 0
+
+
+class TestCreateExecutor:
+    def test_sequential(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        executor = create_executor(ExecutorStrategy.SEQUENTIAL, handler)
+        assert isinstance(executor, SequentialExecutor)
+
+    def test_async(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        executor = create_executor(ExecutorStrategy.ASYNC, handler)
+        assert isinstance(executor, AsyncExecutor)
+
+    def test_batch_async(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        executor = create_executor(ExecutorStrategy.BATCH_ASYNC, handler)
+        assert isinstance(executor, BatchAsyncExecutor)
+
+
+class TestErrorCapture:
+    @pytest.mark.asyncio
+    async def test_sequential_captures_failure_reason(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:  # noqa: ARG001
+            return JobResult(
+                job_id="j-1",
+                status=JobStatus.FAILED,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.1),
+                error="translation timeout",
+            )
+
+        plan = _plan((_step("a"),))
+        result = await SequentialExecutor(handler).run(plan)
+        assert len(result.errors) == 1
+        assert "translation timeout" in result.errors[0]
+
+    @pytest.mark.asyncio
+    async def test_sequential_captures_skipped_steps(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            if step.step_id == "a":
+                return _fail_result()
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b", ("a",))))
+        result = await SequentialExecutor(handler).run(plan)
+        assert len(result.errors) == 2
+        assert any("skipped" in e for e in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_async_captures_handler_exception(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            if step.step_id == "a":
+                raise ConnectionError("worker unreachable")
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b"), _step("c")))
+        result = await AsyncExecutor(handler).run(plan)
+        assert len(result.errors) >= 1
+        assert any("ConnectionError" in e for e in result.errors)
+        assert any("worker unreachable" in e for e in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_no_errors_on_success(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b")))
+        result = await SequentialExecutor(handler).run(plan)
+        assert result.errors == ()

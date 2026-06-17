@@ -27,6 +27,7 @@ class AsyncExecutor(Executor):
         outputs: list[OutputFile] = []
         total_cost = 0.0
         failed_steps: set[str] = set()
+        errors: list[str] = []
 
         for wave in dependency_waves(plan.steps):
             runnable = [s for s in wave if not any(d in failed_steps for d in s.depends_on)]
@@ -35,6 +36,7 @@ class AsyncExecutor(Executor):
             for step in skipped:
                 failed_steps.add(step.step_id)
                 failed += 1
+                errors.append(f"{step.step_id}: skipped (dependency failed)")
 
             if not runnable:
                 continue
@@ -47,6 +49,7 @@ class AsyncExecutor(Executor):
                 if isinstance(result, BaseException):
                     failed += 1
                     failed_steps.add(step.step_id)
+                    errors.append(f"{step.step_id}: {type(result).__name__}: {result}")
                 elif result.status == JobStatus.SUCCESS:
                     completed += 1
                     outputs.extend(result.outputs)
@@ -54,6 +57,7 @@ class AsyncExecutor(Executor):
                 else:
                     failed += 1
                     failed_steps.add(step.step_id)
+                    errors.append(f"{step.step_id}: {result.error or 'unknown error'}")
                     total_cost += result.metrics.cost_estimate or 0.0
 
         duration = time.monotonic() - start
@@ -67,4 +71,5 @@ class AsyncExecutor(Executor):
             outputs=tuple(outputs),
             total_cost=total_cost,
             total_duration_seconds=duration,
+            errors=tuple(errors),
         )

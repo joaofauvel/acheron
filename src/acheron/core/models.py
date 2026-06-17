@@ -137,6 +137,7 @@ class PlanResult:
     outputs: tuple[OutputFile, ...]
     total_cost: float
     total_duration_seconds: float
+    errors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -26,11 +26,13 @@ class SequentialExecutor(Executor):
         outputs: list[OutputFile] = []
         total_cost = 0.0
         failed_steps: set[str] = set()
+        errors: list[str] = []
 
         for step in topological_order(plan.steps):
             if any(dep in failed_steps for dep in step.depends_on):
                 failed_steps.add(step.step_id)
                 failed += 1
+                errors.append(f"{step.step_id}: skipped (dependency failed)")
                 continue
 
             result = await self._handler(step, plan)
@@ -40,6 +42,7 @@ class SequentialExecutor(Executor):
             else:
                 failed += 1
                 failed_steps.add(step.step_id)
+                errors.append(f"{step.step_id}: {result.error or 'unknown error'}")
             total_cost += result.metrics.cost_estimate or 0.0
 
         duration = time.monotonic() - start
@@ -53,4 +56,5 @@ class SequentialExecutor(Executor):
             outputs=tuple(outputs),
             total_cost=total_cost,
             total_duration_seconds=duration,
+            errors=tuple(errors),
         )

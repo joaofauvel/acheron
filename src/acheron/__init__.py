@@ -36,6 +36,8 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
+from acheron.core.planner import compile_plan
+from acheron.shell.executors import create_executor
 
 __all__ = [
     "AcheronError",
@@ -72,4 +74,6 @@ __all__ = [
     "WorkerType",
     "WorkerUnavailableError",
     "chunk_text",
+    "compile_plan",
+    "create_executor",
 ]
