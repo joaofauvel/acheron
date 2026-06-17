@@ -490,18 +490,30 @@ Forward auth support (reads auth header from reverse proxy).
 
 ## CLI
 
+**Dependencies:** click, httpx, rich
+
+**Configuration:** `ACHERON_URL` env var sets the orchestrator base URL (default: `http://localhost:8000`).
+
+**Error handling:** HTTP errors (4xx/5xx) are caught and displayed as `Error {status}: {detail}`. No raw tracebacks.
+
+**Logging:** `acheron -v` enables verbose logging (DEBUG level) to stderr. Covers orchestrator events: job submission, plan compilation, execution, worker registration. Default: WARNING level (silent).
+
+### Implemented Commands
+
 ```bash
-# Job submission
-acheron submit book.epub --src en --dest es --executor batch_async
+# Job submission (auto-detects source type from extension: .epub → epub, .mp3/.wav/.flac/.ogg/.m4a → audio)
+acheron submit book.epub --src en --dest es
 acheron submit podcast.mp3 --src en --dest es --asr whisper-v3
+acheron submit book.epub --src en --dest es --executor batch_async
+acheron submit input.dat --src en --dest es --type epub   # explicit type override
 
 # Status
 acheron status job-xyz
-acheron status job-xyz --verbose
+acheron status job-xyz --verbose   # also shows errors
 
-# Jobs
-acheron jobs --active
-acheron jobs --completed
+# Jobs (filters are client-side — full list fetched then filtered)
+acheron jobs --active       # status == "running"
+acheron jobs --completed    # status in ("completed", "failed")
 
 # Workers
 acheron workers
@@ -510,16 +522,16 @@ acheron workers
 acheron capabilities
 acheron capabilities --src en
 acheron capabilities --dest es
+```
 
-# Resume
-acheron resume job-xyz
-acheron resume job-xyz --force-fresh
+### Deferred Commands
 
-# Cancel
-acheron cancel job-xyz
+These commands require API endpoints that don't exist yet:
 
-# Package
-acheron package job-xyz --output ./output/
+```bash
+acheron resume job-xyz [--force-fresh]   # resume from last completed step
+acheron cancel job-xyz                   # cancel a running job
+acheron package job-xyz --output ./      # package completed job to M4B
 ```
 
 ## Translation Engine
