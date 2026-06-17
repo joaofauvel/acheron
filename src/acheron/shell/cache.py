@@ -96,7 +96,7 @@ class StepCache:
             return False
         try:
             outputs = self.load_outputs(job_id, step_id)
-        except (CacheMissError, CacheCorruptedError, OSError):
+        except CacheMissError, CacheCorruptedError, OSError:
             return False
         for output in outputs:
             file_path = Path(output.path)
