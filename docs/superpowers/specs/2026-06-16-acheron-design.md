@@ -234,6 +234,26 @@ class StepStatus(Enum):
     COMPLETE = "complete"
     FAILED = "failed"
 
+class ExecutorStrategy(Enum):
+    SEQUENTIAL = "sequential"
+    ASYNC = "async"
+    BATCH_ASYNC = "batch_async"
+
+@dataclass(frozen=True)
+class EpubRequest:
+    source_path: str
+    source_language: str
+    target_language: str
+
+@dataclass(frozen=True)
+class AudioRequest:
+    source_path: str
+    source_language: str
+    target_language: str
+    asr_model: str | None = None
+
+type JobRequest = EpubRequest | AudioRequest
+
 @dataclass
 class PlanStep:
     step_id: str
@@ -250,7 +270,7 @@ class Plan:
     source_type: str            # "epub" | "audio"
     source_language: str
     target_language: str
-    executor_strategy: str      # "sequential" | "async" | "batch_async"
+    executor_strategy: ExecutorStrategy
     steps: list[PlanStep]
 
 @dataclass
