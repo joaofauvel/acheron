@@ -1,38 +1,41 @@
+"""Domain exception hierarchy for Acheron."""
+
+
 class AcheronError(Exception):
-    pass
+    """Base exception for all Acheron errors."""
 
 
 class PlanError(AcheronError):
-    pass
+    """Errors related to plan compilation or validation."""
 
 
 class InvalidLanguagePathError(PlanError):
-    pass
+    """Requested source/target language pair is not supported."""
 
 
 class PlanValidationError(PlanError):
-    pass
+    """Plan failed structural validation."""
 
 
 class WorkerError(AcheronError):
-    pass
+    """Errors related to worker communication or execution."""
 
 
 class WorkerUnavailableError(WorkerError):
-    pass
+    """Worker is not reachable or has been removed from the registry."""
 
 
 class WorkerTimeoutError(WorkerError):
-    pass
+    """Worker did not respond within the configured timeout."""
 
 
 class CacheError(AcheronError):
-    pass
+    """Errors related to step output caching."""
 
 
 class CacheMissError(CacheError):
-    pass
+    """Expected cached output does not exist."""
 
 
 class CacheCorruptedError(CacheError):
-    pass
+    """Cached output failed integrity validation."""

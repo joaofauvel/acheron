@@ -1,10 +1,16 @@
+"""Text chunking engine for splitting chapters into TTS-sized segments."""
+
 import nltk
 
 from acheron.core.models import Chunk
 
 
 def chunk_text(text: str, chapter_id: str, max_length: int = 250) -> tuple[Chunk, ...]:
-    """Split text into chunks suitable for TTS synthesis."""
+    """Split text into chunks suitable for TTS synthesis.
+
+    Uses NLTK sentence tokenization with fallback splitting on punctuation
+    and hard splits for sentences exceeding max_length.
+    """
     text = " ".join(text.split())
     if not text:
         return ()
@@ -24,6 +30,7 @@ def chunk_text(text: str, chapter_id: str, max_length: int = 250) -> tuple[Chunk
 
 
 def _split_long(text: str, max_length: int) -> list[str]:
+    """Split a long sentence using punctuation fallback then hard split."""
     parts = _split_on_punctuation(text, max_length)
     result: list[str] = []
     for part in parts:
@@ -35,6 +42,7 @@ def _split_long(text: str, max_length: int) -> list[str]:
 
 
 def _split_on_punctuation(text: str, max_length: int) -> list[str]:
+    """Try splitting on comma, semicolon, or dash separators."""
     for sep in [", ", "; ", " — ", " – ", " - "]:  # noqa: RUF001
         if sep in text:
             parts = text.split(sep)
@@ -45,6 +53,7 @@ def _split_on_punctuation(text: str, max_length: int) -> list[str]:
 
 
 def _merge_parts(parts: list[str], sep: str, max_length: int) -> list[str]:
+    """Recombine split parts up to max_length boundaries."""
     merged: list[str] = []
     current = ""
 
@@ -63,6 +72,7 @@ def _merge_parts(parts: list[str], sep: str, max_length: int) -> list[str]:
 
 
 def _hard_split(text: str, max_length: int) -> list[str]:
+    """Split text at whitespace boundaries, falling back to character split."""
     parts: list[str] = []
     remaining = text
 

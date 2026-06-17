@@ -1,3 +1,5 @@
+"""Core data models and enums for the Acheron pipeline."""
+
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -5,6 +7,8 @@ type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, J
 
 
 class WorkerType(Enum):
+    """Type of compute worker in the pipeline."""
+
     EXTRACTION = "extraction"
     CHUNKING = "chunking"
     TRANSLATION = "translation"
@@ -14,12 +18,16 @@ class WorkerType(Enum):
 
 
 class JobStatus(Enum):
+    """Outcome status of a completed job."""
+
     SUCCESS = "success"
     FAILED = "failed"
     PARTIAL = "partial"
 
 
 class StepStatus(Enum):
+    """Lifecycle status of a pipeline step."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETE = "complete"
@@ -28,6 +36,8 @@ class StepStatus(Enum):
 
 @dataclass(frozen=True)
 class WorkerCapabilities:
+    """Describes a worker's supported types, languages, and formats."""
+
     worker_type: WorkerType
     supported_languages_in: frozenset[str]
     supported_languages_out: frozenset[str]
@@ -41,6 +51,8 @@ class WorkerCapabilities:
 
 @dataclass(frozen=True)
 class Job:
+    """A unit of work dispatched to a worker."""
+
     job_id: str
     job_type: WorkerType
     payload: dict[str, JsonValue]
@@ -50,6 +62,8 @@ class Job:
 
 @dataclass(frozen=True)
 class OutputFile:
+    """An artifact produced by a pipeline step."""
+
     path: str
     filename: str
     size_bytes: int
@@ -59,6 +73,8 @@ class OutputFile:
 
 @dataclass(frozen=True)
 class JobMetrics:
+    """Timing and cost data for a completed job."""
+
     duration_seconds: float
     gpu_seconds: float | None = None
     tokens_in: int | None = None
@@ -68,6 +84,8 @@ class JobMetrics:
 
 @dataclass(frozen=True)
 class JobResult:
+    """Outcome of executing a job."""
+
     job_id: str
     status: JobStatus
     outputs: tuple[OutputFile, ...]
@@ -77,6 +95,8 @@ class JobResult:
 
 @dataclass(frozen=True)
 class PlanStep:
+    """A single step in a pipeline plan DAG."""
+
     step_id: str
     type: WorkerType
     depends_on: tuple[str, ...]
@@ -87,6 +107,8 @@ class PlanStep:
 
 @dataclass(frozen=True)
 class Plan:
+    """An immutable DAG of pipeline steps for a job."""
+
     plan_id: str
     job_id: str
     source_type: str
@@ -98,6 +120,8 @@ class Plan:
 
 @dataclass(frozen=True)
 class PlanResult:
+    """Outcome of executing a full plan."""
+
     plan_id: str
     status: str
     completed_steps: int
@@ -109,12 +133,16 @@ class PlanResult:
 
 @dataclass(frozen=True)
 class BatchJob:
+    """A batch of jobs for streaming worker submission."""
+
     batch_id: str
     jobs: tuple[Job, ...]
 
 
 @dataclass(frozen=True)
 class BatchStatus:
+    """Progress tracking for a batch of jobs."""
+
     batch_id: str
     total: int
     completed: int
@@ -125,6 +153,8 @@ class BatchStatus:
 
 @dataclass(frozen=True)
 class Chunk:
+    """A text segment produced by the chunking engine."""
+
     chapter_id: str
     sequence_id: int
     text: str

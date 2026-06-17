@@ -1,3 +1,5 @@
+"""Distributed asynchronous audio-transformation pipeline."""
+
 from acheron.core.chunking import chunk_text
 from acheron.core.errors import (
     AcheronError,
