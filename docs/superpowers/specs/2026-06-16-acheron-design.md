@@ -282,6 +282,7 @@ class PlanResult:
     outputs: list[OutputFile]
     total_cost: float
     total_duration_seconds: float
+    errors: tuple[str, ...]     # error messages from failed steps
 ```
 
 ### Pipeline Steps by Input Type
@@ -318,13 +319,31 @@ class Executor(ABC):
     async def run(self, plan: Plan) -> PlanResult: ...
 ```
 
+### Step Handler
+
+Executors take a `StepHandler` callable that dispatches individual steps:
+
+```python
+type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
+```
+
 ### Implementations
 
-**SequentialExecutor** — walks the plan step by step. Useful for debugging and dry-runs.
+**SequentialExecutor** — walks the plan step by step via topological order. Skips dependents of failed steps. Useful for debugging and dry-runs.
 
-**AsyncExecutor** — traverses the DAG, runs all independent steps concurrently. Chapters are naturally independent; within a chapter, steps are sequential.
+**AsyncExecutor** — traverses the DAG in dependency waves. All steps in a wave run concurrently via `asyncio.gather`. Dependents of failed steps are skipped.
 
-**BatchAsyncExecutor** (default) — extends AsyncExecutor with batch semantics. When dispatching synthesis for a chapter, pushes all chunks in a single batch to the `StreamingWorker`. Matches the "per-chapter batch streaming" pattern for maximum GPU throughput.
+**BatchAsyncExecutor** (default) — extends AsyncExecutor with batch semantics. Batch-flagged steps receive all outputs from completed preceding steps so the handler can construct a `BatchJob` with the correct payloads.
+
+All executors capture error details in `PlanResult.errors`.
+
+### Executor Factory
+
+```python
+def create_executor(strategy: ExecutorStrategy, handler: StepHandler) -> Executor: ...
+```
+
+Creates the appropriate executor instance based on the strategy enum.
 
 The executor strategy is set at job creation time.
 
