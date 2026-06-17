@@ -111,7 +111,7 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 |-------|--------|-------|
 | 0 | done | Data models, enums, errors |
 | 1 | done | Interfaces, chunking |
-| 2 | pending | Registry, caching, local worker |
+| 2 | done | Registry, caching, local worker |
 | 3 | pending | Planner, executors |
 | 4 | pending | API, CLI |
 | 5 | pending | GPU workers, dashboard, Docker |
