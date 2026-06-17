@@ -157,7 +157,7 @@ class StreamingWorker(Worker):
 ### Transport Implementations
 
 - **HttpWorker** — wraps a FastAPI/REST endpoint (RunPod, HuggingFace Inference Endpoints)
-- **GrpcWorker** — wraps a gRPC service (future)
+- **GrpcWorker** — wraps a gRPC bidirectional streaming service (Layer 6). Enables real-time PCM streaming from GPU workers, bypassing disk I/O and base64 encoding overhead. Internal to the worker — orchestrator interface unchanged.
 - **LocalWorker** — calls a Python function directly (CPU steps: extraction, chunking, packaging)
 
 Workers register their transport endpoint. The orchestrator dispatches via the abstract interface.

@@ -105,6 +105,22 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 
 ---
 
+### Layer 6 — gRPC Streaming Transport
+
+**Scope**: GrpcWorker implementing `StreamingWorker` via bidirectional gRPC streams. `.proto` definitions for TTS/ASR streaming. Direct PCM byte streaming from GPU to orchestrator, bypassing worker disk I/O.
+
+**Files:**
+- `src/acheron/shell/transports/grpc.py` — GrpcWorker
+- `proto/acheron/synthesis.proto` — TTS bidirectional streaming
+- `proto/acheron/transcription.proto` — ASR bidirectional streaming
+- `tests/shell/test_grpc_worker.py`
+
+**Design**: GrpcWorker implements the existing `Worker` + `StreamingWorker` interface. Streaming is internal to the worker — orchestrator sends a job, GrpcWorker opens a bidirectional gRPC stream to the GPU worker, receives audio bytes as they're generated, and returns assembled `JobResult`. No architectural changes to core/interfaces/planner.
+
+**Deps**: Layer 0-5. External: grpcio, protobuf
+
+---
+
 ## Status
 
 | Layer | Status | Notes |
@@ -115,3 +131,4 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 3 | done | Planner, executors |
 | 4 | done | API + CLI |
 | 5 | partial | HttpWorker done; dashboard + Docker pending |
+| 6 | planned | gRPC streaming transport |
