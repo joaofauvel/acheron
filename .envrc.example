@@ -1,0 +1,3 @@
+# Copy to .envrc and customize for your local environment
+# .envrc is gitignored — do not commit secrets
+layout python
