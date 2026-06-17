@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Distributed asynchronous audio-transformation pipeline for converting EPUB or audio input into offline chapterized audiobooks in a target language"
 readme = "README.md"
 requires-python = ">=3.14"
-license = "MIT"
+license = "GPL-3.0-only"
 authors = [{ name = "Julia" }]
 dependencies = [
     "click~=8.4",
