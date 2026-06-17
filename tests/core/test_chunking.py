@@ -182,6 +182,8 @@ class TestChunkTextPunctuation:
         text = "!!! ??? ..."
         result = chunk_text(text, "ch1")
         assert len(result) >= 1
+        for chunk in result:
+            assert chunk.text.strip()
 
     def test_consecutive_punctuation(self) -> None:
         text = "Really?! Yes!! No..."
@@ -308,6 +310,7 @@ class TestChunkTextValidation:
     def test_content_words_preserved_through_punctuation_split(self) -> None:
         text = "This is a long sentence, with a comma in the middle, that should be split."
         result = chunk_text(text, "ch1", max_length=50)
-        all_words = " ".join(c.text for c in result).lower().split()
-        for word in ["this", "is", "a", "long", "sentence", "with", "a", "comma"]:
-            assert word in all_words
+        all_text = " ".join(c.text for c in result)
+        assert "sentence," in all_text
+        assert "middle," in all_text
+        assert "split." in all_text
