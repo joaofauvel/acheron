@@ -132,6 +132,17 @@ class TestJob:
         with pytest.raises(AttributeError):
             job.job_id = "changed"  # type: ignore[misc]
 
+    def test_nested_payload(self) -> None:
+        job = Job(
+            job_id="j-4",
+            job_type=WorkerType.TTS,
+            payload={"chunks": [{"text": "hello", "seq": 0}, {"text": "world", "seq": 1}]},
+            chapter_id="ch1",
+        )
+        chunks = job.payload["chunks"]
+        assert isinstance(chunks, list)
+        assert len(chunks) == 2
+
 
 class TestOutputFile:
     def test_construction(self) -> None:
