@@ -1,9 +1,13 @@
 """In-memory worker registry with health tracking."""
 
+from __future__ import annotations
+
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from acheron.core.models import WorkerCapabilities, WorkerType  # noqa: TC001
+if TYPE_CHECKING:
+    from acheron.core.models import WorkerCapabilities, WorkerType
 
 
 @dataclass

@@ -52,13 +52,13 @@ class ConcreteStreamingWorker(StreamingWorker):
     async def health(self) -> bool:
         return True
 
-    async def submit_batch(self, batch: BatchJob) -> str:  # noqa: ARG002
+    async def submit_batch(self, batch: BatchJob) -> str:
         return "handle-1"
 
     async def poll_batch(self, batch_handle: str) -> BatchStatus:
         raise NotImplementedError
 
-    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:  # noqa: ARG002
+    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:
         return ()
 
 
@@ -104,7 +104,7 @@ class StreamingWorkerMissingSubmit(StreamingWorker):
     async def poll_batch(self, batch_handle: str) -> BatchStatus:
         raise NotImplementedError
 
-    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:  # noqa: ARG002
+    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:
         return ()
 
 
