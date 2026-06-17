@@ -113,5 +113,5 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 1 | done | Interfaces, chunking |
 | 2 | done | Registry, caching, local worker |
 | 3 | done | Planner, executors |
-| 4 | pending | API, CLI |
+| 4 | done | API (CLI deferred) |
 | 5 | pending | GPU workers, dashboard, Docker |
