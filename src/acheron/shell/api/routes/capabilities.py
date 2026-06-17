@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from fastapi import APIRouter
 
 from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
@@ -21,12 +19,5 @@ async def get_capabilities(
     """Aggregate language pair support from registered workers."""
     pairs = orch.get_capabilities(src=src, dst=dest)
     return CapabilitiesResponse(
-        language_pairs=[
-            LanguagePair(
-                src=str(p["src"]),
-                dst=str(p["dst"]),
-                workers=cast("list[str]", p["workers"]),
-            )
-            for p in pairs
-        ]
+        language_pairs=[LanguagePair(src=p.src, dst=p.dst, workers=list(p.workers)) for p in pairs]
     )

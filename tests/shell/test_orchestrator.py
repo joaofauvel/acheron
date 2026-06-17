@@ -3,44 +3,11 @@
 import pytest
 
 from acheron.core.errors import InvalidLanguagePathError
-from acheron.core.models import (
-    EpubRequest,
-    ExecutorStrategy,
-    JobMetrics,
-    JobResult,
-    JobStatus,
-    WorkerCapabilities,
-    WorkerType,
-)
+from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.registry import WorkerRegistry
-
-
-def _tts_caps(lang: str = "es") -> WorkerCapabilities:
-    return WorkerCapabilities(
-        worker_type=WorkerType.TTS,
-        supported_languages_in=frozenset({lang}),
-        supported_languages_out=frozenset({lang}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"wav"}),
-        max_payload_bytes=None,
-        batch_capable=True,
-        model_source=None,
-    )
-
-
-def _translation_caps(src: str = "en", dst: str = "es") -> WorkerCapabilities:
-    return WorkerCapabilities(
-        worker_type=WorkerType.TRANSLATION,
-        supported_languages_in=frozenset({src}),
-        supported_languages_out=frozenset({dst}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"text"}),
-        max_payload_bytes=None,
-        batch_capable=False,
-        model_source=None,
-    )
+from tests.shell.conftest import translation_caps, tts_caps
 
 
 async def _success_handler(_step, _plan):  # type: ignore[no-untyped-def]
@@ -56,8 +23,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_submit_job_returns_tracked(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()
-        reg.register("tts-1", "http://tts", "http", _tts_caps())
-        reg.register("trans-1", "http://trans", "http", _translation_caps())
+        reg.register("tts-1", "http://tts", "http", tts_caps())
+        reg.register("trans-1", "http://trans", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
@@ -79,8 +46,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_get_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()
-        reg.register("tts-1", "http://tts", "http", _tts_caps())
-        reg.register("trans-1", "http://trans", "http", _translation_caps())
+        reg.register("tts-1", "http://tts", "http", tts_caps())
+        reg.register("trans-1", "http://trans", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
@@ -98,8 +65,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_list_jobs(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()
-        reg.register("tts-1", "http://tts", "http", _tts_caps())
-        reg.register("trans-1", "http://trans", "http", _translation_caps())
+        reg.register("tts-1", "http://tts", "http", tts_caps())
+        reg.register("trans-1", "http://trans", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
@@ -111,16 +78,16 @@ class TestOrchestrator:
 
     def test_register_and_list_workers(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         orch = Orchestrator(WorkerRegistry(), PlanCache(tmp_path), _success_handler)
-        orch.register_worker("w-1", "http://a", "http", _tts_caps())
-        orch.register_worker("w-2", "http://b", "http", _translation_caps())
+        orch.register_worker("w-1", "http://a", "http", tts_caps())
+        orch.register_worker("w-2", "http://b", "http", translation_caps())
 
         workers = orch.list_workers()
         assert len(workers) == 2
 
     def test_get_capabilities(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()
-        reg.register("tts-1", "http://tts", "http", _tts_caps("es"))
-        reg.register("trans-1", "http://trans", "http", _translation_caps("en", "es"))
+        reg.register("tts-1", "http://tts", "http", tts_caps("es"))
+        reg.register("trans-1", "http://trans", "http", translation_caps("en", "es"))
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         caps = orch.get_capabilities()
@@ -128,10 +95,10 @@ class TestOrchestrator:
 
     def test_get_capabilities_filtered(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()
-        reg.register("tts-1", "http://tts", "http", _tts_caps("es"))
-        reg.register("tts-2", "http://tts2", "http", _tts_caps("fr"))
+        reg.register("tts-1", "http://tts", "http", tts_caps("es"))
+        reg.register("tts-2", "http://tts2", "http", tts_caps("fr"))
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         caps = orch.get_capabilities(dst="es")
         for pair in caps:
-            assert pair["dst"] == "es"
+            assert pair.dst == "es"

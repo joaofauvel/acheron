@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
@@ -19,6 +20,15 @@ if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker, WorkerRegistry
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LanguagePair:
+    """A supported source→target language pair with supporting workers."""
+
+    src: str
+    dst: str
+    workers: tuple[str, ...]
 
 
 class Orchestrator:
@@ -93,7 +103,7 @@ class Orchestrator:
         self,
         src: str | None = None,
         dst: str | None = None,
-    ) -> list[dict[str, object]]:
+    ) -> list[LanguagePair]:
         """Aggregate language pairs from registered workers."""
         workers = self._registry.list_all()
         pairs: dict[tuple[str, str], list[str]] = {}
@@ -110,7 +120,7 @@ class Orchestrator:
                         pairs[key] = []
                     pairs[key].append(w.worker_id)
 
-        return [{"src": k[0], "dst": k[1], "workers": v} for k, v in pairs.items()]
+        return [LanguagePair(src=k[0], dst=k[1], workers=tuple(v)) for k, v in pairs.items()]
 
     def register_worker(
         self,

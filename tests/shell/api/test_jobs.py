@@ -1,54 +1,6 @@
 """Tests for job API routes."""
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-
-from acheron.core.models import WorkerCapabilities, WorkerType
-from acheron.shell.api.app import create_app
-from acheron.shell.cache import PlanCache
-from acheron.shell.registry import WorkerRegistry
-
-
-def _tts_caps(lang: str = "es") -> WorkerCapabilities:
-    return WorkerCapabilities(
-        worker_type=WorkerType.TTS,
-        supported_languages_in=frozenset({lang}),
-        supported_languages_out=frozenset({lang}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"wav"}),
-        max_payload_bytes=None,
-        batch_capable=True,
-        model_source=None,
-    )
-
-
-def _translation_caps(src: str = "en", dst: str = "es") -> WorkerCapabilities:
-    return WorkerCapabilities(
-        worker_type=WorkerType.TRANSLATION,
-        supported_languages_in=frozenset({src}),
-        supported_languages_out=frozenset({dst}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"text"}),
-        max_payload_bytes=None,
-        batch_capable=False,
-        model_source=None,
-    )
-
-
-@pytest.fixture
-def app(tmp_path):  # type: ignore[no-untyped-def]
-    reg = WorkerRegistry()
-    reg.register("tts-1", "http://tts", "http", _tts_caps())
-    reg.register("trans-1", "http://trans", "http", _translation_caps())
-    return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)
-
-
-@pytest_asyncio.fixture
-async def client(app):  # type: ignore[no-untyped-def]
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
 
 
 class TestJobRoutes:
@@ -131,3 +83,26 @@ class TestJobRoutes:
         response = await client.get("/jobs")
         assert response.status_code == 200
         assert len(response.json()["jobs"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_submit_job_unsupported_language(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Test that submitting a job with unsupported language returns 422."""
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.registry import WorkerRegistry
+
+        app = create_app(registry=WorkerRegistry(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "/input/book.epub",
+                    "source_language": "en",
+                    "target_language": "xx",
+                },
+            )
+            assert response.status_code == 422

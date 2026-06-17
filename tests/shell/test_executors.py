@@ -157,7 +157,7 @@ class TestSequentialExecutor:
 
     @pytest.mark.asyncio
     async def test_cost_accumulated(self) -> None:
-        async def handler(step: PlanStep, _plan: Plan) -> JobResult:  # noqa: ARG001
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
             return _success_result(cost=0.5)
 
         plan = _plan((_step("a"), _step("b")))
@@ -288,7 +288,7 @@ class TestCreateExecutor:
 class TestErrorCapture:
     @pytest.mark.asyncio
     async def test_sequential_captures_failure_reason(self) -> None:
-        async def handler(step: PlanStep, _plan: Plan) -> JobResult:  # noqa: ARG001
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
             return JobResult(
                 job_id="j-1",
                 status=JobStatus.FAILED,

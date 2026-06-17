@@ -3,23 +3,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from acheron.core.models import JobMetrics, JobResult, JobStatus, Plan, PlanStep
 from acheron.shell.api.routes import capabilities, jobs, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.registry import WorkerRegistry
 
+if TYPE_CHECKING:
+    from acheron.core.models import JobResult, Plan, PlanStep
+
 
 async def _noop_handler(_step: PlanStep, _plan: Plan) -> JobResult:
-    return JobResult(
-        job_id="noop",
-        status=JobStatus.SUCCESS,
-        outputs=(),
-        metrics=JobMetrics(duration_seconds=0.0),
-    )
+    msg = "No step handler configured — submit a real handler via Orchestrator"
+    raise NotImplementedError(msg)
 
 
 def create_app(

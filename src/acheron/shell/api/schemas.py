@@ -1,5 +1,7 @@
 """Pydantic models for API request/response serialization."""
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -42,6 +44,7 @@ class WorkerCapabilitiesRequest(BaseModel):
     max_payload_bytes: int | None = None
     batch_capable: bool = False
     model_source: str | None = None
+    metadata: dict[str, Any] = {}
 
 
 class WorkerRegistrationRequest(BaseModel):

@@ -33,6 +33,7 @@ async def register_worker(body: WorkerRegistrationRequest, orch: OrchestratorDep
         max_payload_bytes=body.capabilities.max_payload_bytes,
         batch_capable=body.capabilities.batch_capable,
         model_source=body.capabilities.model_source,
+        metadata=body.capabilities.metadata,
     )
 
     orch.register_worker(body.worker_id, body.endpoint, body.transport, capabilities)
