@@ -1,7 +1,10 @@
 """Text chunking engine for splitting chapters into TTS-sized segments."""
 
+import re
+
 import nltk
 
+from acheron.core.errors import ChunkingError
 from acheron.core.models import Chunk
 
 
@@ -10,12 +13,24 @@ def chunk_text(text: str, chapter_id: str, max_length: int = 250) -> tuple[Chunk
 
     Uses NLTK sentence tokenization with fallback splitting on punctuation
     and hard splits for sentences exceeding max_length.
+
+    Raises:
+        ChunkingError: If max_length is invalid or chunking produces invalid output.
     """
+    if max_length < 1:
+        msg = f"max_length must be >= 1, got {max_length}"
+        raise ChunkingError(msg)
+
     text = " ".join(text.split())
     if not text:
         return ()
 
-    sentences = nltk.sent_tokenize(text)
+    try:
+        sentences = nltk.sent_tokenize(text)
+    except Exception as exc:
+        msg = f"NLTK sentence tokenization failed: {exc}"
+        raise ChunkingError(msg) from exc
+
     raw_chunks: list[str] = []
 
     for sentence in sentences:
@@ -24,9 +39,37 @@ def chunk_text(text: str, chapter_id: str, max_length: int = 250) -> tuple[Chunk
         else:
             raw_chunks.extend(_split_long(sentence, max_length))
 
-    return tuple(
+    chunks = tuple(
         Chunk(chapter_id=chapter_id, sequence_id=i, text=chunk) for i, chunk in enumerate(raw_chunks) if chunk.strip()
     )
+
+    _validate_chunks(chunks, text)
+    return chunks
+
+
+def _validate_chunks(chunks: tuple[Chunk, ...], original: str) -> None:
+    """Verify chunk output integrity.
+
+    Raises:
+        ChunkingError: If chunks have gaps in sequence IDs, empty text,
+            or fail to cover the original text.
+    """
+    for i, chunk in enumerate(chunks):
+        if chunk.sequence_id != i:
+            msg = f"Sequence gap: expected {i}, got {chunk.sequence_id}"
+            raise ChunkingError(msg)
+        if not chunk.text.strip():
+            msg = f"Empty chunk at sequence {i}"
+            raise ChunkingError(msg)
+
+    rejoined = " ".join(c.text for c in chunks)
+    if _normalize_words(original) != _normalize_words(rejoined):
+        raise ChunkingError("Content mismatch: chunk output does not cover original text")
+
+
+def _normalize_words(text: str) -> str:
+    """Normalize text for content comparison by removing whitespace and punctuation."""
+    return re.sub(r"[\s\W]+", "", text)
 
 
 def _split_long(text: str, max_length: int) -> list[str]:
@@ -68,7 +111,7 @@ def _merge_parts(parts: list[str], sep: str, max_length: int) -> list[str]:
 
     if current:
         merged.append(current)
-    return merged
+    return [p for p in merged if p.strip()]
 
 
 def _hard_split(text: str, max_length: int) -> list[str]:

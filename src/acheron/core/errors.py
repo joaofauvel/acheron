@@ -39,3 +39,7 @@ class CacheMissError(CacheError):
 
 class CacheCorruptedError(CacheError):
     """Cached output failed integrity validation."""
+
+
+class ChunkingError(AcheronError):
+    """Text chunking failed or produced invalid output."""
