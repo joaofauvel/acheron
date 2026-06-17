@@ -83,6 +83,17 @@ warn_unused_ignores = true
 explicit_package_bases = true
 mypy_path = "src:stubs"
 
+[tool.basedpyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.14"
+include = ["src", "tests"]
+extraPaths = ["src", "stubs"]
+exclude = [".venv"]
+reportUnusedImport = false
+reportUnusedVariable = false
+reportUnusedCallResult = false
+reportArgumentType = false
+
 [tool.pytest.ini_options]
 xfail_strict = true
 addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80"
@@ -99,6 +110,7 @@ forbidden_modules = ["acheron.shell"]
 
 [dependency-groups]
 dev = [
+    "basedpyright~=1.39",
     "import-linter~=2.11",
     "inline-snapshot~=0.34",
     "mypy~=2.1",

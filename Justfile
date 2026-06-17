@@ -19,8 +19,12 @@ test:
 lint-imports:
     uv run lint-imports
 
+# Run basedpyright type analysis (matches editor LSP)
+type-check-pyright:
+    uv run basedpyright
+
 # Full validation pipeline: lint, type-check, then test
-validate: lint-strict lint-imports type-check test
+validate: lint-strict lint-imports type-check type-check-pyright test
 
 # Install all dependencies including dev
 install:
