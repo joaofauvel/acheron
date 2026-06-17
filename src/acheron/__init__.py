@@ -1,3 +1,4 @@
+from acheron.core.chunking import chunk_text
 from acheron.core.errors import (
     AcheronError,
     CacheCorruptedError,
@@ -10,9 +11,11 @@ from acheron.core.errors import (
     WorkerTimeoutError,
     WorkerUnavailableError,
 )
+from acheron.core.interfaces import Executor, StreamingWorker, Worker
 from acheron.core.models import (
     BatchJob,
     BatchStatus,
+    Chunk,
     Job,
     JobMetrics,
     JobResult,
@@ -34,6 +37,8 @@ __all__ = [
     "CacheCorruptedError",
     "CacheError",
     "CacheMissError",
+    "Chunk",
+    "Executor",
     "InvalidLanguagePathError",
     "Job",
     "JobMetrics",
@@ -47,9 +52,12 @@ __all__ = [
     "PlanStep",
     "PlanValidationError",
     "StepStatus",
+    "StreamingWorker",
+    "Worker",
     "WorkerCapabilities",
     "WorkerError",
     "WorkerTimeoutError",
     "WorkerType",
     "WorkerUnavailableError",
+    "chunk_text",
 ]

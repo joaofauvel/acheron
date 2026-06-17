@@ -121,3 +121,10 @@ class BatchStatus:
     failed: int
     pending: int
     results: tuple[JobResult, ...]
+
+
+@dataclass(frozen=True)
+class Chunk:
+    chapter_id: str
+    sequence_id: int
+    text: str
