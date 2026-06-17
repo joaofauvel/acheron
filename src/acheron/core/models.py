@@ -34,6 +34,14 @@ class StepStatus(Enum):
     FAILED = "failed"
 
 
+class ExecutorStrategy(Enum):
+    """Plan execution strategy."""
+
+    SEQUENTIAL = "sequential"
+    ASYNC = "async"
+    BATCH_ASYNC = "batch_async"
+
+
 @dataclass(frozen=True)
 class WorkerCapabilities:
     """Describes a worker's supported types, languages, and formats."""
@@ -114,7 +122,7 @@ class Plan:
     source_type: str
     source_language: str
     target_language: str
-    executor_strategy: str
+    executor_strategy: ExecutorStrategy
     steps: tuple[PlanStep, ...]
 
 
@@ -129,6 +137,28 @@ class PlanResult:
     outputs: tuple[OutputFile, ...]
     total_cost: float
     total_duration_seconds: float
+
+
+@dataclass(frozen=True)
+class EpubRequest:
+    """Job request for EPUB input."""
+
+    source_path: str
+    source_language: str
+    target_language: str
+
+
+@dataclass(frozen=True)
+class AudioRequest:
+    """Job request for audio input."""
+
+    source_path: str
+    source_language: str
+    target_language: str
+    asr_model: str | None = None
+
+
+type JobRequest = EpubRequest | AudioRequest
 
 
 @dataclass(frozen=True)

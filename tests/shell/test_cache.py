@@ -6,6 +6,7 @@ import pytest
 
 from acheron.core.errors import CacheMissError
 from acheron.core.models import (
+    ExecutorStrategy,
     OutputFile,
     Plan,
     PlanStep,
@@ -22,7 +23,7 @@ def _sample_plan(plan_id: str = "plan-1") -> Plan:
         source_type="epub",
         source_language="en",
         target_language="es",
-        executor_strategy="batch_async",
+        executor_strategy=ExecutorStrategy.BATCH_ASYNC,
         steps=(
             PlanStep(
                 step_id="extract",
@@ -84,7 +85,7 @@ class TestPlanCache:
             source_type="epub",
             source_language="en",
             target_language="es",
-            executor_strategy="batch_async",
+            executor_strategy=ExecutorStrategy.BATCH_ASYNC,
             steps=(
                 PlanStep(
                     step_id="tts",

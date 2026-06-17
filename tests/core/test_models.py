@@ -3,6 +3,7 @@ import pytest
 from acheron.core.models import (
     BatchJob,
     BatchStatus,
+    ExecutorStrategy,
     Job,
     JobMetrics,
     JobResult,
@@ -226,7 +227,7 @@ class TestPlan:
             source_type="epub",
             source_language="en",
             target_language="es",
-            executor_strategy="batch_async",
+            executor_strategy=ExecutorStrategy.BATCH_ASYNC,
             steps=steps,
         )
         assert len(plan.steps) == 1

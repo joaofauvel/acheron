@@ -16,11 +16,15 @@ from acheron.core.errors import (
 )
 from acheron.core.interfaces import Executor, StreamingWorker, Worker
 from acheron.core.models import (
+    AudioRequest,
     BatchJob,
     BatchStatus,
     Chunk,
+    EpubRequest,
+    ExecutorStrategy,
     Job,
     JobMetrics,
+    JobRequest,
     JobResult,
     JobStatus,
     JsonValue,
@@ -35,6 +39,7 @@ from acheron.core.models import (
 
 __all__ = [
     "AcheronError",
+    "AudioRequest",
     "BatchJob",
     "BatchStatus",
     "CacheCorruptedError",
@@ -42,10 +47,13 @@ __all__ = [
     "CacheMissError",
     "Chunk",
     "ChunkingError",
+    "EpubRequest",
     "Executor",
+    "ExecutorStrategy",
     "InvalidLanguagePathError",
     "Job",
     "JobMetrics",
+    "JobRequest",
     "JobResult",
     "JobStatus",
     "JsonValue",
