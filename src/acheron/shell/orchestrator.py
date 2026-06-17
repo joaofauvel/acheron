@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
+from acheron.core.models import EpubRequest
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
 from acheron.shell.job_store import JobStore, TrackedJob
@@ -53,10 +54,20 @@ class Orchestrator:
             AcheronError: If plan compilation fails (e.g. invalid language path).
         """
         job_id = f"job-{uuid.uuid4().hex[:8]}"
-        capabilities = tuple(w.capabilities for w in self._registry.list_all())
+        source_type = "epub" if isinstance(request, EpubRequest) else "audio"
+        logger.info(
+            "Submitting job %s: %s → %s (%s, %s)",
+            job_id,
+            request.source_language,
+            request.target_language,
+            source_type,
+            strategy.value,
+        )
 
+        capabilities = tuple(w.capabilities for w in self._registry.list_all())
         plan = compile_plan(request, strategy, capabilities, job_id=job_id)
         self._cache.save_plan(plan)
+        logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
         tracked = TrackedJob(
             job_id=job_id,
@@ -75,14 +86,23 @@ class Orchestrator:
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status."""
+        logger.info("Executing %s (%s strategy)", tracked.job_id, tracked.strategy.value)
         try:
             if tracked.plan is None:
                 tracked.status = "failed"
+                logger.error("No plan for %s", tracked.job_id)
             else:
                 executor = create_executor(tracked.strategy, self._handler)
                 result = await executor.run(tracked.plan)
                 tracked.result = result
                 tracked.status = result.status
+                logger.info(
+                    "Completed %s: %s (%d/%d steps)",
+                    tracked.job_id,
+                    result.status,
+                    result.completed_steps,
+                    result.total_steps,
+                )
         except AcheronError:
             logger.exception("Plan execution failed for %s", tracked.job_id)
             tracked.status = "failed"
@@ -131,6 +151,9 @@ class Orchestrator:
     ) -> None:
         """Register a worker in the registry."""
         self._registry.register(worker_id, endpoint, transport, capabilities)
+        logger.info(
+            "Registered worker %s (%s, %s → %s)", worker_id, capabilities.worker_type.value, endpoint, transport
+        )
 
     def list_workers(self) -> tuple[RegisteredWorker, ...]:
         """List all registered workers."""
