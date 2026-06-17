@@ -15,8 +15,12 @@ type-check:
 test:
     uv run pytest
 
+# Enforce import boundaries via import-linter
+lint-imports:
+    uv run lint-imports
+
 # Full validation pipeline: lint, type-check, then test
-validate: lint-strict type-check test
+validate: lint-strict lint-imports type-check test
 
 # Install all dependencies including dev
 install:

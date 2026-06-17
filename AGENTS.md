@@ -23,4 +23,5 @@ AI agents MUST follow this sequence for all changes.
 - If a file or directory is gitignored, ask the user before committing. There is usually a good reason for it to be ignored, such as that it may be part of a developer specific workflow.
 - Comments should be timeless (to exent as that is possible), objective, and concise. Avoid stale-prone comments that reference impl details. Do NOT add unnecessary comments related to impl phases or anything like that.
 - Keep commit messages and descriptions very short and concise. Use bulletpoints if you need to, and, as with comments, prioritize timelessness, objectivity, and conciseness.
-- Use uv to add and remove dependencies. Unless ABSOLUTELY necessary, do NOT manage pyproject.toml manually.
+- Use uv to add and remove dependencies. Unless ABSOLUTELY necessary, do NOT manage pyproject.toml manually. Pin dependencies with `~=` to ensure targetting of the same major version.
+- Always prefer chaining exceptions to keep the full chain of events leading to us raising our custom exceptions.

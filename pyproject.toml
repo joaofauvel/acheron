@@ -44,12 +44,13 @@ select = ["ALL"]
 ignore = [
     "COM812",
     "CPY001",
+    "D100",
+    "D101",
+    "D104",
+    "D105",
     "D203",
     "D211",
     "D213",
-    "D100",
-    "D104",
-    "D105",
     "EM101",
     "FIX002",
     "ISC001",
@@ -67,7 +68,7 @@ convention = "google"
 combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D", "S", "PLC0415"]
+"tests/**" = ["D", "S", "PLC0415", "PLR2004"]
 
 [tool.mypy]
 strict = true
@@ -87,8 +88,18 @@ xfail_strict = true
 addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
 
+[tool.importlinter]
+root_package = "acheron"
+
+[[tool.importlinter.contracts]]
+name = "core-shell-boundary"
+type = "forbidden"
+source_modules = ["acheron.core"]
+forbidden_modules = ["acheron.shell"]
+
 [dependency-groups]
 dev = [
+    "import-linter~=2.11",
     "inline-snapshot~=0.34",
     "mypy~=2.1",
     "pytest~=9.1",
