@@ -109,8 +109,8 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 
 | Layer | Status | Notes |
 |-------|--------|-------|
-| 0 | in_progress | Data models, enums, errors |
-| 1 | pending | Interfaces, chunking |
+| 0 | done | Data models, enums, errors |
+| 1 | done | Interfaces, chunking |
 | 2 | pending | Registry, caching, local worker |
 | 3 | pending | Planner, executors |
 | 4 | pending | API, CLI |

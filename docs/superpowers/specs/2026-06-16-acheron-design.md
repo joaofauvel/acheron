@@ -26,10 +26,10 @@ Docker Compose (orchestrator host)
           ▼
 ┌─────────────────────────────────────────┐
 │    Abstract Worker Interface            │
-│  ┌───────────┐ ┌───────────────────┐   │
-│  │ register()│ │ capabilities()    │   │
-│  │ execute() │ │ health()          │   │
-│  └───────────┘ └───────────────────┘   │
+│  ┌───────────────┐ ┌────────────────┐  │
+│  │ capabilities()│ │ health()       │  │
+│  │ execute()     │ │                │  │
+│  └───────────────┘ └────────────────┘  │
 └───────────────────┬─────────────────────┘
                     │
      ┌──────────────┼──────────────┐
@@ -108,9 +108,6 @@ class JobMetrics:
     cost_estimate: float | None
 
 class Worker(ABC):
-    @abstractmethod
-    async def register(self, registry: "WorkerRegistry") -> None: ...
-
     @abstractmethod
     async def capabilities(self) -> WorkerCapabilities: ...
 
