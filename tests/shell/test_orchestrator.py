@@ -1,7 +1,5 @@
 """Tests for the orchestrator."""
 
-from typing import cast
-
 import pytest
 
 from acheron.core.errors import InvalidLanguagePathError
@@ -126,8 +124,7 @@ class TestOrchestrator:
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         caps = orch.get_capabilities()
-        pairs = cast("list[dict[str, object]]", caps["language_pairs"])
-        assert len(pairs) >= 1
+        assert len(caps) >= 1
 
     def test_get_capabilities_filtered(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()
@@ -136,6 +133,5 @@ class TestOrchestrator:
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
 
         caps = orch.get_capabilities(dst="es")
-        pairs = cast("list[dict[str, object]]", caps["language_pairs"])
-        for pair in pairs:
+        for pair in caps:
             assert pair["dst"] == "es"

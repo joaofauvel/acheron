@@ -4,28 +4,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from acheron.core.errors import AcheronError
 from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy
+from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
 from acheron.shell.api.schemas import JobListResponse, JobResponse, SubmitJobRequest
 
 if TYPE_CHECKING:
     from acheron.shell.job_store import TrackedJob
-    from acheron.shell.orchestrator import Orchestrator
 
 router = APIRouter()
 
 
-def _get_orchestrator(request: Request) -> Orchestrator:
-    return request.app.state.orchestrator  # type: ignore[no-any-return]
-
-
 @router.post("", status_code=201, response_model=JobResponse)
-async def submit_job(body: SubmitJobRequest, request: Request) -> JobResponse:
+async def submit_job(body: SubmitJobRequest, orch: OrchestratorDep) -> JobResponse:
     """Submit a new job for processing."""
-    orch = _get_orchestrator(request)
-
     try:
         strategy = ExecutorStrategy(body.executor_strategy)
     except ValueError as exc:
@@ -60,9 +54,8 @@ async def submit_job(body: SubmitJobRequest, request: Request) -> JobResponse:
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, request: Request) -> JobResponse:
+async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
     """Get job status and result."""
-    orch = _get_orchestrator(request)
     tracked = await orch.get_job(job_id)
     if tracked is None:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
@@ -70,9 +63,8 @@ async def get_job(job_id: str, request: Request) -> JobResponse:
 
 
 @router.get("", response_model=JobListResponse)
-async def list_jobs(request: Request) -> JobListResponse:
+async def list_jobs(orch: OrchestratorDep) -> JobListResponse:
     """List all jobs."""
-    orch = _get_orchestrator(request)
     jobs = await orch.list_jobs()
     return JobListResponse(jobs=[_tracked_to_response(j) for j in jobs])
 

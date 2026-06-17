@@ -2,32 +2,22 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
 from acheron.shell.api.schemas import (
     WorkerListResponse,
     WorkerRegistrationRequest,
     WorkerResponse,
 )
 
-if TYPE_CHECKING:
-    from acheron.shell.orchestrator import Orchestrator
-
 router = APIRouter()
 
 
-def _get_orchestrator(request: Request) -> Orchestrator:
-    return request.app.state.orchestrator  # type: ignore[no-any-return]
-
-
 @router.post("", status_code=201, response_model=WorkerResponse)
-async def register_worker(body: WorkerRegistrationRequest, request: Request) -> WorkerResponse:
+async def register_worker(body: WorkerRegistrationRequest, orch: OrchestratorDep) -> WorkerResponse:
     """Register a new worker."""
-    orch = _get_orchestrator(request)
-
     try:
         worker_type = WorkerType(body.capabilities.worker_type)
     except ValueError as exc:
@@ -57,9 +47,8 @@ async def register_worker(body: WorkerRegistrationRequest, request: Request) -> 
 
 
 @router.get("", response_model=WorkerListResponse)
-async def list_workers(request: Request) -> WorkerListResponse:
+async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
     """List all registered workers."""
-    orch = _get_orchestrator(request)
     workers = orch.list_workers()
     return WorkerListResponse(
         workers=[

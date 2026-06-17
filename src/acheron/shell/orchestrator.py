@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import TYPE_CHECKING
 
+from acheron.core.errors import AcheronError
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
 from acheron.shell.job_store import JobStore, TrackedJob
@@ -15,6 +17,8 @@ if TYPE_CHECKING:
     from acheron.shell.cache import PlanCache
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.registry import RegisteredWorker, WorkerRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
@@ -33,7 +37,11 @@ class Orchestrator:
         self._tasks: set[asyncio.Task[None]] = set()
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
-        """Compile a plan and execute it. Returns the tracked job immediately."""
+        """Compile a plan and execute it. Returns the tracked job immediately.
+
+        Raises:
+            AcheronError: If plan compilation fails (e.g. invalid language path).
+        """
         job_id = f"job-{uuid.uuid4().hex[:8]}"
         capabilities = tuple(w.capabilities for w in self._registry.list_all())
 
@@ -65,7 +73,11 @@ class Orchestrator:
                 result = await executor.run(tracked.plan)
                 tracked.result = result
                 tracked.status = result.status
-        except Exception:  # noqa: BLE001
+        except AcheronError:
+            logger.exception("Plan execution failed for %s", tracked.job_id)
+            tracked.status = "failed"
+        except Exception:
+            logger.exception("Unexpected error executing %s", tracked.job_id)
             tracked.status = "failed"
         self._job_store.put(tracked)
 
@@ -77,7 +89,11 @@ class Orchestrator:
         """List all tracked jobs."""
         return self._job_store.list_all()
 
-    def get_capabilities(self, src: str | None = None, dst: str | None = None) -> dict[str, object]:
+    def get_capabilities(
+        self,
+        src: str | None = None,
+        dst: str | None = None,
+    ) -> list[dict[str, object]]:
         """Aggregate language pairs from registered workers."""
         workers = self._registry.list_all()
         pairs: dict[tuple[str, str], list[str]] = {}
@@ -94,7 +110,7 @@ class Orchestrator:
                         pairs[key] = []
                     pairs[key].append(w.worker_id)
 
-        return {"language_pairs": [{"src": k[0], "dst": k[1], "workers": v} for k, v in pairs.items()]}
+        return [{"src": k[0], "dst": k[1], "workers": v} for k, v in pairs.items()]
 
     def register_worker(
         self,
