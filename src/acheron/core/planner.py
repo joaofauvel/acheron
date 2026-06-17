@@ -146,7 +146,7 @@ def _audio_steps(request: AudioRequest) -> list[PlanStep]:
             type=WorkerType.ASR,
             depends_on=("extract",),
             status=StepStatus.PENDING,
-            payload={"source_language": request.source_language},
+            payload={"source_language": request.source_language, "asr_model": request.asr_model},
         ),
         PlanStep(
             step_id="chunk",

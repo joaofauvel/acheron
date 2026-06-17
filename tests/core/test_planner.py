@@ -143,3 +143,22 @@ class TestLanguagePathValidation:
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
         plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
         assert plan is not None
+
+    def test_asr_model_in_payload(self) -> None:
+        caps = (_tts_caps(), _translation_caps(), _asr_caps())
+        request = AudioRequest(
+            source_path="/input/podcast.mp3",
+            source_language="en",
+            target_language="es",
+            asr_model="whisper-v3",
+        )
+        plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
+        by_id = {s.step_id: s for s in plan.steps}
+        assert by_id["transcribe"].payload["asr_model"] == "whisper-v3"
+
+    def test_asr_model_none_in_payload(self) -> None:
+        caps = (_tts_caps(), _translation_caps(), _asr_caps())
+        request = AudioRequest(source_path="/input/podcast.mp3", source_language="en", target_language="es")
+        plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
+        by_id = {s.step_id: s for s in plan.steps}
+        assert by_id["transcribe"].payload["asr_model"] is None
