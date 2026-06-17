@@ -3,7 +3,6 @@
 import pytest
 
 from acheron.core.models import (
-    BatchJob,
     ExecutorStrategy,
     JobMetrics,
     JobResult,
@@ -40,12 +39,12 @@ def _plan(steps: tuple[PlanStep, ...]) -> Plan:
     )
 
 
-def _success_result() -> JobResult:
+def _success_result(cost: float = 0.01) -> JobResult:
     return JobResult(
         job_id="j-1",
         status=JobStatus.SUCCESS,
         outputs=(),
-        metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.01),
+        metrics=JobMetrics(duration_seconds=0.1, cost_estimate=cost),
     )
 
 
@@ -110,6 +109,58 @@ class TestSequentialExecutor:
         assert result.status == "failed"
         assert result.completed_steps == 0
 
+    @pytest.mark.asyncio
+    async def test_skips_dependents_of_failed_step(self) -> None:
+        executed: list[str] = []
+
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            executed.append(step.step_id)
+            if step.step_id == "a":
+                return _fail_result()
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b", ("a",)), _step("c", ("a",))))
+        result = await SequentialExecutor(handler).run(plan)
+        assert executed == ["a"]
+        assert result.status == "failed"
+        assert result.completed_steps == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_plan(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        result = await SequentialExecutor(handler).run(_plan(()))
+        assert result.status == "completed"
+        assert result.total_steps == 0
+
+    @pytest.mark.asyncio
+    async def test_single_step(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        result = await SequentialExecutor(handler).run(_plan((_step("a"),)))
+        assert result.status == "completed"
+        assert result.completed_steps == 1
+
+    @pytest.mark.asyncio
+    async def test_handler_raises_exception(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            raise RuntimeError("worker crashed")
+
+        plan = _plan((_step("a"), _step("b", ("a",))))
+        with pytest.raises(RuntimeError, match="worker crashed"):
+            await SequentialExecutor(handler).run(plan)
+
+    @pytest.mark.asyncio
+    async def test_cost_accumulated(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:  # noqa: ARG001
+            return _success_result(cost=0.5)
+
+        plan = _plan((_step("a"), _step("b")))
+        result = await SequentialExecutor(handler).run(plan)
+        assert result.total_cost == 1.0
+
 
 class TestAsyncExecutor:
     @pytest.mark.asyncio
@@ -147,6 +198,43 @@ class TestAsyncExecutor:
         assert result.status == "partial"
         assert result.completed_steps == 2
 
+    @pytest.mark.asyncio
+    async def test_skips_dependents_of_failed_step(self) -> None:
+        executed: list[str] = []
+
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            executed.append(step.step_id)
+            if step.step_id == "a":
+                return _fail_result()
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b", ("a",)), _step("c", ("a",))))
+        result = await AsyncExecutor(handler).run(plan)
+        assert "a" in executed
+        assert "b" not in executed
+        assert "c" not in executed
+        assert result.status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_handler_raises_counts_as_failure(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            if step.step_id == "a":
+                raise RuntimeError("crash")
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b"), _step("c")))
+        result = await AsyncExecutor(handler).run(plan)
+        assert result.status == "partial"
+        assert result.completed_steps == 2
+
+    @pytest.mark.asyncio
+    async def test_empty_plan(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            return _success_result()
+
+        result = await AsyncExecutor(handler).run(_plan(()))
+        assert result.status == "completed"
+
 
 class TestBatchAsyncExecutor:
     @pytest.mark.asyncio
@@ -159,26 +247,13 @@ class TestBatchAsyncExecutor:
         assert result.status == "completed"
 
     @pytest.mark.asyncio
-    async def test_batch_steps_use_submitter(self) -> None:
-        submitted: list[str] = []
-
-        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+    async def test_skips_dependents_of_failed_step(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            if step.step_id == "a":
+                return _fail_result()
             return _success_result()
 
-        async def submitter(batch: BatchJob) -> JobResult:
-            submitted.append(batch.batch_id)
-            return _success_result()
-
-        batch_step = PlanStep(
-            step_id="tts",
-            type=WorkerType.TTS,
-            depends_on=(),
-            status=StepStatus.PENDING,
-            payload={},
-            batch=True,
-        )
-        plan = _plan((_step("a"), batch_step))
-        result = await BatchAsyncExecutor(handler, submitter).run(plan)
-        assert result.status == "completed"
-        assert len(submitted) == 1
-        assert submitted[0] == "batch-tts"
+        plan = _plan((_step("a"), _step("b", ("a",))))
+        result = await BatchAsyncExecutor(handler).run(plan)
+        assert result.status == "failed"
+        assert result.completed_steps == 0

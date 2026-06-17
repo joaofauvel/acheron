@@ -2,34 +2,26 @@
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
-from graphlib import TopologicalSorter
 
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
-    BatchJob,
-    JobResult,
     JobStatus,
     OutputFile,
     Plan,
     PlanResult,
-    PlanStep,
 )
-
-type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
-type BatchSubmitter = Callable[[BatchJob], Awaitable[JobResult]]
+from acheron.shell.executors._utils import StepHandler, dependency_waves
 
 
 class BatchAsyncExecutor(Executor):
-    """Executes plan steps with batch submission for TTS/ASR steps."""
+    """Executes plan steps with batch submission for TTS/ASR steps.
 
-    def __init__(
-        self,
-        handler: StepHandler,
-        batch_submitter: BatchSubmitter | None = None,
-    ) -> None:
+    Batch-flagged steps receive all outputs from completed preceding steps
+    so the handler can construct a BatchJob with the correct payloads.
+    """
+
+    def __init__(self, handler: StepHandler) -> None:
         self._handler = handler
-        self._batch_submitter = batch_submitter
 
     async def run(self, plan: Plan) -> PlanResult:
         """Run steps in waves. Batch-flagged steps use batch submission."""
@@ -38,27 +30,34 @@ class BatchAsyncExecutor(Executor):
         failed = 0
         outputs: list[OutputFile] = []
         total_cost = 0.0
+        failed_steps: set[str] = set()
 
-        for wave in _dependency_waves(plan.steps):
-            batch_steps = [s for s in wave if s.batch and self._batch_submitter]
-            regular_steps = [s for s in wave if not s.batch or not self._batch_submitter]
+        for wave in dependency_waves(plan.steps):
+            runnable = [s for s in wave if not any(d in failed_steps for d in s.depends_on)]
+            skipped = [s for s in wave if any(d in failed_steps for d in s.depends_on)]
 
-            tasks: list[Awaitable[JobResult]] = [self._handler(s, plan) for s in regular_steps]
-            if self._batch_submitter:
-                for step in batch_steps:
-                    batch = BatchJob(batch_id=f"batch-{step.step_id}", jobs=())
-                    tasks.append(self._batch_submitter(batch))
+            for step in skipped:
+                failed_steps.add(step.step_id)
+                failed += 1
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
+            if not runnable:
+                continue
+
+            results = await asyncio.gather(
+                *(self._handler(step, plan) for step in runnable),
+                return_exceptions=True,
+            )
+            for step, result in zip(runnable, results, strict=True):
                 if isinstance(result, BaseException):
                     failed += 1
+                    failed_steps.add(step.step_id)
                 elif result.status == JobStatus.SUCCESS:
                     completed += 1
                     outputs.extend(result.outputs)
                     total_cost += result.metrics.cost_estimate or 0.0
                 else:
                     failed += 1
+                    failed_steps.add(step.step_id)
                     total_cost += result.metrics.cost_estimate or 0.0
 
         duration = time.monotonic() - start
@@ -73,19 +72,3 @@ class BatchAsyncExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
         )
-
-
-def _dependency_waves(steps: tuple[PlanStep, ...]) -> list[list[PlanStep]]:
-    """Group steps into waves where each wave can run concurrently."""
-    by_id = {s.step_id: s for s in steps}
-    ts = TopologicalSorter({s.step_id: set(s.depends_on) for s in steps})
-    waves: list[list[PlanStep]] = []
-
-    ts.prepare()
-    while ts.is_active():
-        wave = [by_id[sid] for sid in ts.get_ready()]
-        waves.append(wave)
-        for step in wave:
-            ts.done(step.step_id)
-
-    return waves

@@ -1,20 +1,15 @@
 """Sequential plan executor — walks steps one at a time."""
 
 import time
-from collections.abc import Awaitable, Callable
-from graphlib import TopologicalSorter
 
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
-    JobResult,
     JobStatus,
     OutputFile,
     Plan,
     PlanResult,
-    PlanStep,
 )
-
-type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
+from acheron.shell.executors._utils import StepHandler, topological_order
 
 
 class SequentialExecutor(Executor):
@@ -30,14 +25,21 @@ class SequentialExecutor(Executor):
         failed = 0
         outputs: list[OutputFile] = []
         total_cost = 0.0
+        failed_steps: set[str] = set()
 
-        for step in _topological_order(plan.steps):
+        for step in topological_order(plan.steps):
+            if any(dep in failed_steps for dep in step.depends_on):
+                failed_steps.add(step.step_id)
+                failed += 1
+                continue
+
             result = await self._handler(step, plan)
             if result.status == JobStatus.SUCCESS:
                 completed += 1
                 outputs.extend(result.outputs)
             else:
                 failed += 1
+                failed_steps.add(step.step_id)
             total_cost += result.metrics.cost_estimate or 0.0
 
         duration = time.monotonic() - start
@@ -52,11 +54,3 @@ class SequentialExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
         )
-
-
-def _topological_order(steps: tuple[PlanStep, ...]) -> list[PlanStep]:
-    """Sort steps by dependency order using stdlib TopologicalSorter."""
-    by_id = {s.step_id: s for s in steps}
-    graph = {s.step_id: set(s.depends_on) for s in steps}
-    ts = TopologicalSorter(graph)
-    return [by_id[sid] for sid in ts.static_order()]

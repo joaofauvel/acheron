@@ -2,20 +2,15 @@
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
-from graphlib import TopologicalSorter
 
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
-    JobResult,
     JobStatus,
     OutputFile,
     Plan,
     PlanResult,
-    PlanStep,
 )
-
-type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
+from acheron.shell.executors._utils import StepHandler, dependency_waves
 
 
 class AsyncExecutor(Executor):
@@ -31,21 +26,34 @@ class AsyncExecutor(Executor):
         failed = 0
         outputs: list[OutputFile] = []
         total_cost = 0.0
+        failed_steps: set[str] = set()
 
-        for wave in _dependency_waves(plan.steps):
+        for wave in dependency_waves(plan.steps):
+            runnable = [s for s in wave if not any(d in failed_steps for d in s.depends_on)]
+            skipped = [s for s in wave if any(d in failed_steps for d in s.depends_on)]
+
+            for step in skipped:
+                failed_steps.add(step.step_id)
+                failed += 1
+
+            if not runnable:
+                continue
+
             results = await asyncio.gather(
-                *(self._handler(step, plan) for step in wave),
+                *(self._handler(step, plan) for step in runnable),
                 return_exceptions=True,
             )
-            for result in results:
+            for step, result in zip(runnable, results, strict=True):
                 if isinstance(result, BaseException):
                     failed += 1
+                    failed_steps.add(step.step_id)
                 elif result.status == JobStatus.SUCCESS:
                     completed += 1
                     outputs.extend(result.outputs)
                     total_cost += result.metrics.cost_estimate or 0.0
                 else:
                     failed += 1
+                    failed_steps.add(step.step_id)
                     total_cost += result.metrics.cost_estimate or 0.0
 
         duration = time.monotonic() - start
@@ -60,19 +68,3 @@ class AsyncExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
         )
-
-
-def _dependency_waves(steps: tuple[PlanStep, ...]) -> list[list[PlanStep]]:
-    """Group steps into waves where each wave can run concurrently."""
-    by_id = {s.step_id: s for s in steps}
-    ts = TopologicalSorter({s.step_id: set(s.depends_on) for s in steps})
-    waves: list[list[PlanStep]] = []
-
-    ts.prepare()
-    while ts.is_active():
-        wave = [by_id[sid] for sid in ts.get_ready()]
-        waves.append(wave)
-        for step in wave:
-            ts.done(step.step_id)
-
-    return waves
