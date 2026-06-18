@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import grpc
 import grpc.aio
@@ -67,7 +67,7 @@ async def test_self_registers_on_startup(monkeypatch: pytest.MonkeyPatch) -> Non
         mock_client = AsyncMock()
         mock_response = AsyncMock()
         mock_response.status_code = 201
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.get = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)

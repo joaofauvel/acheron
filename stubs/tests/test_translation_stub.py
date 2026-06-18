@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -49,7 +49,7 @@ async def test_self_registers_on_startup(translation_env: None) -> None:
         mock_client = AsyncMock()
         mock_response = AsyncMock()
         mock_response.status_code = 201
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.get = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
