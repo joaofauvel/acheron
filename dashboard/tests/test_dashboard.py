@@ -13,7 +13,7 @@ from dashboard.app import create_app
 _ORCH_URL = "http://orchestrator:8000"
 
 
-@pytest.fixture()
+@pytest.fixture
 def app():
     return create_app(orchestrator_url=_ORCH_URL)
 

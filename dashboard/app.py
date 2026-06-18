@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from starlette.requests import Request
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 def create_app(orchestrator_url: str = "http://localhost:8000") -> FastAPI:
+    """Create the Acheron dashboard FastAPI application."""
     app = FastAPI(title="Acheron Dashboard")
 
     async def _fetch(path: str) -> dict:
