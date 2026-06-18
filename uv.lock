@@ -38,6 +38,9 @@ dev = [
     { name = "pytest-xdist" },
     { name = "respx" },
     { name = "ruff" },
+    { name = "types-grpcio" },
+    { name = "types-grpcio-health-checking" },
+    { name = "types-protobuf" },
 ]
 
 [package.metadata]
@@ -69,6 +72,9 @@ dev = [
     { name = "pytest-xdist", specifier = "~=3.8" },
     { name = "respx", specifier = "~=0.23" },
     { name = "ruff", specifier = "~=0.15" },
+    { name = "types-grpcio", specifier = "~=1.0" },
+    { name = "types-grpcio-health-checking", specifier = "~=1.0" },
+    { name = "types-protobuf", specifier = "~=5.29" },
 ]
 
 [[package]]
@@ -987,6 +993,37 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/87/d7/0535a28b1f5f24f6612fb3ff1e89fb1a8d160fee0f976e0aa6803862134b/tqdm-4.68.3.tar.gz", hash = "sha256:00dfa48452b6b6cfae3dd9885636c23d3422d1ec97c66d96818cbd5e0821d482", size = 170596, upload-time = "2026-06-17T07:36:52.105Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/8e/bb97bb0c71802080bfc8952937d174e49cfc50de5c951dd47b2496f0dcdb/tqdm-4.68.3-py3-none-any.whl", hash = "sha256:39832cc2def2789a6f29df83f172db7416cea70052c0907a57801c5f2fdccb03", size = 78337, upload-time = "2026-06-17T07:36:50.132Z" },
+]
+
+[[package]]
+name = "types-grpcio"
+version = "1.0.0.20260614"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/1c/e299150827a2224fe9ddb59e9f789f0eb8e72e0befc23fd47195024311fa/types_grpcio-1.0.0.20260614.tar.gz", hash = "sha256:e86d1aabb7e7eedae487c3ac10e010a13d5db1fd350e766562053af557366aab", size = 15063, upload-time = "2026-06-14T06:23:33.591Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/f5/a8b8ca4d891bc4e835ef758a8fb50c7539c7f45bc0e42fae2b847cbc59b7/types_grpcio-1.0.0.20260614-py3-none-any.whl", hash = "sha256:050472cb4ef329ae8fe20278c62bc0da5b961aad3dd889cc35f6e0c70d368dae", size = 15629, upload-time = "2026-06-14T06:23:32.616Z" },
+]
+
+[[package]]
+name = "types-grpcio-health-checking"
+version = "1.0.0.20260518"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-grpcio" },
+    { name = "types-protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1a/83/18769a4b8b97d3da06635277425474b2bfab19260801e4178006d8a2a450/types_grpcio_health_checking-1.0.0.20260518.tar.gz", hash = "sha256:05e402e439c3e1045b3e84af00ea5415ffda16497c89981e62c4d78c99aacb05", size = 8018, upload-time = "2026-05-18T06:06:09.188Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/d0/1b16f1ae4047896f3545831af79aec57d3cabe6320d41161af4f07f4ce7e/types_grpcio_health_checking-1.0.0.20260518-py3-none-any.whl", hash = "sha256:e6b90d6cc7cf6509153be50384bed32f491b34f894d7ddb84e1c1bd0840ced8b", size = 9193, upload-time = "2026-05-18T06:06:08.414Z" },
+]
+
+[[package]]
+name = "types-protobuf"
+version = "5.29.1.20250403"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/6d/62a2e73b966c77609560800004dd49a926920dd4976a9fdd86cf998e7048/types_protobuf-5.29.1.20250403.tar.gz", hash = "sha256:7ff44f15022119c9d7558ce16e78b2d485bf7040b4fadced4dd069bb5faf77a2", size = 59413, upload-time = "2025-04-02T10:07:17.138Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/e3/b74dcc2797b21b39d5a4f08a8b08e20369b4ca250d718df7af41a60dd9f0/types_protobuf-5.29.1.20250403-py3-none-any.whl", hash = "sha256:c71de04106a2d54e5b2173d0a422058fae0ef2d058d70cf369fb797bf61ffa59", size = 73874, upload-time = "2025-04-02T10:07:15.755Z" },
 ]
 
 [[package]]

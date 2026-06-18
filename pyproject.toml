@@ -89,17 +89,27 @@ no_implicit_reexport = true
 warn_unused_ignores = true
 explicit_package_bases = true
 mypy_path = "src:stubs"
+exclude = ["src/acheron/proto/"]
+
+[[tool.mypy.overrides]]
+module = ["grpc.*", "grpc_health.*", "google.protobuf.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["acheron.proto.*"]
+ignore_errors = true
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.14"
 include = ["src", "tests"]
 extraPaths = ["src", "stubs"]
-exclude = [".venv"]
+exclude = [".venv", "src/acheron/proto/"]
 reportUnusedImport = false
 reportUnusedVariable = false
 reportUnusedCallResult = false
 reportArgumentType = false
+reportMissingImports = false
 
 [tool.pytest.ini_options]
 xfail_strict = true
@@ -128,4 +138,7 @@ dev = [
     "pytest-xdist~=3.8",
     "respx~=0.23",
     "ruff~=0.15",
+    "types-grpcio~=1.0",
+    "types-grpcio-health-checking~=1.0",
+    "types-protobuf~=5.29",
 ]

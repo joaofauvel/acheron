@@ -30,6 +30,7 @@ proto:
         --python_out=src/acheron/proto \
         --grpc_python_out=src/acheron/proto \
         proto/synthesis.proto
+    sed -i 's/^import synthesis_pb2/from . import synthesis_pb2/' src/acheron/proto/synthesis_pb2_grpc.py
 
 # Full validation pipeline: lint, type-check, then test
 validate: lint-strict lint-imports type-check type-check-pyright test
