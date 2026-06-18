@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-from collections.abc import AsyncIterator
+import socket
+from collections.abc import AsyncIterator, Callable, Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import pytest_asyncio
@@ -29,44 +29,60 @@ from acheron.shell.step_handler import create_step_handler
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+type JobHandler = Callable[[Job], Coroutine[Any, Any, JobResult]]
 
-def tts_caps(lang: str = "es") -> WorkerCapabilities:
+
+def _caps(  # noqa: PLR0913
+    worker_type: WorkerType,
+    *,
+    langs_in: frozenset[str] = frozenset(),
+    langs_out: frozenset[str] = frozenset(),
+    formats_in: frozenset[str] = frozenset(),
+    formats_out: frozenset[str] = frozenset(),
+    batch_capable: bool = False,
+) -> WorkerCapabilities:
     return WorkerCapabilities(
-        worker_type=WorkerType.TTS,
-        supported_languages_in=frozenset({lang}),
-        supported_languages_out=frozenset({lang}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"wav"}),
+        worker_type=worker_type,
+        supported_languages_in=langs_in,
+        supported_languages_out=langs_out,
+        supported_formats_in=formats_in,
+        supported_formats_out=formats_out,
         max_payload_bytes=None,
-        batch_capable=True,
+        batch_capable=batch_capable,
         model_source=None,
     )
+
+
+def _mock_handler(job: Job) -> Coroutine[Any, Any, JobResult]:
+    async def _run() -> JobResult:
+        return JobResult(
+            job_id=job.job_id,
+            status=JobStatus.SUCCESS,
+            outputs=(
+                OutputFile(
+                    path=f"/tmp/{job.job_id}",
+                    filename=f"{job.job_id}.dat",
+                    size_bytes=100,
+                    checksum="abc",
+                    content_type="application/octet-stream",
+                ),
+            ),
+            metrics=JobMetrics(duration_seconds=0.01),
+        )
+
+    return _run()
+
+
+def tts_caps(lang: str = "es") -> WorkerCapabilities:
+    return _caps(WorkerType.TTS, langs_in=frozenset({lang}), langs_out=frozenset({lang}), batch_capable=True)
 
 
 def translation_caps(src: str = "en", dst: str = "es") -> WorkerCapabilities:
-    return WorkerCapabilities(
-        worker_type=WorkerType.TRANSLATION,
-        supported_languages_in=frozenset({src}),
-        supported_languages_out=frozenset({dst}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"text"}),
-        max_payload_bytes=None,
-        batch_capable=False,
-        model_source=None,
-    )
+    return _caps(WorkerType.TRANSLATION, langs_in=frozenset({src}), langs_out=frozenset({dst}))
 
 
 def asr_caps(lang: str = "en") -> WorkerCapabilities:
-    return WorkerCapabilities(
-        worker_type=WorkerType.ASR,
-        supported_languages_in=frozenset({lang}),
-        supported_languages_out=frozenset({lang}),
-        supported_formats_in=frozenset({"mp3", "wav"}),
-        supported_formats_out=frozenset({"text"}),
-        max_payload_bytes=None,
-        batch_capable=False,
-        model_source=None,
-    )
+    return _caps(WorkerType.ASR, langs_in=frozenset({lang}), langs_out=frozenset({lang}))
 
 
 def make_app(tmp_path: Path, *, extra_workers: list[tuple[str, str, str, WorkerCapabilities]] | None = None) -> FastAPI:
@@ -95,7 +111,22 @@ def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     return app
 
 
-async def _start_uvicorn(app_factory) -> tuple[str, asyncio.Task[None]]:  # type: ignore[no-untyped-def]
+async def _wait_for_port(host: str, port: int, timeout: float = 2.0) -> None:  # noqa: ASYNC109
+    """Poll until a port accepts connections."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        try:
+            sock = socket.create_connection((host, port), timeout=0.1)
+            sock.close()
+        except OSError:
+            await asyncio.sleep(0.05)
+        else:
+            return
+    msg = f"Port {host}:{port} not ready after {timeout}s"
+    raise TimeoutError(msg)
+
+
+async def _start_uvicorn(app_factory: Callable[[], FastAPI]) -> tuple[str, asyncio.Task[None]]:
     """Start a FastAPI app with uvicorn as a background task using a random port."""
     from contextlib import asynccontextmanager
 
@@ -115,11 +146,16 @@ async def _start_uvicorn(app_factory) -> tuple[str, asyncio.Task[None]]:  # type
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
     server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())
-    await asyncio.sleep(0.3)
 
     actual_port = 0
-    if server.servers and server.servers[0].sockets:
-        actual_port = server.servers[0].sockets[0].getsockname()[1]
+    for _ in range(60):
+        await asyncio.sleep(0.05)
+        if server.servers and server.servers[0].sockets:
+            actual_port = server.servers[0].sockets[0].getsockname()[1]
+            break
+
+    if actual_port:
+        await _wait_for_port("127.0.0.1", actual_port)
 
     return f"http://127.0.0.1:{actual_port}", task
 
@@ -127,39 +163,63 @@ async def _start_uvicorn(app_factory) -> tuple[str, asyncio.Task[None]]:  # type
 @pytest_asyncio.fixture
 async def http_tts_stub() -> AsyncIterator[str]:
     """Start a TTS HTTP stub worker."""
+    import os
 
+    saved = {
+        k: os.environ.get(k)
+        for k in ("WORKER_TYPE", "WORKER_ENDPOINT", "ORCHESTRATOR_URL", "WORKER_PORT", "ACHERON_REGISTRATION_TOKEN")
+    }
     os.environ["WORKER_TYPE"] = "TTS"
     os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:0"
     os.environ["ORCHESTRATOR_URL"] = "http://127.0.0.1:1"
     os.environ["WORKER_PORT"] = "0"
     os.environ["ACHERON_REGISTRATION_TOKEN"] = ""
 
-    from stubs.worker_stub import create_app
+    try:
+        from stubs.worker_stub import create_app
 
-    url, task = await _start_uvicorn(create_app)
-    yield url
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+        url, task = await _start_uvicorn(create_app)
+        yield url
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 @pytest_asyncio.fixture
 async def http_translation_stub() -> AsyncIterator[str]:
     """Start a translation HTTP stub worker."""
+    import os
 
+    saved = {
+        k: os.environ.get(k)
+        for k in ("WORKER_TYPE", "WORKER_ENDPOINT", "ORCHESTRATOR_URL", "WORKER_PORT", "ACHERON_REGISTRATION_TOKEN")
+    }
     os.environ["WORKER_TYPE"] = "TRANSLATION"
     os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:0"
     os.environ["ORCHESTRATOR_URL"] = "http://127.0.0.1:1"
     os.environ["WORKER_PORT"] = "0"
     os.environ["ACHERON_REGISTRATION_TOKEN"] = ""
 
-    from stubs.translation_stub import create_app
+    try:
+        from stubs.translation_stub import create_app
 
-    url, task = await _start_uvicorn(create_app)
-    yield url
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+        url, task = await _start_uvicorn(create_app)
+        yield url
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 @pytest_asyncio.fixture
@@ -171,6 +231,20 @@ async def grpc_tts_stub() -> AsyncIterator[str]:
     await server.start()
     yield f"localhost:{port}"
     await server.stop(0)
+
+
+def _register_local(reg: WorkerRegistry, worker_type: WorkerType, handler: JobHandler) -> None:
+    """Register a local worker with a handler."""
+    reg.register(
+        f"{worker_type.value}-local",
+        "local",
+        "local",
+        _caps(worker_type),
+        metadata={"handler": handler},
+    )
+
+
+_LANGS = frozenset({"en", "es", "fr", "de"})
 
 
 @pytest_asyncio.fixture
@@ -199,107 +273,52 @@ async def wired_orchestrator(
         )
 
     reg = WorkerRegistry()
-    cache = PlanCache(tmp_path)
 
-    reg.register(
-        "extract-local",
-        "local",
-        "local",
-        WorkerCapabilities(
-            worker_type=WorkerType.EXTRACTION,
-            supported_languages_in=frozenset(),
-            supported_languages_out=frozenset(),
-            supported_formats_in=frozenset(),
-            supported_formats_out=frozenset(),
-            max_payload_bytes=None,
-            batch_capable=False,
-            model_source=None,
-        ),
-        metadata={"handler": _mock_handler},
-    )
-
-    reg.register(
-        "chunk-local",
-        "local",
-        "local",
-        WorkerCapabilities(
-            worker_type=WorkerType.CHUNKING,
-            supported_languages_in=frozenset(),
-            supported_languages_out=frozenset(),
-            supported_formats_in=frozenset(),
-            supported_formats_out=frozenset(),
-            max_payload_bytes=None,
-            batch_capable=False,
-            model_source=None,
-        ),
-        metadata={"handler": _mock_handler},
-    )
-
-    reg.register(
-        "package-local",
-        "local",
-        "local",
-        WorkerCapabilities(
-            worker_type=WorkerType.PACKAGING,
-            supported_languages_in=frozenset(),
-            supported_languages_out=frozenset(),
-            supported_formats_in=frozenset(),
-            supported_formats_out=frozenset(),
-            max_payload_bytes=None,
-            batch_capable=False,
-            model_source=None,
-        ),
-        metadata={"handler": _mock_handler},
-    )
+    _register_local(reg, WorkerType.EXTRACTION, _mock_handler)
+    _register_local(reg, WorkerType.CHUNKING, _mock_handler)
+    _register_local(reg, WorkerType.PACKAGING, _mock_handler)
 
     reg.register(
         "tts-http",
         http_tts_stub,
         "http",
-        WorkerCapabilities(
-            worker_type=WorkerType.TTS,
-            supported_languages_in=frozenset({"en", "es", "fr", "de"}),
-            supported_languages_out=frozenset({"en", "es", "fr", "de"}),
-            supported_formats_in=frozenset({"text"}),
-            supported_formats_out=frozenset({"wav", "pcm"}),
-            max_payload_bytes=None,
+        _caps(
+            WorkerType.TTS,
+            langs_in=_LANGS,
+            langs_out=_LANGS,
+            formats_in=frozenset({"text"}),
+            formats_out=frozenset({"wav", "pcm"}),
             batch_capable=True,
-            model_source=None,
         ),
     )
-
     reg.register(
         "tts-grpc",
         grpc_tts_stub,
         "grpc",
-        WorkerCapabilities(
-            worker_type=WorkerType.TTS,
-            supported_languages_in=frozenset({"en", "es", "fr", "de"}),
-            supported_languages_out=frozenset({"en", "es", "fr", "de"}),
-            supported_formats_in=frozenset({"text"}),
-            supported_formats_out=frozenset({"wav", "pcm"}),
-            max_payload_bytes=None,
+        _caps(
+            WorkerType.TTS,
+            langs_in=_LANGS,
+            langs_out=_LANGS,
+            formats_in=frozenset({"text"}),
+            formats_out=frozenset({"wav", "pcm"}),
             batch_capable=True,
-            model_source=None,
         ),
     )
-
     reg.register(
         "trans-http",
         http_translation_stub,
         "http",
-        WorkerCapabilities(
-            worker_type=WorkerType.TRANSLATION,
-            supported_languages_in=frozenset({"en", "es", "fr", "de"}),
-            supported_languages_out=frozenset({"en", "es", "fr", "de"}),
-            supported_formats_in=frozenset({"text"}),
-            supported_formats_out=frozenset({"text"}),
-            max_payload_bytes=None,
-            batch_capable=False,
-            model_source=None,
+        _caps(
+            WorkerType.TRANSLATION,
+            langs_in=_LANGS,
+            langs_out=_LANGS,
+            formats_in=frozenset({"text"}),
+            formats_out=frozenset({"text"}),
         ),
     )
 
     handler = create_step_handler(reg)
-    orch = Orchestrator(registry=reg, cache=cache, handler=handler)
+    orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
+    await orch.start()
     yield orch
+    await orch.shutdown()
