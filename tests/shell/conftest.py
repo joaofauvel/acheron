@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest  # noqa: TC002
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -72,6 +73,16 @@ def make_app(tmp_path: Path) -> FastAPI:
 @pytest_asyncio.fixture
 async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     """Create an async HTTP client for testing the API."""
+    app = make_app(tmp_path)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def client_with_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+    """Create an async client with registration token enabled."""
+    monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "test-token")
     app = make_app(tmp_path)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from acheron.core.models import WorkerCapabilities, WorkerType
-from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
+from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import (
     WorkerListResponse,
     WorkerRegistrationRequest,
@@ -16,7 +16,11 @@ router = APIRouter()
 
 
 @router.post("", status_code=201, response_model=WorkerResponse)
-async def register_worker(body: WorkerRegistrationRequest, orch: OrchestratorDep) -> WorkerResponse:
+async def register_worker(
+    body: WorkerRegistrationRequest,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> WorkerResponse:
     """Register a new worker."""
     try:
         worker_type = WorkerType(body.capabilities.worker_type)
