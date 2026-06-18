@@ -11,7 +11,7 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile.orchestrator
+      target: orchestrator
     ports:
       - "8000:8000"
     environment:
@@ -24,7 +24,7 @@ services:
   dashboard:
     build:
       context: .
-      dockerfile: dashboard/Dockerfile
+      target: dashboard
     ports:
       - "8080:8080"
     environment:
@@ -35,7 +35,7 @@ services:
   tts-stub:
     build:
       context: .
-      dockerfile: Dockerfile.worker-stub
+      target: worker-stub
     ports:
       - "8001:8001"
     environment:
@@ -50,7 +50,7 @@ services:
   asr-stub:
     build:
       context: .
-      dockerfile: Dockerfile.worker-stub
+      target: worker-stub
     ports:
       - "8002:8002"
     environment:
@@ -65,7 +65,7 @@ services:
   tts-grpc-stub:
     build:
       context: .
-      dockerfile: Dockerfile.grpc-stub
+      target: grpc-stub
     ports:
       - "9001:9001"
     environment:
