@@ -108,7 +108,6 @@ exclude = [".venv", "src/acheron/proto/"]
 reportUnusedImport = false
 reportUnusedVariable = false
 reportUnusedCallResult = false
-reportArgumentType = false
 reportMissingImports = false
 
 [tool.pytest.ini_options]

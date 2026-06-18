@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -33,6 +34,7 @@ class GrpcWorker(StreamingWorker):
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
         self._stub = synthesis_pb2_grpc.SynthesisStub(channel)  # type: ignore[no-untyped-call]
+        self._health_stub = health_pb2_grpc.HealthStub(channel)
         self._batches: dict[str, tuple[JobResult, ...]] = {}
 
     async def capabilities(self) -> WorkerCapabilities:  # noqa: D102
@@ -92,18 +94,14 @@ class GrpcWorker(StreamingWorker):
 
     async def health(self) -> bool:  # noqa: D102
         try:
-            stub = health_pb2_grpc.HealthStub(self._channel)
-            await stub.Check(health_pb2.HealthCheckRequest())
+            response = await self._health_stub.Check(health_pb2.HealthCheckRequest())
         except grpc.aio.AioRpcError:
             return False
         else:
-            return True
+            return response.status == health_pb2.HealthCheckResponse.SERVING  # type: ignore[no-any-return]
 
     async def submit_batch(self, batch: BatchJob) -> str:  # noqa: D102
-        results: list[JobResult] = []
-        for job in batch.jobs:
-            result = await self.execute(job)
-            results.append(result)
+        results = await asyncio.gather(*[self.execute(job) for job in batch.jobs])
         self._batches[batch.batch_id] = tuple(results)
         return batch.batch_id
 
@@ -123,4 +121,5 @@ class GrpcWorker(StreamingWorker):
 
     async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:  # noqa: D102
         status = await self.poll_batch(batch_handle)
+        self._batches.pop(batch_handle, None)
         return status.results

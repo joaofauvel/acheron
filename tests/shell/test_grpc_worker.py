@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from grpc_health.v1 import health, health_pb2_grpc
 
-from acheron.core.errors import WorkerError
+from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
     BatchJob,
     Job,
@@ -116,13 +116,15 @@ class TestGrpcWorkerExecute:
             await grpc_worker.execute(job)
 
     @pytest.mark.asyncio
-    async def test_execute_raises_on_server_error(self, grpc_server: tuple[str, _FakeSynthesisServicer]) -> None:
+    async def test_execute_raises_unavailable_on_server_error(
+        self, grpc_server: tuple[str, _FakeSynthesisServicer]
+    ) -> None:
         addr, servicer = grpc_server
         servicer._fail = True  # noqa: SLF001
         channel = grpc.aio.insecure_channel(addr)
         worker = GrpcWorker(channel)
         job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola"}, chapter_id="ch1")
-        with pytest.raises(WorkerError):
+        with pytest.raises(WorkerUnavailableError, match="unavailable"):
             await worker.execute(job)
         await channel.close()
 

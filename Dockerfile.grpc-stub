@@ -3,12 +3,19 @@ FROM python:3.14-slim
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN pip install uv && uv sync --no-dev --no-install-project
+RUN pip install uv && uv sync --no-dev
 
 COPY src/acheron/ ./src/acheron/
 COPY stubs/ ./stubs/
 COPY proto/ ./proto/
 
+RUN uv run python -m grpc_tools.protoc \
+    -I proto \
+    --python_out=src/acheron/proto \
+    --grpc_python_out=src/acheron/proto \
+    proto/synthesis.proto \
+    && sed -i 's/^import synthesis_pb2/from . import synthesis_pb2/' src/acheron/proto/synthesis_pb2_grpc.py
+
 ENV PYTHONPATH=/app/src:/app
 
-CMD ["python", "-m", "stubs.grpc_worker_stub"]
+CMD ["uv", "run", "python", "-m", "stubs.grpc_worker_stub"]

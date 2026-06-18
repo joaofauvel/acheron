@@ -11,9 +11,8 @@ GrpcWorker implements `StreamingWorker` via server-side gRPC streaming for TTS. 
 ## Proto Definition
 
 ```protobuf
-// proto/acheron/synthesis.proto
+// proto/synthesis.proto
 syntax = "proto3";
-package acheron;
 
 service Synthesis {
   rpc Synthesize(SynthesisRequest) returns (stream AudioChunk);
@@ -33,7 +32,7 @@ message AudioChunk {
 }
 ```
 
-Server-side streaming: client sends one `SynthesisRequest`, server streams back `AudioChunk` messages with raw PCM bytes.
+Note: `package` directive omitted to keep Python imports flat (`from acheron.proto import synthesis_pb2`). Generated code goes to `src/acheron/proto/`.
 
 ## GrpcWorker
 
