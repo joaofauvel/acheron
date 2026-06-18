@@ -1,0 +1,63 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 3
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ACHERON_URL: http://orchestrator:8000
+    depends_on:
+      - orchestrator
+
+  tts-stub:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-stub
+    ports:
+      - "8001:8001"
+    environment:
+      WORKER_TYPE: TTS
+      WORKER_ENDPOINT: http://tts-stub:8001
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      WORKER_PORT: "8001"
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    depends_on:
+      - orchestrator
+
+  asr-stub:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-stub
+    ports:
+      - "8002:8002"
+    environment:
+      WORKER_TYPE: ASR
+      WORKER_ENDPOINT: http://asr-stub:8002
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      WORKER_PORT: "8002"
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    depends_on:
+      - orchestrator
