@@ -9,6 +9,8 @@ authors = [{ name = "Julia" }]
 dependencies = [
     "click~=8.4",
     "fastapi~=0.137",
+    "grpcio~=1.81",
+    "grpcio-health-checking~=1.81",
     "httpx~=0.28",
     "jinja2~=3.1",
     "nltk~=3.9",
@@ -115,6 +117,7 @@ forbidden_modules = ["acheron.shell"]
 [dependency-groups]
 dev = [
     "basedpyright~=1.39",
+    "grpcio-tools~=1.81",
     "import-linter~=2.11",
     "inline-snapshot~=0.34",
     "mypy~=2.1",
