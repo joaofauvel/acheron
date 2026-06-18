@@ -357,24 +357,15 @@ Runs on the orchestrator (CPU-only, NLTK punkt tokenizer).
 
 ## Worker Registry
 
-Workers self-register on startup via HTTP POST to the orchestrator:
+Workers self-register via `POST /workers` on the orchestrator API. The registry is in-memory (`WorkerRegistry` class), mapping worker IDs to their endpoint, transport, and capabilities.
 
-```
-POST /orchestrator/register
-{
-  "endpoint": "https://abc-123.runpod.ai",
-  "transport": "http",
-  "capabilities": {
-    "worker_type": "TTS",
-    "supported_languages_in": ["es", "en", "fr"],
-    "supported_languages_out": ["es", "en", "fr"],
-    "batch_capable": true,
-    "model_source": "huggingface:Qwen/Qwen3-TTS-12Hz-1.7B"
-  }
-}
-```
+**Health monitoring:** A `HealthMonitor` background task polls all registered workers every 30s via `GET {endpoint}/health`. After 3 consecutive failures, the worker is removed from the registry. The monitor runs as an asyncio task, started/stopped via the orchestrator's FastAPI lifespan.
 
-The orchestrator monitors registered workers via health checks (every 30s). If a worker is unreachable for 3 consecutive checks, it's removed from the registry.
+**Step dispatch:** A `StepHandler` dispatches plan steps to workers by matching `step.type` and the plan's language pair. Language matching logic:
+- Translation: source in `supported_languages_in` AND target in `supported_languages_out`
+- ASR: source in `supported_languages_in`
+- TTS: target in `supported_languages_in` AND target in `supported_languages_out`
+- Extraction/Chunking/Packaging: no language check
 
 ## Capability Discovery
 
@@ -479,14 +470,25 @@ Worker exposes:
 
 ## Dashboard
 
-HTMX + Jinja, separate container, polling orchestrator API.
+HTMX + Jinja2, separate container (`dashboard/`), polling orchestrator API every 2s per section.
 
-**Views:**
-- **Jobs** — list with status, per-chapter progress bars, step pipeline (✓/⏳/○), cost, duration
-- **Workers** — registered workers, type, transport, health
-- **Cost** — per-worker breakdown with usage metrics
+**Layout:** Single scrollable page with three sections:
 
-Forward auth support (reads auth header from reverse proxy).
+- **Jobs** — table with job ID, status badge, progress bar (completed/total), cost, duration. Gracefully handles missing cost/duration data.
+- **Workers** — table with worker ID, type, endpoint, transport, health indicator (green/red dot), failure count.
+- **Cost** — table with job ID, status, cost, duration, steps completed.
+
+**Error handling:** If the orchestrator is unreachable, each section shows "No data" instead of crashing.
+
+**Auth:** Forward auth via `X-Forwarded-User` header from reverse proxy. No auth logic in the app.
+
+**Routes:**
+- `GET /` — full page
+- `GET /partials/jobs` — jobs table partial
+- `GET /partials/workers` — workers table partial
+- `GET /partials/cost` — cost table partial
+
+**Dependencies:** FastAPI, Jinja2, HTMX (CDN), httpx
 
 ## CLI
 

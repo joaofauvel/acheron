@@ -1,13 +1,15 @@
 {% if jobs %}
 <table>
   <thead>
-    <tr><th>Job ID</th><th>Status</th><th>Steps Completed</th></tr>
+    <tr><th>Job ID</th><th>Status</th><th>Cost</th><th>Duration</th><th>Steps</th></tr>
   </thead>
   <tbody>
     {% for j in jobs %}
     <tr>
       <td>{{ j.job_id }}</td>
       <td><span class="badge badge-{{ j.status }}">{{ j.status }}</span></td>
+      <td>{% if j.total_cost|default(0) > 0 %}${{ "%.2f"|format(j.total_cost) }}{% else %}-{% endif %}</td>
+      <td>{% if j.total_duration_seconds|default(0) > 0 %}{{ "%.1f"|format(j.total_duration_seconds) }}s{% else %}-{% endif %}</td>
       <td>{{ j.completed_steps }}/{{ j.total_steps }}</td>
     </tr>
     {% endfor %}

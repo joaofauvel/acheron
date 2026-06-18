@@ -24,6 +24,8 @@ class JobResponse(BaseModel):
     plan_id: str | None = None
     completed_steps: int = 0
     total_steps: int = 0
+    total_cost: float = 0.0
+    total_duration_seconds: float = 0.0
     errors: list[str] = []
 
 

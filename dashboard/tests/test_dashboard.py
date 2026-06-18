@@ -166,3 +166,21 @@ class TestForwardAuth:
     async def test_works_without_auth_header(self, client):
         resp = await client.get("/")
         assert resp.status_code == 200
+
+
+class TestErrorHandling:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_jobs_partial_returns_empty_on_connection_error(self, client):
+        respx.get(f"{_ORCH_URL}/jobs").mock(side_effect=httpx.ConnectError("refused"))
+        resp = await client.get("/partials/jobs")
+        assert resp.status_code == 200
+        assert "No jobs" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_workers_partial_returns_empty_on_connection_error(self, client):
+        respx.get(f"{_ORCH_URL}/workers").mock(side_effect=httpx.ConnectError("refused"))
+        resp = await client.get("/partials/workers")
+        assert resp.status_code == 200
+        assert "No workers" in resp.text

@@ -55,6 +55,7 @@ class HealthMonitor:
 
     async def _run(self) -> None:
         """Run health checks in a loop."""
+        await self._check_all()
         while True:
             await asyncio.sleep(self._interval)
             await self._check_all()

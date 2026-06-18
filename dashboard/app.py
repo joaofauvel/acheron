@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-
-if TYPE_CHECKING:
-    from starlette.requests import Request
+from starlette.requests import Request  # noqa: TC002
 
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -21,10 +18,13 @@ def create_app(orchestrator_url: str = "http://localhost:8000") -> FastAPI:
     app = FastAPI(title="Acheron Dashboard")
 
     async def _fetch(path: str) -> dict:
-        async with httpx.AsyncClient(base_url=orchestrator_url) as client:
-            resp = await client.get(path)
-            resp.raise_for_status()
-            return resp.json()
+        try:
+            async with httpx.AsyncClient(base_url=orchestrator_url) as client:
+                resp = await client.get(path)
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPError, OSError:
+            return {}
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
@@ -34,16 +34,18 @@ def create_app(orchestrator_url: str = "http://localhost:8000") -> FastAPI:
     @app.get("/partials/jobs", response_class=HTMLResponse)
     async def jobs_partial(request: Request) -> HTMLResponse:
         data = await _fetch("/jobs")
-        return _TEMPLATES.TemplateResponse(request, "partials/jobs.html", context={"jobs": data["jobs"]})
+        return _TEMPLATES.TemplateResponse(request, "partials/jobs.html", context={"jobs": data.get("jobs", [])})
 
     @app.get("/partials/workers", response_class=HTMLResponse)
     async def workers_partial(request: Request) -> HTMLResponse:
         data = await _fetch("/workers")
-        return _TEMPLATES.TemplateResponse(request, "partials/workers.html", context={"workers": data["workers"]})
+        return _TEMPLATES.TemplateResponse(
+            request, "partials/workers.html", context={"workers": data.get("workers", [])}
+        )
 
     @app.get("/partials/cost", response_class=HTMLResponse)
     async def cost_partial(request: Request) -> HTMLResponse:
         data = await _fetch("/jobs")
-        return _TEMPLATES.TemplateResponse(request, "partials/cost.html", context={"jobs": data["jobs"]})
+        return _TEMPLATES.TemplateResponse(request, "partials/cost.html", context={"jobs": data.get("jobs", [])})
 
     return app
