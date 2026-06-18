@@ -1,0 +1,14 @@
+FROM python:3.14-slim
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN pip install uv && uv sync --no-dev --no-install-project
+
+COPY src/acheron/ ./src/acheron/
+COPY stubs/ ./stubs/
+COPY proto/ ./proto/
+
+ENV PYTHONPATH=/app/src:/app
+
+CMD ["python", "-m", "stubs.grpc_worker_stub"]
