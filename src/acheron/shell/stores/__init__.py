@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
-from acheron.shell.stores.base import JobStore, WorkerStore
+if TYPE_CHECKING:
+    from acheron.shell.stores.base import JobStore, WorkerStore
 
 
 def _unknown_backend(backend: str) -> NoReturn:
