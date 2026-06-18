@@ -177,7 +177,7 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 5 | done | HttpWorker, dashboard, Docker Compose, registration security |
 | 6 | done | gRPC streaming transport: GrpcWorker, proto, stub worker, transport-aware health monitor |
 | 7a | done | Storage abstraction + Redis backend (sync `redis.Redis` client) |
-| 7b | planned | Production compose hardening: healthchecks, resource limits, persistent volumes |
+| 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check, gRPC HTTP /health sidecar (FastAPI) |
 | 7c | planned | TLS via reverse proxy (nginx or caddy) |
 | 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
 

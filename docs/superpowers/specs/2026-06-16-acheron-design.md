@@ -384,7 +384,16 @@ The synchronous Redis client is a deliberate v1 trade-off: sync calls from an as
 
 The FastAPI lifespan closes the stores on shutdown, draining Redis connection pools cleanly.
 
-**Production (Layer 7):** Layer 7a (storage abstraction + Redis backend) is done. Remaining Layer 7 work — see [implementation roadmap](./2026-06-16-implementation-roadmap.md): 7b (compose hardening: Docker healthchecks, resource limits, persistent volumes) and 7c (TLS via reverse proxy).
+**Production (Layer 7):** Layers 7a (storage abstraction + Redis backend) and 7b (production compose hardening) are done. Remaining Layer 7 work — see [implementation roadmap](./2026-06-16-implementation-roadmap.md): 7c (TLS via reverse proxy).
+
+**Layer 7b details:**
+
+- **Healthchecks** on every service in `docker-compose.yml`: `interval: 30s, timeout: 5s, retries: 3, start_period: 10s`. HTTP stubs hit their existing `/health` endpoint. The gRPC stub exposes a FastAPI sidecar on a separate `WORKER_HTTP_PORT` (default 9002) since gRPC has no native HTTP probe.
+- **`depends_on: condition: service_healthy`** for every service that depends on another. Removes startup races.
+- **Named volumes** for persistence: `acheron-data` mounted at `/data` on the orchestrator (with `ACHERON_DATA_DIR=/data/jobs` for the plan cache) and `redis-data` for the redis service.
+- **Fail-fast on bad data dir**: `Orchestrator.__init__` checks `ACHERON_DATA_DIR` is writable (mkdir + write probe + read back + delete). Raises `AcheronError` with a clear message if not.
+- **`ACHERON_DATA_DIR`** env var, default `/data/jobs`. Read by `create_app` when `data_dir` is not provided. Tests pass `tmp_path` explicitly to override.
+- **No resource limits** — deferred to a future sub-project.
 
 ## Capability Discovery
 
@@ -443,37 +452,37 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 
 ### Orchestrator (Docker Compose)
 
+The full production-ready compose is in `docker-compose.yml` at the repo root. Key elements:
+
+- Every service has a `healthcheck` block
+- The orchestrator uses the `acheron-data` named volume and reads `ACHERON_DATA_DIR=/data/jobs`
+- All inter-service `depends_on` use `condition: service_healthy`
+- The gRPC stub runs an HTTP sidecar on `WORKER_HTTP_PORT` (default 9002) so Docker can probe it
+
+A representative service:
+
 ```yaml
-services:
   orchestrator:
-    build: ./orchestrator
+    build:
+      context: .
+      target: orchestrator
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/data
-      - ./config:/config
     environment:
-      - REDIS_URL=redis://queue:6379
-      - ACHERON_DATA_DIR=/data
+      REDIS_URL: redis://redis:6379
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_DATA_DIR: /data/jobs
+    volumes:
+      - acheron-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - queue
-
-  queue:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-
-  dashboard:
-    build: ./dashboard
-    ports:
-      - "8080:8080"
-    environment:
-      - ACHERON_URL=http://orchestrator:8000
-
-volumes:
-  redis-data:
+      redis:
+        condition: service_healthy
 ```
 
 ### GPU Worker (RunPod / HuggingFace) — Layer 8
