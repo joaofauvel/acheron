@@ -82,7 +82,12 @@ class TestOrchestrator:
         orch.register_worker("w-2", "http://b", "http", translation_caps())
 
         workers = orch.list_workers()
-        assert len(workers) == 2
+        worker_ids = {w.worker_id for w in workers}
+        assert "w-1" in worker_ids
+        assert "w-2" in worker_ids
+        assert "extraction-local" in worker_ids
+        assert "chunking-local" in worker_ids
+        assert "packaging-local" in worker_ids
 
     def test_get_capabilities(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = WorkerRegistry()

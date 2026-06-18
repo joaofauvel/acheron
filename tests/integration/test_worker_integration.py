@@ -117,6 +117,50 @@ class TestWorkerIntegrationErrorPath:
             await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
 
     @pytest.mark.asyncio
+    async def test_orchestration_steps_have_built_in_handlers(self, tmp_path: Path) -> None:
+        """EXTRACTION/CHUNKING/PACKAGING are handled locally when no worker is registered.
+
+        External workers (TTS/ASR/TRANSLATION) still go through the registry.
+        """
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.step_handler import create_step_handler
+
+        async def _no_op_handler(job: Job) -> JobResult:
+            return JobResult(
+                job_id=job.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        reg = WorkerRegistry()
+        reg.register(
+            "trans-local",
+            "local",
+            "local",
+            _caps(WorkerType.TRANSLATION, langs_in=frozenset({"en"}), langs_out=frozenset({"es"})),
+            metadata={"handler": _no_op_handler},
+        )
+        reg.register(
+            "tts-local",
+            "local",
+            "local",
+            _caps(WorkerType.TTS, langs_in=frozenset({"es"}), langs_out=frozenset({"es"}), batch_capable=True),
+            metadata={"handler": _no_op_handler},
+        )
+
+        handler = create_step_handler(reg)
+        orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
+        request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
+        tracked = await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+        await _wait_for_completion(tracked)
+
+        assert tracked.status == "completed", f"job failed: {tracked.result.errors if tracked.result else 'no result'}"
+        assert tracked.result is not None
+        assert tracked.result.completed_steps == 5
+        assert tracked.result.total_steps == 5
+
+    @pytest.mark.asyncio
     async def test_worker_unreachable(self, tmp_path: Path) -> None:
         """Job fails when TTS worker is unreachable."""
         from acheron.shell.cache import PlanCache

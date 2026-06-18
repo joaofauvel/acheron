@@ -50,7 +50,9 @@ def test_capabilities_filter_no_match(runner: CliRunner, wired_app: FastAPI) -> 
     assert "No language pairs" in result.output
 
 
-def test_workers_empty(tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workers_shows_built_in_orchestration_workers(
+    tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
     app = create_app(registry=WorkerRegistry(), cache=PlanCache(tmp_path), data_dir=tmp_path)
     from httpx import ASGITransport
 
@@ -62,7 +64,9 @@ def test_workers_empty(tmp_path: Path, runner: CliRunner, monkeypatch: pytest.Mo
 
     result = runner.invoke(main, ["workers"])
     assert result.exit_code == 0
-    assert "No workers registered" in result.output
+    assert "extraction-local" in result.output
+    assert "chunking-local" in result.output
+    assert "packaging-local" in result.output
 
 
 def test_capabilities_empty(tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:

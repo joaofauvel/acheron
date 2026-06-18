@@ -5,24 +5,49 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
-from acheron.core.models import EpubRequest, WorkerType
+from acheron.core.models import EpubRequest, Job, JobResult, WorkerCapabilities, WorkerType
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import JobStore, TrackedJob
+from acheron.shell.local_handlers import chunk_handler, extract_handler, package_handler
 from acheron.shell.step_handler import create_step_handler
 
 if TYPE_CHECKING:
-    from acheron.core.models import ExecutorStrategy, JobRequest, WorkerCapabilities
+    from acheron.core.models import ExecutorStrategy, JobRequest
     from acheron.shell.cache import PlanCache
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.registry import RegisteredWorker, WorkerRegistry
 
 logger = logging.getLogger(__name__)
+
+
+type LocalJobHandler = Callable[[Job], Awaitable[JobResult]]
+
+
+_BUILT_IN_LOCAL_HANDLERS: dict[WorkerType, LocalJobHandler] = {
+    WorkerType.EXTRACTION: extract_handler,
+    WorkerType.CHUNKING: chunk_handler,
+    WorkerType.PACKAGING: package_handler,
+}
+
+
+def _all_languages_caps(worker_type: WorkerType) -> WorkerCapabilities:
+    return WorkerCapabilities(
+        worker_type=worker_type,
+        supported_languages_in=frozenset({"en", "es", "fr", "de"}),
+        supported_languages_out=frozenset({"en", "es", "fr", "de"}),
+        supported_formats_in=frozenset(),
+        supported_formats_out=frozenset(),
+        max_payload_bytes=None,
+        batch_capable=False,
+        model_source=None,
+    )
 
 
 @dataclass(frozen=True)
@@ -80,10 +105,29 @@ class Orchestrator:
     ) -> None:
         self._registry = registry
         self._cache = cache
+        self._register_built_in_local_workers()
         self._handler = handler or create_step_handler(registry)
         self._job_store = JobStore()
         self._tasks: set[asyncio.Task[None]] = set()
         self._health_monitor = HealthMonitor(registry)
+
+    def _register_built_in_local_workers(self) -> None:
+        """Register in-process local workers for orchestration-level steps.
+
+        Only registers a step type if no worker of that type is already in the
+        registry, so user-registered workers (e.g. custom extraction logic) take
+        precedence over the stubs.
+        """
+        for worker_type, handler in _BUILT_IN_LOCAL_HANDLERS.items():
+            if self._registry.find_by_type(worker_type):
+                continue
+            self._registry.register(
+                worker_id=f"{worker_type.value}-local",
+                endpoint="local",
+                transport="local",
+                capabilities=_all_languages_caps(worker_type),
+                metadata={"handler": handler},
+            )
 
     async def start(self) -> None:
         """Start background tasks."""
