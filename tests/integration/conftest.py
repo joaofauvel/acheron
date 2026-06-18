@@ -6,19 +6,20 @@ verifying the full request→route→orchestrator→plan chain.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import os
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import asyncio  # noqa: TC003
-import os
-
-import pytest  # noqa: TC002
-import pytest_asyncio  # noqa: TC002
+import pytest
+import pytest_asyncio
 from click.testing import CliRunner
 from httpx import ASGITransport
 
 from acheron.api_client import AcheronClient
-from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFile, WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
@@ -26,7 +27,6 @@ from acheron.shell.registry import WorkerRegistry
 from acheron.shell.step_handler import create_step_handler
 
 if TYPE_CHECKING:
-
     from fastapi import FastAPI
 
 
@@ -95,110 +95,71 @@ def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     return app
 
 
-async def _start_uvicorn(app_factory, port: int) -> tuple[str, asyncio.Task[None]]:
-    """Start a FastAPI app with uvicorn as a background task."""
-    import uvicorn
+async def _start_uvicorn(app_factory) -> tuple[str, asyncio.Task[None]]:  # type: ignore[no-untyped-def]
+    """Start a FastAPI app with uvicorn as a background task using a random port."""
+    from contextlib import asynccontextmanager
 
-    app = app_factory()
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    import uvicorn
+    from fastapi import FastAPI
+
+    original_app = app_factory()
+
+    @asynccontextmanager
+    async def _noop_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+
+    app = FastAPI(title=original_app.title, lifespan=_noop_lifespan)
+    for route in original_app.routes:
+        app.router.routes.append(route)
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
     server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())
-    await asyncio.sleep(0.5)
-    return f"http://127.0.0.1:{port}", task
+    await asyncio.sleep(0.3)
+
+    actual_port = 0
+    if server.servers and server.servers[0].sockets:
+        actual_port = server.servers[0].sockets[0].getsockname()[1]
+
+    return f"http://127.0.0.1:{actual_port}", task
 
 
 @pytest_asyncio.fixture
 async def http_tts_stub() -> AsyncIterator[str]:
     """Start a TTS HTTP stub worker."""
-    from stubs.worker_stub import create_app
-
-    orig_type = os.environ.get("WORKER_TYPE")
-    orig_endpoint = os.environ.get("WORKER_ENDPOINT")
-    orig_orch = os.environ.get("ORCHESTRATOR_URL")
-    orig_port = os.environ.get("WORKER_PORT")
-    orig_token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
 
     os.environ["WORKER_TYPE"] = "TTS"
-    os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:18001"
+    os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:0"
     os.environ["ORCHESTRATOR_URL"] = "http://127.0.0.1:1"
-    os.environ["WORKER_PORT"] = "18001"
+    os.environ["WORKER_PORT"] = "0"
     os.environ["ACHERON_REGISTRATION_TOKEN"] = ""
 
-    url, task = await _start_uvicorn(create_app, 18001)
+    from stubs.worker_stub import create_app
+
+    url, task = await _start_uvicorn(create_app)
     yield url
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
-
-    if orig_type is not None:
-        os.environ["WORKER_TYPE"] = orig_type
-    else:
-        os.environ.pop("WORKER_TYPE", None)
-    if orig_endpoint is not None:
-        os.environ["WORKER_ENDPOINT"] = orig_endpoint
-    else:
-        os.environ.pop("WORKER_ENDPOINT", None)
-    if orig_orch is not None:
-        os.environ["ORCHESTRATOR_URL"] = orig_orch
-    else:
-        os.environ.pop("ORCHESTRATOR_URL", None)
-    if orig_port is not None:
-        os.environ["WORKER_PORT"] = orig_port
-    else:
-        os.environ.pop("WORKER_PORT", None)
-    if orig_token is not None:
-        os.environ["ACHERON_REGISTRATION_TOKEN"] = orig_token
-    else:
-        os.environ.pop("ACHERON_REGISTRATION_TOKEN", None)
 
 
 @pytest_asyncio.fixture
 async def http_translation_stub() -> AsyncIterator[str]:
     """Start a translation HTTP stub worker."""
-    from stubs.translation_stub import create_app
-
-    orig_type = os.environ.get("WORKER_TYPE")
-    orig_endpoint = os.environ.get("WORKER_ENDPOINT")
-    orig_orch = os.environ.get("ORCHESTRATOR_URL")
-    orig_port = os.environ.get("WORKER_PORT")
-    orig_token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
 
     os.environ["WORKER_TYPE"] = "TRANSLATION"
-    os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:18003"
+    os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:0"
     os.environ["ORCHESTRATOR_URL"] = "http://127.0.0.1:1"
-    os.environ["WORKER_PORT"] = "18003"
+    os.environ["WORKER_PORT"] = "0"
     os.environ["ACHERON_REGISTRATION_TOKEN"] = ""
 
-    url, task = await _start_uvicorn(create_app, 18003)
+    from stubs.translation_stub import create_app
+
+    url, task = await _start_uvicorn(create_app)
     yield url
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
-
-    if orig_type is not None:
-        os.environ["WORKER_TYPE"] = orig_type
-    else:
-        os.environ.pop("WORKER_TYPE", None)
-    if orig_endpoint is not None:
-        os.environ["WORKER_ENDPOINT"] = orig_endpoint
-    else:
-        os.environ.pop("WORKER_ENDPOINT", None)
-    if orig_orch is not None:
-        os.environ["ORCHESTRATOR_URL"] = orig_orch
-    else:
-        os.environ.pop("ORCHESTRATOR_URL", None)
-    if orig_port is not None:
-        os.environ["WORKER_PORT"] = orig_port
-    else:
-        os.environ.pop("WORKER_PORT", None)
-    if orig_token is not None:
-        os.environ["ACHERON_REGISTRATION_TOKEN"] = orig_token
-    else:
-        os.environ.pop("ACHERON_REGISTRATION_TOKEN", None)
 
 
 @pytest_asyncio.fixture
@@ -220,8 +181,76 @@ async def wired_orchestrator(
     grpc_tts_stub: str,
 ) -> AsyncIterator[Orchestrator]:
     """Orchestrator with real stub workers registered."""
+
+    async def _mock_handler(job: Job) -> JobResult:
+        return JobResult(
+            job_id=job.job_id,
+            status=JobStatus.SUCCESS,
+            outputs=(
+                OutputFile(
+                    path=f"/tmp/{job.job_id}",
+                    filename=f"{job.job_id}.dat",
+                    size_bytes=100,
+                    checksum="abc",
+                    content_type="application/octet-stream",
+                ),
+            ),
+            metrics=JobMetrics(duration_seconds=0.01),
+        )
+
     reg = WorkerRegistry()
     cache = PlanCache(tmp_path)
+
+    reg.register(
+        "extract-local",
+        "local",
+        "local",
+        WorkerCapabilities(
+            worker_type=WorkerType.EXTRACTION,
+            supported_languages_in=frozenset(),
+            supported_languages_out=frozenset(),
+            supported_formats_in=frozenset(),
+            supported_formats_out=frozenset(),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+        ),
+        metadata={"handler": _mock_handler},
+    )
+
+    reg.register(
+        "chunk-local",
+        "local",
+        "local",
+        WorkerCapabilities(
+            worker_type=WorkerType.CHUNKING,
+            supported_languages_in=frozenset(),
+            supported_languages_out=frozenset(),
+            supported_formats_in=frozenset(),
+            supported_formats_out=frozenset(),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+        ),
+        metadata={"handler": _mock_handler},
+    )
+
+    reg.register(
+        "package-local",
+        "local",
+        "local",
+        WorkerCapabilities(
+            worker_type=WorkerType.PACKAGING,
+            supported_languages_in=frozenset(),
+            supported_languages_out=frozenset(),
+            supported_formats_in=frozenset(),
+            supported_formats_out=frozenset(),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+        ),
+        metadata={"handler": _mock_handler},
+    )
 
     reg.register(
         "tts-http",

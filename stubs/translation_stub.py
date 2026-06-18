@@ -86,4 +86,27 @@ def create_app() -> FastAPI:
         translated = f"{text} [translated {src}→{dst}]"
         return {"status": "completed", "output_data": translated}
 
+    @app.post("/execute")
+    async def execute(body: dict[str, Any]) -> dict[str, Any]:
+        job_id = body.get("job_id", "unknown")
+        text = body.get("payload", {}).get("text", "")
+        src = body.get("payload", {}).get("source_language", "en")
+        dst = body.get("payload", {}).get("target_language", "es")
+        translated = f"{text} [translated {src}→{dst}]"
+        return {
+            "job_id": job_id,
+            "status": "success",
+            "outputs": [
+                {
+                    "path": f"{job_id}.txt",
+                    "filename": f"{job_id}.txt",
+                    "size_bytes": len(translated),
+                    "checksum": "",
+                    "content_type": "text/plain",
+                }
+            ],
+            "metrics": {"duration_seconds": 0.01},
+            "error": None,
+        }
+
     return app

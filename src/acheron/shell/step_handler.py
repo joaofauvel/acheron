@@ -30,6 +30,19 @@ def _default_worker_factory(registered: RegisteredWorker) -> Worker:
         case "grpc":
             channel = grpc.aio.insecure_channel(registered.endpoint)
             return GrpcWorker(channel)
+        case "local":
+            from acheron.shell.transports.local import LocalWorker  # noqa: PLC0415
+
+            handler = registered.metadata.get("handler")
+            if handler is None:
+                msg = f"Local worker {registered.worker_id} missing handler in metadata"
+                raise WorkerError(msg)
+            return LocalWorker(
+                worker_type=registered.capabilities.worker_type,
+                handler=handler,
+                supported_languages_in=registered.capabilities.supported_languages_in,
+                supported_languages_out=registered.capabilities.supported_languages_out,
+            )
         case _:
             return HttpWorker(registered.endpoint)
 

@@ -24,7 +24,7 @@ _SILENT_PCM = b"\x00\x00" * 2205  # 100ms of silence at 22050 Hz, 16-bit mono
 class _SynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
     """Returns canned silent PCM chunks."""
 
-    def Synthesize(  # type: ignore[no-untyped-def]  # noqa: N802
+    def Synthesize(  # type: ignore[misc]  # noqa: N802
         self,
         request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
         context: grpc.aio.ServicerContext,  # type: ignore[type-arg]

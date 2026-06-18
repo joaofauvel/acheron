@@ -107,4 +107,40 @@ def create_app() -> FastAPI:
             return {"status": "completed", "output_data": base64.b64encode(audio).decode()}
         return {"status": "completed", "output_data": "mock transcription"}
 
+    @app.post("/execute")
+    async def execute(body: dict[str, Any]) -> dict[str, Any]:
+        job_id = body.get("job_id", "unknown")
+        if cfg["worker_type"] == "TTS":
+            audio = _silent_wav()
+            return {
+                "job_id": job_id,
+                "status": "success",
+                "outputs": [
+                    {
+                        "path": f"{job_id}.wav",
+                        "filename": f"{job_id}.wav",
+                        "size_bytes": len(audio),
+                        "checksum": "",
+                        "content_type": "audio/wav",
+                    }
+                ],
+                "metrics": {"duration_seconds": 0.01},
+                "error": None,
+            }
+        return {
+            "job_id": job_id,
+            "status": "success",
+            "outputs": [
+                {
+                    "path": f"{job_id}.txt",
+                    "filename": f"{job_id}.txt",
+                    "size_bytes": 20,
+                    "checksum": "",
+                    "content_type": "text/plain",
+                }
+            ],
+            "metrics": {"duration_seconds": 0.01},
+            "error": None,
+        }
+
     return app
