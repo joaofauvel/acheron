@@ -114,6 +114,10 @@ reportMissingImports = false
 xfail_strict = true
 addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests", "stubs/tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:websockets.legacy",
+    "ignore::DeprecationWarning:uvicorn.protocols.websockets",
+]
 
 [tool.importlinter]
 root_package = "acheron"
