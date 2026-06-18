@@ -67,12 +67,14 @@ def compile_plan(
 
 - Validates language path using capabilities
 - Raises `InvalidLanguagePathError` if no workers support the path
+- Skips translation step when `source_language == target_language`
 - match on `request` type to select step sequence
 - Returns immutable Plan
 
 Step sequences:
 - EPUB: extract → chunk → translate → synthesize → package
 - Audio: extract → transcribe → chunk → translate → synthesize → package
+- Same-language (src == dst): translate step omitted, synthesize depends on chunk (or transcribe for audio)
 
 ## `shell/executors/`
 
@@ -114,6 +116,8 @@ def create_executor(strategy: ExecutorStrategy, dispatcher: WorkerDispatcher) ->
 - Steps have correct dependencies
 - All steps have PENDING status
 - Worker assigned when capability matches
+- Same-language request skips translation step
+- Same-language synthesize depends on chunk (not translate)
 
 ### test_executors.py
 - SequentialExecutor runs steps in order

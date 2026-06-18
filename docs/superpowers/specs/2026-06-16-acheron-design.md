@@ -297,17 +297,19 @@ extract (CPU) → chunk (CPU) → translate (API/worker) → synthesize (GPU/wor
 extract (CPU) → transcribe (GPU/ASR) → chunk (CPU) → translate (API/worker) → synthesize (GPU/worker) → package (CPU)
 ```
 
+**Same-language optimization:** When `source_language == target_language`, the translate step is skipped entirely. The synthesize step depends directly on chunk (or transcribe for audio). No translation worker is required for same-language jobs.
+
 ## Planner
 
 The Planner takes a job request and produces a validated plan:
 
 1. **Query worker registry** — get all registered workers and their capabilities
-2. **Validate language path** — check that the requested source→target language is supported by available workers (ASR for source audio language, translation for source→target, TTS for target language)
-3. **Compile steps** — generate the DAG of pipeline steps based on input type
+2. **Validate language path** — check that the requested source→target language is supported by available workers (ASR for source audio language, translation for source→target when languages differ, TTS for target language)
+3. **Compile steps** — generate the DAG of pipeline steps based on input type. When `source_language == target_language`, the translate step is omitted and synthesize depends directly on the preceding step.
 4. **Assign workers** — pre-select workers for each step (or leave for executor to decide at dispatch time)
 5. **Persist plan** — save to `/data/jobs/{job_id}/plan.json`
 
-If the language path is invalid (e.g., no ASR worker supports the source language, or no TTS worker supports the target language), the planner rejects the job before any compute is spent.
+If the language path is invalid (e.g., no ASR worker supports the source language, no translation worker supports the source→target pair, or no TTS worker supports the target language), the planner rejects the job before any compute is spent.
 
 ## Executors
 
@@ -373,7 +375,7 @@ Workers self-register via `POST /workers` on the orchestrator API. The registry 
 
 ## Capability Discovery
 
-The orchestrator exposes a `/capabilities` endpoint that aggregates all registered workers' language support:
+The orchestrator exposes a `/capabilities` endpoint that aggregates language pairs achievable by the planner. Only pairs where all required worker types are registered are included: TTS for the target language, and a TRANSLATION worker when source and target differ. Same-language pairs (e.g., en→en) require only TTS.
 
 ```
 GET /capabilities
