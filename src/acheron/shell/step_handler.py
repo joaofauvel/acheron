@@ -6,9 +6,12 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+import grpc.aio
+
 from acheron.core.errors import WorkerError
 from acheron.core.interfaces import Worker
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
+from acheron.shell.transports.grpc import GrpcWorker
 from acheron.shell.transports.http import HttpWorker
 
 if TYPE_CHECKING:
@@ -22,8 +25,13 @@ type WorkerFactory = Callable[[RegisteredWorker], Worker]
 
 
 def _default_worker_factory(registered: RegisteredWorker) -> Worker:
-    """Create an HttpWorker from a registered worker's endpoint."""
-    return HttpWorker(registered.endpoint)
+    """Create a worker from a registered worker's endpoint and transport."""
+    match registered.transport:
+        case "grpc":
+            channel = grpc.aio.insecure_channel(registered.endpoint)
+            return GrpcWorker(channel)
+        case _:
+            return HttpWorker(registered.endpoint)
 
 
 def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str, dst: str) -> bool:

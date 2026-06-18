@@ -159,9 +159,10 @@ class Orchestrator:
         endpoint: str,
         transport: str,
         capabilities: WorkerCapabilities,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         """Register a worker in the registry."""
-        self._registry.register(worker_id, endpoint, transport, capabilities)
+        self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
         logger.info(
             "Registered worker %s (%s, %s → %s)", worker_id, capabilities.worker_type.value, endpoint, transport
         )
