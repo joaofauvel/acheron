@@ -83,7 +83,12 @@ class HealthMonitor:
             await self._check_all()
 
     async def _check_all(self) -> None:
-        """Check health of all registered workers."""
+        """Check health of all registered workers.
+
+        Workers registered between this snapshot and the per-worker probe
+        are not checked until the next interval. With the default 30s
+        interval this is fine; no locking needed.
+        """
         for worker in self._registry.list_all():
             healthy = await self._health_check(worker.endpoint, worker.transport)
             if healthy:

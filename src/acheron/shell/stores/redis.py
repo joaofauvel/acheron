@@ -61,7 +61,7 @@ def _worker_fields(
     endpoint: str,
     transport: str,
     capabilities: WorkerCapabilities,
-    metadata: dict[str, Any],
+    metadata: dict[str, object],
 ) -> dict[str, str]:
     return {
         "endpoint": endpoint,
