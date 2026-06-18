@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,12 +36,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(
     registry: WorkerStore | None = None,
     cache: PlanCache | None = None,
-    data_dir: Path = Path("/data/jobs"),
+    data_dir: Path | str | None = None,
 ) -> FastAPI:
-    """Create and configure the FastAPI application."""
+    """Create and configure the FastAPI application.
+
+    ``ACHERON_DATA_DIR`` env var is consulted when ``data_dir`` is not provided.
+    """
     if registry is None:
         registry = create_worker_store()
     if cache is None:
+        if data_dir is None:
+            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
         cache = PlanCache(data_dir)
 
     orchestrator = Orchestrator(
