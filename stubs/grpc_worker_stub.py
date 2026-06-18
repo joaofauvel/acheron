@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import grpc
 import grpc.aio
 import httpx
+from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.proto import synthesis_pb2, synthesis_pb2_grpc
 
@@ -79,6 +80,9 @@ async def create_server(port: int = 9001, *, register: bool = True) -> tuple[grp
     """Create and optionally start the stub gRPC server."""
     server = grpc.aio.server()
     synthesis_pb2_grpc.add_SynthesisServicer_to_server(_SynthesisServicer(), server)  # type: ignore[no-untyped-call]
+    health_servicer = health.HealthServicer()
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     actual_port = server.add_insecure_port(f"0.0.0.0:{port}")
 
     if register:

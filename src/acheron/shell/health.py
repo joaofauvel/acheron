@@ -8,24 +8,46 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+import grpc
+import grpc.aio
 import httpx
+from grpc.health.v1 import health_pb2, health_pb2_grpc
 
 if TYPE_CHECKING:
     from acheron.shell.registry import WorkerRegistry
 
 logger = logging.getLogger(__name__)
 
-type HealthCheckFn = Callable[[str], Awaitable[bool]]
+type HealthCheckFn = Callable[[str, str], Awaitable[bool]]
 
 
-async def _default_health_check(endpoint: str) -> bool:
-    """Check worker health via HTTP GET /health."""
+async def _check_http_health(endpoint: str) -> bool:
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{endpoint}/health", timeout=5.0)
             return resp.status_code == httpx.codes.OK
     except httpx.HTTPError, OSError:
         return False
+
+
+async def _check_grpc_health(endpoint: str) -> bool:
+    try:
+        async with grpc.aio.insecure_channel(endpoint) as channel:
+            stub = health_pb2_grpc.HealthStub(channel)
+            resp = await stub.Check(health_pb2.HealthCheckRequest())
+            return resp.status == health_pb2.HealthCheckResponse.SERVING  # type: ignore[no-any-return]
+    except grpc.aio.AioRpcError, OSError:
+        return False
+
+
+async def _default_health_check(endpoint: str, transport: str) -> bool:
+    match transport:
+        case "grpc":
+            return await _check_grpc_health(endpoint)
+        case "local":
+            return True
+        case _:
+            return await _check_http_health(endpoint)
 
 
 class HealthMonitor:
@@ -63,7 +85,7 @@ class HealthMonitor:
     async def _check_all(self) -> None:
         """Check health of all registered workers."""
         for worker in self._registry.list_all():
-            healthy = await self._health_check(worker.endpoint)
+            healthy = await self._health_check(worker.endpoint, worker.transport)
             if healthy:
                 self._registry.record_health_success(worker.worker_id)
             else:

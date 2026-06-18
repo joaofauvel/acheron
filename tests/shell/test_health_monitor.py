@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
+import grpc
+import grpc.aio
 import pytest
+import pytest_asyncio
+from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.core.models import WorkerCapabilities, WorkerType
-from acheron.shell.health import HealthMonitor
+from acheron.shell.health import HealthMonitor, _default_health_check
 from acheron.shell.registry import WorkerRegistry
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 def _tts_caps() -> WorkerCapabilities:
@@ -71,3 +79,48 @@ class TestHealthMonitor:
         await asyncio.sleep(0.15)
         await monitor.stop()
         assert reg.get("w1") is None
+
+
+@pytest_asyncio.fixture
+async def grpc_health_server() -> AsyncIterator[str]:
+    """Start an in-process gRPC server with a HealthServicer that reports healthy."""
+    server = grpc.aio.server()
+    servicer = health.HealthServicer()
+    servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    health_pb2_grpc.add_HealthServicer_to_server(servicer, server)
+    port = server.add_insecure_port("localhost:0")
+    await server.start()
+    yield f"localhost:{port}"
+    await server.stop(0)
+
+
+class TestDefaultHealthCheck:
+    @pytest.mark.asyncio
+    async def test_grpc_worker_uses_grpc_health_check(self, grpc_health_server: str) -> None:
+        """gRPC workers are probed via gRPC Health.Check, not HTTP GET /health."""
+        result = await _default_health_check(grpc_health_server, "grpc")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_grpc_unhealthy_worker_returns_false(self) -> None:
+        result = await _default_health_check("localhost:1", "grpc")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_grpc_does_not_attempt_http(self, grpc_health_server: str) -> None:
+        """A gRPC endpoint with no HTTP listener must not be probed via HTTP."""
+        result = await _default_health_check(grpc_health_server, "grpc")
+        assert result is True
+
+
+class TestHealthMonitorTransportAware:
+    @pytest.mark.asyncio
+    async def test_grpc_worker_not_removed_when_healthy(self, grpc_health_server: str) -> None:
+        reg = WorkerRegistry()
+        reg.register("tts-grpc", grpc_health_server, "grpc", _tts_caps())
+        monitor = HealthMonitor(reg, interval=0.01)
+        await monitor.start()
+        await asyncio.sleep(0.05)
+        await monitor.stop()
+        assert reg.get("tts-grpc") is not None
+        assert reg.get("tts-grpc").consecutive_failures == 0  # type: ignore[union-attr]
