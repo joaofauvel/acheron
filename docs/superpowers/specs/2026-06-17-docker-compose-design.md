@@ -138,8 +138,8 @@ The orchestrator's `POST /workers` endpoint must validate the `Authorization: Be
 
 ## What This Doesn't Do
 
-- No real TTS/ASR — stubs return mock data only
-- No persistent storage — no volume mounts (dev-only)
-- No production config — no TLS, resource limits, scaling
-- Redis included but not consumed until Redis-backed stores are added
+- No real TTS/ASR — stubs return mock data only (→ Layer 8)
+- No persistent storage — no volume mounts (dev-only) (→ Layer 7)
+- No production config — no TLS, resource limits, scaling (→ Layer 7)
+- Redis included but not consumed until Redis-backed stores are added (→ Layer 7)
 - No healthcheck on orchestrator/stubs (stubs retry registration on startup instead)
