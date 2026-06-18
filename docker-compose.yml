@@ -3,10 +3,14 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
+      timeout: 5s
       retries: 3
+      start_period: 5s
 
   orchestrator:
     build:
@@ -17,6 +21,19 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_DATA_DIR: /data/jobs
+    volumes:
+      - acheron-data:/data
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       redis:
         condition: service_healthy
@@ -29,8 +46,19 @@ services:
       - "8080:8080"
     environment:
       ACHERON_URL: http://orchestrator:8000
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
 
   tts-stub:
     build:
@@ -44,8 +72,19 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8000
       WORKER_PORT: "8001"
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.environ[\"WORKER_PORT\"]}/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
 
   asr-stub:
     build:
@@ -59,8 +98,19 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8000
       WORKER_PORT: "8002"
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.environ[\"WORKER_PORT\"]}/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
 
   tts-grpc-stub:
     build:
@@ -68,13 +118,26 @@ services:
       target: grpc-stub
     ports:
       - "9001:9001"
+      - "9002:9002"
     environment:
-      WORKER_ENDPOINT: http://tts-grpc-stub:9001
+      WORKER_ENDPOINT: tts-grpc-stub:9001
       ORCHESTRATOR_URL: http://orchestrator:8000
       WORKER_PORT: "9001"
+      WORKER_HTTP_PORT: "9002"
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:9002/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
 
   translation-stub:
     build:
@@ -88,6 +151,21 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8000
       WORKER_PORT: "8003"
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.environ[\"WORKER_PORT\"]}/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
     command: ["sh", "-c", "uvicorn stubs.translation_stub:create_app --factory --host 0.0.0.0 --port ${WORKER_PORT:-8003}"]
+
+volumes:
+  acheron-data:
+  redis-data:
