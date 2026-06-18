@@ -1,7 +1,7 @@
 # gRPC Streaming Transport — Layer 6
 
 **Date:** 2026-06-17
-**Status:** Draft
+**Status:** Done
 **Depends on:** Layer 0-5
 
 ## Overview
