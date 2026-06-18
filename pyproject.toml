@@ -71,6 +71,7 @@ combine-as-imports = true
 "dashboard/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC003", "ANN", "ARG001", "ARG002", "FBT"]
 "dashboard/__init__.py" = ["D104"]
 "dashboard/templates/__init__.py" = ["D104"]
+"stubs/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC003", "ANN", "ARG001", "ARG002", "FBT"]
 "src/acheron/core/interfaces.py" = ["TC001"]
 
 [tool.mypy]
@@ -100,7 +101,7 @@ reportArgumentType = false
 [tool.pytest.ini_options]
 xfail_strict = true
 addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80"
-testpaths = ["tests"]
+testpaths = ["tests", "stubs/tests"]
 
 [tool.importlinter]
 root_package = "acheron"
