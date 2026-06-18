@@ -175,6 +175,40 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 3 | done | Planner, executors |
 | 4 | done | API + CLI |
 | 5 | done | HttpWorker, dashboard, Docker Compose, registration security |
-| 6 | done | gRPC streaming transport: GrpcWorker, proto, stub worker |
-| 7 | planned | Production hardening: Redis stores, TLS, security, limits |
+| 6 | done | gRPC streaming transport: GrpcWorker, proto, stub worker, transport-aware health monitor |
+| 7 | planned | Production hardening — decomposed into 3 sub-projects (see below) |
 | 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
+
+## Layer 7 — Decomposition
+
+Layer 7 is a grab-bag of production concerns with distinct sub-systems. To keep design surfaces small, it's split into three independent sub-projects. Each gets its own spec → plan → implementation cycle.
+
+### Sub-project 7a — Storage abstraction + Redis backend
+
+Make worker registry and job state survive orchestrator restarts by adding a Redis backend behind a shared ABC interface. In-memory backend stays for dev.
+
+- ABC `WorkerStore` and `JobStore` in a new `src/acheron/shell/stores/` subpackage
+- `InMemoryWorkerStore` (renames current `WorkerRegistry`) and `InMemoryJobStore` (renames current `JobStore`)
+- `RedisWorkerStore` and `RedisJobStore` implement the same interface
+- `ACHERON_STORE_BACKEND=memory|redis` env var selects at startup; fail fast if `redis` is unreachable
+- Redis data layout: `worker:{id}` HASH + `workers` SET for registry; `job:{id}` STRING (JSON) + `jobs` SET for jobs
+- testcontainers for integration tests against real Redis
+
+### Sub-project 7b — Production compose hardening
+
+Deployment-side hardening for the Docker Compose stack.
+
+- Docker healthchecks on every service (`GET /health` for orchestrator and workers)
+- Resource limits (`cpus`, `mem_limit`) on every service
+- Persistent volumes: `/data` mounted for orchestrator (step output cache), named `redis-data` for Redis
+- Orchestrator refuses to start if `/data` is not writable
+
+### Sub-project 7c — TLS termination via reverse proxy
+
+TLS via reverse proxy (nginx or caddy) with self-signed certs for local dev.
+
+- New `proxy/` directory with `nginx.conf` and `Dockerfile`
+- Routes `/api/*` to orchestrator, `/` to dashboard
+- Self-signed cert generation script for local dev
+- `docker compose --profile tls up` opt-in
+- Production deploys use real certs via cert-manager or cloud provider

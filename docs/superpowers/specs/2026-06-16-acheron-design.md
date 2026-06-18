@@ -158,9 +158,9 @@ class StreamingWorker(Worker):
 
 - **HttpWorker** — wraps a FastAPI/REST endpoint (RunPod, HuggingFace Inference Endpoints)
 - **GrpcWorker** — wraps a gRPC bidirectional streaming service (Layer 6). Enables real-time PCM streaming from GPU workers, bypassing disk I/O and base64 encoding overhead. Internal to the worker — orchestrator interface unchanged.
-- **LocalWorker** — calls a Python function directly (CPU steps: extraction, chunking, packaging)
+- **LocalWorker** — calls a Python function directly (CPU steps: extraction, chunking, packaging). The orchestrator auto-registers built-in local workers for `EXTRACTION`, `CHUNKING`, and `PACKAGING` if no external worker of that type is registered, so the default stack can run end-to-end without any extraction/chunking/packaging workers deployed.
 
-Workers register their transport endpoint. The orchestrator dispatches via the abstract interface.
+Workers register their transport endpoint. The orchestrator dispatches via the abstract interface. gRPC workers register without a URL scheme (`host:port`), since `grpc.insecure_channel` rejects `http://host:port` as a malformed hostname.
 
 ### Worker Registry
 
@@ -363,7 +363,12 @@ Workers self-register via `POST /workers` on the orchestrator API. The registry 
 
 **Registration security:** Shared secret model. Orchestrator has `ACHERON_REGISTRATION_TOKEN` env var. `POST /workers` requires `Authorization: Bearer <token>` header. Missing or invalid token → 401. If env var is unset, registration is open (dev mode).
 
-**Health monitoring:** A `HealthMonitor` background task polls all registered workers every 30s via `GET {endpoint}/health`. After 3 consecutive failures, the worker is removed from the registry. The monitor runs as an asyncio task, started/stopped via the orchestrator's FastAPI lifespan.
+**Health monitoring:** A `HealthMonitor` background task polls all registered workers every 30s, dispatching by transport:
+- HTTP workers: `GET {endpoint}/health`
+- gRPC workers: gRPC `Health.Check` (requires the worker to register a `HealthServicer` returning `SERVING`)
+- Local workers: always healthy (no remote endpoint to probe)
+
+After 3 consecutive failures, the worker is removed from the registry. The monitor runs as an asyncio task, started/stopped via the orchestrator's FastAPI lifespan.
 
 **Step dispatch:** A `StepHandler` dispatches plan steps to workers by matching `step.type` and the plan's language pair. Language matching logic:
 - Translation: source in `supported_languages_in` AND target in `supported_languages_out`
@@ -457,7 +462,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ORCHESTRATOR_URL=http://orchestrator:8000
+      - ACHERON_URL=http://orchestrator:8000
 
 volumes:
   redis-data:
@@ -502,6 +507,8 @@ HTMX + Jinja2, separate container (`dashboard/`), polling orchestrator API every
 - **Jobs** — table with job ID, status badge, progress bar (completed/total), cost, duration. Gracefully handles missing cost/duration data.
 - **Workers** — table with worker ID, type, endpoint, transport, health indicator (green/red dot), failure count.
 - **Cost** — table with job ID, status, cost, duration, steps completed.
+
+**Configuration:** Reads `ACHERON_URL` env var for the orchestrator base URL (default `http://localhost:8000`). An explicit `orchestrator_url` argument to `create_app()` overrides the env var.
 
 **Error handling:** If the orchestrator is unreachable, each section shows "No data" instead of crashing.
 
