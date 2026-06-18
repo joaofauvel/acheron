@@ -102,7 +102,7 @@ Generated files go to `src/acheron/proto/` (gitignored).
 docker compose up --build
 ```
 
-Services: redis, orchestrator, dashboard, tts-stub, asr-stub, tts-grpc-stub.
+Services: redis, orchestrator, dashboard, tts-stub, asr-stub, tts-grpc-stub, translation-stub.
 
 All services are built from a single `Dockerfile` with multiple targets. The builder stage compiles a wheel with `uv build`, then each runtime stage installs it with plain pip — no uv or hatchling in the final images. Docker Compose shares the builder stage across services.
 

@@ -75,3 +75,19 @@ services:
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
     depends_on:
       - orchestrator
+
+  translation-stub:
+    build:
+      context: .
+      target: worker-stub
+    ports:
+      - "8003:8003"
+    environment:
+      WORKER_TYPE: TRANSLATION
+      WORKER_ENDPOINT: http://translation-stub:8003
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      WORKER_PORT: "8003"
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+    depends_on:
+      - orchestrator
+    command: ["sh", "-c", "uvicorn stubs.translation_stub:create_app --factory --host 0.0.0.0 --port ${WORKER_PORT:-8003}"]
