@@ -26,6 +26,11 @@ class PlanCache:
     def __init__(self, data_dir: str | Path = "/data/jobs") -> None:
         self._data_dir = Path(data_dir)
 
+    @property
+    def data_dir(self) -> Path:
+        """The root directory for cached plans and step outputs."""
+        return self._data_dir
+
     def save_plan(self, plan: Plan) -> Path:
         """Save a plan as JSON. Returns the path to the plan file."""
         plan_dir = self._data_dir / plan.plan_id
