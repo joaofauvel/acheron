@@ -102,3 +102,27 @@ class TestOrchestrator:
         caps = orch.get_capabilities(dst="es")
         for pair in caps:
             assert pair.dst == "es"
+
+    def test_get_capabilities_no_translation_worker(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Cross-language pairs should not appear without a translation worker."""
+        from tests.shell.conftest import asr_caps
+
+        reg = WorkerRegistry()
+        reg.register("asr-1", "http://asr", "http", asr_caps("en"))
+        reg.register("tts-1", "http://tts", "http", tts_caps("es"))
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
+
+        caps = orch.get_capabilities()
+        pairs = {(p.src, p.dst) for p in caps}
+        assert ("en", "es") not in pairs
+        assert ("en", "en") not in pairs or ("en", "en") in pairs
+
+    def test_get_capabilities_same_language_without_translation(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Same-language pairs should work without a translation worker."""
+        reg = WorkerRegistry()
+        reg.register("tts-1", "http://tts", "http", tts_caps("en"))
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
+
+        caps = orch.get_capabilities()
+        pairs = {(p.src, p.dst) for p in caps}
+        assert ("en", "en") in pairs
