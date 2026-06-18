@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import redis
 
+from acheron.core.models import AudioRequest, EpubRequest
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
@@ -116,17 +117,47 @@ def _serialize_job(job: TrackedJob) -> str:
         "source_language": job.request.source_language,
         "target_language": job.request.target_language,
     }
-    if isinstance(job.request, AudioRequest) and job.request.asr_model is not None:
-        request_dict["asr_model"] = job.request.asr_model
+    source_type: str
+    match job.request:
+        case AudioRequest(asr_model=model) if model is not None:
+            request_dict["asr_model"] = model
+            source_type = "audio"
+        case AudioRequest():
+            source_type = "audio"
+        case EpubRequest():
+            source_type = "epub"
+
+    result_dict: dict[str, Any] | None = None
+    if job.result is not None:
+        result_dict = {
+            "plan_id": job.result.plan_id,
+            "status": job.result.status,
+            "completed_steps": job.result.completed_steps,
+            "total_steps": job.result.total_steps,
+            "outputs": [
+                {
+                    "path": o.path,
+                    "filename": o.filename,
+                    "size_bytes": o.size_bytes,
+                    "checksum": o.checksum,
+                    "content_type": o.content_type,
+                }
+                for o in job.result.outputs
+            ],
+            "total_cost": job.result.total_cost,
+            "total_duration_seconds": job.result.total_duration_seconds,
+            "errors": list(job.result.errors),
+        }
+
     return json.dumps(
         {
             "job_id": job.job_id,
-            "source_type": job.request.__class__.__name__,
+            "source_type": source_type,
             "request": request_dict,
             "strategy": job.strategy.value,
             "status": job.status,
             "plan": plan_dict,
-            "result": None,
+            "result": result_dict,
         },
         sort_keys=True,
     )
@@ -145,7 +176,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
     from acheron.shell.job_store import TrackedJob  # noqa: PLC0415
 
     data = json.loads(blob)
-    if data["source_type"] == "EpubRequest":
+    if data["source_type"] == "epub":
         request: EpubRequest | AudioRequest = EpubRequest(
             source_path=data["request"]["source_path"],
             source_language=data["request"]["source_language"],
@@ -179,11 +210,37 @@ def _deserialize_job(blob: str) -> TrackedJob:
                 for s in data["plan"]["steps"]
             ),
         )
+    result = None
+    if data.get("result") is not None:
+        from acheron.core.models import OutputFile, PlanResult  # noqa: PLC0415
+
+        rd = data["result"]
+        result = PlanResult(
+            plan_id=rd["plan_id"],
+            status=rd["status"],
+            completed_steps=rd["completed_steps"],
+            total_steps=rd["total_steps"],
+            outputs=tuple(
+                OutputFile(
+                    path=o["path"],
+                    filename=o["filename"],
+                    size_bytes=o["size_bytes"],
+                    checksum=o["checksum"],
+                    content_type=o["content_type"],
+                )
+                for o in rd["outputs"]
+            ),
+            total_cost=rd["total_cost"],
+            total_duration_seconds=rd["total_duration_seconds"],
+            errors=tuple(rd["errors"]),
+        )
+
     return TrackedJob(
         job_id=data["job_id"],
         request=request,
         strategy=ExecutorStrategy(data["strategy"]),
         plan=plan,
+        result=result,
         status=data["status"],
     )
 

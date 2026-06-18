@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
-from acheron.core.models import EpubRequest, WorkerCapabilities, WorkerType
+from acheron.core.models import AudioRequest, EpubRequest, WorkerCapabilities, WorkerType
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
@@ -179,7 +179,11 @@ class Orchestrator:
             AcheronError: If plan compilation fails (e.g. invalid language path).
         """
         job_id = f"job-{uuid.uuid4().hex[:8]}"
-        source_type = "epub" if isinstance(request, EpubRequest) else "audio"
+        match request:
+            case EpubRequest():
+                source_type = "epub"
+            case AudioRequest():
+                source_type = "audio"
         logger.info(
             "Submitting job %s: %s → %s (%s, %s)",
             job_id,
