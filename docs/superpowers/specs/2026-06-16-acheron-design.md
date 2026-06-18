@@ -359,7 +359,7 @@ Runs on the orchestrator (CPU-only, NLTK punkt tokenizer).
 
 ## Worker Registry
 
-Workers self-register via `POST /workers` on the orchestrator API. The registry is in-memory (`WorkerRegistry` class), mapping worker IDs to their endpoint, transport, and capabilities.
+Workers self-register via `POST /workers` on the orchestrator API. The registry state lives in a `WorkerStore` (abstract base class) with two implementations: `InMemoryWorkerStore` (default, lost on restart) and `RedisWorkerStore` (persists across restarts). Backend selection is via the `ACHERON_STORE_BACKEND` env var (`memory` or `redis`, default `memory`). The orchestrator and `create_app` use the factory `create_worker_store()` by default; tests pass instances explicitly.
 
 **Registration security:** Shared secret model. Orchestrator has `ACHERON_REGISTRATION_TOKEN` env var. `POST /workers` requires `Authorization: Bearer <token>` header. Missing or invalid token → 401. If env var is unset, registration is open (dev mode).
 
@@ -376,7 +376,15 @@ After 3 consecutive failures, the worker is removed from the registry. The monit
 - TTS: target in `supported_languages_in` AND target in `supported_languages_out`
 - Extraction/Chunking/Packaging: no language check
 
-**Production (Layer 7):** Redis-backed `WorkerRegistry` and `JobStore` implementations for persistence across orchestrator restarts. TLS between all services. Resource limits (CPU, memory) per container.
+**Storage backends:** The `WorkerStore` and `JobStore` ABCs live in `src/acheron/shell/stores/`. Implementations:
+- `InMemoryWorkerStore` / `InMemoryJobStore` — synchronous, dict-backed, used for dev and tests
+- `RedisWorkerStore` / `RedisJobStore` — synchronous `redis.Redis` client, JSON-serialized state in Redis hashes and sets, fails fast on unreachable Redis at init time
+
+The synchronous Redis client is a deliberate v1 trade-off: sync calls from an async context block the event loop briefly, but Redis calls are fast (~1ms LAN) and infrequent. If profiling shows event-loop pressure, migrate the ABCs to async and switch to `redis.asyncio.Redis`.
+
+The FastAPI lifespan closes the stores on shutdown, draining Redis connection pools cleanly.
+
+**Production (Layer 7):** Layer 7a (storage abstraction + Redis backend) is done. Remaining Layer 7 work — see [implementation roadmap](./2026-06-16-implementation-roadmap.md): 7b (compose hardening: Docker healthchecks, resource limits, persistent volumes) and 7c (TLS via reverse proxy).
 
 ## Capability Discovery
 
