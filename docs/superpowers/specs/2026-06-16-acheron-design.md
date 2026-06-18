@@ -359,6 +359,8 @@ Runs on the orchestrator (CPU-only, NLTK punkt tokenizer).
 
 Workers self-register via `POST /workers` on the orchestrator API. The registry is in-memory (`WorkerRegistry` class), mapping worker IDs to their endpoint, transport, and capabilities.
 
+**Registration security:** Shared secret model. Orchestrator has `ACHERON_REGISTRATION_TOKEN` env var. `POST /workers` requires `Authorization: Bearer <token>` header. Missing or invalid token → 401. If env var is unset, registration is open (dev mode).
+
 **Health monitoring:** A `HealthMonitor` background task polls all registered workers every 30s via `GET {endpoint}/health`. After 3 consecutive failures, the worker is removed from the registry. The monitor runs as an asyncio task, started/stopped via the orchestrator's FastAPI lifespan.
 
 **Step dispatch:** A `StepHandler` dispatches plan steps to workers by matching `step.type` and the plan's language pair. Language matching logic:
@@ -366,6 +368,8 @@ Workers self-register via `POST /workers` on the orchestrator API. The registry 
 - ASR: source in `supported_languages_in`
 - TTS: target in `supported_languages_in` AND target in `supported_languages_out`
 - Extraction/Chunking/Packaging: no language check
+
+**Production (Layer 7):** Redis-backed `WorkerRegistry` and `JobStore` implementations for persistence across orchestrator restarts. TLS between all services. Resource limits (CPU, memory) per container.
 
 ## Capability Discovery
 
@@ -457,9 +461,28 @@ volumes:
   redis-data:
 ```
 
-### GPU Worker (RunPod / HuggingFace)
+### GPU Worker (RunPod / HuggingFace) — Layer 8
 
-Separate Docker images per worker type, built on RunPod PyTorch base or HuggingFace TGI base. Models pre-downloaded at build time or fetched on first run.
+Real TTS/ASR implementations (not stubs). Separate Docker images per worker type, built on PyTorch base with GPU support.
+
+**TTS Worker:**
+- Model: Qwen3-TTS-12Hz-1.7B (HuggingFace Transformers)
+- Dependencies: PyTorch, Transformers, CUDA
+- Accepts text chunks, returns synthesized audio bytes
+- GPU required (minimum 8GB VRAM for 1.7B model)
+
+**ASR Worker:**
+- Model: Whisper-v3 Large (HuggingFace Transformers)
+- Dependencies: PyTorch, Transformers, CUDA
+- Accepts audio bytes, returns transcription text
+- GPU required (minimum 10GB VRAM for Large model)
+
+**Deployment targets:**
+- RunPod serverless (GPU pods with pre-built images)
+- HuggingFace Inference Endpoints
+- Local GPU (Docker Compose with `--gpus` flag)
+
+**Model management:** Models pre-downloaded at image build time or fetched on first run with caching to persistent volume.
 
 Worker exposes:
 - `POST /execute` — single job
@@ -551,34 +574,34 @@ System: Eres un traductor profesional literario. Traduce el siguiente texto en {
 ## Dependencies
 
 **Orchestrator:**
-- Python 3.12+
+- Python 3.14+
 - FastAPI
 - NLTK (punkt tokenizer)
 - FFmpeg (concatenation, M4B container packaging with chapter metadata)
 - tenacity (retry logic)
-- Redis client (redis-py)
+- Redis client (redis-py) — Layer 7
 - httpx (worker communication)
 - click (CLI framework)
 
-**TTS Worker:**
-- PyTorch
+**TTS Worker (Layer 8):**
+- PyTorch + CUDA
 - HuggingFace Transformers
 - Qwen3-TTS-12Hz-1.7B
 
-**ASR Worker:**
-- PyTorch
+**ASR Worker (Layer 8):**
+- PyTorch + CUDA
 - HuggingFace Transformers
 - Whisper-v3 (Large)
 
 **Dashboard:**
-- Python 3.12+
-- FastAPI or Starlette
+- Python 3.14+
+- FastAPI
 - Jinja2
 - HTMX
 - httpx (API client)
 
 **CLI:**
-- Python 3.12+
+- Python 3.14+
 - click (CLI framework)
 - httpx (API client)
 - rich (terminal formatting)

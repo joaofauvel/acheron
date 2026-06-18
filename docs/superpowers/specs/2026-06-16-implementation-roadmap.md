@@ -121,6 +121,50 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 
 ---
 
+### Layer 7 — Production Hardening
+
+**Scope**: Redis-backed stores, registration security, TLS, persistent storage, resource limits, healthchecks.
+
+**Files**:
+- `src/acheron/shell/registry.py` — Redis-backed `WorkerRegistry`
+- `src/acheron/shell/job_store.py` — Redis-backed `JobStore`
+- `docker-compose.yml` — TLS, volumes, resource limits, healthchecks
+- `Dockerfile.orchestrator` — production-hardened image
+
+**Design**:
+- `WorkerRegistry` and `JobStore` get Redis implementations alongside existing in-memory ones. Selected via config/env var.
+- Registration security: `ACHERON_REGISTRATION_TOKEN` env var, `Authorization: Bearer <token>` on `POST /workers`. 401 on mismatch. Unset = open registration (dev mode).
+- TLS: self-signed certs or reverse proxy (nginx/caddy) for local dev. Production uses cert-manager or cloud provider certs.
+- Persistent volumes: `/data/jobs/` for cached step outputs, Redis data volume.
+- Resource limits: CPU/memory constraints per container in Compose.
+- Healthchecks: `GET /health` on orchestrator and workers, integrated with Docker healthcheck and Compose `depends_on`.
+
+**Deps**: Layer 0-5. External: redis-py (already in deps)
+
+---
+
+### Layer 8 — Real GPU Workers
+
+**Scope**: PyTorch-based TTS and ASR workers with real models. GPU Dockerfiles. Deployment configs.
+
+**Files**:
+- `src/acheron/shell/transports/local.py` — extended with TTS/ASR implementations
+- `workers/tts/` — TTS worker app + Dockerfile
+- `workers/asr/` — ASR worker app + Dockerfile
+- `workers/tts/Dockerfile` — PyTorch + CUDA base, Qwen3-TTS model
+- `workers/asr/Dockerfile` — PyTorch + CUDA base, Whisper-v3 model
+
+**Design**:
+- TTS: Qwen3-TTS-12Hz-1.7B, HuggingFace Transformers. Accepts text, returns audio bytes. Min 8GB VRAM.
+- ASR: Whisper-v3 Large, HuggingFace Transformers. Accepts audio, returns text. Min 10GB VRAM.
+- Deployment: RunPod serverless, HuggingFace Inference Endpoints, local GPU (`docker compose --gpus`).
+- Model management: pre-downloaded at build time or fetched on first run with persistent volume caching.
+- Workers implement same HTTP interface as stubs (`/health`, `/submit`, `/capabilities`).
+
+**Deps**: Layer 0-7. External: PyTorch, Transformers, CUDA
+
+---
+
 ## Status
 
 | Layer | Status | Notes |
@@ -132,3 +176,5 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 4 | done | API + CLI |
 | 5 | partial | HttpWorker + dashboard done; Docker Compose pending |
 | 6 | planned | gRPC streaming transport |
+| 7 | planned | Production hardening: Redis stores, TLS, security, limits |
+| 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
