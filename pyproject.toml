@@ -117,6 +117,7 @@ testpaths = ["tests", "stubs/tests"]
 filterwarnings = [
     "ignore::DeprecationWarning:websockets.legacy",
     "ignore::DeprecationWarning:uvicorn.protocols.websockets",
+    "ignore:.*wait_container_is_ready.*:DeprecationWarning:testcontainers",
 ]
 
 [tool.importlinter]
