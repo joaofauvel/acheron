@@ -23,6 +23,14 @@ lint-imports:
 type-check-pyright:
     uv run basedpyright
 
+# Compile protobuf definitions
+proto:
+    uv run python -m grpc_tools.protoc \
+        -I proto \
+        --python_out=src/acheron/proto \
+        --grpc_python_out=src/acheron/proto \
+        proto/synthesis.proto
+
 # Full validation pipeline: lint, type-check, then test
 validate: lint-strict lint-imports type-check type-check-pyright test
 

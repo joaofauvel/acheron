@@ -74,6 +74,7 @@ combine-as-imports = true
 "dashboard/__init__.py" = ["D104"]
 "dashboard/templates/__init__.py" = ["D104"]
 "stubs/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC003", "ANN", "ARG001", "ARG002", "FBT"]
+"src/acheron/proto/**" = ["I", "E", "F", "W", "D", "ANN", "N"]
 "src/acheron/core/interfaces.py" = ["TC001"]
 
 [tool.mypy]
