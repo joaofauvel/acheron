@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import httpx
@@ -13,8 +14,14 @@ from starlette.requests import Request  # noqa: TC002
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
-def create_app(orchestrator_url: str = "http://localhost:8000") -> FastAPI:
-    """Create the Acheron dashboard FastAPI application."""
+def create_app(orchestrator_url: str | None = None) -> FastAPI:
+    """Create the Acheron dashboard FastAPI application.
+
+    Reads the orchestrator URL from the ``ACHERON_URL`` environment variable
+    when not provided explicitly.
+    """
+    if orchestrator_url is None:
+        orchestrator_url = os.environ.get("ACHERON_URL", "http://localhost:8000")
     app = FastAPI(title="Acheron Dashboard")
 
     async def _fetch(path: str) -> dict:

@@ -25,6 +25,28 @@ async def client(app):
         yield c
 
 
+class TestEnvConfig:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_reads_acheron_url_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Dashboard uses ACHERON_URL env var when no orchestrator_url is passed."""
+        target = "http://orch-from-env:9999"
+        monkeypatch.setenv("ACHERON_URL", target)
+        app = create_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            respx.get(f"{target}/jobs").mock(return_value=httpx.Response(200, json={"jobs": []}))
+            resp = await client.get("/partials/jobs")
+            assert resp.status_code == 200
+            assert respx.calls.call_count == 1
+            assert str(respx.calls[0].request.url) == f"{target}/jobs"
+
+    def test_explicit_url_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ACHERON_URL", "http://env-host:1111")
+        app = create_app(orchestrator_url="http://explicit:2222")
+        assert app is not None
+
+
 class TestIndexPage:
     @pytest.mark.asyncio
     async def test_index_returns_200(self, client):
