@@ -329,3 +329,13 @@ def test_submit_validation_error_shows_detail(tmp_path: Path) -> None:
     assert result.exit_code != 0
     assert "422" in result.output
     assert "Invalid language path" in result.output
+
+
+@respx.mock
+def test_connect_error_shows_friendly_message() -> None:
+    respx.get(f"{_BASE_URL}/jobs").mock(side_effect=httpx.ConnectError("Connection refused"))
+    runner = CliRunner()
+    result = runner.invoke(main, ["jobs"])
+    assert result.exit_code != 0
+    assert "Cannot connect" in result.output
+    assert "server running" in result.output.lower()

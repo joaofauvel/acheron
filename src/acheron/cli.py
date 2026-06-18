@@ -38,6 +38,11 @@ def _get_client() -> AcheronClient:
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     try:
         return asyncio.run(coro)
+    except httpx.ConnectError:
+        url = os.environ.get("ACHERON_URL", "http://localhost:8000")
+        console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
+        console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
+        raise SystemExit(1) from None
     except httpx.HTTPStatusError as exc:
         detail = (
             exc.response.json().get("detail", str(exc))
