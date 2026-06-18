@@ -1,0 +1,21 @@
+{% if workers %}
+<table>
+  <thead>
+    <tr><th>Worker ID</th><th>Type</th><th>Endpoint</th><th>Transport</th><th>Health</th><th>Failures</th></tr>
+  </thead>
+  <tbody>
+    {% for w in workers %}
+    <tr>
+      <td>{{ w.worker_id }}</td>
+      <td>{{ w.worker_type }}</td>
+      <td>{{ w.endpoint }}</td>
+      <td>{{ w.transport }}</td>
+      <td><span class="dot {{ 'dot-green' if w.consecutive_failures == 0 else 'dot-red' }}"></span></td>
+      <td>{{ w.consecutive_failures }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#8b949e">No workers registered.</p>
+{% endif %}

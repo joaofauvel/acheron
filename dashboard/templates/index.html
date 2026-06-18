@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Acheron Dashboard</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #0d1117; color: #c9d1d9; }
+    h1 { color: #58a6ff; }
+    h2 { color: #8b949e; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #21262d; }
+    th { color: #8b949e; font-weight: 600; }
+    .badge { padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.8rem; font-weight: 500; }
+    .badge-running { background: #1f6feb33; color: #58a6ff; }
+    .badge-completed { background: #23863633; color: #3fb950; }
+    .badge-failed { background: #da363433; color: #f85149; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+    .dot-green { background: #3fb950; }
+    .dot-red { background: #f85149; }
+    .section { margin-bottom: 2rem; }
+  </style>
+</head>
+<body>
+  <h1>Acheron</h1>
+  {% if user %}<p style="color:#8b949e">Signed in as {{ user }}</p>{% endif %}
+
+  <div class="section" id="jobs">
+    <h2>Jobs</h2>
+    <div hx-get="/partials/jobs" hx-trigger="load, every 2s" hx-swap="innerHTML">
+      <p style="color:#8b949e">Loading jobs...</p>
+    </div>
+  </div>
+
+  <div class="section" id="workers">
+    <h2>Workers</h2>
+    <div hx-get="/partials/workers" hx-trigger="load, every 2s" hx-swap="innerHTML">
+      <p style="color:#8b949e">Loading workers...</p>
+    </div>
+  </div>
+
+  <div class="section" id="cost">
+    <h2>Cost</h2>
+    <div hx-get="/partials/cost" hx-trigger="load, every 2s" hx-swap="innerHTML">
+      <p style="color:#8b949e">Loading cost data...</p>
+    </div>
+  </div>
+</body>
+</html>
