@@ -41,10 +41,16 @@ def _serialize_capabilities(cap: WorkerCapabilities) -> str:
 
 
 def _deserialize_capabilities(blob: str) -> WorkerCapabilities:
+    from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
     from acheron.core.models import WorkerCapabilities, WorkerType  # noqa: PLC0415
 
-    data = json.loads(blob)
-    return WorkerCapabilities(
+    try:
+        data = json.loads(blob)
+    except json.JSONDecodeError as exc:
+        msg = f"Capabilities blob is not valid JSON: {exc}"
+        raise CacheCorruptedError(msg) from exc
+    try:
+        return WorkerCapabilities(
         worker_type=WorkerType(data["worker_type"]),
         supported_languages_in=frozenset(data["supported_languages_in"]),
         supported_languages_out=frozenset(data["supported_languages_out"]),
@@ -55,6 +61,9 @@ def _deserialize_capabilities(blob: str) -> WorkerCapabilities:
         model_source=data["model_source"],
         metadata=data["metadata"],
     )
+    except (KeyError, ValueError) as exc:
+        msg = f"Capabilities blob is missing or has invalid fields: {exc}"
+        raise CacheCorruptedError(msg) from exc
 
 
 def _worker_fields(

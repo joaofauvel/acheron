@@ -378,11 +378,13 @@ After 3 consecutive failures, the worker is removed from the registry. The monit
 
 **Storage backends:** The `WorkerStore` and `JobStore` ABCs live in `src/acheron/shell/stores/`. Implementations:
 - `InMemoryWorkerStore` / `InMemoryJobStore` — synchronous, dict-backed, used for dev and tests
-- `RedisWorkerStore` / `RedisJobStore` — synchronous `redis.Redis` client, JSON-serialized state in Redis hashes and sets, fails fast on unreachable Redis at init time
+- `RedisWorkerStore` / `RedisJobStore` — synchronous `redis.Redis` client, JSON-serialized state in Redis hashes and sets, fails fast on unreachable Redis at init time. The `TrackedJob` round-trip persists the full job state including the `Plan` and `PlanResult`.
 
 The synchronous Redis client is a deliberate v1 trade-off: sync calls from an async context block the event loop briefly, but Redis calls are fast (~1ms LAN) and infrequent. If profiling shows event-loop pressure, migrate the ABCs to async and switch to `redis.asyncio.Redis`.
 
-The FastAPI lifespan closes the stores on shutdown, draining Redis connection pools cleanly.
+`Orchestrator.close()` releases store resources with exception isolation (one store's close failing doesn't skip the other), called from the FastAPI lifespan.
+
+**Local worker handlers** are kept in a side dict on the orchestrator (`_local_handlers: dict[str, LocalJobHandler]`), not in `RegisteredWorker.metadata`. Worker `metadata` is a JSON-serializable contract used by persistence backends; coroutine handlers are not serializable. Use the `Orchestrator.register_worker(handler=...)` keyword-only parameter to register a local worker.
 
 **Production (Layer 7):** Layers 7a (storage abstraction + Redis backend) and 7b (production compose hardening) are done. Remaining Layer 7 work — see [implementation roadmap](./2026-06-16-implementation-roadmap.md): 7c (TLS via reverse proxy).
 

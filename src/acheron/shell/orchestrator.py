@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass
@@ -121,18 +122,20 @@ class Orchestrator:
     def _verify_data_dir_writable(self) -> None:
         """Ensure the data dir exists and is writable. Raises AcheronError otherwise."""
         data_dir = self._cache.data_dir
+        probe = data_dir / ".acheron_write_test"
         try:
             data_dir.mkdir(parents=True, exist_ok=True)
-            probe = data_dir / ".acheron_write_test"
             probe.write_text("ok", encoding="utf-8")
             probe.read_text(encoding="utf-8")
-            probe.unlink()
         except OSError as exc:
             msg = (
                 f"Data dir {data_dir} is not writable: {exc}. "
                 "Mount a writable volume or set ACHERON_DATA_DIR to a writable path."
             )
             raise AcheronError(msg) from exc
+        finally:
+            with contextlib.suppress(OSError):
+                probe.unlink()
 
     def _register_built_in_local_workers(self) -> None:
         """Register in-process local workers for orchestration-level steps.
