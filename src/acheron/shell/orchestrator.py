@@ -109,11 +109,30 @@ class Orchestrator:
     ) -> None:
         self._registry = registry
         self._cache = cache
+        self._verify_data_dir_writable()
         self._register_built_in_local_workers()
         self._handler = handler or create_step_handler(registry)
         self._job_store = job_store if job_store is not None else create_job_store()
         self._tasks: set[asyncio.Task[None]] = set()
         self._health_monitor = HealthMonitor(registry)
+
+    def _verify_data_dir_writable(self) -> None:
+        """Ensure the data dir exists and is writable. Raises AcheronError otherwise."""
+        from acheron.core.errors import AcheronError  # noqa: PLC0415
+
+        data_dir = self._cache.data_dir
+        try:
+            data_dir.mkdir(parents=True, exist_ok=True)
+            probe = data_dir / ".acheron_write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.read_text(encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            msg = (
+                f"Data dir {data_dir} is not writable: {exc}. "
+                "Mount a writable volume or set ACHERON_DATA_DIR to a writable path."
+            )
+            raise AcheronError(msg) from exc
 
     def _register_built_in_local_workers(self) -> None:
         """Register in-process local workers for orchestration-level steps.
