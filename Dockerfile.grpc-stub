@@ -3,7 +3,8 @@ FROM python:3.14-slim
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN pip install uv && uv sync
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN uv sync
 
 COPY src/acheron/ ./src/acheron/
 COPY stubs/ ./stubs/
