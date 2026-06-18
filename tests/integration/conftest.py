@@ -23,7 +23,6 @@ from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFil
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
@@ -233,17 +232,6 @@ async def grpc_tts_stub() -> AsyncIterator[str]:
     await server.stop(0)
 
 
-def _register_local(reg: InMemoryWorkerStore, worker_type: WorkerType, handler: JobHandler) -> None:
-    """Register a local worker with a handler."""
-    reg.register(
-        f"{worker_type.value}-local",
-        "local",
-        "local",
-        _caps(worker_type),
-        metadata={"handler": handler},
-    )
-
-
 _LANGS = frozenset({"en", "es", "fr", "de"})
 
 
@@ -254,29 +242,13 @@ async def wired_orchestrator(
     http_translation_stub: str,
     grpc_tts_stub: str,
 ) -> AsyncIterator[Orchestrator]:
-    """Orchestrator with real stub workers registered."""
+    """Orchestrator with real stub workers registered.
 
-    async def _mock_handler(job: Job) -> JobResult:
-        return JobResult(
-            job_id=job.job_id,
-            status=JobStatus.SUCCESS,
-            outputs=(
-                OutputFile(
-                    path=f"/tmp/{job.job_id}",
-                    filename=f"{job.job_id}.dat",
-                    size_bytes=100,
-                    checksum="abc",
-                    content_type="application/octet-stream",
-                ),
-            ),
-            metrics=JobMetrics(duration_seconds=0.01),
-        )
+    EXTRACTION/CHUNKING/PACKAGING are auto-registered by the orchestrator as
+    built-in local workers (with their own handlers).
+    """
 
     reg = InMemoryWorkerStore()
-
-    _register_local(reg, WorkerType.EXTRACTION, _mock_handler)
-    _register_local(reg, WorkerType.CHUNKING, _mock_handler)
-    _register_local(reg, WorkerType.PACKAGING, _mock_handler)
 
     reg.register(
         "tts-http",
@@ -317,8 +289,7 @@ async def wired_orchestrator(
         ),
     )
 
-    handler = create_step_handler(reg)
-    orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
+    orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path))
     await orch.start()
     yield orch
     await orch.shutdown()

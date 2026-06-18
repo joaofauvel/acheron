@@ -5,17 +5,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
-from acheron.core.models import EpubRequest, Job, JobResult, WorkerCapabilities, WorkerType
+from acheron.core.models import EpubRequest, WorkerCapabilities, WorkerType
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import TrackedJob
-from acheron.shell.local_handlers import chunk_handler, extract_handler, package_handler
+from acheron.shell.local_handlers import (
+    LocalJobHandler,
+    chunk_handler,
+    extract_handler,
+    package_handler,
+)
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 
@@ -27,9 +31,6 @@ if TYPE_CHECKING:
     from acheron.shell.stores.base import JobStore, WorkerStore
 
 logger = logging.getLogger(__name__)
-
-
-type LocalJobHandler = Callable[[Job], Awaitable[JobResult]]
 
 
 _BUILT_IN_LOCAL_HANDLERS: dict[WorkerType, LocalJobHandler] = {
@@ -110,16 +111,15 @@ class Orchestrator:
         self._registry = registry
         self._cache = cache
         self._verify_data_dir_writable()
+        self._local_handlers: dict[str, LocalJobHandler] = {}
         self._register_built_in_local_workers()
-        self._handler = handler or create_step_handler(registry)
+        self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
         self._job_store = job_store if job_store is not None else create_job_store()
         self._tasks: set[asyncio.Task[None]] = set()
         self._health_monitor = HealthMonitor(registry)
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the data dir exists and is writable. Raises AcheronError otherwise."""
-        from acheron.core.errors import AcheronError  # noqa: PLC0415
-
         data_dir = self._cache.data_dir
         try:
             data_dir.mkdir(parents=True, exist_ok=True)
@@ -139,18 +139,30 @@ class Orchestrator:
 
         Only registers a step type if no worker of that type is already in the
         registry, so user-registered workers (e.g. custom extraction logic) take
-        precedence over the stubs.
+        precedence over the stubs. The handler is kept in a side dict on the
+        orchestrator (not in worker metadata) because handlers are not
+        JSON-serializable and would break non-memory backends like Redis.
         """
         for worker_type, handler in _BUILT_IN_LOCAL_HANDLERS.items():
             if self._registry.find_by_type(worker_type):
                 continue
+            worker_id = f"{worker_type.value}-local"
+            self._local_handlers[worker_id] = handler
             self._registry.register(
-                worker_id=f"{worker_type.value}-local",
+                worker_id=worker_id,
                 endpoint="local",
                 transport="local",
                 capabilities=_all_languages_caps(worker_type),
-                metadata={"handler": handler},
+                metadata={},
             )
+
+    async def close(self) -> None:
+        """Release any resources held by the stores. Idempotent and exception-isolated."""
+        for close_attr in ("_registry", "_job_store"):
+            try:
+                getattr(self, close_attr).close()
+            except Exception:
+                logger.exception("Failed to close %s", close_attr)
 
     async def start(self) -> None:
         """Start background tasks."""
@@ -259,15 +271,25 @@ class Orchestrator:
 
         return [LanguagePair(src=k[0], dst=k[1], workers=tuple(v)) for k, v in pairs.items()]
 
-    def register_worker(
+    def register_worker(  # noqa: PLR0913
         self,
         worker_id: str,
         endpoint: str,
         transport: str,
         capabilities: WorkerCapabilities,
         metadata: dict[str, object] | None = None,
+        *,
+        handler: LocalJobHandler | None = None,
     ) -> None:
-        """Register a worker in the registry."""
+        """Register a worker in the registry.
+
+        For ``transport="local"`` workers, pass ``handler`` to make the
+        in-process handler available to the step handler. Storing the handler
+        in ``metadata`` is not supported because metadata is persisted by
+        backends like Redis, and handlers are not JSON-serializable.
+        """
+        if transport == "local" and handler is not None:
+            self._local_handlers[worker_id] = handler
         self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
         logger.info(
             "Registered worker %s (%s, %s → %s)", worker_id, capabilities.worker_type.value, endpoint, transport

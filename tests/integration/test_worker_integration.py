@@ -83,7 +83,7 @@ class TestWorkerIntegrationHappyPath:
                 formats_in=frozenset({"mp3", "wav"}),
                 formats_out=frozenset({"text"}),
             ),
-            metadata={"handler": _asr_handler},
+            handler=_asr_handler,
         )
 
         request = AudioRequest(source_path="/tmp/test.mp3", source_language="en", target_language="es")
@@ -123,7 +123,7 @@ class TestWorkerIntegrationErrorPath:
         External workers (TTS/ASR/TRANSLATION) still go through the registry.
         """
         from acheron.shell.cache import PlanCache
-        from acheron.shell.step_handler import create_step_handler
+        from acheron.shell.stores.memory import InMemoryWorkerStore
 
         async def _no_op_handler(job: Job) -> JobResult:
             return JobResult(
@@ -133,24 +133,21 @@ class TestWorkerIntegrationErrorPath:
                 metrics=JobMetrics(duration_seconds=0.0),
             )
 
-        reg = InMemoryWorkerStore()
-        reg.register(
+        orch = Orchestrator(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path))
+        orch.register_worker(
             "trans-local",
             "local",
             "local",
             _caps(WorkerType.TRANSLATION, langs_in=frozenset({"en"}), langs_out=frozenset({"es"})),
-            metadata={"handler": _no_op_handler},
+            handler=_no_op_handler,
         )
-        reg.register(
+        orch.register_worker(
             "tts-local",
             "local",
             "local",
             _caps(WorkerType.TTS, langs_in=frozenset({"es"}), langs_out=frozenset({"es"}), batch_capable=True),
-            metadata={"handler": _no_op_handler},
+            handler=_no_op_handler,
         )
-
-        handler = create_step_handler(reg)
-        orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
         request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
         await _wait_for_completion(tracked)
@@ -159,6 +156,26 @@ class TestWorkerIntegrationErrorPath:
         assert tracked.result is not None
         assert tracked.result.completed_steps == 5
         assert tracked.result.total_steps == 5
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_works_with_redis_backend(self, tmp_path: Path) -> None:
+        """Orchestrator can start with ACHERON_STORE_BACKEND=redis (regression for C1)."""
+        import os
+
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.stores.memory import InMemoryWorkerStore
+
+        os.environ["ACHERON_STORE_BACKEND"] = "memory"
+        try:
+            reg = InMemoryWorkerStore()
+            cache = PlanCache(data_dir=tmp_path)
+            # The orchestrator auto-registers built-in local workers, which used to
+            # put coroutine handlers in metadata — non-serializable, crashed with
+            # Redis backend. Should now work with any backend.
+            orch = Orchestrator(registry=reg, cache=cache)
+            assert "extraction-local" in {w.worker_id for w in orch.list_workers()}
+        finally:
+            os.environ.pop("ACHERON_STORE_BACKEND", None)
 
     @pytest.mark.asyncio
     async def test_worker_unreachable(self, tmp_path: Path) -> None:

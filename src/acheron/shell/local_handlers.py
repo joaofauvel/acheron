@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFile
+
+type LocalJobHandler = Callable[[Job], Awaitable[JobResult]]
 
 
 async def extract_handler(job: Job) -> JobResult:
