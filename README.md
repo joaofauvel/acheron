@@ -62,16 +62,20 @@ src/acheron/
   core/             # Domain models, interfaces, planner (no shell imports)
   shell/            # API, CLI, transports, orchestrator, executors
     api/            # FastAPI routes
+    stores/         # WorkerStore + JobStore ABCs; memory + redis impls
     transports/     # HttpWorker, GrpcWorker, LocalWorker
     executors/      # Sequential, async, batch execution strategies
   proto/            # Generated protobuf code (gitignored)
 dashboard/          # HTMX monitoring dashboard (separate package)
 stubs/              # Stub workers for local dev (HTTP + gRPC)
 tests/              # Unit + integration tests (mirrors src/)
+  shell/stores/     # Store tests (memory + redis-via-testcontainers)
 proto/              # Proto definitions
 ```
 
 The `core/` package never imports from `shell/` — enforced by import-linter.
+
+**Storage backends** — `WorkerStore` and `JobStore` are abstract; the orchestrator picks between `InMemoryWorkerStore`/`InMemoryJobStore` (dev) and `RedisWorkerStore`/`RedisJobStore` (production) via `ACHERON_STORE_BACKEND=memory|redis`. In-memory local handlers for `EXTRACTION`/`CHUNKING`/`PACKAGING` are auto-registered by the orchestrator on startup.
 
 ### Testing
 
@@ -82,7 +86,7 @@ uv run pytest tests/integration/  # integration tests only
 uv run pytest -k "test_name" # single test
 ```
 
-Integration tests start real HTTP/gRPC stub servers and verify the full orchestrator → worker dispatch path.
+Integration tests start real HTTP/gRPC stub servers and verify the full orchestrator → worker dispatch path. Redis store tests use `testcontainers[redis]` to spin up real Redis containers.
 
 ### Proto Compilation
 
@@ -106,15 +110,20 @@ Services: redis, orchestrator, dashboard, tts-stub, asr-stub, tts-grpc-stub, tra
 
 All services are built from a single `Dockerfile` with multiple targets. The builder stage compiles a wheel with `uv build`, then each runtime stage installs it with plain pip — no uv or hatchling in the final images. Docker Compose shares the builder stage across services.
 
+**Production hardening** is built in: every service has a `healthcheck`, dependencies use `condition: service_healthy`, and state persists across restarts via named volumes (`acheron-data` for the orchestrator's plan cache, `redis-data` for Redis). The orchestrator fails fast at startup if `ACHERON_DATA_DIR` is unwritable.
+
 Stub workers return mock data. Replace with real GPU workers (Layer 8) for production.
 
 ### Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ACHERON_URL` | `http://localhost:8000` | CLI: orchestrator URL |
+| `ACHERON_URL` | `http://localhost:8000` | CLI and dashboard: orchestrator URL |
 | `ACHERON_REGISTRATION_TOKEN` | `dev-registration-token` | Worker registration shared secret |
-| `REDIS_URL` | `redis://redis:6379` | Orchestrator: Redis connection |
+| `ACHERON_DATA_DIR` | `/data/jobs` | Orchestrator: plan and step-output cache directory (must be writable) |
+| `ACHERON_STORE_BACKEND` | `memory` | Orchestrator: `memory` (in-process) or `redis` (persistent) |
+| `REDIS_URL` | `redis://localhost:6379` | Orchestrator: Redis connection (used when `ACHERON_STORE_BACKEND=redis`) |
+| `WORKER_HTTP_PORT` | `9002` | gRPC stub: HTTP `/health` sidecar port for Docker healthchecks |
 
 ## CLI
 
