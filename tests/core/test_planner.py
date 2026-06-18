@@ -162,3 +162,24 @@ class TestLanguagePathValidation:
         plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
         by_id = {s.step_id: s for s in plan.steps}
         assert by_id["transcribe"].payload["asr_model"] is None
+
+    def test_same_language_skips_translation(self) -> None:
+        caps = (_tts_caps("en"),)
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
+        step_ids = [s.step_id for s in plan.steps]
+        assert step_ids == ["extract", "chunk", "synthesize", "package"]
+
+    def test_same_language_audio_skips_translation(self) -> None:
+        caps = (_tts_caps("en"), _asr_caps("en"))
+        request = AudioRequest(source_path="/input/podcast.mp3", source_language="en", target_language="en")
+        plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
+        step_ids = [s.step_id for s in plan.steps]
+        assert step_ids == ["extract", "transcribe", "chunk", "synthesize", "package"]
+
+    def test_same_language_synthesize_depends_on_chunk(self) -> None:
+        caps = (_tts_caps("en"),)
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        plan = compile_plan(request, ExecutorStrategy.BATCH_ASYNC, caps)
+        by_id = {s.step_id: s for s in plan.steps}
+        assert by_id["synthesize"].depends_on == ("chunk",)

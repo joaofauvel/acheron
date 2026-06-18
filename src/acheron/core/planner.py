@@ -67,7 +67,7 @@ def _validate_language_path(request: JobRequest, caps: tuple[WorkerCapabilities,
                 msg = f"No ASR worker supports language: {src}"
                 raise InvalidLanguagePathError(msg)
 
-    if not _has_worker(WorkerType.TRANSLATION, caps, src, dst):
+    if src != dst and not _has_worker(WorkerType.TRANSLATION, caps, src, dst):
         msg = f"No translation worker supports: {src} → {dst}"
         raise InvalidLanguagePathError(msg)
 
@@ -91,7 +91,10 @@ def _has_worker(
 
 def _epub_steps(request: EpubRequest) -> list[PlanStep]:
     """Generate step sequence for EPUB input."""
-    return [
+    needs_translation = request.source_language != request.target_language
+    translate_dep = "chunk"
+
+    steps: list[PlanStep] = [
         PlanStep(
             step_id="extract",
             type=WorkerType.EXTRACTION,
@@ -106,34 +109,49 @@ def _epub_steps(request: EpubRequest) -> list[PlanStep]:
             status=StepStatus.PENDING,
             payload={},
         ),
-        PlanStep(
-            step_id="translate",
-            type=WorkerType.TRANSLATION,
-            depends_on=("chunk",),
-            status=StepStatus.PENDING,
-            payload={"source_language": request.source_language, "target_language": request.target_language},
-        ),
-        PlanStep(
-            step_id="synthesize",
-            type=WorkerType.TTS,
-            depends_on=("translate",),
-            status=StepStatus.PENDING,
-            payload={"target_language": request.target_language},
-            batch=True,
-        ),
-        PlanStep(
-            step_id="package",
-            type=WorkerType.PACKAGING,
-            depends_on=("synthesize",),
-            status=StepStatus.PENDING,
-            payload={},
-        ),
     ]
+
+    if needs_translation:
+        steps.append(
+            PlanStep(
+                step_id="translate",
+                type=WorkerType.TRANSLATION,
+                depends_on=("chunk",),
+                status=StepStatus.PENDING,
+                payload={"source_language": request.source_language, "target_language": request.target_language},
+            ),
+        )
+        translate_dep = "translate"
+
+    steps.extend(
+        [
+            PlanStep(
+                step_id="synthesize",
+                type=WorkerType.TTS,
+                depends_on=(translate_dep,),
+                status=StepStatus.PENDING,
+                payload={"target_language": request.target_language},
+                batch=True,
+            ),
+            PlanStep(
+                step_id="package",
+                type=WorkerType.PACKAGING,
+                depends_on=("synthesize",),
+                status=StepStatus.PENDING,
+                payload={},
+            ),
+        ]
+    )
+
+    return steps
 
 
 def _audio_steps(request: AudioRequest) -> list[PlanStep]:
     """Generate step sequence for audio input."""
-    return [
+    needs_translation = request.source_language != request.target_language
+    translate_dep = "chunk"
+
+    steps: list[PlanStep] = [
         PlanStep(
             step_id="extract",
             type=WorkerType.EXTRACTION,
@@ -155,26 +173,38 @@ def _audio_steps(request: AudioRequest) -> list[PlanStep]:
             status=StepStatus.PENDING,
             payload={},
         ),
-        PlanStep(
-            step_id="translate",
-            type=WorkerType.TRANSLATION,
-            depends_on=("chunk",),
-            status=StepStatus.PENDING,
-            payload={"source_language": request.source_language, "target_language": request.target_language},
-        ),
-        PlanStep(
-            step_id="synthesize",
-            type=WorkerType.TTS,
-            depends_on=("translate",),
-            status=StepStatus.PENDING,
-            payload={"target_language": request.target_language},
-            batch=True,
-        ),
-        PlanStep(
-            step_id="package",
-            type=WorkerType.PACKAGING,
-            depends_on=("synthesize",),
-            status=StepStatus.PENDING,
-            payload={},
-        ),
     ]
+
+    if needs_translation:
+        steps.append(
+            PlanStep(
+                step_id="translate",
+                type=WorkerType.TRANSLATION,
+                depends_on=("chunk",),
+                status=StepStatus.PENDING,
+                payload={"source_language": request.source_language, "target_language": request.target_language},
+            ),
+        )
+        translate_dep = "translate"
+
+    steps.extend(
+        [
+            PlanStep(
+                step_id="synthesize",
+                type=WorkerType.TTS,
+                depends_on=(translate_dep,),
+                status=StepStatus.PENDING,
+                payload={"target_language": request.target_language},
+                batch=True,
+            ),
+            PlanStep(
+                step_id="package",
+                type=WorkerType.PACKAGING,
+                depends_on=("synthesize",),
+                status=StepStatus.PENDING,
+                payload={},
+            ),
+        ]
+    )
+
+    return steps
