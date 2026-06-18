@@ -66,16 +66,16 @@ Worker healthcheck uses the existing `/health` endpoints on the HTTP stubs (no c
 
 The gRPC stub has a gRPC `HealthServicer` (added with the Layer 6 health-monitor fix) but no HTTP endpoint. Docker healthchecks want HTTP, so we add a small FastAPI sidecar on the gRPC worker container.
 
-**Approach**: run a FastAPI app alongside the gRPC server in the same process, sharing the asyncio event loop. Two `uvicorn` apps is messy; better: a single FastAPI app that hosts both the gRPC servicer and the HTTP `/health`.
-
-But that's a structural change. Simpler: run two uvicorn workers (one HTTP, one gRPC) in the same process using a custom entrypoint.
+**Approach**: use **FastAPI + uvicorn** (both already dependencies, since the HTTP stubs use them) for the HTTP sidecar. Run both the gRPC server and the FastAPI app in the same asyncio event loop.
 
 **Concrete plan**: in `stubs/grpc_worker_stub.py`:
-- Add a `_http_app = FastAPI()` with a `/health` endpoint
-- Start the gRPC server (as today) plus an `uvicorn.Server` for the HTTP app on a separate port (e.g., 9002)
+- Add a small `FastAPI` app with a `/health` endpoint returning `{"status": "ok"}`
+- Start the gRPC server (as today) plus an `uvicorn.Server` for the HTTP app on a separate port
 - `WORKER_HTTP_PORT` env var, default `9002`
 - The gRPC server stays on `WORKER_PORT` (default 9001)
 - Both run in the same `asyncio.run` loop via `asyncio.gather`
+
+Tests use `httpx.AsyncClient(transport=ASGITransport(app=...))` to exercise the endpoint without binding a real port. `httpx` is already a dependency and used throughout the test suite for this pattern.
 
 Compose uses the HTTP port for the healthcheck:
 ```yaml
@@ -199,8 +199,8 @@ Per AGENTS.md: tests don't depend on hardcoded paths. `ACHERON_DATA_DIR` is read
 - `src/acheron/shell/api/app.py` — read ACHERON_DATA_DIR
 - `src/acheron/shell/orchestrator.py` — writability check
 - `src/acheron/shell/cache.py` — expose public `data_dir` property (or keep private access)
-- `stubs/grpc_worker_stub.py` — add HTTP /health sidecar
-- `pyproject.toml` — add `aiohttp~=` if needed (or use stdlib `http.server`)
+- `stubs/grpc_worker_stub.py` — add HTTP /health sidecar (FastAPI + uvicorn)
+- `pyproject.toml` — no new deps (FastAPI, uvicorn, httpx already present)
 
 ### Unchanged
 
@@ -208,9 +208,8 @@ Per AGENTS.md: tests don't depend on hardcoded paths. `ACHERON_DATA_DIR` is read
 
 ## Dependencies
 
-- No new runtime dependencies. HTTP server uses Python stdlib (`http.server` or `aiohttp` if needed for asyncio compatibility).
-- `aiohttp` is a small dep (~200KB) if we go that route; stdlib `http.server` works but requires threads.
-- Decision: use `aiohttp` to share the event loop with the gRPC server. Add to dev deps for the gRPC stub image only (the stub Dockerfile already installs the project wheel which has access to all transitive deps).
+- No new runtime dependencies. The HTTP sidecar uses **FastAPI + uvicorn**, both already required by the other HTTP stubs and present in the grpc-stub image (which installs the project wheel).
+- Tests use **httpx** (with `ASGITransport`), already a dependency, to exercise the `/health` endpoint without binding a real port.
 
 ## Out of Scope
 
