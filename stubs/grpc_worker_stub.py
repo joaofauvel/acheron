@@ -38,6 +38,20 @@ class _SynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
             )
 
 
+def _grpc_endpoint(endpoint: str) -> str:
+    """Strip any URL scheme from an endpoint so gRPC can use it as a channel target.
+
+    gRPC's `insecure_channel` expects `host:port`, not `http://host:port`. Workers
+    typically advertise their endpoint with a scheme for HTTP probes, so we strip
+    it here before registering.
+    """
+    if endpoint.startswith("http://"):
+        return endpoint[len("http://") :]
+    if endpoint.startswith("https://"):
+        return endpoint[len("https://") :]
+    return endpoint
+
+
 async def _register(endpoint: str, token: str) -> None:
     """Register with orchestrator, retrying until success."""
     orchestrator_url = os.environ.get("ORCHESTRATOR_URL", "http://orchestrator:8000")
@@ -47,7 +61,7 @@ async def _register(endpoint: str, token: str) -> None:
 
     payload = {
         "worker_id": "tts-grpc-stub",
-        "endpoint": endpoint,
+        "endpoint": _grpc_endpoint(endpoint),
         "transport": "grpc",
         "capabilities": {
             "worker_type": "tts",

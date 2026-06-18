@@ -82,5 +82,6 @@ async def test_self_registers_on_startup(monkeypatch: pytest.MonkeyPatch) -> Non
         assert "/workers" in call_args[0][0]
         body = call_args[1]["json"]
         assert body["transport"] == "grpc"
+        assert body["endpoint"] == "tts-grpc-stub:9001"
 
         await server.stop(0)
