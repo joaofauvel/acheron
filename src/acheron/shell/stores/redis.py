@@ -51,16 +51,16 @@ def _deserialize_capabilities(blob: str) -> WorkerCapabilities:
         raise CacheCorruptedError(msg) from exc
     try:
         return WorkerCapabilities(
-        worker_type=WorkerType(data["worker_type"]),
-        supported_languages_in=frozenset(data["supported_languages_in"]),
-        supported_languages_out=frozenset(data["supported_languages_out"]),
-        supported_formats_in=frozenset(data["supported_formats_in"]),
-        supported_formats_out=frozenset(data["supported_formats_out"]),
-        max_payload_bytes=data["max_payload_bytes"],
-        batch_capable=data["batch_capable"],
-        model_source=data["model_source"],
-        metadata=data["metadata"],
-    )
+            worker_type=WorkerType(data["worker_type"]),
+            supported_languages_in=frozenset(data["supported_languages_in"]),
+            supported_languages_out=frozenset(data["supported_languages_out"]),
+            supported_formats_in=frozenset(data["supported_formats_in"]),
+            supported_formats_out=frozenset(data["supported_formats_out"]),
+            max_payload_bytes=data["max_payload_bytes"],
+            batch_capable=data["batch_capable"],
+            model_source=data["model_source"],
+            metadata=data["metadata"],
+        )
     except (KeyError, ValueError) as exc:
         msg = f"Capabilities blob is missing or has invalid fields: {exc}"
         raise CacheCorruptedError(msg) from exc
