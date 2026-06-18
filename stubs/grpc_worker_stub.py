@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 import grpc
 import grpc.aio
 import httpx
+import uvicorn
+from fastapi import FastAPI
 from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.proto import synthesis_pb2, synthesis_pb2_grpc
@@ -36,6 +38,17 @@ class _SynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
                 sample_rate=22050,
                 channels=1,
             )
+
+
+def create_http_app() -> FastAPI:
+    """Create the FastAPI app for the HTTP /health sidecar."""
+    app = FastAPI(title="gRPC Stub Health")
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return app
 
 
 def _grpc_endpoint(endpoint: str) -> str:
@@ -108,12 +121,25 @@ async def create_server(port: int = 9001, *, register: bool = True) -> tuple[grp
 
 
 async def _serve() -> None:
-    """Run the stub gRPC server."""
+    """Run the stub gRPC server and the HTTP /health sidecar."""
     port = int(os.environ.get("WORKER_PORT", "9001"))
+    http_port = int(os.environ.get("WORKER_HTTP_PORT", "9002"))
+
     server, actual_port = await create_server(port)
     await server.start()
     logger.info("gRPC stub worker listening on port %d", actual_port)
-    await server.wait_for_termination()
+
+    http_app = create_http_app()
+    config = uvicorn.Config(http_app, host="0.0.0.0", port=http_port, log_level="warning")
+    http_server = uvicorn.Server(config)
+    logger.info("HTTP /health sidecar listening on port %d", http_port)
+
+    server_task = asyncio.create_task(server.wait_for_termination())
+    http_task = asyncio.create_task(http_server.serve())
+    try:
+        await asyncio.gather(server_task, http_task)
+    finally:
+        await server.stop(0)
 
 
 if __name__ == "__main__":
