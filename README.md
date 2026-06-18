@@ -104,6 +104,8 @@ docker compose up --build
 
 Services: redis, orchestrator, dashboard, tts-stub, asr-stub, tts-grpc-stub.
 
+All services are built from a single `Dockerfile` with multiple targets. The builder stage compiles a wheel with `uv build`, then each runtime stage installs it with plain pip — no uv or hatchling in the final images. Docker Compose shares the builder stage across services.
+
 Stub workers return mock data. Replace with real GPU workers (Layer 8) for production.
 
 ### Configuration
