@@ -1,7 +1,7 @@
 # Docker Compose — Layer 5 Final Step
 
 **Date:** 2026-06-17
-**Status:** Draft
+**Status:** Done
 **Depends on:** Layer 4 (API + CLI), HttpWorker, Dashboard
 
 ## Overview

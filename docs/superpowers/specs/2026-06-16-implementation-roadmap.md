@@ -174,7 +174,7 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 2 | done | Registry, caching, local worker |
 | 3 | done | Planner, executors |
 | 4 | done | API + CLI |
-| 5 | partial | HttpWorker + dashboard done; Docker Compose pending |
+| 5 | done | HttpWorker, dashboard, Docker Compose, registration security |
 | 6 | planned | gRPC streaming transport |
 | 7 | planned | Production hardening: Redis stores, TLS, security, limits |
 | 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
