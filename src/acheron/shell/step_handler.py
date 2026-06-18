@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from acheron.core.models import JobResult, Plan, PlanStep
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.registry import RegisteredWorker
-    from acheron.shell.stores.memory import InMemoryWorkerStore
+    from acheron.shell.stores.base import WorkerStore
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str,
 
 
 def create_step_handler(
-    registry: InMemoryWorkerStore,
+    registry: WorkerStore,
     worker_factory: WorkerFactory | None = None,
 ) -> StepHandler:
     """Create a step handler that dispatches to registered workers."""

@@ -17,14 +17,14 @@ from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.local_handlers import chunk_handler, extract_handler, package_handler
 from acheron.shell.step_handler import create_step_handler
-from acheron.shell.stores.memory import InMemoryJobStore
+from acheron.shell.stores import create_job_store
 
 if TYPE_CHECKING:
     from acheron.core.models import ExecutorStrategy, JobRequest
     from acheron.shell.cache import PlanCache
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.registry import RegisteredWorker
-    from acheron.shell.stores.memory import InMemoryWorkerStore
+    from acheron.shell.stores.base import JobStore, WorkerStore
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +101,17 @@ class Orchestrator:
 
     def __init__(
         self,
-        registry: InMemoryWorkerStore,
+        registry: WorkerStore,
         cache: PlanCache,
         handler: StepHandler | None = None,
+        *,
+        job_store: JobStore | None = None,
     ) -> None:
         self._registry = registry
         self._cache = cache
         self._register_built_in_local_workers()
         self._handler = handler or create_step_handler(registry)
-        self._job_store = InMemoryJobStore()
+        self._job_store = job_store if job_store is not None else create_job_store()
         self._tasks: set[asyncio.Task[None]] = set()
         self._health_monitor = HealthMonitor(registry)
 
