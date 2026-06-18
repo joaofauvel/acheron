@@ -53,4 +53,8 @@ def create_app(
     app.include_router(workers.router, prefix="/workers", tags=["workers"])
     app.include_router(capabilities.router, tags=["capabilities"])
 
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
