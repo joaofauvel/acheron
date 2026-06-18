@@ -85,3 +85,4 @@ async def test_self_registers_on_startup(tts_env: None) -> None:
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert "/workers" in call_args[0][0]
+        assert call_args[1]["headers"]["Authorization"] == "Bearer dev-registration-token"

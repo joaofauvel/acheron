@@ -40,8 +40,10 @@ Single `Dockerfile.worker-stub` reused by both TTS and ASR stubs. A minimal Fast
 
 - `GET /health` — returns 200
 - `POST /submit` — returns instant mock `JobResult`:
-  - TTS: `status=COMPLETED`, `output_path` = tiny silent WAV bytes (valid RIFF header, ~100 bytes)
-  - ASR: `status=COMPLETED`, `output_path` = `b"mock transcription"`
+  - TTS: `status=completed`, `output_data` = base64-encoded silent WAV (valid RIFF header, ~100 bytes)
+  - ASR: `status=completed`, `output_data` = base64-encoded `b"mock transcription"`
+
+Note: stubs return inline `output_data` (base64) instead of `output_path` since there is no shared file storage in the dev Compose setup.
 
 ### Configuration (env vars)
 
