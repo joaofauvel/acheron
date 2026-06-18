@@ -91,9 +91,9 @@ class TestJobRoutes:
 
         from acheron.shell.api.app import create_app
         from acheron.shell.cache import PlanCache
-        from acheron.shell.registry import WorkerRegistry
+        from acheron.shell.stores.memory import InMemoryWorkerStore
 
-        app = create_app(registry=WorkerRegistry(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+        app = create_app(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), data_dir=tmp_path)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             response = await c.post(

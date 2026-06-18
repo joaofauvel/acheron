@@ -14,7 +14,7 @@ import httpx
 from grpc.health.v1 import health_pb2, health_pb2_grpc
 
 if TYPE_CHECKING:
-    from acheron.shell.registry import WorkerRegistry
+    from acheron.shell.stores.memory import InMemoryWorkerStore
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class HealthMonitor:
 
     def __init__(
         self,
-        registry: WorkerRegistry,
+        registry: InMemoryWorkerStore,
         interval: float = 30.0,
         health_check: HealthCheckFn | None = None,
     ) -> None:

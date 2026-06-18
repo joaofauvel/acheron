@@ -14,7 +14,7 @@ from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.shell.health import HealthMonitor, _default_health_check
-from acheron.shell.registry import WorkerRegistry
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -36,7 +36,7 @@ def _tts_caps() -> WorkerCapabilities:
 class TestHealthMonitor:
     @pytest.mark.asyncio
     async def test_start_and_stop(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         monitor = HealthMonitor(reg, interval=0.01)
         await monitor.start()
         assert monitor._task is not None  # noqa: SLF001
@@ -45,7 +45,7 @@ class TestHealthMonitor:
 
     @pytest.mark.asyncio
     async def test_records_success_for_healthy_worker(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w1", "http://worker", "http", _tts_caps())
         health_check = AsyncMock(return_value=True)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
@@ -59,7 +59,7 @@ class TestHealthMonitor:
 
     @pytest.mark.asyncio
     async def test_records_failure_for_unhealthy_worker(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w1", "http://worker", "http", _tts_caps())
         health_check = AsyncMock(return_value=False)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
@@ -71,7 +71,7 @@ class TestHealthMonitor:
 
     @pytest.mark.asyncio
     async def test_removes_worker_after_max_failures(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w1", "http://worker", "http", _tts_caps())
         health_check = AsyncMock(return_value=False)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
@@ -116,7 +116,7 @@ class TestDefaultHealthCheck:
 class TestHealthMonitorTransportAware:
     @pytest.mark.asyncio
     async def test_grpc_worker_not_removed_when_healthy(self, grpc_health_server: str) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("tts-grpc", grpc_health_server, "grpc", _tts_caps())
         monitor = HealthMonitor(reg, interval=0.01)
         await monitor.start()

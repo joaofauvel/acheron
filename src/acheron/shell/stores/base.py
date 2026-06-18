@@ -24,22 +24,34 @@ class WorkerStore(ABC):
         transport: str,
         capabilities: WorkerCapabilities,
         metadata: dict[str, object] | None = None,
-    ) -> None: ...
+    ) -> None:
+        """Register a new worker or re-register an existing one."""
+        ...
 
     @abstractmethod
-    def unregister(self, worker_id: str) -> None: ...
+    def unregister(self, worker_id: str) -> None:
+        """Remove a worker from the store."""
+        ...
 
     @abstractmethod
-    def get(self, worker_id: str) -> RegisteredWorker | None: ...
+    def get(self, worker_id: str) -> RegisteredWorker | None:
+        """Look up a worker by ID."""
+        ...
 
     @abstractmethod
-    def list_all(self) -> tuple[RegisteredWorker, ...]: ...
+    def list_all(self) -> tuple[RegisteredWorker, ...]:
+        """Return all registered workers."""
+        ...
 
     @abstractmethod
-    def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]: ...
+    def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]:
+        """Find workers matching a given WorkerType."""
+        ...
 
     @abstractmethod
-    def find_by_language(self, src: str, dst: str) -> tuple[RegisteredWorker, ...]: ...
+    def find_by_language(self, src: str, dst: str) -> tuple[RegisteredWorker, ...]:
+        """Find workers supporting a source→target language pair."""
+        ...
 
     @abstractmethod
     def record_health_failure(self, worker_id: str) -> bool:
@@ -47,7 +59,9 @@ class WorkerStore(ABC):
         ...
 
     @abstractmethod
-    def record_health_success(self, worker_id: str) -> None: ...
+    def record_health_success(self, worker_id: str) -> None:
+        """Record a successful health check, resetting the failure counter."""
+        ...
 
     @abstractmethod
     def close(self) -> None:
@@ -59,13 +73,21 @@ class JobStore(ABC):
     """Persistent or in-memory store of tracked jobs."""
 
     @abstractmethod
-    def put(self, job: TrackedJob) -> None: ...
+    def put(self, job: TrackedJob) -> None:
+        """Store or update a tracked job."""
+        ...
 
     @abstractmethod
-    def get(self, job_id: str) -> TrackedJob | None: ...
+    def get(self, job_id: str) -> TrackedJob | None:
+        """Retrieve a tracked job by ID."""
+        ...
 
     @abstractmethod
-    def list_all(self) -> tuple[TrackedJob, ...]: ...
+    def list_all(self) -> tuple[TrackedJob, ...]:
+        """Return all tracked jobs."""
+        ...
 
     @abstractmethod
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Release any resources held by the store."""
+        ...

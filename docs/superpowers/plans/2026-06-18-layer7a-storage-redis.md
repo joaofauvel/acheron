@@ -6,7 +6,7 @@
 
 **Architecture:** New `src/acheron/shell/stores/` subpackage defines `WorkerStore` and `JobStore` ABCs with **synchronous** methods. In-memory implementations are renames of the current `WorkerRegistry` and `JobStore`. Redis implementations are new and use the **sync** `redis.Redis` client. A factory in `stores/__init__.py` reads `ACHERON_STORE_BACKEND=memory|redis` to pick the implementation. The orchestrator and FastAPI app use the factories by default; tests pass in-memory stores explicitly.
 
-**Tech Stack:** Python 3.14, redis~=5.3 (sync `Redis` client), testcontainers[redis]~=4.8 (dev), existing pytest/httpx/FastAPI stack.
+**Tech Stack:** Python 3.14, redis~=5.3 (sync `Redis` client), testcontainers[redis]~=4.14 (dev), existing pytest/httpx/FastAPI stack.
 
 **Design note on sync:** The project is async-first, so sync Redis is a deliberate trade-off — sync store calls from an async context block the event loop briefly. This is acceptable for v1 because Redis calls are fast (~1ms LAN) and infrequent. If profiling shows event-loop pressure, swap `redis.Redis` for `redis.asyncio.Redis` and migrate the ABCs to async in a follow-up. Documented here so a future engineer knows the trade-off.
 
@@ -38,7 +38,7 @@
 - `src/acheron/shell/health.py` — `HealthMonitor` constructor takes `WorkerStore` (ABC)
 - `src/acheron/shell/step_handler.py` — `create_step_handler` takes `WorkerStore` (ABC)
 - 8 test files — import updates from `WorkerRegistry` → `InMemoryWorkerStore` (and the same for `JobStore`)
-- `pyproject.toml` — add `testcontainers[redis]~=4.8` to dev deps
+- `pyproject.toml` — add `testcontainers[redis]~=4.14` to dev deps
 
 ### Deleted
 
@@ -54,7 +54,7 @@
 
 - [ ] **Step 1: Add testcontainers[redis] to dev deps**
 
-In `pyproject.toml`, in the `[dependency-groups]` `dev` list, add `"testcontainers[redis]~=4.8"`. Alphabetical order. The block should look like:
+In `pyproject.toml`, in the `[dependency-groups]` `dev` list, add `"testcontainers[redis]~=4.14"`. Alphabetical order. The block should look like:
 
 ```toml
 [dependency-groups]
@@ -70,7 +70,7 @@ dev = [
     "pytest-xdist~=3.8",
     "respx~=0.23",
     "ruff~=0.15",
-    "testcontainers[redis]~=4.8",
+    "testcontainers[redis]~=4.14",
     "types-grpcio~=1.0",
     "types-grpcio-health-checking~=1.0",
     "types-protobuf~=5.29",

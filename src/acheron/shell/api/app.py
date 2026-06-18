@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from acheron.shell.api.routes import capabilities, jobs, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.registry import WorkerRegistry
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -27,13 +27,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(
-    registry: WorkerRegistry | None = None,
+    registry: InMemoryWorkerStore | None = None,
     cache: PlanCache | None = None,
     data_dir: Path = Path("/data/jobs"),
 ) -> FastAPI:
     """Create and configure the FastAPI application."""
     if registry is None:
-        registry = WorkerRegistry()
+        registry = InMemoryWorkerStore()
     if cache is None:
         cache = PlanCache(data_dir)
 

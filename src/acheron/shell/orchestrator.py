@@ -14,15 +14,17 @@ from acheron.core.models import EpubRequest, Job, JobResult, WorkerCapabilities,
 from acheron.core.planner import compile_plan
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
-from acheron.shell.job_store import JobStore, TrackedJob
+from acheron.shell.job_store import TrackedJob
 from acheron.shell.local_handlers import chunk_handler, extract_handler, package_handler
 from acheron.shell.step_handler import create_step_handler
+from acheron.shell.stores.memory import InMemoryJobStore
 
 if TYPE_CHECKING:
     from acheron.core.models import ExecutorStrategy, JobRequest
     from acheron.shell.cache import PlanCache
     from acheron.shell.executors._utils import StepHandler
-    from acheron.shell.registry import RegisteredWorker, WorkerRegistry
+    from acheron.shell.registry import RegisteredWorker
+    from acheron.shell.stores.memory import InMemoryWorkerStore
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +101,7 @@ class Orchestrator:
 
     def __init__(
         self,
-        registry: WorkerRegistry,
+        registry: InMemoryWorkerStore,
         cache: PlanCache,
         handler: StepHandler | None = None,
     ) -> None:
@@ -107,7 +109,7 @@ class Orchestrator:
         self._cache = cache
         self._register_built_in_local_workers()
         self._handler = handler or create_step_handler(registry)
-        self._job_store = JobStore()
+        self._job_store = InMemoryJobStore()
         self._tasks: set[asyncio.Task[None]] = set()
         self._health_monitor = HealthMonitor(registry)
 

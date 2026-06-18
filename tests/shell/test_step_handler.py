@@ -16,8 +16,8 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
-from acheron.shell.registry import WorkerRegistry
 from acheron.shell.step_handler import create_step_handler
+from acheron.shell.stores.memory import InMemoryWorkerStore
 from acheron.shell.transports.local import LocalWorker
 
 
@@ -66,7 +66,7 @@ def _make_plan() -> Plan:
 class TestStepHandler:
     @pytest.mark.asyncio
     async def test_dispatches_to_matching_worker(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         local_worker = LocalWorker(
             worker_type=WorkerType.TTS,
             handler=_echo_job_result,
@@ -82,7 +82,7 @@ class TestStepHandler:
 
     @pytest.mark.asyncio
     async def test_raises_when_no_worker_found(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         handler = create_step_handler(reg)
         plan = _make_plan()
         step = plan.steps[0]

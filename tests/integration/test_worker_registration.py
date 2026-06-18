@@ -8,7 +8,7 @@ from acheron.cli import main
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
-from acheron.shell.registry import WorkerRegistry
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,7 +53,7 @@ def test_capabilities_filter_no_match(runner: CliRunner, wired_app: FastAPI) -> 
 def test_workers_shows_built_in_orchestration_workers(
     tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    app = create_app(registry=WorkerRegistry(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+    app = create_app(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), data_dir=tmp_path)
     from httpx import ASGITransport
 
     from acheron.api_client import AcheronClient
@@ -70,7 +70,7 @@ def test_workers_shows_built_in_orchestration_workers(
 
 
 def test_capabilities_empty(tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
-    app = create_app(registry=WorkerRegistry(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+    app = create_app(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), data_dir=tmp_path)
     from httpx import ASGITransport
 
     from acheron.api_client import AcheronClient
@@ -85,7 +85,7 @@ def test_capabilities_empty(tmp_path: Path, runner: CliRunner, monkeypatch: pyte
 
 
 def test_submit_no_workers_fails_at_plan(tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
-    app = create_app(registry=WorkerRegistry(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+    app = create_app(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), data_dir=tmp_path)
     from httpx import ASGITransport
 
     from acheron.api_client import AcheronClient
@@ -101,7 +101,7 @@ def test_submit_no_workers_fails_at_plan(tmp_path: Path, runner: CliRunner, monk
 
 
 def test_submit_wrong_language_fails(tmp_path: Path, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
-    reg = WorkerRegistry()
+    reg = InMemoryWorkerStore()
     reg.register(
         "tts-es",
         "http://tts",

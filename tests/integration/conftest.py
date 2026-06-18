@@ -23,8 +23,8 @@ from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFil
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.registry import WorkerRegistry
 from acheron.shell.step_handler import create_step_handler
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -87,7 +87,7 @@ def asr_caps(lang: str = "en") -> WorkerCapabilities:
 
 def make_app(tmp_path: Path, *, extra_workers: list[tuple[str, str, str, WorkerCapabilities]] | None = None) -> FastAPI:
     """Create a test app with default TTS, translation, and ASR workers."""
-    reg = WorkerRegistry()
+    reg = InMemoryWorkerStore()
     reg.register("tts-1", "http://tts", "http", tts_caps())
     reg.register("trans-1", "http://trans", "http", translation_caps())
     reg.register("asr-1", "http://asr", "http", asr_caps())
@@ -233,7 +233,7 @@ async def grpc_tts_stub() -> AsyncIterator[str]:
     await server.stop(0)
 
 
-def _register_local(reg: WorkerRegistry, worker_type: WorkerType, handler: JobHandler) -> None:
+def _register_local(reg: InMemoryWorkerStore, worker_type: WorkerType, handler: JobHandler) -> None:
     """Register a local worker with a handler."""
     reg.register(
         f"{worker_type.value}-local",
@@ -272,7 +272,7 @@ async def wired_orchestrator(
             metrics=JobMetrics(duration_seconds=0.01),
         )
 
-    reg = WorkerRegistry()
+    reg = InMemoryWorkerStore()
 
     _register_local(reg, WorkerType.EXTRACTION, _mock_handler)
     _register_local(reg, WorkerType.CHUNKING, _mock_handler)

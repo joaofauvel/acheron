@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
-from acheron.shell.registry import WorkerRegistry
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -64,7 +64,7 @@ def asr_caps(lang: str = "en") -> WorkerCapabilities:
 
 def make_app(tmp_path: Path) -> FastAPI:
     """Create a test app with TTS and translation workers registered."""
-    reg = WorkerRegistry()
+    reg = InMemoryWorkerStore()
     reg.register("tts-1", "http://tts", "http", tts_caps())
     reg.register("trans-1", "http://trans", "http", translation_caps())
     return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)

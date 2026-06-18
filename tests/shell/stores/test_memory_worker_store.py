@@ -1,7 +1,7 @@
 """Tests for the worker registry."""
 
 from acheron.core.models import WorkerCapabilities, WorkerType
-from acheron.shell.registry import WorkerRegistry
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 
 def _tts_caps(
@@ -32,9 +32,9 @@ def _asr_caps() -> WorkerCapabilities:
     )
 
 
-class TestWorkerRegistry:
+class TestInMemoryWorkerStore:
     def test_register_and_get(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://localhost:8001", "http", _tts_caps())
         w = reg.get("w-1")
         assert w is not None
@@ -43,21 +43,21 @@ class TestWorkerRegistry:
         assert w.transport == "http"
 
     def test_get_nonexistent(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         assert reg.get("nope") is None
 
     def test_unregister(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://localhost:8001", "http", _tts_caps())
         reg.unregister("w-1")
         assert reg.get("w-1") is None
 
     def test_unregister_nonexistent(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.unregister("nope")
 
     def test_list_all(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://a", "http", _tts_caps())
         reg.register("w-2", "http://b", "http", _asr_caps())
         workers = reg.list_all()
@@ -66,7 +66,7 @@ class TestWorkerRegistry:
         assert ids == {"w-1", "w-2"}
 
     def test_reregistration_overwrites(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://old", "http", _tts_caps())
         reg.register("w-1", "http://new", "http", _tts_caps())
         w = reg.get("w-1")
@@ -74,7 +74,7 @@ class TestWorkerRegistry:
         assert w.endpoint == "http://new"
 
     def test_find_by_type(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("tts-1", "http://a", "http", _tts_caps())
         reg.register("asr-1", "http://b", "http", _asr_caps())
         reg.register("tts-2", "http://c", "http", _tts_caps())
@@ -84,7 +84,7 @@ class TestWorkerRegistry:
         assert len(asr_workers) == 1
 
     def test_find_by_language(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://a", "http", _tts_caps(frozenset({"en"}), frozenset({"es"})))
         reg.register("w-2", "http://b", "http", _tts_caps(frozenset({"en"}), frozenset({"fr"})))
         reg.register("w-3", "http://c", "http", _tts_caps(frozenset({"es"}), frozenset({"en"})))
@@ -93,7 +93,7 @@ class TestWorkerRegistry:
         assert en_to_es[0].worker_id == "w-1"
 
     def test_find_by_language_no_match(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://a", "http", _tts_caps(frozenset({"en"}), frozenset({"es"})))
         result = reg.find_by_language("ja", "ko")
         assert len(result) == 0
@@ -101,7 +101,7 @@ class TestWorkerRegistry:
 
 class TestHealthTracking:
     def test_health_success_resets_counter(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://a", "http", _tts_caps())
         reg.record_health_failure("w-1")
         reg.record_health_failure("w-1")
@@ -114,7 +114,7 @@ class TestHealthTracking:
         assert w.consecutive_failures == 0
 
     def test_health_failure_increments(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://a", "http", _tts_caps())
         removed = reg.record_health_failure("w-1")
         assert not removed
@@ -123,7 +123,7 @@ class TestHealthTracking:
         assert w.consecutive_failures == 1
 
     def test_removed_after_max_failures(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register("w-1", "http://a", "http", _tts_caps())
         reg.record_health_failure("w-1")
         reg.record_health_failure("w-1")
@@ -132,10 +132,10 @@ class TestHealthTracking:
         assert reg.get("w-1") is None
 
     def test_health_failure_nonexistent(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         removed = reg.record_health_failure("nope")
         assert not removed
 
     def test_health_success_nonexistent(self) -> None:
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.record_health_success("nope")

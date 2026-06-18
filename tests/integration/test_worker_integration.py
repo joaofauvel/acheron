@@ -22,8 +22,8 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.registry import WorkerRegistry
 from acheron.shell.step_handler import create_step_handler
+from acheron.shell.stores.memory import InMemoryWorkerStore
 
 
 async def _wait_for_completion(tracked: Any, timeout: float = 5.0) -> None:  # noqa: ASYNC109
@@ -133,7 +133,7 @@ class TestWorkerIntegrationErrorPath:
                 metrics=JobMetrics(duration_seconds=0.0),
             )
 
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         reg.register(
             "trans-local",
             "local",
@@ -173,7 +173,7 @@ class TestWorkerIntegrationErrorPath:
                 metrics=JobMetrics(duration_seconds=0.0),
             )
 
-        reg = WorkerRegistry()
+        reg = InMemoryWorkerStore()
         for wt in (WorkerType.EXTRACTION, WorkerType.CHUNKING, WorkerType.PACKAGING):
             reg.register(f"{wt.value}-local", "local", "local", _caps(wt), metadata={"handler": _noop})
         reg.register(
