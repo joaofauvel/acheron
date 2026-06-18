@@ -36,7 +36,7 @@ class WorkerStore(ABC):
     @abstractmethod
     def record_health_success(self, worker_id) -> None: ...
     @abstractmethod
-    async def close(self) -> None: ...
+    def close(self) -> None: ...
 
 class JobStore(ABC):
     @abstractmethod
@@ -46,7 +46,7 @@ class JobStore(ABC):
     @abstractmethod
     def list_all(self) -> tuple[TrackedJob, ...]: ...
     @abstractmethod
-    async def close(self) -> None: ...
+    def close(self) -> None: ...
 ```
 
 The `RegisteredWorker` and `TrackedJob` dataclasses stay in their current locations (`shell/registry.py` and `shell/job_store.py`).
@@ -55,7 +55,7 @@ The `RegisteredWorker` and `TrackedJob` dataclasses stay in their current locati
 
 - **`InMemoryWorkerStore`** — renames and moves the current `WorkerRegistry`. Zero behavior change, same internal `_workers` dict. Lives at `src/acheron/shell/stores/memory.py`.
 - **`InMemoryJobStore`** — renames and moves the current `JobStore`. Same internal `_jobs` dict. Lives at the same file.
-- **`RedisWorkerStore`** — uses `redis.asyncio.Redis` from `redis~=5.3`. Lives at `src/acheron/shell/stores/redis.py`.
+- **`RedisWorkerStore`** — uses the synchronous `redis.Redis` client (not `redis.asyncio.Redis`). Sync calls from an async context block the event loop briefly, but Redis calls are fast (~1ms LAN) and infrequent. If profiling shows event-loop pressure, migrate the ABCs to `async def` and switch to `redis.asyncio.Redis`. Uses `redis~=7.0`. Lives at `src/acheron/shell/stores/redis.py`.
 - **`RedisJobStore`** — same module.
 
 ### Backend Selection
@@ -131,7 +131,7 @@ def create_app(...):
     ...
 ```
 
-On FastAPI shutdown, the lifespan calls `await registry.close()` and `await job_store.close()` to drain Redis connection pools cleanly.
+On FastAPI shutdown, the lifespan calls `registry.close()` and `job_store.close()` to drain Redis connection pools cleanly. The orchestrator exposes a `close()` method that delegates to both stores with exception isolation, so the lifespan stays a one-liner.
 
 ## Test Strategy
 
@@ -192,5 +192,5 @@ Per AGENTS.md: tests don't depend on hardcoded paths. Redis URL is set via env v
 
 ## Dependencies
 
-- `redis~=5.3` (already in `pyproject.toml` for production use)
+- `redis~=7.0` (bumped from `~5.3` because `testcontainers[redis]>=4.14` requires `redis>=7`; backward compatible with our sync usage)
 - `testcontainers[redis]~=` (new dev dep)
