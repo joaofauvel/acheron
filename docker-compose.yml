@@ -149,7 +149,7 @@ services:
         - "CMD-SHELL"
         - "python"
         - "-c"
-        - "import os, ssl, urllib.request; ctx = ssl.create_default_context(cafile=os.environ.get('SSL_CERT_FILE')); urllib.request.urlopen('https://localhost:9002/health', context=ctx).read()"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:9002/health').read()"
       interval: 30s
       timeout: 5s
       retries: 3

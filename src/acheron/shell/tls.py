@@ -26,7 +26,7 @@ def _require_pair() -> tuple[str, str] | None:
     return cert, key
 
 
-def uvicorn_ssl_kwargs() -> dict[str, str]:
+def uvicorn_ssl_kwargs() -> dict[str, object]:
     """Return uvicorn kwargs to enable TLS, or `{}` if TLS is not configured.
 
     Both `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` must be set together.

@@ -20,27 +20,21 @@ def test_uvicorn_kwargs_empty_when_unset(monkeypatch: pytest.MonkeyPatch) -> Non
     assert uvicorn_ssl_kwargs() == {}
 
 
-def test_uvicorn_kwargs_raises_when_only_cert_set(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_uvicorn_kwargs_raises_when_only_cert_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ACHERON_TLS_CERT_FILE", str(tmp_path / "x.crt"))
     monkeypatch.delenv("ACHERON_TLS_KEY_FILE", raising=False)
     with pytest.raises(AcheronError, match="must be set together"):
         uvicorn_ssl_kwargs()
 
 
-def test_uvicorn_kwargs_raises_when_only_key_set(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_uvicorn_kwargs_raises_when_only_key_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("ACHERON_TLS_CERT_FILE", raising=False)
     monkeypatch.setenv("ACHERON_TLS_KEY_FILE", str(tmp_path / "x.key"))
     with pytest.raises(AcheronError, match="must be set together"):
         uvicorn_ssl_kwargs()
 
 
-def test_uvicorn_kwargs_returns_paths_when_both_set(
-    monkeypatch: pytest.MonkeyPatch, dev_certs: Path
-) -> None:
+def test_uvicorn_kwargs_returns_paths_when_both_set(monkeypatch: pytest.MonkeyPatch, dev_certs: Path) -> None:
     monkeypatch.setenv("ACHERON_TLS_CERT_FILE", str(dev_certs / "orchestrator.crt"))
     monkeypatch.setenv("ACHERON_TLS_KEY_FILE", str(dev_certs / "orchestrator.key"))
     assert uvicorn_ssl_kwargs() == {
@@ -57,9 +51,7 @@ def test_grpc_server_credentials_none_when_unset(
     assert grpc_server_credentials() is None
 
 
-def test_grpc_server_credentials_raises_when_only_cert_set(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_grpc_server_credentials_raises_when_only_cert_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ACHERON_TLS_CERT_FILE", str(tmp_path / "x.crt"))
     monkeypatch.delenv("ACHERON_TLS_KEY_FILE", raising=False)
     with pytest.raises(AcheronError, match="must be set together"):

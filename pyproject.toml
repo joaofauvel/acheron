@@ -132,7 +132,7 @@ forbidden_modules = ["acheron.shell"]
 [dependency-groups]
 dev = [
     "basedpyright~=1.39",
-    "cryptography~=44.0",
+    "cryptography~=49.0",
     "grpcio-tools~=1.81",
     "import-linter~=2.11",
     "inline-snapshot~=0.34",

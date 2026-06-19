@@ -111,10 +111,12 @@ def test_https_handshake_succeeds(tmp_path: Path) -> None:
     assert "port" in port_holder, "server failed to start"
     port = port_holder["port"]
 
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
-        with client_ctx.wrap_socket(raw, server_hostname="orchestrator") as ssl_client:
-            ssl_client.sendall(b"ping")
-            assert ssl_client.recv(4) == b"pong"
+    with (
+        socket.create_connection(("127.0.0.1", port), timeout=5) as raw,
+        client_ctx.wrap_socket(raw, server_hostname="orchestrator") as ssl_client,
+    ):
+        ssl_client.sendall(b"ping")
+        assert ssl_client.recv(4) == b"pong"
 
     t.join(timeout=5)
     assert not server_error, f"server error: {server_error[0]}"

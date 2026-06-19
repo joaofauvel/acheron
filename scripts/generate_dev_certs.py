@@ -16,7 +16,7 @@ from pathlib import Path
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 SERVICES = [
     "orchestrator",
@@ -67,6 +67,24 @@ def _build_ca(out_dir: Path) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
         .not_valid_before(now - datetime.timedelta(minutes=1))
         .not_valid_after(now + datetime.timedelta(days=VALIDITY_DAYS))
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                key_cert_sign=True,
+                crl_sign=True,
+                key_encipherment=False,
+                data_encipherment=False,
+                content_commitment=False,
+                key_agreement=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()),
+            critical=False,
+        )
         .sign(key, hashes.SHA256())
     )
     _write_pem_cert(out_dir / "acheron-ca.crt", cert)
@@ -92,6 +110,12 @@ def _build_server_cert(
         .not_valid_before(now - datetime.timedelta(minutes=1))
         .not_valid_after(now + datetime.timedelta(days=VALIDITY_DAYS))
         .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(
+                ca_cert.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value
+            ),
+            critical=False,
+        )
+        .add_extension(
             x509.SubjectAlternativeName(
                 [
                     x509.DNSName(service),
@@ -99,6 +123,10 @@ def _build_server_cert(
                     x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
                 ]
             ),
+            critical=False,
+        )
+        .add_extension(
+            x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]),
             critical=False,
         )
         .sign(ca_key, hashes.SHA256())
@@ -116,6 +144,7 @@ def generate(out_dir: Path) -> None:
 
 
 def main() -> None:
+    """Entry point: parse args, generate certs."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--out-dir",
@@ -125,7 +154,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     generate(args.out_dir)
-    print(f"Generated Acheron CA and {len(SERVICES)} service certs in {args.out_dir}")
+    print(f"Generated Acheron CA and {len(SERVICES)} service certs in {args.out_dir}")  # noqa: T201
 
 
 if __name__ == "__main__":
