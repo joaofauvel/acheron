@@ -41,9 +41,8 @@ Two independent, sequenced sub-projects:
 Each chapter is an independent pipeline of stage coroutines connected by bounded `asyncio.Queue`s:
 
 ```
-chunks (PlanSteps)
+chunks (PlanSteps, iterated directly)
     │
-    ▼  asyncio.Queue(maxsize=queue_size)
 translate_stage   ← await wait_for(handler(step, plan), timeout)
     │
     ▼  asyncio.Queue(maxsize=queue_size)
@@ -98,7 +97,7 @@ Within a chapter, the inner `asyncio.TaskGroup` cancels sibling stage coroutines
 
 ### Memory Behaviour
 
-At peak, the orchestrator holds at most `maxsize × num_stages × num_chapters` `JobResult` objects in queues. `JobResult` is metadata only (~300 bytes — path, checksum, size); audio bytes are never in orchestrator memory. For 30 chapters × 2 queues × 4 maxsize = 240 objects ≈ 72 KB.
+At peak, the orchestrator holds at most `maxsize × 2 × num_chapters` `JobResult` objects in queues (2 queues per chapter: translate→tts and tts→package). `JobResult` is metadata only (~300 bytes — path, checksum, size); audio bytes are never in orchestrator memory. For 30 chapters × 2 queues × 4 maxsize = 240 objects ≈ 72 KB.
 
 `PlanResult.outputs` is populated by scanning `StepCache` at job completion, not by accumulating `OutputFile` objects during the run.
 
