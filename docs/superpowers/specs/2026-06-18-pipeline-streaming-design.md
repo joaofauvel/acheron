@@ -129,7 +129,7 @@ All methods on `WorkerStore` and `JobStore` (in `shell/stores/base.py`) become `
 
 **`InMemoryWorkerStore` / `InMemoryJobStore`:** Trivially `async def` — no I/O, no internal `await`s. Behaviour unchanged.
 
-**`RedisWorkerStore` / `RedisJobStore`:** Switch from `redis.Redis` to `redis.asyncio.Redis`. All `pipe.execute()` become `await pipe.execute()`. `__init__` cannot `await`, so connectivity is verified via a new `async def connect()` classmethod used by the factory instead of a synchronous `ping()` in `__init__`. `close()` becomes `async def` and calls `await self._redis.aclose()`.
+**`RedisWorkerStore` / `RedisJobStore`:** Switch from `redis.Redis` to `redis.asyncio.Redis`. All `pipe.execute()` become `await pipe.execute()`. `__init__` does no I/O; connectivity is verified via a new `async def connect()` instance method that `await`s `self._redis.ping()`. The store ABCs expose a concrete `connect()` with a no-op default; `Orchestrator.start()` awaits `connect()` on both stores. `close()` becomes `async def` and calls `await self._redis.aclose()`. See `docs/superpowers/specs/2026-06-19-layer9b-ii-redis-async-design.md` for full design.
 
 No new dependency: `redis.asyncio` is part of the existing `redis~=7.0` package.
 
@@ -144,7 +144,7 @@ No new dependency: `redis.asyncio` is part of the existing `redis~=7.0` package.
 ### Sub-project Split
 
 - **9b-i — Store ABC + InMemory async:** ABCs → `async def`, InMemory backends updated, all call sites `await`. Validates with existing unit tests (no Redis required).
-- **9b-ii — Redis async backend:** Swap `redis.Redis` → `redis.asyncio.Redis` in both Redis stores. Integration tests via testcontainers (same pattern as 7a).
+- **9b-ii — Redis async backend:** Swap `redis.Redis` → `redis.asyncio.Redis` in both Redis stores. `__init__` does no I/O; a concrete `async def connect()` is added to the store ABCs (no-op default) and overridden by Redis stores to `await self._redis.ping()`. `Orchestrator.start()` awaits `connect()` on both stores. `close()` becomes `async def` and calls `await self._redis.aclose()`. See `docs/superpowers/specs/2026-06-19-layer9b-ii-redis-async-design.md` for full design.
 
 ## New Error Type
 
@@ -158,7 +158,7 @@ No new dependency: `redis.asyncio` is part of the existing `redis~=7.0` package.
 | `core/models.py` | Add `ExecutorStrategy.STREAMING` |
 | `shell/stores/base.py` | All methods → `async def`; `close()` → `async def` |
 | `shell/stores/memory.py` | All methods → `async def` (trivial) |
-| `shell/stores/redis.py` | All methods → `async def`; `redis.asyncio.Redis`; `connect()` classmethod; `close()` → `async def` |
+| `shell/stores/redis.py` | All methods → `async def`; `redis.asyncio.Redis`; `connect()` instance method (called from `Orchestrator.start()`); `close()` → `async def` (`aclose()`) |
 | `shell/executors/streaming.py` | New — `StreamingExecutor` |
 | `shell/executors/__init__.py` | Add `STREAMING` to factory |
 | `shell/health.py` | Store calls → `await` |
