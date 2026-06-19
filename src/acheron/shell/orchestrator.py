@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
     from acheron.shell.stores.base import JobStore, WorkerStore
 
-from acheron.shell.cache import StepCache  # noqa: E402 — runtime use in __init__
+from acheron.shell.cache import StepCache
 
 logger = logging.getLogger(__name__)
 

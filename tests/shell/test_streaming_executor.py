@@ -96,9 +96,7 @@ async def step_cache(tmp_path: Path) -> StepCache:
 
 class TestNormalCompletion:
     @pytest.mark.asyncio
-    async def test_three_step_plan_completes(
-        self, tmp_path: Path, step_cache: StepCache
-    ) -> None:
+    async def test_three_step_plan_completes(self, tmp_path: Path, step_cache: StepCache) -> None:
         plan = _linear_plan()
         outputs = {
             "extract": [_real_output(tmp_path, "extracted.txt")],
@@ -121,9 +119,7 @@ class TestNormalCompletion:
 
 class TestStepTimeout:
     @pytest.mark.asyncio
-    async def test_slow_handler_raises_worker_error(
-        self, tmp_path: Path, step_cache: StepCache
-    ) -> None:
+    async def test_slow_handler_raises_worker_error(self, tmp_path: Path, step_cache: StepCache) -> None:
         plan = _linear_plan()
 
         async def slow_handler(step: PlanStep, plan: Plan) -> JobResult:
@@ -144,15 +140,14 @@ class TestStepTimeout:
 
 class TestWorkerError:
     @pytest.mark.asyncio
-    async def test_worker_unavailable_propagates(
-        self, tmp_path: Path, step_cache: StepCache
-    ) -> None:
+    async def test_worker_unavailable_propagates(self, tmp_path: Path, step_cache: StepCache) -> None:
         from acheron.core.errors import WorkerUnavailableError
 
         plan = _linear_plan()
 
         async def failing_handler(step: PlanStep, plan: Plan) -> JobResult:
-            raise WorkerUnavailableError(f"no worker for {step.step_id}")
+            msg = f"no worker for {step.step_id}"
+            raise WorkerUnavailableError(msg)
 
         executor = StreamingExecutor(failing_handler, step_cache)
         result = await executor.run(plan)
@@ -163,9 +158,7 @@ class TestWorkerError:
 
 class TestUnexpectedException:
     @pytest.mark.asyncio
-    async def test_unhandled_exception_wrapped_as_pipeline_error(
-        self, tmp_path: Path, step_cache: StepCache
-    ) -> None:
+    async def test_unhandled_exception_wrapped_as_pipeline_error(self, tmp_path: Path, step_cache: StepCache) -> None:
         plan = _linear_plan()
 
         async def bad_handler(step: PlanStep, plan: Plan) -> JobResult:
@@ -177,3 +170,107 @@ class TestUnexpectedException:
 
         assert result.status == "failed"
         assert any("boom" in e.lower() or "streaming" in e.lower() for e in result.errors)
+
+
+class TestCacheFailure:
+    @pytest.mark.asyncio
+    async def test_save_outputs_failure_wrapped_as_pipeline_error(self, tmp_path: Path, step_cache: StepCache) -> None:
+        plan = _linear_plan()
+
+        async def ok_handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, "out.wav"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(ok_handler, step_cache)
+
+        async def broken_save(*_args: object, **_kwargs: object) -> None:
+            msg = "disk full"
+            raise OSError(msg)
+
+        step_cache.save_outputs = broken_save  # type: ignore[method-assign]
+
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert any("save_outputs" in e.lower() for e in result.errors)
+
+
+class TestTaskGroupCancellation:
+    @pytest.mark.asyncio
+    async def test_middle_failure_cancels_upstream_and_downstream(self, tmp_path: Path, step_cache: StepCache) -> None:
+        from acheron.core.errors import WorkerUnavailableError
+
+        plan = _linear_plan()
+        started: list[str] = []
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            started.append(step.step_id)
+            if step.step_id == "chunk":
+                raise WorkerUnavailableError("chunk failed")
+            # Slow downstream so we can observe cancellation.
+            await asyncio.sleep(1.0)
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(handler, step_cache, step_timeout=5.0)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert "extract" in started
+        assert "chunk" in started
+        package_manifest = step_cache._data_dir / plan.job_id / "package" / "manifest.json"  # noqa: SLF001
+        assert not package_manifest.exists()
+
+
+class TestSentinelDrain:
+    @pytest.mark.asyncio
+    async def test_sentinel_propagates_downstream(self, tmp_path: Path, step_cache: StepCache) -> None:
+        from acheron.core.errors import WorkerUnavailableError
+
+        plan = _linear_plan()
+        completed: list[str] = []
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            if step.step_id == "extract":
+                raise WorkerUnavailableError("extract failed")
+            completed.append(step.step_id)
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert completed == []
+
+
+class TestOutputsFromCache:
+    @pytest.mark.asyncio
+    async def test_outputs_match_cache_contents(self, tmp_path: Path, step_cache: StepCache) -> None:
+        plan = _linear_plan()
+        outputs = {
+            "extract": [_real_output(tmp_path, "extracted.txt", body=b"e" * 8)],
+            "chunk": [_real_output(tmp_path, "chunk1.txt"), _real_output(tmp_path, "chunk2.txt")],
+            "package": [_real_output(tmp_path, "out.wav", body=b"a" * 1024)],
+        }
+        handler, _ = _make_handler(outputs)
+        executor = StreamingExecutor(handler, step_cache)
+
+        result = await executor.run(plan)
+
+        assert len(result.outputs) == 4
+        for step in plan.steps:
+            cached = await step_cache.load_outputs(plan.job_id, step.step_id)
+            assert len(cached) == len(outputs[step.step_id])

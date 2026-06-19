@@ -153,9 +153,7 @@ class TestStepCache:
         assert not await cache.step_has_valid_cache("job-1", "nope")
 
     @pytest.mark.asyncio
-    async def test_step_has_valid_cache_corrupted_checksum(
-        self, tmp_path: Path, cache: StepCache
-    ) -> None:
+    async def test_step_has_valid_cache_corrupted_checksum(self, tmp_path: Path, cache: StepCache) -> None:
         test_file = tmp_path / "output.wav"
         test_file.write_bytes(b"audio data")
         outputs = (

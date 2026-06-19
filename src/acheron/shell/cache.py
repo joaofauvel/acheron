@@ -72,9 +72,7 @@ class StepCache:
     def __init__(self, data_dir: str | Path = "/data/jobs") -> None:
         self._data_dir = Path(data_dir)
 
-    async def save_outputs(
-        self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]
-    ) -> None:
+    async def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
         """Write output manifest. Creates the step directory if needed."""
         step_dir = self._data_dir / job_id / step_id
         step_dir.mkdir(parents=True, exist_ok=True)
@@ -113,11 +111,11 @@ class StepCache:
             return False
         try:
             outputs = await self.load_outputs(job_id, step_id)
-        except (CacheMissError, CacheCorruptedError, OSError):
+        except CacheMissError, CacheCorruptedError, OSError:
             return False
         for output in outputs:
             file_path = Path(output.path)
-            if not file_path.exists():
+            if not await asyncio.to_thread(file_path.exists):
                 return False
             checksum = await asyncio.to_thread(_checksum, file_path)
             if checksum != output.checksum:

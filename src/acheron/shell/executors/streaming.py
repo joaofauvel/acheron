@@ -9,16 +9,19 @@ rest cleanly. Outputs are written to ``StepCache`` after each stage and
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import AcheronError, PipelineError, WorkerError
+from acheron.core.errors import AcheronError, CacheMissError, PipelineError, WorkerError
 from acheron.core.interfaces import Executor
 from acheron.core.models import JobResult, OutputFile, Plan, PlanResult, PlanStep
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 if TYPE_CHECKING:
     from acheron.shell.cache import StepCache
+
+logger = logging.getLogger(__name__)
 
 
 _END: None = None
@@ -53,70 +56,103 @@ class StreamingExecutor(Executor):
         # Seed the first queue with a sentinel so the first stage knows to start.
         await queues[0].put(_END)
 
-        total_cost = 0.0
-        last_error: AcheronError | None = None
+        last_error = await self._run_pipeline(steps, plan, queues)
+        outputs = await self._collect_outputs(steps, plan)
+        return self._build_result(plan, steps, outputs, last_error, start)
 
+    async def _run_pipeline(
+        self,
+        steps: list[PlanStep],
+        plan: Plan,
+        queues: list[asyncio.Queue[JobResult | None]],
+    ) -> AcheronError | None:
+        """Run the per-stage TaskGroup. Returns the first AcheronError on failure, else None."""
         try:
             async with asyncio.TaskGroup() as tg:
-                stage_tasks = []
-                for i, step in enumerate(steps):
-                    upstream = queues[i]
-                    downstream = queues[i + 1]
-                    stage_tasks.append(
-                        tg.create_task(self._stage(step, plan, upstream, downstream))
+                stage_tasks = [
+                    tg.create_task(
+                        self._stage(
+                            step,
+                            plan,
+                            queues[i] if i > 0 else None,
+                            queues[i + 1],
+                        ),
                     )
-                final_queue = queues[-1]
-                first = await final_queue.get()
-                if isinstance(first, AcheronError):
-                    raise first
-
-                async def _drain() -> None:
-                    while True:
-                        item = await final_queue.get()
-                        if item is _END:
-                            return
-
-                tg.create_task(_drain())
-
+                    for i, step in enumerate(steps)
+                ]
+                await self._consume_final_queue(tg, queues[-1])
                 for task in stage_tasks:
                     task.result()
         except BaseExceptionGroup as eg:
-            acheron = [e for e in eg.exceptions if isinstance(e, AcheronError)]
-            if acheron:
-                last_error = acheron[0]
-            elif eg.exceptions:
-                inner = eg.exceptions[0]
-                last_error = PipelineError(f"streaming failure: {inner}")
-                last_error.__cause__ = inner
+            return self._extract_error(eg)
+        return None
 
+    async def _consume_final_queue(self, tg: asyncio.TaskGroup, final_queue: asyncio.Queue[JobResult | None]) -> None:
+        first = await final_queue.get()
+        if isinstance(first, AcheronError):
+            raise first
+
+        async def _drain() -> None:
+            while True:
+                item = await final_queue.get()
+                if item is _END:
+                    return
+
+        tg.create_task(_drain())
+
+    @staticmethod
+    def _extract_error(eg: BaseExceptionGroup) -> AcheronError | None:
+        acheron = [e for e in eg.exceptions if isinstance(e, AcheronError)]
+        if acheron:
+            return acheron[0]
+        if eg.exceptions:
+            inner = eg.exceptions[0]
+            err = PipelineError(f"streaming failure: {inner}")
+            err.__cause__ = inner
+            return err
+        return None
+
+    async def _collect_outputs(self, steps: list[PlanStep], plan: Plan) -> tuple[OutputFile, ...]:
         outputs: list[OutputFile] = []
         for step in steps:
             try:
                 step_outputs = await self._cache.load_outputs(plan.job_id, step.step_id)
-            except Exception:  # noqa: BLE001
+            except CacheMissError:
+                continue
+            except OSError:
+                logger.exception("failed to load outputs for %s", step.step_id)
                 continue
             outputs.extend(step_outputs)
+        return tuple(outputs)
 
+    def _build_result(
+        self,
+        plan: Plan,
+        steps: list[PlanStep],
+        outputs: tuple[OutputFile, ...],
+        last_error: AcheronError | None,
+        start: float,
+    ) -> PlanResult:
+        duration = time.monotonic() - start
         if last_error is None:
             return PlanResult(
                 plan_id=plan.plan_id,
                 status="completed",
                 completed_steps=len(steps),
                 total_steps=len(steps),
-                outputs=tuple(outputs),
-                total_cost=total_cost,
-                total_duration_seconds=time.monotonic() - start,
+                outputs=outputs,
+                total_cost=0.0,
+                total_duration_seconds=duration,
                 errors=(),
             )
-
         return PlanResult(
             plan_id=plan.plan_id,
             status="failed",
             completed_steps=0,
             total_steps=len(steps),
-            outputs=tuple(outputs),
-            total_cost=total_cost,
-            total_duration_seconds=time.monotonic() - start,
+            outputs=outputs,
+            total_cost=0.0,
+            total_duration_seconds=duration,
             errors=(str(last_error),),
         )
 
@@ -124,18 +160,21 @@ class StreamingExecutor(Executor):
         self,
         step: PlanStep,
         plan: Plan,
-        upstream: asyncio.Queue[JobResult | None],
+        upstream: asyncio.Queue[JobResult | None] | None,
         downstream: asyncio.Queue[JobResult | None],
     ) -> None:
-        """Stage consumer: read upstream, dispatch, write downstream + cache."""
+        """Stage consumer: read upstream (None for first stage), dispatch, write downstream + cache."""
         try:
-            _ = await upstream.get()
+            if upstream is not None:
+                upstream_value = await upstream.get()
+                if upstream_value is _END:
+                    return
             try:
                 result = await asyncio.wait_for(
                     self._handler(step, plan),
                     timeout=self._step_timeout,
                 )
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 msg = f"step {step.step_id} timed out after {self._step_timeout}s"
                 raise WorkerError(msg) from exc
 
