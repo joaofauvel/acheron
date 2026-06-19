@@ -6,11 +6,10 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-import grpc.aio
-
 from acheron.core.errors import WorkerError
 from acheron.core.interfaces import Worker
 from acheron.core.models import Job, JobResult, WorkerCapabilities, WorkerType
+from acheron.shell.tls import grpc_channel
 from acheron.shell.transports.grpc import GrpcWorker
 from acheron.shell.transports.http import HttpWorker
 
@@ -38,7 +37,7 @@ def default_worker_factory(
     """
     match registered.transport:
         case "grpc":
-            channel = grpc.aio.insecure_channel(registered.endpoint)
+            channel = grpc_channel(registered.endpoint)
             return GrpcWorker(channel)
         case "local":
             from acheron.shell.transports.local import LocalWorker  # noqa: PLC0415

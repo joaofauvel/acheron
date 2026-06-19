@@ -13,6 +13,8 @@ import grpc.aio
 import httpx
 from grpc.health.v1 import health_pb2, health_pb2_grpc
 
+from acheron.shell.tls import grpc_channel
+
 if TYPE_CHECKING:
     from acheron.shell.stores.base import WorkerStore
 
@@ -32,7 +34,7 @@ async def _check_http_health(endpoint: str) -> bool:
 
 async def _check_grpc_health(endpoint: str) -> bool:
     try:
-        async with grpc.aio.insecure_channel(endpoint) as channel:
+        async with grpc_channel(endpoint) as channel:
             stub = health_pb2_grpc.HealthStub(channel)
             resp = await stub.Check(health_pb2.HealthCheckRequest())
             return resp.status == health_pb2.HealthCheckResponse.SERVING  # type: ignore[no-any-return]

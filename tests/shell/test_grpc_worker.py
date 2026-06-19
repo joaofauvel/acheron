@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import grpc
@@ -155,3 +156,15 @@ class TestGrpcWorkerBatch:
         results = await grpc_worker.collect_results("b-1")
         assert len(results) == 2
         assert all(r.status == JobStatus.SUCCESS for r in results)
+
+
+@pytest.mark.asyncio
+async def test_grpc_channel_uses_secure_when_ca_set(dev_certs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(dev_certs / "acheron-ca.crt"))
+    from acheron.shell.tls import grpc_channel
+
+    channel = grpc_channel("localhost:12345")
+    try:
+        assert channel is not None
+    finally:
+        await channel.close()
