@@ -21,7 +21,7 @@ from acheron.core.errors import (
     WorkerError,
 )
 from acheron.core.interfaces import Executor
-from acheron.core.models import JobResult, OutputFile, Plan, PlanResult, PlanStep
+from acheron.core.models import JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStep
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 if TYPE_CHECKING:
@@ -207,6 +207,10 @@ class StreamingExecutor(Executor):
             except Exception as exc:
                 msg = f"unexpected failure in stage {step.step_id}: {type(exc).__name__}"
                 raise PipelineError(msg) from exc
+
+            if result.status is not JobStatus.SUCCESS:
+                msg = f"step {step.step_id} returned {result.status.value}: {result.error or 'unknown error'}"
+                raise WorkerError(msg)
 
             try:
                 await self._cache.save_outputs(plan.job_id, step.step_id, result.outputs)

@@ -18,14 +18,14 @@ One critical defect: the default StreamingExecutor never checks `JobResult.statu
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
 ```yaml
-status: open
+status: verified
 severity: critical
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 198-218
@@ -156,7 +156,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -181,7 +181,7 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:

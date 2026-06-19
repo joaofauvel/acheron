@@ -156,6 +156,71 @@ class TestWorkerError:
         assert any("no worker" in e.lower() for e in result.errors)
 
 
+class TestNonSuccessResult:
+    @pytest.mark.asyncio
+    async def test_handler_returning_failed_status_marks_plan_failed(
+        self,
+        tmp_path: Path,
+        step_cache: StepCache,
+    ) -> None:
+        """A handler that returns JobResult(status=FAILED) without raising
+        must mark the plan as failed, skip downstream stages, and surface
+        the worker's error message in the result."""
+        plan = _linear_plan()
+        downstream_called: list[str] = []
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            if step.step_id == "extract":
+                return JobResult(
+                    job_id=plan.job_id,
+                    status=JobStatus.FAILED,
+                    outputs=(),
+                    metrics=JobMetrics(duration_seconds=0.0),
+                    error="worker reported failure",
+                )
+            downstream_called.append(step.step_id)
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert result.total_steps == 3
+        assert result.completed_steps == 0
+        assert downstream_called == []
+        assert any("worker reported failure" in e for e in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_partial_result_also_treated_as_failure(
+        self,
+        tmp_path: Path,
+        step_cache: StepCache,
+    ) -> None:
+        """PARTIAL status is not SUCCESS, so it must mark the plan as failed
+        and skip downstream stages, matching AsyncExecutor's semantics."""
+        plan = _linear_plan()
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.PARTIAL,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+                error="some outputs missing",
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert any("partial" in e.lower() for e in result.errors)
+
+
 class TestUnexpectedException:
     @pytest.mark.asyncio
     async def test_unhandled_exception_wrapped_as_pipeline_error(self, tmp_path: Path, step_cache: StepCache) -> None:

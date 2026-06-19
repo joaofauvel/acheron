@@ -95,7 +95,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -130,7 +130,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -145,7 +145,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 276-281
   - path: src/acheron/shell/executors/streaming.py
-    lines: 205-215
+    lines: 207-209
 related: []
 ```
 
@@ -206,7 +206,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -225,7 +225,7 @@ files:
   - path: src/acheron/shell/executors/batch_async.py
     lines: 68
   - path: src/acheron/shell/executors/streaming.py
-    lines: 158-225
+    lines: 158-229
 related: [CORR-001]
 ```
 
