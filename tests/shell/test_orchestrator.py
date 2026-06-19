@@ -8,7 +8,7 @@ from acheron.core.errors import InvalidLanguagePathError
 from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus, WorkerType
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 from tests.shell.conftest import translation_caps, tts_caps
 
 
@@ -100,6 +100,29 @@ class TestOrchestrator:
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
         await orch.start()
         assert await orch.get_job("nope") is None
+
+    @pytest.mark.asyncio
+    async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Orchestrator.start() must await connect() on both stores before returning."""
+        connect_calls: list[str] = []
+
+        class _SpyWorkerStore(InMemoryWorkerStore):
+            async def connect(self) -> None:
+                connect_calls.append("worker")
+                await super().connect()
+
+        class _SpyJobStore(InMemoryJobStore):
+            async def connect(self) -> None:
+                connect_calls.append("job")
+                await super().connect()
+
+        reg = _SpyWorkerStore()
+        jobs = _SpyJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+
+        assert "worker" in connect_calls
+        assert "job" in connect_calls
 
     @pytest.mark.asyncio
     async def test_list_jobs(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

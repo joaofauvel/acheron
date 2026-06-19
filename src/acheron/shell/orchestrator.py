@@ -180,6 +180,8 @@ class Orchestrator:
         if self._started:
             return
         self._started = True
+        await self._registry.connect()
+        await self._job_store.connect()
         await self._register_built_in_local_workers()
         await self._health_monitor.start()
 
