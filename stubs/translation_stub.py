@@ -110,3 +110,17 @@ def create_app() -> FastAPI:
         }
 
     return app
+
+
+def main() -> None:
+    """Run the translation stub via uvicorn, with optional TLS."""
+    import uvicorn
+
+    from acheron.shell.tls import uvicorn_ssl_kwargs
+
+    port = int(os.environ.get("WORKER_PORT", "8003"))
+    uvicorn.run(create_app(), host="0.0.0.0", port=port, **uvicorn_ssl_kwargs())  # type: ignore[arg-type]
+
+
+if __name__ == "__main__":
+    main()

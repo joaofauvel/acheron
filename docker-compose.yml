@@ -164,7 +164,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
-    command: ["sh", "-c", "uvicorn stubs.translation_stub:create_app --factory --host 0.0.0.0 --port ${WORKER_PORT:-8003}"]
+    command: ["python", "-m", "stubs.translation_stub"]
 
 volumes:
   acheron-data:

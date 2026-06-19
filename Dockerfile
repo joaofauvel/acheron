@@ -32,7 +32,7 @@ COPY stubs/ ./stubs/
 COPY proto/ ./proto/
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
 ENV PYTHONPATH=/app
-CMD ["sh", "-c", "uvicorn stubs.worker_stub:create_app --factory --host 0.0.0.0 --port ${WORKER_PORT:-8001}"]
+CMD ["python", "-m", "stubs.worker_stub"]
 
 FROM python:3.14-slim AS grpc-stub
 
