@@ -121,3 +121,21 @@ class TestFailFast:
         store = RedisWorkerStore("redis://localhost:1")
         with pytest.raises((RedisConnectionError, redis.RedisError)):
             await store.connect()
+
+
+class TestConnectIdempotency:
+    @pytest.mark.asyncio
+    async def test_connect_is_idempotent(self, store: RedisWorkerStore) -> None:
+        """Calling connect() twice does not raise."""
+        await store.connect()
+        await store.connect()
+
+
+class TestCloseSemantics:
+    @pytest.mark.asyncio
+    async def test_close_is_idempotent(self, redis_url: str) -> None:
+        """close() can be called more than once without raising."""
+        s = RedisWorkerStore(redis_url)
+        await s.connect()
+        await s.close()
+        await s.close()
