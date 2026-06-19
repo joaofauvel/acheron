@@ -386,7 +386,9 @@ The synchronous Redis client is a deliberate v1 trade-off: sync calls from an as
 
 **Local worker handlers** are kept in a side dict on the orchestrator (`_local_handlers: dict[str, LocalJobHandler]`), not in `RegisteredWorker.metadata`. Worker `metadata` is a JSON-serializable contract used by persistence backends; coroutine handlers are not serializable. Use the `Orchestrator.register_worker(handler=...)` keyword-only parameter to register a local worker.
 
-**Production (Layer 7):** Layers 7a (storage abstraction + Redis backend) and 7b (production compose hardening) are done. Remaining Layer 7 work — see [implementation roadmap](./2026-06-16-implementation-roadmap.md): 7c (TLS via reverse proxy).
+**Production (Layer 7):** Layers 7a (storage abstraction + Redis backend), 7b (production compose hardening), and 7c (TLS support) are done. See [implementation roadmap](./2026-06-16-implementation-roadmap.md).
+
+**TLS (Layer 7c):** Acheron services support TLS via environment variables; cert provenance and reverse proxying are the deployer's responsibility. Three env vars control it: `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` for server-side TLS (both required together), and `SSL_CERT_FILE` for client-side trust (httpx and stdlib `ssl` honor it automatically). Unset env vars = HTTP. Production deploys generate real certs (Let's Encrypt via cert-manager, internal CA, etc.) with the right SANs; no Acheron code change. See the [Layer 7c sub-spec](./2026-06-18-layer7c-tls.md) for the env-var contract, dev cert script, and compose integration.
 
 **Layer 7b details:**
 

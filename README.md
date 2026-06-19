@@ -114,6 +114,21 @@ All services are built from a single `Dockerfile` with multiple targets. The bui
 
 Stub workers return mock data. Replace with real GPU workers (Layer 8) for production.
 
+### TLS
+
+Acheron services serve TLS when configured. Three env vars control it:
+
+- `ACHERON_TLS_CERT_FILE` + `ACHERON_TLS_KEY_FILE` — server-side; both must be set together
+- `SSL_CERT_FILE` — client-side (used by httpx and stdlib `ssl`); set to the Acheron CA
+
+**Local dev (self-signed).** Run `just certs` to generate a local Acheron CA and per-service certs in `certs/`. The compose file mounts `certs/` into every service and sets the env vars. The CA is trusted by all services via `SSL_CERT_FILE`.
+
+**Production.** Generate real certs (Let's Encrypt via cert-manager, your CA, etc.) with the right SANs. Mount them into each service and set the env vars. No Acheron code change.
+
+**Reverse proxy (optional).** Acheron doesn't ship a proxy. To put nginx, Caddy, or anything else in front, point it at the orchestrator (HTTPS) and dashboard (HTTP) and terminate TLS there. Acheron's `ACHERON_TLS_*` env vars are independent of any proxy you add.
+
+**Disabling TLS.** Leave `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` unset. All services fall back to HTTP. Useful for local dev without certs.
+
 ### Configuration
 
 | Variable | Default | Description |
@@ -124,6 +139,9 @@ Stub workers return mock data. Replace with real GPU workers (Layer 8) for produ
 | `ACHERON_STORE_BACKEND` | `memory` | Orchestrator: `memory` (in-process) or `redis` (persistent) |
 | `REDIS_URL` | `redis://localhost:6379` | Orchestrator: Redis connection (used when `ACHERON_STORE_BACKEND=redis`) |
 | `WORKER_HTTP_PORT` | `9002` | gRPC stub: HTTP `/health` sidecar port for Docker healthchecks |
+| `ACHERON_TLS_CERT_FILE` | (unset) | Server: path to PEM-encoded server cert (set with `ACHERON_TLS_KEY_FILE` to enable HTTPS) |
+| `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key (set with `ACHERON_TLS_CERT_FILE` to enable HTTPS) |
+| `ACHERON_TLS_CA_FILE` | (unset) | gRPC client: path to PEM-encoded CA bundle to verify peer certs |
 
 ## CLI
 
