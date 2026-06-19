@@ -141,7 +141,7 @@ Acheron services serve TLS when configured. Three env vars control it:
 | `WORKER_HTTP_PORT` | `9002` | gRPC stub: HTTP `/health` sidecar port for Docker healthchecks |
 | `ACHERON_TLS_CERT_FILE` | (unset) | Server: path to PEM-encoded server cert (set with `ACHERON_TLS_KEY_FILE` to enable HTTPS) |
 | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key (set with `ACHERON_TLS_CERT_FILE` to enable HTTPS) |
-| `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs (falls back to `SSL_CERT_FILE`) |
+| `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs (falls back to `SSL_CERT_FILE`, then `./certs/acheron-ca.crt` in the CLI's CWD) |
 
 ## CLI
 

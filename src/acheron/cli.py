@@ -6,7 +6,9 @@ import asyncio
 import concurrent.futures
 import logging
 import os
+import ssl
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -31,20 +33,34 @@ _SOURCE_TYPE_MAP: dict[str, str] = {
     "m4a": "audio",
 }
 
+_DEFAULT_BASE_URL = "https://localhost:8000"
+
+
+def _resolve_trust_store() -> bool | str:
+    """Pick the trust store for httpx.
+
+    Order: Acheron-specific env var, then the standard ``SSL_CERT_FILE``
+    honored by httpx/stdlib ssl, then the dev CA at ``./certs/acheron-ca.crt``
+    (host-side dev convenience), then the system trust store (``True``).
+    """
+    explicit = os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE")
+    if explicit:
+        return explicit
+    dev_ca = Path.cwd() / "certs" / "acheron-ca.crt"
+    if dev_ca.is_file():
+        return str(dev_ca)
+    return True
+
 
 def _get_client() -> AcheronClient:
     """Build the orchestrator HTTP client.
 
     The default scheme is HTTPS to match the dev/HTTPS orchestrator (compose
     sets ``ACHERON_TLS_CERT_FILE``). Callers can override the URL with
-    ``ACHERON_URL``. The trust store is resolved from ``ACHERON_TLS_CA_FILE``
-    (Acheron-specific override), then ``SSL_CERT_FILE`` (the standard env var
-    honored by httpx and stdlib ssl), and finally falls back to the system
-    trust store.
+    ``ACHERON_URL``. Trust store resolution lives in :func:`_resolve_trust_store`.
     """
-    base_url = os.environ.get("ACHERON_URL", "https://localhost:8000")
-    verify: bool | str = os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE") or True
-    return AcheronClient(base_url, verify=verify)
+    base_url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
+    return AcheronClient(base_url, verify=_resolve_trust_store())
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
@@ -62,10 +78,15 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
             return asyncio.run(coro)
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
-    except httpx.ConnectError:
-        url = os.environ.get("ACHERON_URL", "https://localhost:8000")
-        console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
-        console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
+    except httpx.ConnectError as exc:
+        url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
+        if _is_ssl_error(exc):
+            console.print(f"[red]TLS verification failed connecting to {url}[/red]")
+            console.print("Trust the dev CA via SSL_CERT_FILE=$PWD/certs/acheron-ca.crt")
+            console.print("or set ACHERON_TLS_CA_FILE=/path/to/ca.crt (or http:// URL for plain HTTP).")
+        else:
+            console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
+            console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
         raise SystemExit(1) from None
     except httpx.HTTPStatusError as exc:
         detail = (
@@ -80,6 +101,23 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
 def _detect_source_type(path: str) -> str | None:
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
     return _SOURCE_TYPE_MAP.get(ext)
+
+
+def _is_ssl_error(exc: BaseException) -> bool:
+    """True if the failure happened during TLS verification.
+
+    httpx wraps both transport-level and TLS-level failures as
+    ``ConnectError``; we walk the exception chain looking for any
+    ``ssl.SSLError`` to tell the user the right thing.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLError):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 @click.group()

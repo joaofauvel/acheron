@@ -350,6 +350,57 @@ def test_connect_error_shows_friendly_message() -> None:
     assert "server running" in result.output.lower()
 
 
+@respx.mock
+def test_ssl_verification_error_shows_trust_store_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TLS verification failure points the user at the trust store env vars.
+
+    httpx wraps SSLCertVerificationError as a ConnectError (the failure
+    happens during start_tls, which is part of the connection phase). The
+    CLI distinguishes that from a real connect-refused and tells the user
+    how to fix the trust store.
+    """
+    import ssl
+
+    def _make_connect_with_ssl_cause() -> httpx.ConnectError:
+        ssl_exc = ssl.SSLCertVerificationError("certificate verify failed")
+        return ssl_exc_to_connect(ssl_exc)
+
+    def ssl_exc_to_connect(ssl_exc: ssl.SSLCertVerificationError) -> httpx.ConnectError:
+        inner = httpx.ConnectError("inner")
+        inner.__cause__ = ssl_exc
+        outer = httpx.ConnectError("TLS failed")
+        outer.__cause__ = inner
+        return outer
+
+    class _FakeClient:
+        async def list_jobs(self) -> list[dict[str, Any]]:
+            raise _make_connect_with_ssl_cause()
+
+    monkeypatch.setattr(cli_module, "_get_client", _FakeClient)
+    runner = CliRunner()
+    result = runner.invoke(main, ["jobs"])
+    assert result.exit_code != 0
+    assert "TLS" in result.output or "SSL" in result.output or "certificate" in result.output.lower()
+    assert "SSL_CERT_FILE" in result.output or "ACHERON_TLS_CA_FILE" in result.output
+
+
+def test_is_ssl_error_walks_cause_chain() -> None:
+    """The walker follows __cause__ and __context__ to find SSLError causes."""
+    import ssl
+
+    ssl_exc = ssl.SSLCertVerificationError("verify failed")
+    inner = httpx.ConnectError("inner")
+    inner.__cause__ = ssl_exc
+    outer = httpx.ConnectError("outer")
+    outer.__cause__ = inner
+    assert cli_module._is_ssl_error(outer)  # noqa: SLF001
+
+
+def test_is_ssl_error_returns_false_for_plain_connect_error() -> None:
+    plain = httpx.ConnectError("Connection refused")
+    assert not cli_module._is_ssl_error(plain)  # noqa: SLF001
+
+
 class _CapturedClient:
     """Sentinel object that records the kwargs AcheronClient was called with."""
 
@@ -405,11 +456,13 @@ def test_verify_falls_back_to_ssl_cert_file(
 
 
 def test_verify_defaults_to_true_when_no_ca_env(
-    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient]
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient], tmp_path: Path
 ) -> None:
     monkeypatch.delenv("ACHERON_URL", raising=False)
     monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
     monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    # Chdir to a directory with no dev CA so auto-discovery doesn't kick in.
+    monkeypatch.chdir(tmp_path)
     cli_module._get_client()  # noqa: SLF001
     assert captured_client[0].kwargs["verify"] is True
 
@@ -427,3 +480,37 @@ def test_acheron_ca_takes_precedence_over_ssl_cert_file(
     monkeypatch.setenv("SSL_CERT_FILE", str(other_ca))
     cli_module._get_client()  # noqa: SLF001
     assert captured_client[0].kwargs["verify"] == str(acheron_ca)
+
+
+def test_verify_auto_discovers_dev_ca_in_certs_dir(
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient], tmp_path: Path
+) -> None:
+    """Dev convenience: ./certs/acheron-ca.crt is picked up when no env var is set.
+
+    Lets the host CLI work out of the box against the dev/HTTPS orchestrator.
+    """
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    dev_ca = tmp_path / "certs" / "acheron-ca.crt"
+    dev_ca.parent.mkdir(parents=True)
+    dev_ca.touch()
+    monkeypatch.chdir(tmp_path)
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].kwargs["verify"] == str(dev_ca)
+
+
+def test_env_var_overrides_dev_ca(
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient], tmp_path: Path
+) -> None:
+    """Env vars win over dev auto-discovery — they're the explicit override."""
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    dev_ca = tmp_path / "certs" / "acheron-ca.crt"
+    dev_ca.parent.mkdir(parents=True)
+    dev_ca.touch()
+    monkeypatch.chdir(tmp_path)
+    explicit = tmp_path / "explicit.crt"
+    explicit.touch()
+    monkeypatch.setenv("SSL_CERT_FILE", str(explicit))
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].kwargs["verify"] == str(explicit)
