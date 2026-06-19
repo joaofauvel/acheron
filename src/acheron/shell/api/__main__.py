@@ -16,14 +16,13 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")  # noqa: S104
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
+    ssl = uvicorn_ssl_kwargs()
     uvicorn.run(
         create_app(),
         host=args.host,
         port=args.port,
-        **uvicorn_ssl_kwargs(),  # type: ignore[arg-type]
-        # uvicorn.run has many typed params; a dict[str, object] can't precisely
-        # match each one in mypy's strict mode. The values are actually well-typed
-        # strings (cert path, key path) or absent.
+        ssl_certfile=ssl.get("ssl_certfile"),
+        ssl_keyfile=ssl.get("ssl_keyfile"),
     )
 
 

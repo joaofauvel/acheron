@@ -56,5 +56,5 @@ def test_main_invokes_uvicorn_without_tls_when_unset(
 
     with pytest.raises(SystemExit):
         main()
-    assert "ssl_certfile" not in captured
-    assert "ssl_keyfile" not in captured
+    assert captured.get("ssl_certfile") is None
+    assert captured.get("ssl_keyfile") is None

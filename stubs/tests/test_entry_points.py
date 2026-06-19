@@ -50,7 +50,8 @@ def test_worker_stub_main_invokes_uvicorn_without_tls(
 
     with pytest.raises(SystemExit):
         main()
-    assert "ssl_certfile" not in captured
+    assert captured.get("ssl_certfile") is None
+    assert captured.get("ssl_keyfile") is None
 
 
 def test_translation_stub_main_invokes_uvicorn_with_tls(monkeypatch: pytest.MonkeyPatch, dev_certs: Path) -> None:

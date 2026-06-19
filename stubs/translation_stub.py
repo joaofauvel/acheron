@@ -119,7 +119,14 @@ def main() -> None:
     from acheron.shell.tls import uvicorn_ssl_kwargs
 
     port = int(os.environ.get("WORKER_PORT", "8003"))
-    uvicorn.run(create_app(), host="0.0.0.0", port=port, **uvicorn_ssl_kwargs())  # type: ignore[arg-type]
+    ssl = uvicorn_ssl_kwargs()
+    uvicorn.run(
+        create_app(),
+        host="0.0.0.0",
+        port=port,
+        ssl_certfile=ssl.get("ssl_certfile"),
+        ssl_keyfile=ssl.get("ssl_keyfile"),
+    )
 
 
 if __name__ == "__main__":
