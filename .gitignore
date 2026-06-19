@@ -16,3 +16,5 @@ htmlcov/
 .direnv/
 src/acheron/proto/synthesis_pb2.py
 src/acheron/proto/synthesis_pb2_grpc.py
+
+certs/
