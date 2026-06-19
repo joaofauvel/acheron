@@ -257,21 +257,21 @@ def _deserialize_job(blob: str) -> TrackedJob:
 class RedisWorkerStore(WorkerStore):
     """Redis-backed worker store. Survives orchestrator restarts.
 
-    Uses the synchronous ``redis.Redis`` client. Sync calls from an async
-    context block the event loop briefly; acceptable for v1 because Redis
-    calls are fast and infrequent. If this becomes a bottleneck, migrate the
-    ABCs to async and switch to ``redis.asyncio.Redis``.
+    Transitional state during the Layer 9b async migration: methods are
+    ``async def`` (matching the ABC) but the underlying client is still the
+    synchronous ``redis.Redis`` — calls block the event loop briefly. Layer
+    9b-ii swaps the client to ``redis.asyncio.Redis`` for non-blocking I/O.
     """
 
     def __init__(self, redis_url: str) -> None:
         self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
         self._redis.ping()
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the underlying Redis connection pool."""
         self._redis.close()
 
-    def register(
+    async def register(
         self,
         worker_id: str,
         endpoint: str,
@@ -286,21 +286,21 @@ class RedisWorkerStore(WorkerStore):
         pipe.sadd(_WORKERS_SET, worker_id)
         pipe.execute()
 
-    def unregister(self, worker_id: str) -> None:
+    async def unregister(self, worker_id: str) -> None:
         """Remove a worker from the store."""
         pipe = self._redis.pipeline(transaction=True)
         pipe.srem(_WORKERS_SET, worker_id)
         pipe.delete(_WORKER_KEY.format(worker_id=worker_id))
         pipe.execute()
 
-    def get(self, worker_id: str) -> RegisteredWorker | None:
+    async def get(self, worker_id: str) -> RegisteredWorker | None:
         """Look up a worker by ID."""
         fields: dict[str, str] = self._redis.hgetall(_WORKER_KEY.format(worker_id=worker_id))  # type: ignore[assignment]
         if not fields:
             return None
         return _deserialize_worker(worker_id, fields)
 
-    def list_all(self) -> tuple[RegisteredWorker, ...]:
+    async def list_all(self) -> tuple[RegisteredWorker, ...]:
         """Return all registered workers."""
         # redis 7.x stubs return Awaitable[T] | T; sync client always returns T.
         ids: set[str] = self._redis.smembers(_WORKERS_SET)  # type: ignore[assignment]
@@ -312,19 +312,20 @@ class RedisWorkerStore(WorkerStore):
         results = pipe.execute()
         return tuple(_deserialize_worker(wid, fields) for wid, fields in zip(ids, results, strict=True) if fields)
 
-    def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]:
+    async def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]:
         """Find workers matching a given WorkerType."""
-        return tuple(w for w in self.list_all() if w.capabilities.worker_type == worker_type)
+        return tuple(w for w in await self.list_all() if w.capabilities.worker_type == worker_type)
 
-    def find_by_language(self, src: str, dst: str) -> tuple[RegisteredWorker, ...]:
+    async def find_by_language(self, src: str, dst: str) -> tuple[RegisteredWorker, ...]:
         """Find workers supporting a source→target language pair."""
+        workers = await self.list_all()
         return tuple(
             w
-            for w in self.list_all()
+            for w in workers
             if src in w.capabilities.supported_languages_in and dst in w.capabilities.supported_languages_out
         )
 
-    def record_health_failure(self, worker_id: str) -> bool:
+    async def record_health_failure(self, worker_id: str) -> bool:
         """Record a failed health check. Returns True if the worker was removed."""
         key = _WORKER_KEY.format(worker_id=worker_id)
         if not self._redis.exists(key):
@@ -332,11 +333,11 @@ class RedisWorkerStore(WorkerStore):
         new_count: int = self._redis.hincrby(key, "consecutive_failures", 1)  # type: ignore[assignment]
         self._redis.hset(key, "last_health_check", str(time.time()))
         if new_count >= self.max_failures:
-            self.unregister(worker_id)
+            await self.unregister(worker_id)
             return True
         return False
 
-    def record_health_success(self, worker_id: str) -> None:
+    async def record_health_success(self, worker_id: str) -> None:
         """Record a successful health check, resetting the failure counter."""
         key = _WORKER_KEY.format(worker_id=worker_id)
         pipe = self._redis.pipeline(transaction=True)
@@ -348,32 +349,32 @@ class RedisWorkerStore(WorkerStore):
 class RedisJobStore(JobStore):
     """Redis-backed job store. Survives orchestrator restarts.
 
-    Sync client for the same reasons as ``RedisWorkerStore``.
+    Transitional state — see ``RedisWorkerStore`` for the sync-client caveat.
     """
 
     def __init__(self, redis_url: str) -> None:
         self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
         self._redis.ping()
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the underlying Redis connection pool."""
         self._redis.close()
 
-    def put(self, job: TrackedJob) -> None:
+    async def put(self, job: TrackedJob) -> None:
         """Store or update a tracked job."""
         pipe = self._redis.pipeline(transaction=True)
         pipe.set(_JOB_KEY.format(job_id=job.job_id), _serialize_job(job))
         pipe.sadd(_JOBS_SET, job.job_id)
         pipe.execute()
 
-    def get(self, job_id: str) -> TrackedJob | None:
+    async def get(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
         blob: str | None = self._redis.get(_JOB_KEY.format(job_id=job_id))  # type: ignore[assignment]
         if blob is None:
             return None
         return _deserialize_job(blob)
 
-    def list_all(self) -> tuple[TrackedJob, ...]:
+    async def list_all(self) -> tuple[TrackedJob, ...]:
         """Return all tracked jobs."""
         ids: set[str] = self._redis.smembers(_JOBS_SET)  # type: ignore[assignment]
         if not ids:

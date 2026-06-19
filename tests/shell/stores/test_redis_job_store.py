@@ -80,10 +80,11 @@ def store(redis_url: str) -> RedisJobStore:
 
 
 class TestPut:
-    def test_put_and_get(self, store: RedisJobStore) -> None:
+    @pytest.mark.asyncio
+    async def test_put_and_get(self, store: RedisJobStore) -> None:
         job = _tracked()
-        store.put(job)
-        loaded = store.get("job-1")
+        await store.put(job)
+        loaded = await store.get("job-1")
         assert loaded is not None
         assert loaded.job_id == "job-1"
         assert loaded.status == "pending"
@@ -92,26 +93,29 @@ class TestPut:
         assert loaded.request.target_language == "es"
         assert loaded.strategy == ExecutorStrategy.BATCH_ASYNC
 
-    def test_get_nonexistent(self, store: RedisJobStore) -> None:
-        result = store.get("nope")
+    @pytest.mark.asyncio
+    async def test_get_nonexistent(self, store: RedisJobStore) -> None:
+        result = await store.get("nope")
         assert result is None
 
-    def test_put_overwrites(self, store: RedisJobStore) -> None:
-        store.put(_tracked("j-1"))
+    @pytest.mark.asyncio
+    async def test_put_overwrites(self, store: RedisJobStore) -> None:
+        await store.put(_tracked("j-1"))
         job2 = _tracked("j-1")
         job2.status = "running"
-        store.put(job2)
-        loaded = store.get("j-1")
+        await store.put(job2)
+        loaded = await store.get("j-1")
         assert loaded is not None
         assert loaded.status == "running"
 
 
 class TestPlanRoundTrip:
-    def test_plan_with_steps_round_trips(self, store: RedisJobStore) -> None:
+    @pytest.mark.asyncio
+    async def test_plan_with_steps_round_trips(self, store: RedisJobStore) -> None:
         job = _tracked()
         job.plan = _plan()
-        store.put(job)
-        loaded = store.get("job-1")
+        await store.put(job)
+        loaded = await store.get("job-1")
         assert loaded is not None
         assert loaded.plan is not None
         assert loaded.plan.plan_id == "plan-x"
@@ -121,12 +125,13 @@ class TestPlanRoundTrip:
         assert loaded.plan.steps[1].status == StepStatus.FAILED
         assert loaded.plan.executor_strategy == ExecutorStrategy.BATCH_ASYNC
 
-    def test_result_round_trips(self, store: RedisJobStore) -> None:
+    @pytest.mark.asyncio
+    async def test_result_round_trips(self, store: RedisJobStore) -> None:
         """Regression for C2: PlanResult must survive a Redis round-trip."""
         job = _tracked()
         job.result = _result()
-        store.put(job)
-        loaded = store.get("job-1")
+        await store.put(job)
+        loaded = await store.get("job-1")
         assert loaded is not None
         assert loaded.result is not None
         assert loaded.result.status == "failed"
@@ -141,7 +146,8 @@ class TestPlanRoundTrip:
 
 
 class TestAudioRequest:
-    def test_audio_request_with_asr_model_round_trips(self, store: RedisJobStore) -> None:
+    @pytest.mark.asyncio
+    async def test_audio_request_with_asr_model_round_trips(self, store: RedisJobStore) -> None:
         """Regression for I10: AudioRequest.asr_model must round-trip."""
         job = TrackedJob(
             job_id="j-audio",
@@ -153,8 +159,8 @@ class TestAudioRequest:
             ),
             strategy=ExecutorStrategy.SEQUENTIAL,
         )
-        store.put(job)
-        loaded = store.get("j-audio")
+        await store.put(job)
+        loaded = await store.get("j-audio")
         assert loaded is not None
         assert isinstance(loaded.request, AudioRequest)
         assert loaded.request.asr_model == "whisper-v3"
@@ -162,15 +168,17 @@ class TestAudioRequest:
 
 
 class TestList:
-    def test_list_all(self, store: RedisJobStore) -> None:
-        store.put(_tracked("j-1"))
-        store.put(_tracked("j-2"))
-        store.put(_tracked("j-3"))
-        jobs = store.list_all()
+    @pytest.mark.asyncio
+    async def test_list_all(self, store: RedisJobStore) -> None:
+        await store.put(_tracked("j-1"))
+        await store.put(_tracked("j-2"))
+        await store.put(_tracked("j-3"))
+        jobs = await store.list_all()
         assert {j.job_id for j in jobs} == {"j-1", "j-2", "j-3"}
 
-    def test_list_empty(self, store: RedisJobStore) -> None:
-        jobs = store.list_all()
+    @pytest.mark.asyncio
+    async def test_list_empty(self, store: RedisJobStore) -> None:
+        jobs = await store.list_all()
         assert jobs == ()
 
 

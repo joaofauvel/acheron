@@ -72,7 +72,7 @@ class TestWorkerIntegrationHappyPath:
                 metrics=JobMetrics(duration_seconds=0.01),
             )
 
-        orch.register_worker(
+        await orch.register_worker(
             "asr-local",
             "local",
             "local",
@@ -134,14 +134,15 @@ class TestWorkerIntegrationErrorPath:
             )
 
         orch = Orchestrator(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path))
-        orch.register_worker(
+        await orch.start()
+        await orch.register_worker(
             "trans-local",
             "local",
             "local",
             _caps(WorkerType.TRANSLATION, langs_in=frozenset({"en"}), langs_out=frozenset({"es"})),
             handler=_no_op_handler,
         )
-        orch.register_worker(
+        await orch.register_worker(
             "tts-local",
             "local",
             "local",
@@ -173,7 +174,9 @@ class TestWorkerIntegrationErrorPath:
             # put coroutine handlers in metadata — non-serializable, crashed with
             # Redis backend. Should now work with any backend.
             orch = Orchestrator(registry=reg, cache=cache)
-            assert "extraction-local" in {w.worker_id for w in orch.list_workers()}
+            await orch.start()
+            workers = await orch.list_workers()
+            assert "extraction-local" in {w.worker_id for w in workers}
         finally:
             os.environ.pop("ACHERON_STORE_BACKEND", None)
 
@@ -192,14 +195,14 @@ class TestWorkerIntegrationErrorPath:
 
         reg = InMemoryWorkerStore()
         for wt in (WorkerType.EXTRACTION, WorkerType.CHUNKING, WorkerType.PACKAGING):
-            reg.register(f"{wt.value}-local", "local", "local", _caps(wt), metadata={"handler": _noop})
-        reg.register(
+            await reg.register(f"{wt.value}-local", "local", "local", _caps(wt), metadata={"handler": _noop})
+        await reg.register(
             "trans-http",
             "http://127.0.0.1:9999",
             "http",
             _caps(WorkerType.TRANSLATION, langs_in=frozenset({"en"}), langs_out=frozenset({"es"})),
         )
-        reg.register(
+        await reg.register(
             "tts-http",
             "http://127.0.0.1:9999",
             "http",
@@ -220,7 +223,7 @@ class TestWorkerIntegrationEdgeCases:
     async def test_multiple_tts_workers_uses_first(self, wired_orchestrator: Orchestrator) -> None:
         """First matching TTS worker is used when multiple exist (tts-http registered before tts-grpc)."""
         orch = wired_orchestrator
-        registered = orch.list_workers()
+        registered = await orch.list_workers()
         tts_workers = [w for w in registered if w.capabilities.worker_type == WorkerType.TTS]
         assert len(tts_workers) == 2
         assert tts_workers[0].worker_id == "tts-http"

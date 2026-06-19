@@ -46,39 +46,39 @@ class TestHealthMonitor:
     @pytest.mark.asyncio
     async def test_records_success_for_healthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
-        reg.register("w1", "http://worker", "http", _tts_caps())
+        await reg.register("w1", "http://worker", "http", _tts_caps())
         health_check = AsyncMock(return_value=True)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
         await asyncio.sleep(0.05)
         await monitor.stop()
         health_check.assert_called()
-        w = reg.get("w1")
+        w = await reg.get("w1")
         assert w is not None
         assert w.consecutive_failures == 0
 
     @pytest.mark.asyncio
     async def test_records_failure_for_unhealthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
-        reg.register("w1", "http://worker", "http", _tts_caps())
+        await reg.register("w1", "http://worker", "http", _tts_caps())
         health_check = AsyncMock(return_value=False)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
         await asyncio.sleep(0.05)
         await monitor.stop()
-        w = reg.get("w1")
+        w = await reg.get("w1")
         assert w is None or w.consecutive_failures > 0
 
     @pytest.mark.asyncio
     async def test_removes_worker_after_max_failures(self) -> None:
         reg = InMemoryWorkerStore()
-        reg.register("w1", "http://worker", "http", _tts_caps())
+        await reg.register("w1", "http://worker", "http", _tts_caps())
         health_check = AsyncMock(return_value=False)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
         await asyncio.sleep(0.15)
         await monitor.stop()
-        assert reg.get("w1") is None
+        assert await reg.get("w1") is None
 
 
 @pytest_asyncio.fixture
@@ -117,10 +117,11 @@ class TestHealthMonitorTransportAware:
     @pytest.mark.asyncio
     async def test_grpc_worker_not_removed_when_healthy(self, grpc_health_server: str) -> None:
         reg = InMemoryWorkerStore()
-        reg.register("tts-grpc", grpc_health_server, "grpc", _tts_caps())
+        await reg.register("tts-grpc", grpc_health_server, "grpc", _tts_caps())
         monitor = HealthMonitor(reg, interval=0.01)
         await monitor.start()
         await asyncio.sleep(0.05)
         await monitor.stop()
-        assert reg.get("tts-grpc") is not None
-        assert reg.get("tts-grpc").consecutive_failures == 0  # type: ignore[union-attr]
+        w = await reg.get("tts-grpc")
+        assert w is not None
+        assert w.consecutive_failures == 0

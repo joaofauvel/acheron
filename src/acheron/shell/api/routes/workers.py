@@ -40,7 +40,7 @@ async def register_worker(
         metadata=body.capabilities.metadata,
     )
 
-    orch.register_worker(body.worker_id, body.endpoint, body.transport, capabilities)
+    await orch.register_worker(body.worker_id, body.endpoint, body.transport, capabilities)
 
     return WorkerResponse(
         worker_id=body.worker_id,
@@ -54,7 +54,7 @@ async def register_worker(
 @router.get("", response_model=WorkerListResponse)
 async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
     """List all registered workers."""
-    workers = orch.list_workers()
+    workers = await orch.list_workers()
     return WorkerListResponse(
         workers=[
             WorkerResponse(

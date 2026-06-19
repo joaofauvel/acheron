@@ -85,7 +85,7 @@ def create_step_handler(
         src = plan.source_language
         dst = plan.target_language
 
-        workers = registry.list_all()
+        workers = await registry.list_all()
         selected: RegisteredWorker | None = None
         for w in workers:
             caps = w.capabilities

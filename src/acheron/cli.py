@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import sys
@@ -37,6 +38,15 @@ def _get_client() -> AcheronClient:
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     try:
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is not None:
+            # Already inside an event loop (e.g. an async test); run the coroutine
+            # inline. asyncio.run() would raise because it creates a new loop.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, coro).result()
         return asyncio.run(coro)
     except httpx.ConnectError:
         url = os.environ.get("ACHERON_URL", "http://localhost:8000")

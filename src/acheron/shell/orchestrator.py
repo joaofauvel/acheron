@@ -113,7 +113,6 @@ class Orchestrator:
         self._cache = cache
         self._verify_data_dir_writable()
         self._local_handlers: dict[str, LocalJobHandler] = {}
-        self._register_built_in_local_workers()
         self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
         self._job_store = job_store if job_store is not None else create_job_store()
         self._tasks: set[asyncio.Task[None]] = set()
@@ -137,7 +136,7 @@ class Orchestrator:
             with contextlib.suppress(OSError):
                 probe.unlink()
 
-    def _register_built_in_local_workers(self) -> None:
+    async def _register_built_in_local_workers(self) -> None:
         """Register in-process local workers for orchestration-level steps.
 
         Only registers a step type if no worker of that type is already in the
@@ -145,13 +144,17 @@ class Orchestrator:
         precedence over the stubs. The handler is kept in a side dict on the
         orchestrator (not in worker metadata) because handlers are not
         JSON-serializable and would break non-memory backends like Redis.
+
+        Idempotent: safe to call multiple times. Called from ``start()`` so the
+        store methods (now ``async def``) can be awaited.
         """
         for worker_type, handler in _BUILT_IN_LOCAL_HANDLERS.items():
-            if self._registry.find_by_type(worker_type):
+            existing = await self._registry.find_by_type(worker_type)
+            if existing:
                 continue
             worker_id = f"{worker_type.value}-local"
             self._local_handlers[worker_id] = handler
-            self._registry.register(
+            await self._registry.register(
                 worker_id=worker_id,
                 endpoint="local",
                 transport="local",
@@ -163,12 +166,13 @@ class Orchestrator:
         """Release any resources held by the stores. Idempotent and exception-isolated."""
         for close_attr in ("_registry", "_job_store"):
             try:
-                getattr(self, close_attr).close()
+                await getattr(self, close_attr).close()
             except Exception:
                 logger.exception("Failed to close %s", close_attr)
 
     async def start(self) -> None:
-        """Start background tasks."""
+        """Start background tasks and register built-in local workers."""
+        await self._register_built_in_local_workers()
         await self._health_monitor.start()
 
     async def shutdown(self) -> None:
@@ -196,7 +200,7 @@ class Orchestrator:
             strategy.value,
         )
 
-        capabilities = tuple(w.capabilities for w in self._registry.list_all())
+        capabilities = tuple(w.capabilities for w in await self._registry.list_all())
         plan = compile_plan(request, strategy, capabilities, job_id=job_id)
         self._cache.save_plan(plan)
         logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
@@ -208,7 +212,7 @@ class Orchestrator:
             plan=plan,
             status="running",
         )
-        self._job_store.put(tracked)
+        await self._job_store.put(tracked)
 
         task = asyncio.create_task(self._execute(tracked))
         self._tasks.add(task)
@@ -241,17 +245,17 @@ class Orchestrator:
         except Exception:
             logger.exception("Unexpected error executing %s", tracked.job_id)
             tracked.status = "failed"
-        self._job_store.put(tracked)
+        await self._job_store.put(tracked)
 
     async def get_job(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
-        return self._job_store.get(job_id)
+        return await self._job_store.get(job_id)
 
     async def list_jobs(self) -> tuple[TrackedJob, ...]:
         """List all tracked jobs."""
-        return self._job_store.list_all()
+        return await self._job_store.list_all()
 
-    def get_capabilities(
+    async def get_capabilities(
         self,
         src: str | None = None,
         dst: str | None = None,
@@ -261,7 +265,7 @@ class Orchestrator:
         Only includes pairs where all required worker types are registered:
         TTS for the target language, and a TRANSLATION worker when src != dst.
         """
-        workers = self._registry.list_all()
+        workers = await self._registry.list_all()
         tts_langs, translation_pairs = _collect_worker_caps(workers)
         requirements = (tts_langs, translation_pairs)
         pairs: dict[tuple[str, str], list[str]] = {}
@@ -278,7 +282,7 @@ class Orchestrator:
 
         return [LanguagePair(src=k[0], dst=k[1], workers=tuple(v)) for k, v in pairs.items()]
 
-    def register_worker(  # noqa: PLR0913
+    async def register_worker(  # noqa: PLR0913
         self,
         worker_id: str,
         endpoint: str,
@@ -297,11 +301,11 @@ class Orchestrator:
         """
         if transport == "local" and handler is not None:
             self._local_handlers[worker_id] = handler
-        self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
+        await self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
         logger.info(
             "Registered worker %s (%s, %s → %s)", worker_id, capabilities.worker_type.value, endpoint, transport
         )
 
-    def list_workers(self) -> tuple[RegisteredWorker, ...]:
+    async def list_workers(self) -> tuple[RegisteredWorker, ...]:
         """List all registered workers."""
-        return self._registry.list_all()
+        return await self._registry.list_all()

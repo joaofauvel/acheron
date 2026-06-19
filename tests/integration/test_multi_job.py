@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from acheron.cli import main
 
 if TYPE_CHECKING:
@@ -13,7 +15,8 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 
-def test_multiple_submissions_appear_in_list(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_multiple_submissions_appear_in_list(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     for name in ("a.epub", "b.epub", "c.epub"):
         (tmp_path / name).touch()
 
@@ -26,7 +29,8 @@ def test_multiple_submissions_appear_in_list(runner: CliRunner, wired_app: FastA
     assert result.output.count("job-") == 3
 
 
-def test_multiple_submissions_get_unique_ids(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_multiple_submissions_get_unique_ids(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     for name in ("a.epub", "b.epub"):
         (tmp_path / name).touch()
 
@@ -40,7 +44,8 @@ def test_multiple_submissions_get_unique_ids(runner: CliRunner, wired_app: FastA
     assert len(ids) == 2
 
 
-def test_active_filter_shows_running_jobs(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_active_filter_shows_running_jobs(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     for name in ("a.epub", "b.epub"):
         (tmp_path / name).touch()
 
@@ -52,7 +57,8 @@ def test_active_filter_shows_running_jobs(runner: CliRunner, wired_app: FastAPI,
     assert "job-" in result.output
 
 
-def test_list_jobs_after_submission(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_list_jobs_after_submission(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
     runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])

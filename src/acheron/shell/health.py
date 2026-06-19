@@ -91,11 +91,11 @@ class HealthMonitor:
         are not checked until the next interval. With the default 30s
         interval this is fine; no locking needed.
         """
-        for worker in self._registry.list_all():
+        for worker in await self._registry.list_all():
             healthy = await self._health_check(worker.endpoint, worker.transport)
             if healthy:
-                self._registry.record_health_success(worker.worker_id)
+                await self._registry.record_health_success(worker.worker_id)
             else:
-                removed = self._registry.record_health_failure(worker.worker_id)
+                removed = await self._registry.record_health_failure(worker.worker_id)
                 if removed:
                     logger.warning("Removed unhealthy worker %s after 3 failures", worker.worker_id)

@@ -84,14 +84,16 @@ def asr_caps(lang: str = "en") -> WorkerCapabilities:
     return _caps(WorkerType.ASR, langs_in=frozenset({lang}), langs_out=frozenset({lang}))
 
 
-def make_app(tmp_path: Path, *, extra_workers: list[tuple[str, str, str, WorkerCapabilities]] | None = None) -> FastAPI:
+async def make_app(
+    tmp_path: Path, *, extra_workers: list[tuple[str, str, str, WorkerCapabilities]] | None = None
+) -> FastAPI:
     """Create a test app with default TTS, translation, and ASR workers."""
     reg = InMemoryWorkerStore()
-    reg.register("tts-1", "http://tts", "http", tts_caps())
-    reg.register("trans-1", "http://trans", "http", translation_caps())
-    reg.register("asr-1", "http://asr", "http", asr_caps())
+    await reg.register("tts-1", "http://tts", "http", tts_caps())
+    await reg.register("trans-1", "http://trans", "http", translation_caps())
+    await reg.register("asr-1", "http://asr", "http", asr_caps())
     for worker_id, endpoint, transport, caps in extra_workers or []:
-        reg.register(worker_id, endpoint, transport, caps)
+        await reg.register(worker_id, endpoint, transport, caps)
     return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)
 
 
@@ -100,14 +102,21 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-@pytest.fixture
-def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
-    """Create a real FastAPI app and wire the CLI to use it via ASGI transport."""
-    app = make_app(tmp_path)
+@pytest_asyncio.fixture
+async def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[FastAPI]:
+    """Create a real FastAPI app and wire the CLI to use it via ASGI transport.
+
+    Calls ``orchestrator.start()`` explicitly because httpx's ASGITransport does
+    not trigger the FastAPI lifespan, so local workers would otherwise not be
+    registered before the first request.
+    """
+    app = await make_app(tmp_path)
+    await app.state.orchestrator.start()
     transport = ASGITransport(app=app)
     client = AcheronClient(base_url="http://test", transport=transport)
     monkeypatch.setattr("acheron.cli._get_client", lambda: client)
-    return app
+    yield app
+    await app.state.orchestrator.shutdown()
 
 
 async def _wait_for_port(host: str, port: int, timeout: float = 2.0) -> None:  # noqa: ASYNC109
@@ -250,7 +259,7 @@ async def wired_orchestrator(
 
     reg = InMemoryWorkerStore()
 
-    reg.register(
+    await reg.register(
         "tts-http",
         http_tts_stub,
         "http",
@@ -263,7 +272,7 @@ async def wired_orchestrator(
             batch_capable=True,
         ),
     )
-    reg.register(
+    await reg.register(
         "tts-grpc",
         grpc_tts_stub,
         "grpc",
@@ -276,7 +285,7 @@ async def wired_orchestrator(
             batch_capable=True,
         ),
     )
-    reg.register(
+    await reg.register(
         "trans-http",
         http_translation_stub,
         "http",
