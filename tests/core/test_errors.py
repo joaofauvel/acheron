@@ -59,3 +59,15 @@ class TestMessagePropagation:
     def test_catch_by_intermediate(self) -> None:
         with pytest.raises(PlanError):
             raise PlanValidationError("missing step dependency")
+
+
+class TestPipelineError:
+    def test_pipeline_error_inherits_from_acheron_error(self) -> None:
+        from acheron.core.errors import PipelineError
+
+        assert issubclass(PipelineError, AcheronError)
+
+    def test_pipeline_error_does_not_inherit_from_worker_error(self) -> None:
+        from acheron.core.errors import PipelineError, WorkerError
+
+        assert not issubclass(PipelineError, WorkerError)

@@ -43,3 +43,12 @@ class CacheCorruptedError(CacheError):
 
 class ChunkingError(AcheronError):
     """Text chunking failed or produced invalid output."""
+
+
+class PipelineError(AcheronError):
+    """Unexpected failures during streaming pipeline execution.
+
+    Reserved for executor-internal invariants (cache, sentinel protocol,
+    unexpected stage failures). Worker-dispatch failures continue to be
+    represented by ``WorkerError`` subclasses.
+    """
