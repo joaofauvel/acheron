@@ -33,7 +33,18 @@ _SOURCE_TYPE_MAP: dict[str, str] = {
 
 
 def _get_client() -> AcheronClient:
-    return AcheronClient(os.environ.get("ACHERON_URL", "http://localhost:8000"))
+    """Build the orchestrator HTTP client.
+
+    The default scheme is HTTPS to match the dev/HTTPS orchestrator (compose
+    sets ``ACHERON_TLS_CERT_FILE``). Callers can override the URL with
+    ``ACHERON_URL``. The trust store is resolved from ``ACHERON_TLS_CA_FILE``
+    (Acheron-specific override), then ``SSL_CERT_FILE`` (the standard env var
+    honored by httpx and stdlib ssl), and finally falls back to the system
+    trust store.
+    """
+    base_url = os.environ.get("ACHERON_URL", "https://localhost:8000")
+    verify: bool | str = os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE") or True
+    return AcheronClient(base_url, verify=verify)
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
@@ -52,7 +63,7 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
     except httpx.ConnectError:
-        url = os.environ.get("ACHERON_URL", "http://localhost:8000")
+        url = os.environ.get("ACHERON_URL", "https://localhost:8000")
         console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
         console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
         raise SystemExit(1) from None

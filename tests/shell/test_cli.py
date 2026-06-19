@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, ClassVar
 
 import httpx
+import pytest
 import respx
 from click.testing import CliRunner
 
+from acheron import cli as cli_module
 from acheron.cli import main
 
-_BASE_URL = "http://localhost:8000"
+_BASE_URL = "http://test.local:8000"
+
+
+@pytest.fixture(autouse=True)
+def _stable_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin ACHERON_URL so the CLI default doesn't leak into tests."""
+    monkeypatch.setenv("ACHERON_URL", _BASE_URL)
 
 
 @respx.mock
@@ -339,3 +348,82 @@ def test_connect_error_shows_friendly_message() -> None:
     assert result.exit_code != 0
     assert "Cannot connect" in result.output
     assert "server running" in result.output.lower()
+
+
+class _CapturedClient:
+    """Sentinel object that records the kwargs AcheronClient was called with."""
+
+    instances: ClassVar[list[_CapturedClient]] = []
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.args = args
+        self.kwargs = kwargs
+        self.instances.append(self)
+
+    def __getattr__(self, name: str) -> Any:
+        msg = f"_CapturedClient used as a real client: .{name}"
+        raise AssertionError(msg)
+
+
+@pytest.fixture
+def captured_client(monkeypatch: pytest.MonkeyPatch) -> list[_CapturedClient]:
+    captured: list[_CapturedClient] = []
+    monkeypatch.setattr(_CapturedClient, "instances", captured)
+    monkeypatch.setattr(cli_module, "AcheronClient", _CapturedClient)
+    return captured
+
+
+def test_default_url_is_https(monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient]) -> None:
+    """CLI defaults to https:// so it works against the dev/HTTPS orchestrator."""
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].args[0] == "https://localhost:8000"
+
+
+def test_verify_uses_acheron_ca_file(
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient], tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    ca = tmp_path / "ca.crt"
+    ca.touch()
+    monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(ca))
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].kwargs["verify"] == str(ca)
+
+
+def test_verify_falls_back_to_ssl_cert_file(
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient], tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+    ca = tmp_path / "ca.crt"
+    ca.touch()
+    monkeypatch.setenv("SSL_CERT_FILE", str(ca))
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].kwargs["verify"] == str(ca)
+
+
+def test_verify_defaults_to_true_when_no_ca_env(
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient]
+) -> None:
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].kwargs["verify"] is True
+
+
+def test_acheron_ca_takes_precedence_over_ssl_cert_file(
+    monkeypatch: pytest.MonkeyPatch, captured_client: list[_CapturedClient], tmp_path: Path
+) -> None:
+    """ACHERON_TLS_CA_FILE is the explicit override and wins over SSL_CERT_FILE."""
+    monkeypatch.delenv("ACHERON_URL", raising=False)
+    acheron_ca = tmp_path / "acheron-ca.crt"
+    other_ca = tmp_path / "other.crt"
+    acheron_ca.touch()
+    other_ca.touch()
+    monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(acheron_ca))
+    monkeypatch.setenv("SSL_CERT_FILE", str(other_ca))
+    cli_module._get_client()  # noqa: SLF001
+    assert captured_client[0].kwargs["verify"] == str(acheron_ca)

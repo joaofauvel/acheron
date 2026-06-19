@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -12,11 +13,16 @@ class AcheronClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: str = "https://localhost:8000",
         transport: httpx.AsyncBaseTransport | None = None,
+        *,
+        verify: bool | str | Path = True,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._transport = transport
+        # httpx's verify= wants bool | str (path); coerce pathlib.Path to str
+        # so callers can pass either form.
+        self._verify: bool | str = verify if not isinstance(verify, Path) else str(verify)
 
     async def submit_job(  # noqa: PLR0913
         self,
@@ -37,28 +43,28 @@ class AcheronClient:
         }
         if asr_model is not None:
             payload["asr_model"] = asr_model
-        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport, verify=self._verify) as client:
             resp = await client.post("/jobs", json=payload)
             resp.raise_for_status()
             return cast("dict[str, Any]", resp.json())
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         """Get job status and result."""
-        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport, verify=self._verify) as client:
             resp = await client.get(f"/jobs/{job_id}")
             resp.raise_for_status()
             return cast("dict[str, Any]", resp.json())
 
     async def list_jobs(self) -> list[dict[str, Any]]:
         """List all jobs."""
-        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport, verify=self._verify) as client:
             resp = await client.get("/jobs")
             resp.raise_for_status()
             return cast("list[dict[str, Any]]", resp.json()["jobs"])
 
     async def list_workers(self) -> list[dict[str, Any]]:
         """List all registered workers."""
-        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport, verify=self._verify) as client:
             resp = await client.get("/workers")
             resp.raise_for_status()
             return cast("list[dict[str, Any]]", resp.json()["workers"])
@@ -74,7 +80,7 @@ class AcheronClient:
             params["src"] = src
         if dest is not None:
             params["dest"] = dest
-        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, transport=self._transport, verify=self._verify) as client:
             resp = await client.get("/capabilities", params=params)
             resp.raise_for_status()
             return cast("list[dict[str, Any]]", resp.json()["language_pairs"])

@@ -133,7 +133,7 @@ Acheron services serve TLS when configured. Three env vars control it:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ACHERON_URL` | `http://localhost:8000` | CLI and dashboard: orchestrator URL |
+| `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard: orchestrator URL (use `http://` to skip TLS) |
 | `ACHERON_REGISTRATION_TOKEN` | `dev-registration-token` | Worker registration shared secret |
 | `ACHERON_DATA_DIR` | `/data/jobs` | Orchestrator: plan and step-output cache directory (must be writable) |
 | `ACHERON_STORE_BACKEND` | `memory` | Orchestrator: `memory` (in-process) or `redis` (persistent) |
@@ -141,7 +141,7 @@ Acheron services serve TLS when configured. Three env vars control it:
 | `WORKER_HTTP_PORT` | `9002` | gRPC stub: HTTP `/health` sidecar port for Docker healthchecks |
 | `ACHERON_TLS_CERT_FILE` | (unset) | Server: path to PEM-encoded server cert (set with `ACHERON_TLS_KEY_FILE` to enable HTTPS) |
 | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key (set with `ACHERON_TLS_CERT_FILE` to enable HTTPS) |
-| `ACHERON_TLS_CA_FILE` | (unset) | gRPC client: path to PEM-encoded CA bundle to verify peer certs |
+| `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs (falls back to `SSL_CERT_FILE`) |
 
 ## CLI
 
