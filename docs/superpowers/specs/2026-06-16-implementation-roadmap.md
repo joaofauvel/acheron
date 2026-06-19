@@ -180,6 +180,9 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check, gRPC HTTP /health sidecar (FastAPI) |
 | 7c | done | TLS via env vars: `ACHERON_TLS_{CERT,KEY,CA}_FILE`; dev cert script (`just certs`); compose wires certs, env vars, and HTTPS healthchecks; dashboard stays HTTP |
 | 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
+| 9b-i | planned | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
+| 9b-ii | planned | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
+| 9a | planned | Streaming pipeline executor (`StreamingExecutor`, `PipelineError`, per-step timeout) |
 
 ## Layer 7 — Decomposition
 
@@ -214,3 +217,21 @@ TLS via reverse proxy (nginx or caddy) with self-signed certs for local dev.
 - Self-signed cert generation script for local dev
 - `docker compose --profile tls up` opt-in
 - Production deploys use real certs via cert-manager or cloud provider
+
+---
+
+## Layer 9 — Decomposition
+
+Layer 9 addresses pipeline-level streaming and async Redis, decomposed into three independent sub-projects. See [Layer 9 design spec](./2026-06-18-pipeline-streaming-design.md).
+
+### Sub-project 9b-i — Store ABC + InMemory async
+
+Migrate `WorkerStore` and `JobStore` ABCs to `async def`. Update `InMemoryWorkerStore` and `InMemoryJobStore` trivially (no I/O). Update all call sites in `health.py`, `step_handler.py`, and `orchestrator.py` to `await`. Validates with existing unit tests.
+
+### Sub-project 9b-ii — Redis async backend
+
+Swap `RedisWorkerStore` and `RedisJobStore` from `redis.Redis` to `redis.asyncio.Redis`. Add `async def connect()` classmethod for startup connectivity check. `close()` becomes `async def`. Integration tests via testcontainers.
+
+### Sub-project 9a — Streaming pipeline executor
+
+New `StreamingExecutor` replacing `BatchAsyncExecutor` as the default for GPU jobs. Per-chapter `asyncio.Queue` pipeline with bounded backpressure, fail-fast all-or-nothing job semantics, per-step `asyncio.wait_for()` timeout, and `StepCache.save_outputs()` per chunk as resumability foundation. New `PipelineError(AcheronError)` in `core/errors.py`. Add `ExecutorStrategy.STREAMING`.

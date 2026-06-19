@@ -335,7 +335,9 @@ type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
 
 **AsyncExecutor** — traverses the DAG in dependency waves. All steps in a wave run concurrently via `asyncio.gather`. Dependents of failed steps are skipped.
 
-**BatchAsyncExecutor** (default) — extends AsyncExecutor with batch semantics. Batch-flagged steps receive all outputs from completed preceding steps so the handler can construct a `BatchJob` with the correct payloads.
+**BatchAsyncExecutor** — extends AsyncExecutor with batch semantics. Batch-flagged steps receive all outputs from completed preceding steps so the handler can construct a `BatchJob` with the correct payloads.
+
+**StreamingExecutor** (default for GPU jobs) — per-chapter pipeline using bounded `asyncio.Queue`s. Each chapter runs as an independent pipeline task in an outer `asyncio.TaskGroup`. Within a chapter, stage coroutines (translate → tts → package) are connected by `asyncio.Queue(maxsize=4)` providing native backpressure. Any chapter failure cancels all sibling chapters immediately (fail-fast, all-or-nothing semantics). Step results are written to `StepCache` as they complete — not accumulated in memory. `asyncio.wait_for()` enforces a per-step timeout (default 1800s) at every worker dispatch. See [Layer 9 spec](./2026-06-18-pipeline-streaming-design.md).
 
 All executors capture error details in `PlanResult.errors`.
 
@@ -376,17 +378,17 @@ After 3 consecutive failures, the worker is removed from the registry. The monit
 - TTS: target in `supported_languages_in` AND target in `supported_languages_out`
 - Extraction/Chunking/Packaging: no language check
 
-**Storage backends:** The `WorkerStore` and `JobStore` ABCs live in `src/acheron/shell/stores/`. Implementations:
-- `InMemoryWorkerStore` / `InMemoryJobStore` — synchronous, dict-backed, used for dev and tests
-- `RedisWorkerStore` / `RedisJobStore` — synchronous `redis.Redis` client, JSON-serialized state in Redis hashes and sets, fails fast on unreachable Redis at init time. The `TrackedJob` round-trip persists the full job state including the `Plan` and `PlanResult`.
-
-The synchronous Redis client is a deliberate v1 trade-off: sync calls from an async context block the event loop briefly, but Redis calls are fast (~1ms LAN) and infrequent. If profiling shows event-loop pressure, migrate the ABCs to async and switch to `redis.asyncio.Redis`.
+**Storage backends:** The `WorkerStore` and `JobStore` ABCs live in `src/acheron/shell/stores/`. All methods are `async def`. Implementations:
+- `InMemoryWorkerStore` / `InMemoryJobStore` — async, dict-backed, used for dev and tests
+- `RedisWorkerStore` / `RedisJobStore` — `redis.asyncio.Redis` client, JSON-serialized state in Redis hashes and sets. Connectivity is verified at startup via a `connect()` classmethod (not `__init__`, which cannot `await`). The `TrackedJob` round-trip persists the full job state including the `Plan` and `PlanResult`.
 
 `Orchestrator.close()` releases store resources with exception isolation (one store's close failing doesn't skip the other), called from the FastAPI lifespan.
 
 **Local worker handlers** are kept in a side dict on the orchestrator (`_local_handlers: dict[str, LocalJobHandler]`), not in `RegisteredWorker.metadata`. Worker `metadata` is a JSON-serializable contract used by persistence backends; coroutine handlers are not serializable. Use the `Orchestrator.register_worker(handler=...)` keyword-only parameter to register a local worker.
 
 **Production (Layer 7):** Layers 7a (storage abstraction + Redis backend), 7b (production compose hardening), and 7c (TLS support) are done. See [implementation roadmap](./2026-06-16-implementation-roadmap.md).
+
+**Layer 9 — Pipeline Streaming & Async Redis:** `StreamingExecutor` (9a) and async Redis stores (9b). See [Layer 9 spec](./2026-06-18-pipeline-streaming-design.md).
 
 **TLS (Layer 7c):** Acheron services support TLS via environment variables; cert provenance and reverse proxying are the deployer's responsibility. Three env vars control it: `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` for server-side TLS (both required together), and `SSL_CERT_FILE` for client-side trust (httpx and stdlib `ssl` honor it automatically). Unset env vars = HTTP. Production deploys generate real certs (Let's Encrypt via cert-manager, internal CA, etc.) with the right SANs; no Acheron code change. See the [Layer 7c sub-spec](./2026-06-18-layer7c-tls.md) for the env-var contract, dev cert script, and compose integration.
 
@@ -440,11 +442,13 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 
 | Failure Mode | Strategy |
 |---|---|
-| Network drop (push to worker) | Exponential backoff retry (tenacity). 5 failures → mark step FAILED, continue other chapters. |
-| Worker crash mid-job | Health check fails 3 consecutive times → remove from registry. Re-dispatch to another worker of same type. No alternative → mark step FAILED. |
-| Sequence gap in output | Packaging validates sequence continuity. Gap → abort that chapter, don't produce broken audio. |
+| Network drop (push to worker) | Exponential backoff retry (tenacity). 5 failures → raise `WorkerError`, chapter fails. |
+| Worker crash mid-job | Health check fails 3 consecutive times → remove from registry. Re-dispatch to another worker of same type. No alternative → `WorkerError`, chapter fails. |
+| Chapter failure (`StreamingExecutor`) | Outer `asyncio.TaskGroup` cancels all sibling chapters immediately. Job marked `failed`. No partial audiobook written. |
+| Sequence gap in output | Packaging validates sequence continuity. Gap → abort that chapter. |
 | Invalid language path | Planner rejects at plan compilation. No GPU time spent. |
-| Worker timeout | Per-job timeout (default: 30min). Timeout → mark step FAILED. |
+| Worker timeout | Per-step `asyncio.wait_for()` timeout (default 1800s). Raises `WorkerError`, fails chapter. |
+| Unexpected stage failure | Wrapped as `PipelineError(AcheronError)` before propagating. Never silently swallowed. |
 
 ## Cost Containment
 
