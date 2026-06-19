@@ -1,12 +1,18 @@
 """Redis-backed implementations of the store ABCs."""
 
+# Note: redis.asyncio stubs type most methods as ``Awaitable[T] | T`` because
+# the client supports both async and (theoretically) sync-context-manager
+# usage. In our async call sites the ``T`` branch is unreachable, so we
+# silence mypy's ``[misc]`` / basedpyright's ``reportGeneralTypeIssues`` for
+# each ``await`` on a Redis method.
+
 from __future__ import annotations
 
 import json
 import time
 from typing import TYPE_CHECKING, Any
 
-import redis
+import redis.asyncio
 
 from acheron.core.models import AudioRequest, EpubRequest
 from acheron.shell.stores.base import JobStore, WorkerStore
@@ -257,19 +263,19 @@ def _deserialize_job(blob: str) -> TrackedJob:
 class RedisWorkerStore(WorkerStore):
     """Redis-backed worker store. Survives orchestrator restarts.
 
-    Transitional state during the Layer 9b async migration: methods are
-    ``async def`` (matching the ABC) but the underlying client is still the
-    synchronous ``redis.Redis`` — calls block the event loop briefly. Layer
-    9b-ii swaps the client to ``redis.asyncio.Redis`` for non-blocking I/O.
+    Requires awaiting connect() before use.
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
-        self._redis.ping()
+        self._redis = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
+
+    async def connect(self) -> None:
+        """Verify the Redis server is reachable. Idempotent."""
+        await self._redis.ping()  # type: ignore[misc]
 
     async def close(self) -> None:
         """Close the underlying Redis connection pool."""
-        self._redis.close()
+        await self._redis.aclose()
 
     async def register(
         self,
@@ -281,35 +287,34 @@ class RedisWorkerStore(WorkerStore):
     ) -> None:
         """Register a new worker or re-register an existing one."""
         fields = _worker_fields(endpoint, transport, capabilities, dict(metadata or {}))
-        pipe = self._redis.pipeline(transaction=True)
-        pipe.hset(_WORKER_KEY.format(worker_id=worker_id), mapping=fields)
-        pipe.sadd(_WORKERS_SET, worker_id)
-        pipe.execute()
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.hset(_WORKER_KEY.format(worker_id=worker_id), mapping=fields)
+            pipe.sadd(_WORKERS_SET, worker_id)
+            await pipe.execute()
 
     async def unregister(self, worker_id: str) -> None:
         """Remove a worker from the store."""
-        pipe = self._redis.pipeline(transaction=True)
-        pipe.srem(_WORKERS_SET, worker_id)
-        pipe.delete(_WORKER_KEY.format(worker_id=worker_id))
-        pipe.execute()
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.srem(_WORKERS_SET, worker_id)
+            pipe.delete(_WORKER_KEY.format(worker_id=worker_id))
+            await pipe.execute()
 
     async def get(self, worker_id: str) -> RegisteredWorker | None:
         """Look up a worker by ID."""
-        fields: dict[str, str] = self._redis.hgetall(_WORKER_KEY.format(worker_id=worker_id))  # type: ignore[assignment]
+        fields: dict[str, str] = await self._redis.hgetall(_WORKER_KEY.format(worker_id=worker_id))  # type: ignore[misc]
         if not fields:
             return None
         return _deserialize_worker(worker_id, fields)
 
     async def list_all(self) -> tuple[RegisteredWorker, ...]:
         """Return all registered workers."""
-        # redis 7.x stubs return Awaitable[T] | T; sync client always returns T.
-        ids: set[str] = self._redis.smembers(_WORKERS_SET)  # type: ignore[assignment]
+        ids: set[str] = await self._redis.smembers(_WORKERS_SET)  # type: ignore[misc]
         if not ids:
             return ()
-        pipe = self._redis.pipeline(transaction=False)
-        for wid in ids:
-            pipe.hgetall(_WORKER_KEY.format(worker_id=wid))
-        results = pipe.execute()
+        async with self._redis.pipeline(transaction=False) as pipe:
+            for wid in ids:
+                pipe.hgetall(_WORKER_KEY.format(worker_id=wid))
+            results = await pipe.execute()
         return tuple(_deserialize_worker(wid, fields) for wid, fields in zip(ids, results, strict=True) if fields)
 
     async def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]:
@@ -328,10 +333,10 @@ class RedisWorkerStore(WorkerStore):
     async def record_health_failure(self, worker_id: str) -> bool:
         """Record a failed health check. Returns True if the worker was removed."""
         key = _WORKER_KEY.format(worker_id=worker_id)
-        if not self._redis.exists(key):
+        if not await self._redis.exists(key):
             return False
-        new_count: int = self._redis.hincrby(key, "consecutive_failures", 1)  # type: ignore[assignment]
-        self._redis.hset(key, "last_health_check", str(time.time()))
+        new_count: int = await self._redis.hincrby(key, "consecutive_failures", 1)  # type: ignore[misc]
+        await self._redis.hset(key, "last_health_check", str(time.time()))  # type: ignore[misc]
         if new_count >= self.max_failures:
             await self.unregister(worker_id)
             return True
@@ -340,47 +345,50 @@ class RedisWorkerStore(WorkerStore):
     async def record_health_success(self, worker_id: str) -> None:
         """Record a successful health check, resetting the failure counter."""
         key = _WORKER_KEY.format(worker_id=worker_id)
-        pipe = self._redis.pipeline(transaction=True)
-        pipe.hset(key, "consecutive_failures", "0")
-        pipe.hset(key, "last_health_check", str(time.time()))
-        pipe.execute()
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.hset(key, "consecutive_failures", "0")
+            pipe.hset(key, "last_health_check", str(time.time()))
+            await pipe.execute()
 
 
 class RedisJobStore(JobStore):
     """Redis-backed job store. Survives orchestrator restarts.
 
-    Transitional state — see ``RedisWorkerStore`` for the sync-client caveat.
+    Requires awaiting connect() before use.
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
-        self._redis.ping()
+        self._redis = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
+
+    async def connect(self) -> None:
+        """Verify the Redis server is reachable. Idempotent."""
+        await self._redis.ping()  # type: ignore[misc]
 
     async def close(self) -> None:
         """Close the underlying Redis connection pool."""
-        self._redis.close()
+        await self._redis.aclose()
 
     async def put(self, job: TrackedJob) -> None:
         """Store or update a tracked job."""
-        pipe = self._redis.pipeline(transaction=True)
-        pipe.set(_JOB_KEY.format(job_id=job.job_id), _serialize_job(job))
-        pipe.sadd(_JOBS_SET, job.job_id)
-        pipe.execute()
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.set(_JOB_KEY.format(job_id=job.job_id), _serialize_job(job))
+            pipe.sadd(_JOBS_SET, job.job_id)
+            await pipe.execute()
 
     async def get(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
-        blob: str | None = self._redis.get(_JOB_KEY.format(job_id=job_id))  # type: ignore[assignment]
+        blob: str | None = await self._redis.get(_JOB_KEY.format(job_id=job_id))
         if blob is None:
             return None
         return _deserialize_job(blob)
 
     async def list_all(self) -> tuple[TrackedJob, ...]:
         """Return all tracked jobs."""
-        ids: set[str] = self._redis.smembers(_JOBS_SET)  # type: ignore[assignment]
+        ids: set[str] = await self._redis.smembers(_JOBS_SET)  # type: ignore[misc]
         if not ids:
             return ()
-        pipe = self._redis.pipeline(transaction=False)
-        for jid in ids:
-            pipe.get(_JOB_KEY.format(job_id=jid))
-        results = pipe.execute()
+        async with self._redis.pipeline(transaction=False) as pipe:
+            for jid in ids:
+                pipe.get(_JOB_KEY.format(job_id=jid))
+            results = await pipe.execute()
         return tuple(_deserialize_job(blob) for blob in results if blob is not None)
