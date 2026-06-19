@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
     from acheron.shell.stores.base import JobStore, WorkerStore
 
+from acheron.shell.cache import StepCache  # noqa: E402 — runtime use in __init__
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,6 +113,7 @@ class Orchestrator:
     ) -> None:
         self._registry = registry
         self._cache = cache
+        self._step_cache = StepCache(cache.data_dir)
         self._verify_data_dir_writable()
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
@@ -256,7 +259,11 @@ class Orchestrator:
                 tracked.status = "failed"
                 logger.error("No plan for %s", tracked.job_id)
             else:
-                executor = create_executor(tracked.strategy, self._handler)
+                executor = create_executor(
+                    tracked.strategy,
+                    self._handler,
+                    step_cache=self._step_cache,
+                )
                 result = await executor.run(tracked.plan)
                 tracked.result = result
                 tracked.status = result.status
