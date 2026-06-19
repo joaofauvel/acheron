@@ -1,10 +1,8 @@
 """Redis-backed implementations of the store ABCs."""
 
-# Note: redis.asyncio stubs type most methods as ``Awaitable[T] | T`` because
-# the client supports both async and (theoretically) sync-context-manager
-# usage. In our async call sites the ``T`` branch is unreachable, so we
-# silence mypy's ``[misc]`` / basedpyright's ``reportGeneralTypeIssues`` for
-# each ``await`` on a Redis method.
+# redis.asyncio stubs type methods as ``Awaitable[T] | T``; we silence the
+# misc for each ``await self._redis.<method>`` since the ``T`` branch is
+# unreachable in async call sites.
 
 from __future__ import annotations
 
@@ -287,6 +285,7 @@ class RedisWorkerStore(WorkerStore):
     ) -> None:
         """Register a new worker or re-register an existing one."""
         fields = _worker_fields(endpoint, transport, capabilities, dict(metadata or {}))
+        # Per-command pipe methods buffer synchronously; only execute() awaits.
         async with self._redis.pipeline(transaction=True) as pipe:
             pipe.hset(_WORKER_KEY.format(worker_id=worker_id), mapping=fields)
             pipe.sadd(_WORKERS_SET, worker_id)

@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 import redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from acheron.core.models import (
     AudioRequest,
@@ -193,8 +194,6 @@ class TestList:
 class TestFailFast:
     @pytest.mark.asyncio
     async def test_unreachable_redis_raises_on_connect(self) -> None:
-        from redis.exceptions import ConnectionError as RedisConnectionError
-
         store = RedisJobStore("redis://localhost:1")
         with pytest.raises((RedisConnectionError, redis.RedisError)):
             await store.connect()

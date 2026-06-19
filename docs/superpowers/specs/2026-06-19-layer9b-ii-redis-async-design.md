@@ -156,7 +156,7 @@ All existing tests in those files are already `@pytest.mark.asyncio` and `await`
 - `self._redis.close()` → `await self._redis.aclose()`.
 - All `pipe.execute()` → `await pipe.execute()`.
 - All single-call sites (`hset`, `hgetall`, `hincrby`, `smembers`, `sadd`, `srem`, `delete`, `exists`, `get`, `set`) → `await`-prefixed.
-- Drop all `# type: ignore[assignment]` comments — `redis.asyncio.Redis` types are correct.
+- Keep `# type: ignore[misc]` on each `await self._redis.<method>(...)` call — the redis-py async stubs type methods as `Awaitable[T] | T` and the `T` branch is unreachable in our async call sites.
 - Class docstring: drop the "transitional state" note. New wording: `"Redis-backed worker store. Survives orchestrator restarts. Requires awaiting connect() before use."`
 
 ### `src/acheron/shell/stores/base.py`

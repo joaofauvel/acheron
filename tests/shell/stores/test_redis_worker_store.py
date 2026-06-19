@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 import redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.shell.stores.redis import RedisWorkerStore
@@ -118,8 +119,6 @@ class TestHealthTracking:
 class TestFailFast:
     @pytest.mark.asyncio
     async def test_unreachable_redis_raises_on_connect(self) -> None:
-        from redis.exceptions import ConnectionError as RedisConnectionError
-
         store = RedisWorkerStore("redis://localhost:1")
         with pytest.raises((RedisConnectionError, redis.RedisError)):
             await store.connect()
@@ -133,9 +132,9 @@ class TestConnectIdempotency:
         await store.connect()
 
 
-class TestCloseSemantics:
+class TestCloseRobustness:
     @pytest.mark.asyncio
-    async def test_close_is_idempotent(self, redis_url: str) -> None:
+    async def test_close_does_not_crash_when_called_twice(self, redis_url: str) -> None:
         """close() can be called more than once without raising."""
         s = RedisWorkerStore(redis_url)
         await s.connect()

@@ -164,7 +164,13 @@ class Orchestrator:
             )
 
     async def close(self) -> None:
-        """Release any resources held by the stores. Idempotent and exception-isolated."""
+        """Release any resources held by the stores. Idempotent and exception-isolated.
+
+        Tears down the Redis connection pool (or any other backend-held resources).
+        Callers must drain in-flight ``_execute`` tasks via ``shutdown()`` first —
+        otherwise a job whose ``put()`` races the pool teardown will see a
+        ``ConnectionError`` mid-flight.
+        """
         for close_attr in ("_registry", "_job_store"):
             try:
                 await getattr(self, close_attr).close()
@@ -179,9 +185,9 @@ class Orchestrator:
         """
         if self._started:
             return
-        self._started = True
         await self._registry.connect()
         await self._job_store.connect()
+        self._started = True
         await self._register_built_in_local_workers()
         await self._health_monitor.start()
 

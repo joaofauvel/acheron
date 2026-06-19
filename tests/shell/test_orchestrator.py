@@ -125,6 +125,39 @@ class TestOrchestrator:
         assert "job" in connect_calls
 
     @pytest.mark.asyncio
+    async def test_start_can_retry_after_connect_failure(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """If connect() raises, start() must not flip _started so a retry works."""
+
+        class _FailingWorkerStore(InMemoryWorkerStore):
+            async def connect(self) -> None:
+                msg = "redis down"
+                raise RuntimeError(msg)
+
+        class _FailingJobStore(InMemoryJobStore):
+            async def connect(self) -> None:
+                msg = "redis down"
+                raise RuntimeError(msg)
+
+        orch = Orchestrator(
+            _FailingWorkerStore(),
+            PlanCache(tmp_path),
+            _success_handler,
+            job_store=_FailingJobStore(),
+        )
+
+        with pytest.raises(RuntimeError, match="redis down"):
+            await orch.start()
+
+        # Replace with working stores; retry must re-call connect() and re-register
+        # local workers (the first start() never got that far).
+        orch._registry = InMemoryWorkerStore()  # noqa: SLF001
+        orch._job_store = InMemoryJobStore()  # noqa: SLF001
+        await orch.start()
+        assert orch._started  # noqa: SLF001
+        workers = await orch._registry.list_all()  # noqa: SLF001
+        assert {w.worker_id for w in workers} >= {"extraction-local", "chunking-local", "packaging-local"}
+
+    @pytest.mark.asyncio
     async def test_list_jobs(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
