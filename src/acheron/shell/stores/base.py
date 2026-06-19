@@ -16,6 +16,9 @@ class WorkerStore(ABC):
 
     max_failures: int = 3
 
+    async def connect(self) -> None:
+        """Verify the backend is reachable. No-op for stores without a remote backend."""
+
     @abstractmethod
     async def register(
         self,
@@ -71,6 +74,9 @@ class WorkerStore(ABC):
 
 class JobStore(ABC):
     """Persistent or in-memory store of tracked jobs."""
+
+    async def connect(self) -> None:
+        """Verify the backend is reachable. No-op for stores without a remote backend."""
 
     @abstractmethod
     async def put(self, job: TrackedJob) -> None:
