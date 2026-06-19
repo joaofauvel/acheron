@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from acheron.core.errors import AcheronError
 from acheron.core.models import AudioRequest, EpubRequest, WorkerCapabilities, WorkerType
 from acheron.core.planner import compile_plan
+from acheron.shell.cache import StepCache
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import TrackedJob
@@ -30,8 +31,6 @@ if TYPE_CHECKING:
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.registry import RegisteredWorker
     from acheron.shell.stores.base import JobStore, WorkerStore
-
-from acheron.shell.cache import StepCache
 
 logger = logging.getLogger(__name__)
 

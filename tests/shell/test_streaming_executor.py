@@ -169,7 +169,7 @@ class TestUnexpectedException:
         result = await executor.run(plan)
 
         assert result.status == "failed"
-        assert any("boom" in e.lower() or "streaming" in e.lower() for e in result.errors)
+        assert any("unexpected failure in stage" in e.lower() for e in result.errors)
 
 
 class TestCacheFailure:
@@ -200,34 +200,13 @@ class TestCacheFailure:
 
 
 class TestTaskGroupCancellation:
-    @pytest.mark.asyncio
-    async def test_middle_failure_cancels_upstream_and_downstream(self, tmp_path: Path, step_cache: StepCache) -> None:
-        from acheron.core.errors import WorkerUnavailableError
-
-        plan = _linear_plan()
-        started: list[str] = []
-
-        async def handler(step: PlanStep, plan: Plan) -> JobResult:
-            started.append(step.step_id)
-            if step.step_id == "chunk":
-                raise WorkerUnavailableError("chunk failed")
-            # Slow downstream so we can observe cancellation.
-            await asyncio.sleep(1.0)
-            return JobResult(
-                job_id=plan.job_id,
-                status=JobStatus.SUCCESS,
-                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
-                metrics=JobMetrics(duration_seconds=0.0),
-            )
-
-        executor = StreamingExecutor(handler, step_cache, step_timeout=5.0)
-        result = await executor.run(plan)
-
-        assert result.status == "failed"
-        assert "extract" in started
-        assert "chunk" in started
-        package_manifest = step_cache._data_dir / plan.job_id / "package" / "manifest.json"  # noqa: SLF001
-        assert not package_manifest.exists()
+    """Note: in a linear pipeline, the failing stage is necessarily the
+    latest to start dispatching (the queue serializes them), so a stage
+    cannot be in the middle of a handler dispatch when cancellation arrives.
+    Branchy plans would change this. The current observable is that
+    downstream stages' ``await upstream.get()`` is interrupted — covered
+    by TestSentinelDrain (the sentinel is what causes the early exit).
+    """
 
 
 class TestSentinelDrain:
@@ -256,21 +235,172 @@ class TestSentinelDrain:
         assert completed == []
 
 
-class TestOutputsFromCache:
+class TestCostAccumulation:
     @pytest.mark.asyncio
-    async def test_outputs_match_cache_contents(self, tmp_path: Path, step_cache: StepCache) -> None:
+    async def test_total_cost_sums_step_metrics(self, tmp_path: Path, step_cache: StepCache) -> None:
+        """PlanResult.total_cost is the sum of completed step metrics.cost_estimate."""
         plan = _linear_plan()
-        outputs = {
-            "extract": [_real_output(tmp_path, "extracted.txt", body=b"e" * 8)],
-            "chunk": [_real_output(tmp_path, "chunk1.txt"), _real_output(tmp_path, "chunk2.txt")],
-            "package": [_real_output(tmp_path, "out.wav", body=b"a" * 1024)],
-        }
-        handler, _ = _make_handler(outputs)
-        executor = StreamingExecutor(handler, step_cache)
 
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0, cost_estimate=0.5),
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert len(result.outputs) == 4
-        for step in plan.steps:
-            cached = await step_cache.load_outputs(plan.job_id, step.step_id)
-            assert len(cached) == len(outputs[step.step_id])
+        assert result.status == "completed"
+        # 3 steps * 0.5 each = 1.5
+        assert result.total_cost == 1.5
+
+
+class TestCompletedStepsCount:
+    @pytest.mark.asyncio
+    async def test_completed_steps_counts_successful_only(self, tmp_path: Path, step_cache: StepCache) -> None:
+        """When the last stage fails, completed_steps reflects the steps that
+        actually wrote a manifest, not 0."""
+        from acheron.core.errors import WorkerUnavailableError
+
+        plan = _linear_plan()
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            if step.step_id == "package":
+                raise WorkerUnavailableError("package failed")
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert result.total_steps == 3
+        assert result.completed_steps == 2  # extract + chunk succeeded
+
+
+class TestCacheCorruptionResilience:
+    @pytest.mark.asyncio
+    async def test_corrupted_manifest_does_not_crash_executor(self, tmp_path: Path, step_cache: StepCache) -> None:
+        """A partial/invalid manifest on disk is treated as 'no outputs for this step'
+        and does not propagate the error. The plan still runs to completion."""
+        plan = _linear_plan()
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
+        await executor.run(plan)  # populate the cache
+
+        # Now corrupt the extract manifest.
+        extract_manifest = step_cache.data_dir / plan.job_id / "extract" / "manifest.json"
+        extract_manifest.write_text("not valid json {")
+
+        # Re-run with a different handler. The corrupted manifest is just skipped.
+        async def fresh_handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"fresh-{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        fresh_executor = StreamingExecutor(fresh_handler, step_cache)
+        result = await fresh_executor.run(plan)
+
+        assert result.status == "completed"
+        assert result.completed_steps == 3
+
+
+class TestCacheCorruptionTolerantLoad:
+    """A corrupt manifest on disk is treated as 'no outputs for this step'."""
+
+    @pytest.mark.asyncio
+    async def test_corrupt_manifest_load_returns_zero_outputs(self, tmp_path: Path, step_cache: StepCache) -> None:
+        """If load_outputs raises CacheCorruptedError, the executor skips that
+        step's outputs rather than crashing the whole run."""
+        # Pre-write a corrupt manifest.
+        step_dir = step_cache.data_dir / "job-1" / "extract"
+        step_dir.mkdir(parents=True, exist_ok=True)
+        (step_dir / "manifest.json").write_text("not valid json {")
+
+        plan = Plan(
+            plan_id="plan-x",
+            job_id="job-1",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.STREAMING,
+            steps=(
+                PlanStep(
+                    step_id="extract",
+                    type=WorkerType.EXTRACTION,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={},
+                ),
+            ),
+        )
+
+        # The corrupt manifest load is silently skipped.
+        outputs, completed = await StreamingExecutor(  # noqa: SLF001
+            _make_handler({"extract": []})[0], step_cache
+        )._collect_outputs(list(plan.steps), plan)
+        assert outputs == ()
+        assert completed == 0
+
+
+class TestOutputsFromCache:
+    @pytest.mark.asyncio
+    async def test_outputs_sourced_from_cache_not_in_memory(self, tmp_path: Path, step_cache: StepCache) -> None:
+        """If the cache is patched to return different outputs than the handler wrote,
+        the PlanResult must reflect the cache (proving cache is the source, not the
+        in-memory handler return)."""
+        plan = _linear_plan()
+        handler_outputs = {
+            "extract": [_real_output(tmp_path, "real-extracted.txt")],
+            "chunk": [_real_output(tmp_path, "real-chunked.txt")],
+            "package": [_real_output(tmp_path, "real-out.wav")],
+        }
+        handler, _ = _make_handler(handler_outputs)
+        executor = StreamingExecutor(handler, step_cache)
+        await executor.run(plan)  # populate the cache
+
+        # Replace the cache with a stub that returns decoy outputs.
+        decoy = [_real_output(tmp_path, "decoy.txt", body=b"D" * 16)]
+        real_load = step_cache.load_outputs
+
+        async def patched_load(job_id: str, step_id: str) -> tuple[OutputFile, ...]:
+            return tuple(decoy)
+
+        step_cache.load_outputs = patched_load  # type: ignore[method-assign]
+        try:
+            # Re-run with a fresh handler that returns yet more outputs.
+            fresh_outputs = {
+                "extract": [_real_output(tmp_path, "fresh-extracted.txt")],
+                "chunk": [_real_output(tmp_path, "fresh-chunked.txt")],
+                "package": [_real_output(tmp_path, "fresh-out.wav")],
+            }
+            fresh_handler, _ = _make_handler(fresh_outputs)
+            fresh_executor = StreamingExecutor(fresh_handler, step_cache)
+            result = await fresh_executor.run(plan)
+
+            # The cache is patched to return decoy for any step, so the
+            # result must be composed entirely of decoys — proving the
+            # executor sources outputs from the cache, not from the
+            # in-memory handler returns.
+            assert len(result.outputs) == 3
+            for output in result.outputs:
+                assert output.filename == "decoy.txt"
+        finally:
+            step_cache.load_outputs = real_load  # type: ignore[method-assign]

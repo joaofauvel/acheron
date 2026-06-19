@@ -13,7 +13,13 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import AcheronError, CacheMissError, PipelineError, WorkerError
+from acheron.core.errors import (
+    AcheronError,
+    CacheCorruptedError,
+    CacheMissError,
+    PipelineError,
+    WorkerError,
+)
 from acheron.core.interfaces import Executor
 from acheron.core.models import JobResult, OutputFile, Plan, PlanResult, PlanStep
 from acheron.shell.executors._utils import StepHandler, topological_order
@@ -53,20 +59,19 @@ class StreamingExecutor(Executor):
         queues: list[asyncio.Queue[JobResult | None]] = [
             asyncio.Queue(maxsize=self._queue_size) for _ in range(len(steps) + 1)
         ]
-        # Seed the first queue with a sentinel so the first stage knows to start.
-        await queues[0].put(_END)
 
-        last_error = await self._run_pipeline(steps, plan, queues)
-        outputs = await self._collect_outputs(steps, plan)
-        return self._build_result(plan, steps, outputs, last_error, start)
+        last_error, total_cost = await self._run_pipeline(steps, plan, queues)
+        outputs, completed_count = await self._collect_outputs(steps, plan)
+        return self._build_result(plan, steps, outputs, completed_count, total_cost, last_error, start)
 
     async def _run_pipeline(
         self,
         steps: list[PlanStep],
         plan: Plan,
         queues: list[asyncio.Queue[JobResult | None]],
-    ) -> AcheronError | None:
-        """Run the per-stage TaskGroup. Returns the first AcheronError on failure, else None."""
+    ) -> tuple[AcheronError | None, float]:
+        """Run the per-stage TaskGroup. Returns (first AcheronError, total cost from completed steps)."""
+        total_cost = 0.0
         try:
             async with asyncio.TaskGroup() as tg:
                 stage_tasks = [
@@ -82,10 +87,12 @@ class StreamingExecutor(Executor):
                 ]
                 await self._consume_final_queue(tg, queues[-1])
                 for task in stage_tasks:
-                    task.result()
+                    step_cost = task.result()
+                    if step_cost is not None:
+                        total_cost += step_cost
         except BaseExceptionGroup as eg:
-            return self._extract_error(eg)
-        return None
+            return self._extract_error(eg), total_cost
+        return None, total_cost
 
     async def _consume_final_queue(self, tg: asyncio.TaskGroup, final_queue: asyncio.Queue[JobResult | None]) -> None:
         first = await final_queue.get()
@@ -105,31 +112,42 @@ class StreamingExecutor(Executor):
         acheron = [e for e in eg.exceptions if isinstance(e, AcheronError)]
         if acheron:
             return acheron[0]
-        if eg.exceptions:
-            inner = eg.exceptions[0]
-            err = PipelineError(f"streaming failure: {inner}")
-            err.__cause__ = inner
-            return err
-        return None
+        # Pick the first non-CancelledError, non-base exception as the cause.
+        inner = next(
+            (e for e in eg.exceptions if not isinstance(e, asyncio.CancelledError)),
+            eg.exceptions[0] if eg.exceptions else None,
+        )
+        if inner is None:
+            return None
+        err = PipelineError(f"streaming failure: {inner}")
+        err.__cause__ = inner
+        return err
 
-    async def _collect_outputs(self, steps: list[PlanStep], plan: Plan) -> tuple[OutputFile, ...]:
+    async def _collect_outputs(self, steps: list[PlanStep], plan: Plan) -> tuple[tuple[OutputFile, ...], int]:
+        """Return (all outputs, count of steps whose manifest was readable)."""
         outputs: list[OutputFile] = []
+        completed = 0
         for step in steps:
             try:
                 step_outputs = await self._cache.load_outputs(plan.job_id, step.step_id)
-            except CacheMissError:
+            except CacheMissError, CacheCorruptedError:
+                # CacheMissError: step never ran or didn't reach save_outputs.
+                # CacheCorruptedError: partial manifest from a mid-save cancellation.
                 continue
             except OSError:
                 logger.exception("failed to load outputs for %s", step.step_id)
                 continue
+            completed += 1
             outputs.extend(step_outputs)
-        return tuple(outputs)
+        return tuple(outputs), completed
 
-    def _build_result(
+    def _build_result(  # noqa: PLR0913 - private helper takes the full set of computed fields
         self,
         plan: Plan,
         steps: list[PlanStep],
         outputs: tuple[OutputFile, ...],
+        completed_count: int,
+        total_cost: float,
         last_error: AcheronError | None,
         start: float,
     ) -> PlanResult:
@@ -141,17 +159,17 @@ class StreamingExecutor(Executor):
                 completed_steps=len(steps),
                 total_steps=len(steps),
                 outputs=outputs,
-                total_cost=0.0,
+                total_cost=total_cost,
                 total_duration_seconds=duration,
                 errors=(),
             )
         return PlanResult(
             plan_id=plan.plan_id,
             status="failed",
-            completed_steps=0,
+            completed_steps=completed_count,
             total_steps=len(steps),
             outputs=outputs,
-            total_cost=0.0,
+            total_cost=total_cost,
             total_duration_seconds=duration,
             errors=(str(last_error),),
         )
@@ -162,13 +180,20 @@ class StreamingExecutor(Executor):
         plan: Plan,
         upstream: asyncio.Queue[JobResult | None] | None,
         downstream: asyncio.Queue[JobResult | None],
-    ) -> None:
-        """Stage consumer: read upstream (None for first stage), dispatch, write downstream + cache."""
+    ) -> float | None:
+        """Run a single stage. Returns the step's cost on success, None on any failure.
+
+        First stage has upstream=None and dispatches immediately. Subsequent
+        stages read from upstream; a ``None`` sentinel means "no more work,
+        drain and exit."
+        """
         try:
             if upstream is not None:
                 upstream_value = await upstream.get()
+                # TODO(branchy-future): when plans gain parallel branches, distinguish
+                # expected drain (upstream finished) from premature termination.
                 if upstream_value is _END:
-                    return
+                    return None
             try:
                 result = await asyncio.wait_for(
                     self._handler(step, plan),
@@ -177,6 +202,11 @@ class StreamingExecutor(Executor):
             except TimeoutError as exc:
                 msg = f"step {step.step_id} timed out after {self._step_timeout}s"
                 raise WorkerError(msg) from exc
+            except AcheronError:
+                raise
+            except Exception as exc:
+                msg = f"unexpected failure in stage {step.step_id}: {type(exc).__name__}"
+                raise PipelineError(msg) from exc
 
             try:
                 await self._cache.save_outputs(plan.job_id, step.step_id, result.outputs)
@@ -185,6 +215,7 @@ class StreamingExecutor(Executor):
                 raise PipelineError(msg) from exc
 
             await downstream.put(result)
+            return result.metrics.cost_estimate or 0.0
         finally:
             await downstream.put(_END)
 

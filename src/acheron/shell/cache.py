@@ -72,6 +72,11 @@ class StepCache:
     def __init__(self, data_dir: str | Path = "/data/jobs") -> None:
         self._data_dir = Path(data_dir)
 
+    @property
+    def data_dir(self) -> Path:
+        """The root directory for cached step outputs."""
+        return self._data_dir
+
     async def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
         """Write output manifest. Creates the step directory if needed."""
         step_dir = self._data_dir / job_id / step_id
