@@ -25,13 +25,18 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
-def _wait_healthy(url: str, cafile: Path, timeout: float = 20.0) -> None:
-    ctx = ssl.create_default_context(cafile=str(cafile))
+def _wait_healthy(url: str, cafile: Path | None, timeout: float = 20.0) -> None:
+    """Poll `url` until it returns 200 or `timeout` elapses.
+
+    `cafile=None` skips TLS verification (use for plain HTTP). For HTTPS,
+    pass the path to the CA bundle.
+    """
+    verify: ssl.SSLContext | bool = ssl.create_default_context(cafile=str(cafile)) if cafile is not None else True
     deadline = time.monotonic() + timeout
     last_exc: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with httpx.Client(verify=ctx) as client:
+            with httpx.Client(verify=verify) as client:
                 resp = client.get(url)
                 if resp.status_code == 200:
                     return
@@ -39,6 +44,25 @@ def _wait_healthy(url: str, cafile: Path, timeout: float = 20.0) -> None:
             last_exc = exc
         time.sleep(0.2)
     msg = f"service at {url} did not become healthy: {last_exc}"
+    raise RuntimeError(msg)
+
+
+def _wait_for_workers_registered(orch_port: int, expected_ids: set[str], ca: Path, timeout: float = 20.0) -> None:
+    """Poll the orchestrator's /workers endpoint until all expected worker IDs appear."""
+    ctx = ssl.create_default_context(cafile=str(ca))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with httpx.Client(verify=ctx) as client:
+                resp = client.get(f"https://127.0.0.1:{orch_port}/workers")
+                if resp.status_code == 200:
+                    ids = {w["worker_id"] for w in resp.json().get("workers", [])}
+                    if expected_ids.issubset(ids):
+                        return
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(0.2)
+    msg = f"workers {expected_ids} did not register within {timeout}s"
     raise RuntimeError(msg)
 
 
@@ -121,8 +145,8 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
         _wait_healthy(f"https://127.0.0.1:{tts_port}/health", ca)
         # The gRPC HTTP /health sidecar is plain HTTP — it's a healthcheck-only endpoint
         # that doesn't have TLS. Docker healthchecks are internal and don't need encryption.
-        _wait_healthy(f"http://127.0.0.1:{grpc_http_port}/health", ca)
-        time.sleep(2)
+        _wait_healthy(f"http://127.0.0.1:{grpc_http_port}/health", None)
+        _wait_for_workers_registered(orch_port, {"tts-stub", "tts-grpc-stub"}, ca)
     except Exception:
         for p in procs:
             p.terminate()

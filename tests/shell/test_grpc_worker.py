@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -159,12 +161,95 @@ class TestGrpcWorkerBatch:
 
 
 @pytest.mark.asyncio
-async def test_grpc_channel_uses_secure_when_ca_set(dev_certs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(dev_certs / "acheron-ca.crt"))
-    from acheron.shell.tls import grpc_channel
+async def test_grpc_channel_uses_secure_when_ca_set(dev_certs: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
+    """When ACHERON_TLS_CA_FILE is set, the channel must reject servers whose
+    cert is not signed by that CA. This proves the secure path is wired up
+    and cert verification is on.
+    """
+    import datetime
+    import ipaddress
+    import socket as _socket
+    import time as _time
 
-    channel = grpc_channel("localhost:12345")
+    import grpc
+    import grpc.aio
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+
+    monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(dev_certs / "acheron-ca.crt"))
+
+    # Generate a self-signed cert NOT signed by the Acheron CA.
+    bogus_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    bogus_cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "bogus")]))
+        .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "bogus")]))
+        .public_key(bogus_key.public_key())
+        .serial_number(1)
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1))
+        .add_extension(
+            x509.SubjectAlternativeName(
+                [
+                    x509.DNSName("localhost"),
+                    x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                ]
+            ),
+            critical=False,
+        )
+        .sign(bogus_key, hashes.SHA256())
+    )
+    bogus_cert_pem = bogus_cert.public_bytes(serialization.Encoding.PEM)
+    bogus_key_pem = bogus_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    async def serve() -> None:
+        server = grpc.aio.server()
+        health_servicer = health.HealthServicer()
+        health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+        health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+        creds = grpc.ssl_server_credentials([(bogus_key_pem, bogus_cert_pem)])
+        server.add_secure_port(f"127.0.0.1:{port}", creds)
+        await server.start()
+        try:
+            await server.wait_for_termination()
+        finally:
+            await server.stop(0)
+
+    task = asyncio.create_task(serve())
+    deadline = _time.monotonic() + 3
+    while _time.monotonic() < deadline:
+        try:
+            with _socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                break
+        except OSError:
+            await asyncio.sleep(0.05)
+
     try:
-        assert channel is not None
+        from acheron.shell.tls import grpc_channel
+
+        channel = grpc_channel(f"127.0.0.1:{port}")
+        try:
+            stub = health_pb2_grpc.HealthStub(channel)
+            with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+                await stub.Check(health_pb2.HealthCheckRequest(), timeout=2)  # type: ignore[attr-defined]
+            assert exc_info.value.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.DEADLINE_EXCEEDED,
+            )
+        finally:
+            await channel.close()
     finally:
-        await channel.close()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task

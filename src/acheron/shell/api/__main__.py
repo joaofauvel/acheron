@@ -13,7 +13,7 @@ from acheron.shell.tls import uvicorn_ssl_kwargs
 def main() -> None:
     """Run the Acheron orchestrator via uvicorn."""
     parser = argparse.ArgumentParser(description="Run the Acheron orchestrator.")
-    parser.add_argument("--host", default="0.0.0.0")  # noqa: S104
+    parser.add_argument("--host", default="0.0.0.0")  # noqa: S104  # bind all interfaces for docker
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     ssl = uvicorn_ssl_kwargs()
