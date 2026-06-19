@@ -40,6 +40,7 @@ class ExecutorStrategy(Enum):
     SEQUENTIAL = "sequential"
     ASYNC = "async"
     BATCH_ASYNC = "batch_async"
+    STREAMING = "streaming"
 
 
 @dataclass(frozen=True)
