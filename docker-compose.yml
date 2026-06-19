@@ -49,7 +49,10 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ACHERON_URL: http://orchestrator:8000
+      ACHERON_URL: https://orchestrator:8000
+      SSL_CERT_FILE: /certs/acheron-ca.crt
+    volumes:
+      - ./certs:/certs:ro
     healthcheck:
       test:
         - "CMD-SHELL"
