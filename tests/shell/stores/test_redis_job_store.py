@@ -1,5 +1,7 @@
 """Integration tests for the Redis job store."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 import pytest_asyncio
 import redis
@@ -76,7 +78,7 @@ def _result() -> PlanResult:
 
 
 @pytest_asyncio.fixture
-async def store(redis_url: str) -> RedisJobStore:
+async def store(redis_url: str) -> AsyncIterator[RedisJobStore]:
     s = RedisJobStore(redis_url)
     await s.connect()
     try:

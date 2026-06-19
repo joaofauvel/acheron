@@ -18,6 +18,7 @@ class WorkerStore(ABC):
 
     async def connect(self) -> None:
         """Verify the backend is reachable. No-op for stores without a remote backend."""
+        return
 
     @abstractmethod
     async def register(
@@ -77,6 +78,7 @@ class JobStore(ABC):
 
     async def connect(self) -> None:
         """Verify the backend is reachable. No-op for stores without a remote backend."""
+        return
 
     @abstractmethod
     async def put(self, job: TrackedJob) -> None:

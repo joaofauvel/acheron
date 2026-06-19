@@ -1,5 +1,7 @@
 """Integration tests for the Redis worker store."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 import pytest_asyncio
 import redis
@@ -22,7 +24,7 @@ def _tts_caps() -> WorkerCapabilities:
 
 
 @pytest_asyncio.fixture
-async def store(redis_url: str) -> RedisWorkerStore:
+async def store(redis_url: str) -> AsyncIterator[RedisWorkerStore]:
     s = RedisWorkerStore(redis_url)
     await s.connect()
     try:
