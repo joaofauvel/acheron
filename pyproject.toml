@@ -145,6 +145,7 @@ dev = [
     "respx~=0.23",
     "ruff~=0.15",
     "testcontainers[redis]~=4.14",
+    "types-aiofiles~=24.0",
     "types-grpcio~=1.0",
     "types-grpcio-health-checking~=1.0",
     "types-protobuf~=5.29",

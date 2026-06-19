@@ -1,8 +1,10 @@
 """Tests for plan and step caching."""
 
+import hashlib
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
 from acheron.core.errors import CacheMissError
 from acheron.core.models import (
@@ -103,8 +105,12 @@ class TestPlanCache:
 
 
 class TestStepCache:
-    def test_save_and_load_outputs(self, tmp_path: Path) -> None:
-        cache = StepCache(tmp_path)
+    @pytest_asyncio.fixture
+    async def cache(self, tmp_path: Path) -> StepCache:
+        return StepCache(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_save_and_load_outputs(self, cache: StepCache) -> None:
         outputs = (
             OutputFile(
                 path="/data/out/chunk-0.wav",
@@ -114,24 +120,22 @@ class TestStepCache:
                 content_type="audio/wav",
             ),
         )
-        cache.save_outputs("job-1", "tts-ch1", outputs)
-        loaded = cache.load_outputs("job-1", "tts-ch1")
+        await cache.save_outputs("job-1", "tts-ch1", outputs)
+        loaded = await cache.load_outputs("job-1", "tts-ch1")
         assert len(loaded) == 1
         assert loaded[0].filename == "chunk-0.wav"
         assert loaded[0].checksum == "abc123"
 
-    def test_load_nonexistent_raises(self, tmp_path: Path) -> None:
-        cache = StepCache(tmp_path)
+    @pytest.mark.asyncio
+    async def test_load_nonexistent_raises(self, cache: StepCache) -> None:
         with pytest.raises(CacheMissError):
-            cache.load_outputs("job-1", "nope")
+            await cache.load_outputs("job-1", "nope")
 
-    def test_step_has_valid_cache_true(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_step_has_valid_cache_true(self, tmp_path: Path, cache: StepCache) -> None:
         test_file = tmp_path / "output.wav"
         test_file.write_bytes(b"audio data")
-        import hashlib
-
         checksum = hashlib.sha256(b"audio data").hexdigest()
-        cache = StepCache(tmp_path)
         outputs = (
             OutputFile(
                 path=str(test_file),
@@ -141,17 +145,19 @@ class TestStepCache:
                 content_type="audio/wav",
             ),
         )
-        cache.save_outputs("job-1", "tts-ch1", outputs)
-        assert cache.step_has_valid_cache("job-1", "tts-ch1")
+        await cache.save_outputs("job-1", "tts-ch1", outputs)
+        assert await cache.step_has_valid_cache("job-1", "tts-ch1")
 
-    def test_step_has_valid_cache_missing_manifest(self, tmp_path: Path) -> None:
-        cache = StepCache(tmp_path)
-        assert not cache.step_has_valid_cache("job-1", "nope")
+    @pytest.mark.asyncio
+    async def test_step_has_valid_cache_missing_manifest(self, cache: StepCache) -> None:
+        assert not await cache.step_has_valid_cache("job-1", "nope")
 
-    def test_step_has_valid_cache_corrupted_checksum(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_step_has_valid_cache_corrupted_checksum(
+        self, tmp_path: Path, cache: StepCache
+    ) -> None:
         test_file = tmp_path / "output.wav"
         test_file.write_bytes(b"audio data")
-        cache = StepCache(tmp_path)
         outputs = (
             OutputFile(
                 path=str(test_file),
@@ -161,11 +167,11 @@ class TestStepCache:
                 content_type="audio/wav",
             ),
         )
-        cache.save_outputs("job-1", "tts-ch1", outputs)
-        assert not cache.step_has_valid_cache("job-1", "tts-ch1")
+        await cache.save_outputs("job-1", "tts-ch1", outputs)
+        assert not await cache.step_has_valid_cache("job-1", "tts-ch1")
 
-    def test_step_has_valid_cache_missing_file(self, tmp_path: Path) -> None:
-        cache = StepCache(tmp_path)
+    @pytest.mark.asyncio
+    async def test_step_has_valid_cache_missing_file(self, cache: StepCache) -> None:
         outputs = (
             OutputFile(
                 path="/nonexistent/output.wav",
@@ -175,5 +181,5 @@ class TestStepCache:
                 content_type="audio/wav",
             ),
         )
-        cache.save_outputs("job-1", "tts-ch1", outputs)
-        assert not cache.step_has_valid_cache("job-1", "tts-ch1")
+        await cache.save_outputs("job-1", "tts-ch1", outputs)
+        assert not await cache.step_has_valid_cache("job-1", "tts-ch1")

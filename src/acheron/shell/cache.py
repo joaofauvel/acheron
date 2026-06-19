@@ -1,18 +1,23 @@
 """File-based caching for plans and step outputs."""
 
+from __future__ import annotations
+
+import asyncio
 import hashlib
 from pathlib import Path
 
+import aiofiles
 from pydantic import TypeAdapter
 
 from acheron.core.errors import CacheCorruptedError, CacheMissError
 from acheron.core.models import OutputFile, Plan
 
 _plan_adapter = TypeAdapter(Plan)
+_output_adapter = TypeAdapter(tuple[OutputFile, ...])
 
 
 def _checksum(path: Path) -> str:
-    """Compute SHA-256 hex digest of a file."""
+    """Compute SHA-256 hex digest of a file. Blocking — wrap in to_thread from async callers."""
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -62,20 +67,23 @@ class PlanCache:
 
 
 class StepCache:
-    """Persists and loads step output manifests."""
+    """Persists and loads step output manifests asynchronously."""
 
     def __init__(self, data_dir: str | Path = "/data/jobs") -> None:
         self._data_dir = Path(data_dir)
 
-    def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
-        """Write output files and a manifest with checksums."""
+    async def save_outputs(
+        self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]
+    ) -> None:
+        """Write output manifest. Creates the step directory if needed."""
         step_dir = self._data_dir / job_id / step_id
         step_dir.mkdir(parents=True, exist_ok=True)
         manifest_file = step_dir / "manifest.json"
-        _output_adapter = TypeAdapter(tuple[OutputFile, ...])
-        manifest_file.write_text(_output_adapter.dump_json(outputs, indent=2).decode())
+        manifest = _output_adapter.dump_json(outputs, indent=2)
+        async with aiofiles.open(manifest_file, "wb") as f:
+            await f.write(manifest)
 
-    def load_outputs(self, job_id: str, step_id: str) -> tuple[OutputFile, ...]:
+    async def load_outputs(self, job_id: str, step_id: str) -> tuple[OutputFile, ...]:
         """Load output files from a step manifest.
 
         Raises:
@@ -87,26 +95,31 @@ class StepCache:
             msg = f"Step cache miss: {job_id}/{step_id}"
             raise CacheMissError(msg)
         try:
-            return TypeAdapter(tuple[OutputFile, ...]).validate_json(manifest_file.read_text())
-        except CacheMissError:
-            raise
+            async with aiofiles.open(manifest_file, "rb") as f:
+                blob = await f.read()
+        except OSError as exc:
+            msg = f"Corrupted manifest: {job_id}/{step_id}"
+            raise CacheCorruptedError(msg) from exc
+        try:
+            return _output_adapter.validate_json(blob)
         except Exception as exc:
             msg = f"Corrupted manifest: {job_id}/{step_id}"
             raise CacheCorruptedError(msg) from exc
 
-    def step_has_valid_cache(self, job_id: str, step_id: str) -> bool:
+    async def step_has_valid_cache(self, job_id: str, step_id: str) -> bool:
         """Check if a step has a valid manifest with all files present and checksums matching."""
         manifest_file = self._data_dir / job_id / step_id / "manifest.json"
         if not manifest_file.exists():
             return False
         try:
-            outputs = self.load_outputs(job_id, step_id)
-        except CacheMissError, CacheCorruptedError, OSError:
+            outputs = await self.load_outputs(job_id, step_id)
+        except (CacheMissError, CacheCorruptedError, OSError):
             return False
         for output in outputs:
             file_path = Path(output.path)
             if not file_path.exists():
                 return False
-            if _checksum(file_path) != output.checksum:
+            checksum = await asyncio.to_thread(_checksum, file_path)
+            if checksum != output.checksum:
                 return False
         return True
