@@ -14,6 +14,10 @@ from pathlib import Path
 import httpx
 import pytest
 
+# Serialize: this test binds to dynamic ports and a TOCTOU race would cause
+# flakes under pytest-xdist. Tests in this module share a single xdist group.
+pytestmark = pytest.mark.xdist_group(name="tls_integration")
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
