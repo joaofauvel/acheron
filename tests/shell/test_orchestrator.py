@@ -25,8 +25,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_submit_job_returns_tracked(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://tts", "http", tts_caps())
-        await reg.register("trans-1", "http://trans", "http", translation_caps())
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 
@@ -50,8 +50,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_get_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://tts", "http", tts_caps())
-        await reg.register("trans-1", "http://trans", "http", translation_caps())
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 
@@ -71,8 +71,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_list_jobs(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://tts", "http", tts_caps())
-        await reg.register("trans-1", "http://trans", "http", translation_caps())
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 
@@ -87,8 +87,8 @@ class TestOrchestrator:
     async def test_register_and_list_workers(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
         await orch.start()
-        await orch.register_worker("w-1", "http://a", "http", tts_caps())
-        await orch.register_worker("w-2", "http://b", "http", translation_caps())
+        await orch.register_worker("w-1", "http://127.0.0.1:1", "http", tts_caps())
+        await orch.register_worker("w-2", "http://127.0.0.1:2", "http", translation_caps())
 
         workers = await orch.list_workers()
         worker_ids = {w.worker_id for w in workers}
@@ -101,8 +101,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_get_capabilities(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://tts", "http", tts_caps("es"))
-        await reg.register("trans-1", "http://trans", "http", translation_caps("en", "es"))
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("es"))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps("en", "es"))
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 
@@ -112,8 +112,8 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_get_capabilities_filtered(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://tts", "http", tts_caps("es"))
-        await reg.register("tts-2", "http://tts2", "http", tts_caps("fr"))
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("es"))
+        await reg.register("tts-2", "http://127.0.0.1:2", "http", tts_caps("fr"))
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 
@@ -127,8 +127,8 @@ class TestOrchestrator:
         from tests.shell.conftest import asr_caps
 
         reg = InMemoryWorkerStore()
-        await reg.register("asr-1", "http://asr", "http", asr_caps("en"))
-        await reg.register("tts-1", "http://tts", "http", tts_caps("es"))
+        await reg.register("asr-1", "http://127.0.0.1:1", "http", asr_caps("en"))
+        await reg.register("tts-1", "http://127.0.0.1:2", "http", tts_caps("es"))
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 
@@ -141,7 +141,7 @@ class TestOrchestrator:
     async def test_get_capabilities_same_language_without_translation(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """Same-language pairs should work without a translation worker."""
         reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://tts", "http", tts_caps("en"))
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("en"))
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
         await orch.start()
 

@@ -73,7 +73,7 @@ class TestStepHandler:
             supported_languages_in=frozenset({"es"}),
             supported_languages_out=frozenset({"es"}),
         )
-        await reg.register("tts-1", "http://tts", "http", _tts_caps())
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
         handler = create_step_handler(reg, worker_factory=lambda _reg: local_worker)
         plan = _make_plan()
         step = plan.steps[0]

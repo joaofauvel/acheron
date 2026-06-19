@@ -110,7 +110,7 @@ def test_submit_wrong_language_fails(tmp_path: Path, runner: CliRunner, monkeypa
     asyncio.run(
         reg.register(
             "tts-es",
-            "http://tts",
+            "http://127.0.0.1:1",
             "http",
             WorkerCapabilities(
                 worker_type=WorkerType.TTS,

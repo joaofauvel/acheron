@@ -89,9 +89,9 @@ async def make_app(
 ) -> FastAPI:
     """Create a test app with default TTS, translation, and ASR workers."""
     reg = InMemoryWorkerStore()
-    await reg.register("tts-1", "http://tts", "http", tts_caps())
-    await reg.register("trans-1", "http://trans", "http", translation_caps())
-    await reg.register("asr-1", "http://asr", "http", asr_caps())
+    await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+    await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+    await reg.register("asr-1", "http://127.0.0.1:3", "http", asr_caps())
     for worker_id, endpoint, transport, caps in extra_workers or []:
         await reg.register(worker_id, endpoint, transport, caps)
     return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)

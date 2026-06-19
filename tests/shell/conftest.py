@@ -65,8 +65,8 @@ def asr_caps(lang: str = "en") -> WorkerCapabilities:
 async def make_app(tmp_path: Path) -> FastAPI:
     """Create a test app with TTS and translation workers registered."""
     reg = InMemoryWorkerStore()
-    await reg.register("tts-1", "http://tts", "http", tts_caps())
-    await reg.register("trans-1", "http://trans", "http", translation_caps())
+    await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+    await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
     return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)
 
 
