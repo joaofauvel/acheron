@@ -105,12 +105,18 @@ async def _register(endpoint: str, token: str) -> None:
 
 async def create_server(port: int = 9001, *, register: bool = True) -> tuple[grpc.aio.Server, int]:
     """Create and optionally start the stub gRPC server."""
+    from acheron.shell.tls import grpc_server_credentials
+
+    creds = grpc_server_credentials()
     server = grpc.aio.server()
     synthesis_pb2_grpc.add_SynthesisServicer_to_server(_SynthesisServicer(), server)  # type: ignore[no-untyped-call]
     health_servicer = health.HealthServicer()
     health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    actual_port = server.add_insecure_port(f"0.0.0.0:{port}")
+    if creds is None:
+        actual_port = server.add_insecure_port(f"0.0.0.0:{port}")
+    else:
+        actual_port = server.add_secure_port(f"0.0.0.0:{port}", creds)
 
     if register:
         endpoint = os.environ.get("WORKER_ENDPOINT", f"http://localhost:{actual_port}")
