@@ -1,6 +1,7 @@
 """Integration tests for the Redis worker store."""
 
 import pytest
+import pytest_asyncio
 import redis
 
 from acheron.core.models import WorkerCapabilities, WorkerType
@@ -20,9 +21,14 @@ def _tts_caps() -> WorkerCapabilities:
     )
 
 
-@pytest.fixture
-def store(redis_url: str) -> RedisWorkerStore:
-    return RedisWorkerStore(redis_url)
+@pytest_asyncio.fixture
+async def store(redis_url: str) -> RedisWorkerStore:
+    s = RedisWorkerStore(redis_url)
+    await s.connect()
+    try:
+        yield s
+    finally:
+        await s.close()
 
 
 class TestRegister:
@@ -108,6 +114,10 @@ class TestHealthTracking:
 
 
 class TestFailFast:
-    def test_unreachable_redis_raises_on_init(self) -> None:
-        with pytest.raises(redis.RedisError):
-            RedisWorkerStore("redis://localhost:1")
+    @pytest.mark.asyncio
+    async def test_unreachable_redis_raises_on_connect(self) -> None:
+        from redis.exceptions import ConnectionError as RedisConnectionError
+
+        store = RedisWorkerStore("redis://localhost:1")
+        with pytest.raises((RedisConnectionError, redis.RedisError)):
+            await store.connect()
