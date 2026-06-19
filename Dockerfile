@@ -13,7 +13,7 @@ FROM python:3.14-slim AS orchestrator
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
-CMD ["uvicorn", "acheron.shell.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "acheron.shell.api"]
 
 FROM python:3.14-slim AS dashboard
 
