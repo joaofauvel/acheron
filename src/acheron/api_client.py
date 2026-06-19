@@ -24,7 +24,7 @@ class AcheronClient:
         source_path: str,
         source_language: str,
         target_language: str,
-        executor_strategy: str = "batch_async",
+        executor_strategy: str = "streaming",
         asr_model: str | None = None,
     ) -> dict[str, Any]:
         """Submit a new job for processing."""

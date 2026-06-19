@@ -12,7 +12,7 @@ class SubmitJobRequest(BaseModel):
     source_path: str
     source_language: str
     target_language: str
-    executor_strategy: str = "batch_async"
+    executor_strategy: str = "streaming"
     asr_model: str | None = None
 
 
