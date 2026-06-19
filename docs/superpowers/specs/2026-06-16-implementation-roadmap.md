@@ -180,9 +180,9 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check, gRPC HTTP /health sidecar (FastAPI) |
 | 7c | done | TLS via env vars: `ACHERON_TLS_{CERT,KEY,CA}_FILE`; dev cert script (`just certs`); compose wires certs, env vars, and HTTPS healthchecks; dashboard stays HTTP |
 | 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
-| 9b-i | planned | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
-| 9b-ii | planned | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
-| 9a | planned | Streaming pipeline executor (`StreamingExecutor`, `PipelineError`, per-step timeout) |
+| 9b-i | done | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
+| 9b-ii | done | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
+| 9a | done | Streaming pipeline executor (`StreamingExecutor` is the new default; `PipelineError`; per-step timeout; per-stage queue with sentinel drain) |
 
 ## Layer 7 — Decomposition
 
@@ -230,8 +230,8 @@ Migrate `WorkerStore` and `JobStore` ABCs to `async def`. Update `InMemoryWorker
 
 ### Sub-project 9b-ii — Redis async backend
 
-Swap `RedisWorkerStore` and `RedisJobStore` from `redis.Redis` to `redis.asyncio.Redis`. Add `async def connect()` classmethod for startup connectivity check. `close()` becomes `async def`. Integration tests via testcontainers.
+Swap `RedisWorkerStore` and `RedisJobStore` from `redis.Redis` to `redis.asyncio.Redis`. `__init__` does no I/O; an instance method `async def connect()` (called from `Orchestrator.start()`) does `await self._redis.ping()`. `close()` becomes `async def` and calls `await self._redis.aclose()`. Integration tests via testcontainers.
 
 ### Sub-project 9a — Streaming pipeline executor
 
-New `StreamingExecutor` replacing `BatchAsyncExecutor` as the default for GPU jobs. Per-chapter `asyncio.Queue` pipeline with bounded backpressure, fail-fast all-or-nothing job semantics, per-step `asyncio.wait_for()` timeout, and `StepCache.save_outputs()` per chunk as resumability foundation. New `PipelineError(AcheronError)` in `core/errors.py`. Add `ExecutorStrategy.STREAMING`.
+New `StreamingExecutor` is the new default strategy. Per-stage `asyncio.Queue` pipeline with bounded backpressure (linear topology — current plans have 4-5 single-step stages), fail-fast all-or-nothing job semantics, per-step `asyncio.wait_for()` timeout (default 1800s, configurable per instance), and `StepCache.save_outputs()` per chunk as resumability foundation. `StepCache` itself becomes async via aiofiles. New `PipelineError(AcheronError)` in `core/errors.py` for executor-internal invariants (cache, sentinel protocol, unexpected stage exceptions). `ExecutorStrategy.STREAMING` added; API and client default changed to `"streaming"`; `BatchAsyncExecutor` remains as opt-in. Per-chapter parallelism deferred to a future layer (plans are linear today).

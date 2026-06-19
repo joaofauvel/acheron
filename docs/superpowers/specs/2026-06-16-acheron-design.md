@@ -337,7 +337,7 @@ type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
 
 **BatchAsyncExecutor** — extends AsyncExecutor with batch semantics. Batch-flagged steps receive all outputs from completed preceding steps so the handler can construct a `BatchJob` with the correct payloads.
 
-**StreamingExecutor** (default for GPU jobs) — per-chapter pipeline using bounded `asyncio.Queue`s. Each chapter runs as an independent pipeline task in an outer `asyncio.TaskGroup`. Within a chapter, stage coroutines (translate → tts → package) are connected by `asyncio.Queue(maxsize=4)` providing native backpressure. Any chapter failure cancels all sibling chapters immediately (fail-fast, all-or-nothing semantics). Step results are written to `StepCache` as they complete — not accumulated in memory. `asyncio.wait_for()` enforces a per-step timeout (default 1800s) at every worker dispatch. See [Layer 9 spec](./2026-06-18-pipeline-streaming-design.md).
+**StreamingExecutor** (default for all new jobs) — per-stage pipeline using bounded `asyncio.Queue`s. All stages of a plan run as concurrent tasks in a single outer `asyncio.TaskGroup`, with `asyncio.Queue(maxsize=4)` between adjacent stages providing native backpressure. Any stage failure cancels all sibling stages immediately (fail-fast, all-or-nothing semantics). Step results are written to `StepCache` (now async, via aiofiles) as they complete — not accumulated in memory. `asyncio.wait_for()` enforces a per-step timeout (default 1800s) at every worker dispatch. A `None` sentinel on each queue's `finally` block lets downstream stages drain and exit on cancel. `PlanResult.outputs` is built by scanning `StepCache` at the end; `total_cost` is the sum of per-step `JobMetrics.cost_estimate`; `completed_steps` reflects the actual number of steps whose manifest was readable (not 0 on partial-success). See [Layer 9 spec](./2026-06-18-pipeline-streaming-design.md) and the [9a focused spec](./2026-06-19-layer9a-streaming-executor-design.md). Today's plans have a linear topology (extract → chunk → translate? → synthesize → package); per-chapter parallelism is a future layer.
 
 All executors capture error details in `PlanResult.errors`.
 
@@ -378,11 +378,11 @@ After 3 consecutive failures, the worker is removed from the registry. The monit
 - TTS: target in `supported_languages_in` AND target in `supported_languages_out`
 - Extraction/Chunking/Packaging: no language check
 
-**Storage backends:** The `WorkerStore` and `JobStore` ABCs live in `src/acheron/shell/stores/`. All methods are `async def`. Implementations:
+**Storage backends:** The `WorkerStore` and `JobStore` ABCs live in `src/acheron/shell/stores/`. All methods are `async def`. The ABCs expose a concrete `async def connect()` with a no-op default; `InMemoryWorkerStore` / `InMemoryJobStore` inherit it for free, and `RedisWorkerStore` / `RedisJobStore` override it to `await self._redis.ping()`. `Orchestrator.start()` awaits `connect()` on both stores before doing any work. The store `__init__` does no I/O (Redis is lazy). `close()` is `async def`; on Redis it calls `await self._redis.aclose()`. Implementations:
 - `InMemoryWorkerStore` / `InMemoryJobStore` — async, dict-backed, used for dev and tests
-- `RedisWorkerStore` / `RedisJobStore` — `redis.asyncio.Redis` client, JSON-serialized state in Redis hashes and sets. Connectivity is verified at startup via a `connect()` classmethod (not `__init__`, which cannot `await`). The `TrackedJob` round-trip persists the full job state including the `Plan` and `PlanResult`.
+- `RedisWorkerStore` / `RedisJobStore` — `redis.asyncio.Redis` client, JSON-serialized state in Redis hashes and sets. The `TrackedJob` round-trip persists the full job state including the `Plan` and `PlanResult`.
 
-`Orchestrator.close()` releases store resources with exception isolation (one store's close failing doesn't skip the other), called from the FastAPI lifespan.
+`Orchestrator.close()` releases store resources with exception isolation (one store's close failing doesn't skip the other), called from the FastAPI lifespan. `Orchestrator.close()` teardown must run after `Orchestrator.shutdown()` has drained in-flight `_execute` tasks — otherwise a job whose `put()` races the Redis pool teardown will see a `ConnectionError` mid-flight.
 
 **Local worker handlers** are kept in a side dict on the orchestrator (`_local_handlers: dict[str, LocalJobHandler]`), not in `RegisteredWorker.metadata`. Worker `metadata` is a JSON-serializable contract used by persistence backends; coroutine handlers are not serializable. Use the `Orchestrator.register_worker(handler=...)` keyword-only parameter to register a local worker.
 
@@ -442,13 +442,15 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 
 | Failure Mode | Strategy |
 |---|---|
-| Network drop (push to worker) | Exponential backoff retry (tenacity). 5 failures → raise `WorkerError`, chapter fails. |
-| Worker crash mid-job | Health check fails 3 consecutive times → remove from registry. Re-dispatch to another worker of same type. No alternative → `WorkerError`, chapter fails. |
-| Chapter failure (`StreamingExecutor`) | Outer `asyncio.TaskGroup` cancels all sibling chapters immediately. Job marked `failed`. No partial audiobook written. |
-| Sequence gap in output | Packaging validates sequence continuity. Gap → abort that chapter. |
+| Network drop (push to worker) | Exponential backoff retry (tenacity). 5 failures → raise `WorkerError`, job fails. |
+| Worker crash mid-job | Health check fails 3 consecutive times → remove from registry. Re-dispatch to another worker of same type. No alternative → `WorkerError`, job fails. |
+| Stage failure (`StreamingExecutor`) | Outer `asyncio.TaskGroup` cancels all sibling stages immediately. Job marked `failed`; `completed_steps` reflects the count of steps that actually wrote a manifest (not 0 on partial success). No partial audiobook written. |
+| Sequence gap in output | Packaging validates sequence continuity. Gap → abort that stage. |
 | Invalid language path | Planner rejects at plan compilation. No GPU time spent. |
-| Worker timeout | Per-step `asyncio.wait_for()` timeout (default 1800s). Raises `WorkerError`, fails chapter. |
-| Unexpected stage failure | Wrapped as `PipelineError(AcheronError)` before propagating. Never silently swallowed. |
+| Worker timeout | Per-step `asyncio.wait_for()` timeout (default 1800s). Raises `WorkerError("step <id> timed out after Ns")`, fails the job. |
+| Unexpected stage failure | Wrapped as `PipelineError(AcheronError)` with the stage id and exception type: `PipelineError("unexpected failure in stage {id}: {Type}") from exc`. Never silently swallowed. |
+| Cache read/write failure | `StepCache.save_outputs` raises `OSError` or `CacheCorruptedError`; the stage wraps as `PipelineError("save_outputs failed for step {id}") from exc`. A corrupted manifest on the cache scan path is silently skipped (treated as "no outputs for this step"). |
+| `Orchestrator.close()` during in-flight dispatch | Callers must `shutdown()` first; close() teardown tears down the Redis pool, which forces a `ConnectionError` on any pending `put()`. Documented in the close() docstring. |
 
 ## Cost Containment
 

@@ -50,7 +50,7 @@ For typical plans (extract → chunk → translate? → synthesize → package),
 
 ### Outer TaskGroup
 
-All stage coroutines run inside an outer `asyncio.TaskGroup`. If any stage raises, the group's natural cancellation propagates to siblings, the `None`-sentinel protocol drains remaining queues, and the group's `ExceptionGroup[AcheronError]` is caught at the top of `run()`.
+All stage coroutines run inside a single outer `asyncio.TaskGroup`. If any stage raises, the group's natural cancellation propagates to siblings, the `None`-sentinel protocol drains remaining queues, and `run()` catches the resulting `BaseExceptionGroup`, filters for `AcheronError` (sibling `CancelledError`s are ignored), and converts the first match to `PlanResult(status="failed", errors=[str(err)])`. If no `AcheronError` is present, the first non-`CancelledError` is wrapped as `PipelineError`.
 
 ### Per-step timeout
 
@@ -117,13 +117,14 @@ The checksum on a (potentially large) audio file is the only blocking operation,
 ## Failure & cancellation semantics
 
 The spec's all-or-nothing model maps to:
-- A stage dispatch failure (WorkerError, timeout, no worker) → outer TaskGroup cancels siblings.
-- A `CacheCorruptedError` or unexpected `OSError` from `save_outputs` → wrapped in `PipelineError("save_outputs failed for step X") from exc`, raised, TaskGroup cancels siblings.
+- A stage dispatch failure (`WorkerError`, timeout, no worker) → outer TaskGroup cancels siblings.
+- A `CacheCorruptedError` or unexpected `OSError` from `save_outputs` → wrapped in `PipelineError("save_outputs failed for step {id}") from exc`, raised, TaskGroup cancels siblings.
+- An unexpected bare `Exception` from the handler → wrapped in `PipelineError("unexpected failure in stage {id}: {Type}") from exc`, raised, TaskGroup cancels siblings.
 - A `CancelledError` (from outer cancel) → each stage's `finally` puts a `None` sentinel on its downstream queue; remaining stages drain and exit.
 
-`run()` catches `ExceptionGroup` (Python 3.14+ has implicit `except*` semantics via `BaseExceptionGroup`), extracts the first `AcheronError`, and builds a `PlanResult(status="failed", errors=[...])`. Other exceptions become `PipelineError("unexpected streaming failure") from exc` and produce a `failed` result.
+`run()` catches `BaseExceptionGroup`, filters for `AcheronError` (sibling `CancelledError`s are ignored), and builds a `PlanResult(status="failed", errors=[str(err)])`. If no `AcheronError` is present, the first non-`CancelledError` is wrapped as `PipelineError("streaming failure: {inner}")` with `__cause__` set to the inner.
 
-A successful run produces `status="completed"`. A partial run (some stages succeeded, some failed) is currently impossible in the linear pipeline model — if any stage fails, all subsequent stages are cancelled. The spec mentions "partial" as a status but for a single linear pipeline it never arises. Future multi-branch plans will revisit this.
+A successful run produces `status="completed"` with `completed_steps=len(steps)`. A failed run produces `status="failed"` with `completed_steps` set to the number of stages whose manifest was readable from `StepCache` (not 0 on partial-success). The "partial" status is not used in 9a; future multi-branch plans may revisit.
 
 ## Default strategy change
 
@@ -138,8 +139,8 @@ The CLI passes the strategy explicitly via `--executor`, so no CLI default chang
 | `asyncio.TimeoutError` from `wait_for` | `WorkerError("step {id} timed out after {N}s") from exc` |
 | `WorkerError` (no worker, dispatch failure) | unchanged (already in hierarchy) |
 | `CacheCorruptedError` / `OSError` from `save_outputs` | `PipelineError("save_outputs failed for step {id}") from exc` |
-| Unexpected `Exception` in a stage | `PipelineError("unexpected failure in stage {id}: {type}") from exc` |
-| Sentinel protocol violation (e.g., `None` arrives mid-stream) | `PipelineError("sentinel received before queue drained") from exc` |
+| Unexpected `Exception` in a stage | `PipelineError("unexpected failure in stage {id}: {type(exc).__name__}") from exc` |
+| Sentinel protocol violation (e.g., `None` arrives mid-stream) | TODO(branchy-future): not currently raised. The `_stage` exits cleanly on `_END` regardless of whether it was expected. Branchy plans would require distinguishing expected drain from premature termination. |
 
 `WorkerError` continues to cover all worker-dispatch failures; `PipelineError` covers the streaming executor's internal invariants (cache, sentinel, unexpected exceptions).
 
@@ -149,32 +150,37 @@ The CLI passes the strategy explicitly via `--executor`, so no CLI default chang
 |---|---|
 | `src/acheron/core/errors.py` | Add `PipelineError(AcheronError)` |
 | `src/acheron/core/models.py` | Add `ExecutorStrategy.STREAMING = "streaming"` |
-| `src/acheron/shell/cache.py` | `StepCache.save_outputs`/`load_outputs`/`step_has_valid_cache` → `async def` (aiofiles) |
+| `src/acheron/shell/cache.py` | `StepCache.save_outputs`/`load_outputs`/`step_has_valid_cache` → `async def` (aiofiles); add `data_dir` property |
 | `src/acheron/shell/executors/streaming.py` | New — `StreamingExecutor` |
-| `src/acheron/shell/executors/__init__.py` | Add `STREAMING` to factory |
+| `src/acheron/shell/executors/__init__.py` | Add `STREAMING` to factory (factory gains `step_cache` kwarg) |
+| `src/acheron/shell/orchestrator.py` | Construct `_step_cache = StepCache(cache.data_dir)`; pass `step_cache=self._step_cache` to `create_executor`; `close()` docstring notes callers must `shutdown()` first |
 | `src/acheron/shell/api/schemas.py` | `executor_strategy: str = "streaming"` |
 | `src/acheron/api_client.py` | `executor_strategy: str = "streaming"` |
-| `pyproject.toml` | Add `aiofiles~=24` |
+| `pyproject.toml` | Add `aiofiles~=24`; dev-dep `types-aiofiles~=24` for mypy |
 | `tests/shell/test_cache.py` | Convert `TestStepCache` to async; await all calls |
-| `tests/shell/test_streaming_executor.py` | New — mock-based tests |
-| `tests/shell/test_errors.py` | Add `PipelineError` placement test |
+| `tests/shell/test_streaming_executor.py` | New — mock-based tests (see Test plan below) |
+| `tests/core/test_errors.py` | Add `PipelineError` placement test |
 
 ## Test plan
 
-`tests/shell/test_streaming_executor.py` uses a mock `StepHandler` that returns a configurable `JobResult` or raises. The mock has spy counters so we can verify:
+`tests/shell/test_streaming_executor.py` uses a mock `StepHandler` that returns a configurable `JobResult` or raises. Test cases:
 
-- `test_normal_completion` — 4-step plan runs to completion, `PlanResult.status == "completed"`, all 4 outputs returned.
-- `test_step_timeout` — handler sleeps > timeout, executor raises `WorkerError`, other stages cancelled, `PlanResult.status == "failed"`.
-- `test_no_worker` — handler raises `WorkerUnavailableError`, same as above.
-- `test_unexpected_exception_in_stage` — handler raises `RuntimeError`, wrapped as `PipelineError`.
-- `test_outer_taskgroup_cancels_all_stages_on_failure` — middle stage fails; spy shows upstream and downstream stages were cancelled (not completed).
-- `test_sentinel_drain_on_cancellation` — when stage N fails, stage N+1 sees a `None` sentinel and exits cleanly.
-- `test_cache_save_failure_wrapped_as_pipeline_error` — `save_outputs` raises; wrapped as `PipelineError`.
-- `test_outputs_built_from_cache_scan` — even on a successful run, `PlanResult.outputs` is sourced by scanning the cache (verifiable by deleting the in-memory outputs and showing the cache is the source).
+- `TestNormalCompletion::test_three_step_plan_completes` — a 3-step linear plan runs to completion; `PlanResult.status == "completed"`, all 3 outputs returned, 3 step manifests written.
+- `TestStepTimeout::test_slow_handler_raises_worker_error` — handler sleeps > `step_timeout`; executor raises `WorkerError("step {id} timed out after Ns")`, result is `failed`.
+- `TestWorkerError::test_worker_unavailable_propagates` — handler raises `WorkerUnavailableError`; result is `failed`, error in `PlanResult.errors`.
+- `TestUnexpectedException::test_unhandled_exception_wrapped_as_pipeline_error` — handler raises `RuntimeError("boom")`; stage wraps as `PipelineError("unexpected failure in stage {id}: RuntimeError")`.
+- `TestCacheFailure::test_save_outputs_failure_wrapped_as_pipeline_error` — `step_cache.save_outputs` is monkey-patched to raise `OSError`; stage wraps as `PipelineError("save_outputs failed for step {id}")`.
+- `TestSentinelDrain::test_sentinel_propagates_downstream` — first stage raises; downstream stages exit via the `None` sentinel (handler never called).
+- `TestCostAccumulation::test_total_cost_sums_step_metrics` — three steps with `cost_estimate=0.5` → `result.total_cost == 1.5`.
+- `TestCompletedStepsCount::test_completed_steps_counts_successful_only` — last stage fails after two succeed; `result.completed_steps == 2`, `result.status == "failed"`.
+- `TestCacheCorruptionTolerantLoad::test_corrupt_manifest_load_returns_zero_outputs` — corrupt manifest on disk is silently skipped, executor does not crash.
+- `TestOutputsFromCache::test_outputs_sourced_from_cache_not_in_memory` — patches `step_cache.load_outputs` with a decoy; result must reflect decoy (proving cache is the source, not in-memory handler returns).
+
+`TestTaskGroupCancellation` is a placeholder class: in a linear pipeline, a stage in the middle of a handler dispatch cannot be cancelled (the failing stage is necessarily the latest to start dispatching, since the queue serializes them). The only observable cancellation is at the await boundary, covered by `TestSentinelDrain`. Branchy plans would change this.
 
 `tests/shell/test_cache.py::TestStepCache` becomes async; all calls awaited. Coverage is preserved.
 
-`tests/shell/test_errors.py` (if it exists) gets one test: `PipelineError` is a subclass of `AcheronError` and not of `WorkerError` (preserves the spec's hierarchy separation).
+`tests/core/test_errors.py` (the actual path) gets one test: `PipelineError` is a subclass of `AcheronError` and not of `WorkerError` (preserves the spec's hierarchy separation).
 
 ## Validation
 

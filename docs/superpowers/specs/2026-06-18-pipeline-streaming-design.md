@@ -38,21 +38,24 @@ Two independent, sequenced sub-projects:
 
 ### Stage Model
 
-Each chapter is an independent pipeline of stage coroutines connected by bounded `asyncio.Queue`s:
+Today's plans have a linear topology (extract → chunk → translate? → synthesize → package). The executor runs each plan as a single chain of stage coroutines connected by bounded `asyncio.Queue`s. Per-chapter parallelism within a single plan is a future enhancement (plans gain per-chapter structure); the current implementation handles the linear case and generalises naturally to branches when the planner produces them.
 
 ```
 chunks (PlanSteps, iterated directly)
     │
-translate_stage   ← await wait_for(handler(step, plan), timeout)
+stage_0 (extract)   ← await wait_for(handler(step, plan), timeout)
     │
     ▼  asyncio.Queue(maxsize=queue_size)
-tts_stage         ← await wait_for(handler(step, plan), timeout)
+stage_1 (chunk)     ← await wait_for(handler(step, plan), timeout)
     │
     ▼  asyncio.Queue(maxsize=queue_size)
-package_stage     ← StepCache.save_outputs() per chunk
+stage_2 (synthesize) ← await wait_for(handler(step, plan), timeout)
+    │
+    ▼  asyncio.Queue(maxsize=queue_size)
+stage_3 (package)   ← await StepCache.save_outputs() per chunk
 ```
 
-All chapters run concurrently in an outer `asyncio.TaskGroup`.
+The first stage has no upstream queue — it dispatches the first step directly. Subsequent stages consume from the previous stage's queue. All stages run concurrently in a single outer `asyncio.TaskGroup`.
 
 ### Data Flow
 
@@ -61,65 +64,68 @@ submit_job()
   │
   ├── compile_plan() → Plan
   │
-  └── asyncio.TaskGroup (outer — all chapters)
-        ├── chapter_pipeline("ch1")
-        │     inner asyncio.TaskGroup
-        │       ├── translate_stage  → Queue → puts JobResult
-        │       ├── tts_stage        → Queue → puts JobResult
-        │       └── package_stage    → StepCache.save_outputs() [disk]
-        │
-        ├── chapter_pipeline("ch2")  [concurrent]
-        └── chapter_pipeline("ch3")  [concurrent]
+  └── asyncio.TaskGroup (outer — all stages of the plan)
+        ├── stage_0 (extract)   → Queue → puts JobResult
+        ├── stage_1 (chunk)     → Queue → puts JobResult
+        ├── stage_2 (synthesize) → Queue → puts JobResult
+        └── stage_3 (package)   → StepCache.save_outputs() [disk]
 
-  On success → PlanResult(status="completed", outputs from StepCache scan)
-  On any failure → outer TaskGroup cancels all chapters immediately
-                 → PlanResult(status="failed", errors=[...])
+  On success → PlanResult(status="completed", outputs from StepCache scan,
+                          total_cost from sum of cost_estimate,
+                          completed_steps = len(steps))
+  On any failure → outer TaskGroup cancels all sibling stages immediately
+                 → PlanResult(status="failed", errors=[...],
+                              completed_steps = count of steps that wrote a manifest,
+                              outputs = whatever was on disk for those steps)
 ```
 
 ### Failure Semantics
 
-An audiobook is all-or-nothing: if any chapter fails, the job is aborted and all running chapters are cancelled immediately to avoid wasting GPU resources.
+An audiobook is all-or-nothing: if any stage fails, the job is aborted and all running stages are cancelled immediately to avoid wasting GPU resources.
 
-The outer `asyncio.TaskGroup`'s natural cancellation behaviour handles this: when a chapter task raises, the group cancels all sibling chapter tasks. `StreamingExecutor.run()` catches `ExceptionGroup[AcheronError]` and converts it to `PlanResult(status="failed", errors=[...])`.
+The outer `asyncio.TaskGroup`'s natural cancellation behaviour handles this: when a stage task raises, the group cancels all sibling stage tasks. `StreamingExecutor.run()` catches `BaseExceptionGroup`, filters for `AcheronError` (sibling `CancelledError`s are ignored), and converts the first match to `PlanResult(status="failed", errors=[str(err)])`. If no `AcheronError` is present, the first non-`CancelledError` is wrapped as `PipelineError`.
 
-Within a chapter, the inner `asyncio.TaskGroup` cancels sibling stage coroutines when any one stage fails, ensuring the chapter's pipeline drains cleanly.
+In a linear pipeline, a stage in the middle of a handler dispatch cannot be cancelled — the failing stage is necessarily the latest to start dispatching (the queue serializes them). The cancellation manifests as downstream stages' `await upstream.get()` being interrupted by `CancelledError`. Branchy plans would change this.
 
 **Exception wrapping:** All raw exceptions at stage boundaries are wrapped in the Acheron error hierarchy before re-raising, preserving the full chain with `raise X from exc`:
 
-- `TimeoutError` from `asyncio.wait_for()` → `WorkerError("step timed out after Ns") from exc`
+- `TimeoutError` from `asyncio.wait_for()` → `WorkerError("step <id> timed out after Ns") from exc`
 - No registered worker → already raises `WorkerError` (existing behaviour, unchanged)
 - Transport failure after tenacity exhausts retries → `WorkerError("worker failed: ...") from exc`
-- Unexpected stage failures → `PipelineError("unexpected failure in stage X") from exc`
+- `CacheCorruptedError` / `OSError` from `save_outputs` → `PipelineError("save_outputs failed for step <id>") from exc`
+- Unexpected stage exception → `PipelineError("unexpected failure in stage <id>: <Type>") from exc`
 
-**`None` sentinel on cancellation:** When a `CancelledError` arrives, each stage consumer's `finally` block puts a `None` sentinel to its downstream queue, allowing remaining stage coroutines in that chapter to drain and exit cleanly without goroutine leaks.
+**`None` sentinel on cancellation:** Every stage's `finally` block puts a `None` sentinel on its downstream queue (clean exit or cancel). Downstream stages consume `None` as the "no more work" signal and exit. The final stage's sentinel signals `run()` to break out of its result-collection loop. The plan's first stage is special: it has no upstream queue, so it dispatches immediately.
 
 **Retry policy:** No retry at the executor level. Transport-level retry (tenacity in `HttpWorker`) already exhausts retries before propagating failure. A failed `JobResult` or raised exception at the stage is treated as final.
 
+**Sentinel protocol violation check** (e.g. `None` arriving mid-stream) is logged as a TODO in the current code: in the linear topology, the second case cannot arise. Branchy plans would require the check.
+
 ### Memory Behaviour
 
-At peak, the orchestrator holds at most `maxsize × 2 × num_chapters` `JobResult` objects in queues (2 queues per chapter: translate→tts and tts→package). `JobResult` is metadata only (~300 bytes — path, checksum, size); audio bytes are never in orchestrator memory. For 30 chapters × 2 queues × 4 maxsize = 240 objects ≈ 72 KB.
+At peak, the orchestrator holds at most `maxsize × (num_stages − 1)` `JobResult` objects in queues. `JobResult` is metadata only (~300 bytes — path, checksum, size); audio bytes are never in orchestrator memory. For a 5-stage plan with `maxsize=4`, that's 16 `JobResult` objects ≈ 5 KB.
 
-`PlanResult.outputs` is populated by scanning `StepCache` at job completion, not by accumulating `OutputFile` objects during the run.
+`PlanResult.outputs` is populated by scanning `StepCache` at job completion, not by accumulating `OutputFile` objects during the run. `total_cost` is the sum of `result.metrics.cost_estimate` for each stage whose handler returned successfully. `completed_steps` reflects the count of steps whose manifest was readable (not 0 on partial-success).
 
 ### Backpressure
 
-`asyncio.Queue(maxsize=queue_size)` blocks `await queue.put()` when the downstream stage is slower. A slow TTS stage naturally stalls the translate stage at the queue boundary — no polling, no sleep, no wasted CPU.
+`asyncio.Queue(maxsize=queue_size)` blocks `await queue.put()` when the downstream stage is slower. A slow synthesize (TTS) stage naturally stalls the translate stage at the queue boundary — no polling, no sleep, no wasted CPU.
 
 Default `queue_size` is 4. Configurable per `StreamingExecutor` instance.
 
 ### Step Timeout
 
-`asyncio.wait_for(handler(step, plan), timeout=step_timeout_seconds)` wraps every worker dispatch inside a stage consumer. Default: 1800s (matching the error table in the master spec). Configurable per `StreamingExecutor` instance.
+`asyncio.wait_for(handler(step, plan), timeout=step_timeout_seconds)` wraps every worker dispatch inside a stage consumer. Default: 1800s. Configurable per `StreamingExecutor` instance.
 
-`TimeoutError` is caught, wrapped as `WorkerError`, and re-raised. The inner `asyncio.TaskGroup` then cancels the chapter's other stage coroutines via its natural failure propagation.
+`TimeoutError` is caught, wrapped as `WorkerError`, and re-raised. The outer `TaskGroup` then cancels the other stage coroutines via its natural failure propagation.
 
 ### Resumability Foundation
 
-`StepCache.save_outputs()` is called after each successful step, as it completes — not deferred to wave completion. This gives finer-grained checkpoints than the current wave-based model. When `acheron resume` is implemented (out of scope for this layer), the executor reads `StepCache` to identify completed steps and skips their dispatch. No new infrastructure is required: the checkpoint skeleton already exists in `StepCache`.
+`StepCache.save_outputs()` is called after each successful step, as it completes — not deferred to wave completion. This gives finer-grained checkpoints than the current wave-based model. When `acheron resume` is implemented (out of scope for this layer), the executor reads `StepCache` to identify completed steps and skips their dispatch. No new infrastructure is required: the checkpoint skeleton already exists in `StepCache` (now async via aiofiles for this layer).
 
 ### Executor Strategy
 
-Add `ExecutorStrategy.STREAMING` to the enum. `create_executor()` extended to produce `StreamingExecutor` for this strategy. `BATCH_ASYNC` remains and continues to function — no removal.
+Add `ExecutorStrategy.STREAMING` to the enum. `create_executor()` extended to produce `StreamingExecutor` for this strategy. The factory signature gains a `step_cache: StepCache | None = None` keyword arg; `STREAMING` requires it (raises `ValueError` otherwise), the other strategies ignore it. `STREAMING` is the new default for the API (`api/schemas.py`) and client (`api_client.py`); `BATCH_ASYNC` remains in the codebase and the factory, and users who pass it explicitly keep working.
 
 ## Sub-project 9b — Async Redis Stores
 
@@ -161,14 +167,14 @@ No new dependency: `redis.asyncio` is part of the existing `redis~=7.0` package.
 | `shell/stores/base.py` | All methods → `async def`; `close()` → `async def` |
 | `shell/stores/memory.py` | All methods → `async def` (trivial) |
 | `shell/stores/redis.py` | All methods → `async def`; `redis.asyncio.Redis`; `connect()` instance method (called from `Orchestrator.start()`); `close()` → `async def` (`aclose()`) |
-| `shell/cache.py` | (new in 9a) `StepCache.save_outputs` / `load_outputs` / `step_has_valid_cache` → `async def` via aiofiles |
+| `shell/cache.py` | (new in 9a) `StepCache.save_outputs` / `load_outputs` / `step_has_valid_cache` → `async def` via aiofiles; `data_dir` property added |
 | `shell/executors/streaming.py` | New — `StreamingExecutor` |
 | `shell/executors/__init__.py` | Add `STREAMING` to factory (factory takes `step_cache` kwarg) |
-| `shell/orchestrator.py` | Construct `_step_cache = StepCache(cache.data_dir)`; pass `step_cache=self._step_cache` to `create_executor` |
+| `shell/orchestrator.py` | Construct `_step_cache = StepCache(cache.data_dir)`; pass `step_cache=self._step_cache` to `create_executor`; `close()` docstring notes callers must `shutdown()` first |
 | `shell/api/schemas.py` | Default `executor_strategy` → `"streaming"` |
 | `api_client.py` | Default `executor_strategy` → `"streaming"` |
-| `pyproject.toml` | Add `aiofiles~=24` |
-| `tests/shell/test_streaming_executor.py` | New — mock-based tests for normal completion, step timeout, no worker, unexpected exception, TaskGroup cancellation, sentinel drain, cache save failure, outputs from cache |
+| `pyproject.toml` | Add `aiofiles~=24`; dev-dep `types-aiofiles~=24` for mypy |
+| `tests/shell/test_streaming_executor.py` | New — mock-based tests for normal completion, step timeout, no worker, unexpected exception, cache save failure, sentinel drain, cost accumulation, completed_steps count, cache-sourced outputs, cache-corruption tolerance |
 | `tests/shell/test_cache.py` | Convert `TestStepCache` to async (await all calls) |
 | `tests/core/test_errors.py` | Add `PipelineError` placement test |
 
