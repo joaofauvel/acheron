@@ -211,6 +211,7 @@ class TestWorkerIntegrationErrorPath:
 
         handler = create_step_handler(reg)
         orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
+        await orch.start()
         request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)

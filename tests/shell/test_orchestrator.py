@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from acheron.core.errors import InvalidLanguagePathError
-from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus
+from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus, WorkerType
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.memory import InMemoryWorkerStore
@@ -22,6 +22,39 @@ async def _success_handler(_step, _plan):  # type: ignore[no-untyped-def]
 
 
 class TestOrchestrator:
+    @pytest.mark.asyncio
+    async def test_submit_job_requires_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """submit_job raises RuntimeError if start() was not called.
+
+        Local workers are only registered during start(). Submitting before
+        start() would queue the job against an empty registry and the
+        _execute task would fail with a confusing WorkerError at execution.
+        """
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
+
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
+        with pytest.raises(RuntimeError, match="start"):
+            await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+
+    @pytest.mark.asyncio
+    async def test_start_skips_already_registered_types(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Pre-registered TTS worker is preserved; no duplicate is added on start()."""
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://user-tts", "http", tts_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
+
+        await orch.start()
+
+        tts_workers = await reg.find_by_type(WorkerType.TTS)
+        assert len(tts_workers) == 1
+        assert tts_workers[0].worker_id == "tts-1"
+
+        for wt in (WorkerType.EXTRACTION, WorkerType.CHUNKING, WorkerType.PACKAGING):
+            assert await reg.find_by_type(wt), f"{wt.value}-local should be registered"
+
     @pytest.mark.asyncio
     async def test_submit_job_returns_tracked(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()

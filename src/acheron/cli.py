@@ -37,17 +37,20 @@ def _get_client() -> AcheronClient:
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
+    # When called from an async test (a loop is already running), ``asyncio.run``
+    # would fail because it creates a new loop. We run the coroutine in a
+    # worker thread that has its own loop. Note: background tasks the
+    # coroutine schedules (e.g. orchestrator._execute via submit_job) live on
+    # the worker's loop and are cancelled when ``asyncio.run`` returns. That
+    # is acceptable here because the CLI is sync; end-to-end execution is
+    # verified separately by async tests against the orchestrator API.
     try:
         try:
-            running_loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
-            running_loop = None
-        if running_loop is not None:
-            # Already inside an event loop (e.g. an async test); run the coroutine
-            # inline. asyncio.run() would raise because it creates a new loop.
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, coro).result()
-        return asyncio.run(coro)
+            return asyncio.run(coro)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
     except httpx.ConnectError:
         url = os.environ.get("ACHERON_URL", "http://localhost:8000")
         console.print(f"[red]Cannot connect to Acheron at {url}[/red]")

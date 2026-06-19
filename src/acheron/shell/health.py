@@ -67,7 +67,9 @@ class HealthMonitor:
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        """Start the health check background task."""
+        """Start the health check background task. Idempotent."""
+        if self._task is not None and not self._task.done():
+            return
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:

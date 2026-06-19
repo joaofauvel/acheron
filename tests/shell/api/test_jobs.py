@@ -1,5 +1,7 @@
 """Tests for job API routes."""
 
+import asyncio
+
 import pytest
 
 
@@ -19,6 +21,41 @@ class TestJobRoutes:
         data = response.json()
         assert data["job_id"].startswith("job-")
         assert data["status"] in ("running", "completed")
+
+    @pytest.mark.asyncio
+    async def test_submit_job_executes_end_to_end(self, client) -> None:  # type: ignore[no-untyped-def]
+        """Submitted job's background _execute task actually runs.
+
+        The ``client`` fixture starts the orchestrator (registers local
+        workers) and uses the test's event loop, so background ``_execute``
+        tasks survive. Polls until status changes from ``"running"`` to
+        prove the background task ran (it would otherwise stay ``"running"``
+        forever). Note: the default workers are fake HTTP endpoints, so
+        the final status is typically ``"partial"`` — we just need to see
+        the state transition.
+        """
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "/input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert response.status_code == 201
+        job_id = response.json()["job_id"]
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 5.0
+        status = "running"
+        while loop.time() < deadline:
+            poll = await client.get(f"/jobs/{job_id}")
+            status = poll.json()["status"]
+            if status != "running":
+                break
+            await asyncio.sleep(0.05)
+        assert status != "running", "job stayed running: _execute task never ran"
 
     @pytest.mark.asyncio
     async def test_submit_job_invalid_strategy(self, client) -> None:  # type: ignore[no-untyped-def]
@@ -94,6 +131,7 @@ class TestJobRoutes:
         from acheron.shell.stores.memory import InMemoryWorkerStore
 
         app = create_app(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+        await app.state.orchestrator.start()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             response = await c.post(

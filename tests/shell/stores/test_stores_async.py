@@ -7,7 +7,6 @@ async migration contract.
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 
 import pytest
@@ -132,12 +131,3 @@ class TestInMemoryJobStoreAsyncBehavior:
     async def test_close_completes(self) -> None:
         store = InMemoryJobStore()
         await store.close()
-
-
-def test_inmemory_worker_store_register_returns_coroutine() -> None:
-    """Explicit guard: calling register() returns a coroutine, not a value."""
-    store = InMemoryWorkerStore()
-    coro = store.register("w-1", "http://a", "http", _tts_caps())
-    assert asyncio.iscoroutine(coro), "register() must return a coroutine"
-    # Drain to avoid RuntimeWarning.
-    coro.close()

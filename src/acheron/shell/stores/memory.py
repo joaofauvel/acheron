@@ -54,13 +54,14 @@ class InMemoryWorkerStore(WorkerStore):
 
     async def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]:
         """Find workers matching a given WorkerType."""
-        return tuple(w for w in self._workers.values() if w.capabilities.worker_type == worker_type)
+        return tuple(w for w in await self.list_all() if w.capabilities.worker_type == worker_type)
 
     async def find_by_language(self, src: str, dst: str) -> tuple[RegisteredWorker, ...]:
         """Find workers supporting a source→target language pair."""
+        workers = await self.list_all()
         return tuple(
             w
-            for w in self._workers.values()
+            for w in workers
             if src in w.capabilities.supported_languages_in and dst in w.capabilities.supported_languages_out
         )
 

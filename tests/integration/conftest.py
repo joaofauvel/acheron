@@ -108,7 +108,8 @@ async def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIte
 
     Calls ``orchestrator.start()`` explicitly because httpx's ASGITransport does
     not trigger the FastAPI lifespan, so local workers would otherwise not be
-    registered before the first request.
+    registered before the first request. Teardown mirrors the production
+    lifespan: shutdown the health monitor, then close stores.
     """
     app = await make_app(tmp_path)
     await app.state.orchestrator.start()
@@ -117,6 +118,7 @@ async def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIte
     monkeypatch.setattr("acheron.cli._get_client", lambda: client)
     yield app
     await app.state.orchestrator.shutdown()
+    await app.state.orchestrator.close()
 
 
 async def _wait_for_port(host: str, port: int, timeout: float = 2.0) -> None:  # noqa: ASYNC109

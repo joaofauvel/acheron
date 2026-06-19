@@ -44,6 +44,17 @@ class TestHealthMonitor:
         assert monitor._task.done()  # noqa: SLF001
 
     @pytest.mark.asyncio
+    async def test_start_is_idempotent(self) -> None:
+        """Calling start() a second time must not replace the running task."""
+        reg = InMemoryWorkerStore()
+        monitor = HealthMonitor(reg, interval=0.01)
+        await monitor.start()
+        first_task = monitor._task  # noqa: SLF001
+        await monitor.start()
+        assert monitor._task is first_task  # noqa: SLF001
+        await monitor.stop()
+
+    @pytest.mark.asyncio
     async def test_records_success_for_healthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://worker", "http", _tts_caps())

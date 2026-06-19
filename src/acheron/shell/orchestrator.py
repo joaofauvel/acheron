@@ -116,6 +116,7 @@ class Orchestrator:
         self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
         self._job_store = job_store if job_store is not None else create_job_store()
         self._tasks: set[asyncio.Task[None]] = set()
+        self._started = False
         self._health_monitor = HealthMonitor(registry)
 
     def _verify_data_dir_writable(self) -> None:
@@ -171,20 +172,39 @@ class Orchestrator:
                 logger.exception("Failed to close %s", close_attr)
 
     async def start(self) -> None:
-        """Start background tasks and register built-in local workers."""
+        """Start background tasks and register built-in local workers.
+
+        Idempotent: calling start() more than once is a no-op so the FastAPI
+        lifespan path and explicit callers can both be safe.
+        """
+        if self._started:
+            return
+        self._started = True
         await self._register_built_in_local_workers()
         await self._health_monitor.start()
 
     async def shutdown(self) -> None:
-        """Stop background tasks."""
+        """Stop the health monitor background task.
+
+        Does not cancel ``_execute`` tasks spawned by ``submit_job``; those are
+        tracked on ``self._tasks`` and reaped when the event loop tears down.
+        For explicit cleanup of stores (Redis pools, file handles), call
+        :meth:`close` separately.
+        """
         await self._health_monitor.stop()
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
 
         Raises:
+            RuntimeError: If ``start()`` has not been called. Local workers
+                are registered during start(); submitting before start would
+                fail at execution with a confusing WorkerError.
             AcheronError: If plan compilation fails (e.g. invalid language path).
         """
+        if not self._started:
+            msg = "Orchestrator.start() must be called before submit_job()"
+            raise RuntimeError(msg)
         job_id = f"job-{uuid.uuid4().hex[:8]}"
         match request:
             case EpubRequest():
