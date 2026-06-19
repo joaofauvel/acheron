@@ -43,10 +43,15 @@ def _write_pem_key(path: Path, key: rsa.RSAPrivateKey) -> None:
             encryption_algorithm=serialization.NoEncryption(),
         )
     )
+    # World-readable: workers in docker-compose run as root today, but if a
+    # future non-root user is added (e.g. for `docker run --user 1000`),
+    # mode 0644 lets them read the cert regardless of who generated it.
+    path.chmod(0o644)
 
 
 def _write_pem_cert(path: Path, cert: x509.Certificate) -> None:
     path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    path.chmod(0o644)
 
 
 def _build_ca(out_dir: Path) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
@@ -138,6 +143,9 @@ def _build_server_cert(
 def generate(out_dir: Path) -> None:
     """Generate the Acheron CA and per-service certs in `out_dir`."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    # World-executable dir so workers can `ls` and `stat` files; permissions
+    # on the files themselves are set in _write_pem_{cert,key}.
+    out_dir.chmod(0o755)
     ca_cert, ca_key = _build_ca(out_dir)
     for service in SERVICES:
         _build_server_cert(service, out_dir, ca_cert, ca_key)

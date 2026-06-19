@@ -24,6 +24,7 @@ services:
       ACHERON_DATA_DIR: /data/jobs
       ACHERON_TLS_CERT_FILE: /certs/orchestrator.crt
       ACHERON_TLS_KEY_FILE: /certs/orchestrator.key
+      ACHERON_TLS_CA_FILE: /certs/acheron-ca.crt
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
       - acheron-data:/data

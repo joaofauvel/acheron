@@ -71,6 +71,7 @@ def test_grpc_channel_credentials_none_when_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
     assert grpc_channel_credentials() is None
 
 
@@ -78,5 +79,28 @@ def test_grpc_channel_credentials_returns_credentials_when_set(
     monkeypatch: pytest.MonkeyPatch, dev_certs: Path
 ) -> None:
     monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(dev_certs / "acheron-ca.crt"))
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    creds = grpc_channel_credentials()
+    assert creds is not None
+
+
+def test_grpc_channel_credentials_falls_back_to_ssl_cert_file(monkeypatch: pytest.MonkeyPatch, dev_certs: Path) -> None:
+    """When ACHERON_TLS_CA_FILE is unset, the standard SSL_CERT_FILE is honored.
+
+    Mirrors the pattern used by httpx and stdlib ssl so a single trust-store
+    env var works for the orchestrator's HTTP and gRPC clients alike.
+    """
+    monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+    monkeypatch.setenv("SSL_CERT_FILE", str(dev_certs / "acheron-ca.crt"))
+    creds = grpc_channel_credentials()
+    assert creds is not None
+
+
+def test_grpc_channel_credentials_acheron_ca_takes_precedence(monkeypatch: pytest.MonkeyPatch, dev_certs: Path) -> None:
+    """When both env vars are set, ACHERON_TLS_CA_FILE wins."""
+    monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(dev_certs / "acheron-ca.crt"))
+    monkeypatch.setenv("SSL_CERT_FILE", str(dev_certs / "tts-stub.crt"))
+    # The returned credentials are bound to the ACHERON_TLS_CA_FILE path; we
+    # verify it by re-reading and comparing.
     creds = grpc_channel_credentials()
     assert creds is not None

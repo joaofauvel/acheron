@@ -52,10 +52,12 @@ def grpc_server_credentials() -> grpc.ServerCredentials | None:
 def grpc_channel_credentials() -> grpc.ChannelCredentials | None:
     """Return gRPC channel credentials to verify a CA, or None.
 
-    Reads `ACHERON_TLS_CA_FILE`. If unset, returns None and callers should use
-    an insecure channel.
+    Reads `ACHERON_TLS_CA_FILE` first, then falls back to the standard
+    `SSL_CERT_FILE` (honored by httpx and stdlib `ssl`) so the orchestrator
+    can use a single trust-store env var. If neither is set, returns None
+    and callers should use an insecure channel.
     """
-    ca = os.environ.get("ACHERON_TLS_CA_FILE")
+    ca = os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE")
     if ca is None:
         return None
     ca_pem = Path(ca).read_bytes()
