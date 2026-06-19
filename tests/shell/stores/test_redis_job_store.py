@@ -1,6 +1,7 @@
 """Integration tests for the Redis job store."""
 
 import pytest
+import pytest_asyncio
 import redis
 
 from acheron.core.models import (
@@ -74,9 +75,14 @@ def _result() -> PlanResult:
     )
 
 
-@pytest.fixture
-def store(redis_url: str) -> RedisJobStore:
-    return RedisJobStore(redis_url)
+@pytest_asyncio.fixture
+async def store(redis_url: str) -> RedisJobStore:
+    s = RedisJobStore(redis_url)
+    await s.connect()
+    try:
+        yield s
+    finally:
+        await s.close()
 
 
 class TestPut:
@@ -183,6 +189,10 @@ class TestList:
 
 
 class TestFailFast:
-    def test_unreachable_redis_raises_on_init(self) -> None:
-        with pytest.raises(redis.RedisError):
-            RedisJobStore("redis://localhost:1")
+    @pytest.mark.asyncio
+    async def test_unreachable_redis_raises_on_connect(self) -> None:
+        from redis.exceptions import ConnectionError as RedisConnectionError
+
+        store = RedisJobStore("redis://localhost:1")
+        with pytest.raises((RedisConnectionError, redis.RedisError)):
+            await store.connect()
