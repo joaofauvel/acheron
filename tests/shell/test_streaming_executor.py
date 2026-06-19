@@ -117,3 +117,63 @@ class TestNormalCompletion:
         assert len(result.outputs) == 3
         filenames = {o.filename for o in result.outputs}
         assert filenames == {"extracted.txt", "chunked.txt", "out.wav"}
+
+
+class TestStepTimeout:
+    @pytest.mark.asyncio
+    async def test_slow_handler_raises_worker_error(
+        self, tmp_path: Path, step_cache: StepCache
+    ) -> None:
+        plan = _linear_plan()
+
+        async def slow_handler(step: PlanStep, plan: Plan) -> JobResult:
+            await asyncio.sleep(0.5)
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, "out.wav"),),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        executor = StreamingExecutor(slow_handler, step_cache, step_timeout=0.05)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert "timed out" in result.errors[0].lower()
+
+
+class TestWorkerError:
+    @pytest.mark.asyncio
+    async def test_worker_unavailable_propagates(
+        self, tmp_path: Path, step_cache: StepCache
+    ) -> None:
+        from acheron.core.errors import WorkerUnavailableError
+
+        plan = _linear_plan()
+
+        async def failing_handler(step: PlanStep, plan: Plan) -> JobResult:
+            raise WorkerUnavailableError(f"no worker for {step.step_id}")
+
+        executor = StreamingExecutor(failing_handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert any("no worker" in e.lower() for e in result.errors)
+
+
+class TestUnexpectedException:
+    @pytest.mark.asyncio
+    async def test_unhandled_exception_wrapped_as_pipeline_error(
+        self, tmp_path: Path, step_cache: StepCache
+    ) -> None:
+        plan = _linear_plan()
+
+        async def bad_handler(step: PlanStep, plan: Plan) -> JobResult:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        executor = StreamingExecutor(bad_handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert any("boom" in e.lower() or "streaming" in e.lower() for e in result.errors)
