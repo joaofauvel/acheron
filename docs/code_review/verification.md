@@ -272,14 +272,15 @@ files:
 ### DATA-004 — Redis store round-trip tests never exercise non-empty worker metadata, leaving a coverage gap for real production values
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: tests/shell/stores/test_redis_worker_store.py
     lines: 37-69

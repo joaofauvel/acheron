@@ -7,7 +7,7 @@ import pytest_asyncio
 import redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
 from acheron.shell.stores.redis import RedisWorkerStore
 
 
@@ -94,6 +94,44 @@ class TestListing:
         tts_workers = await store.find_by_type(WorkerType.TTS)
         assert len(tts_workers) == 1
         assert tts_workers[0].worker_id == "tts-1"
+
+
+class TestMetadataRoundTrip:
+    @pytest.mark.asyncio
+    async def test_worker_metadata_round_trips(self, store: RedisWorkerStore) -> None:
+        """Worker metadata must survive serialize/deserialize through Redis."""
+        meta: dict[str, JsonValue] = {"vram_gb": 8, "version": "1.0"}
+        await store.register("w-meta", "http://h", "http", _tts_caps(), metadata=meta)
+        w = await store.get("w-meta")
+        assert w is not None
+        assert w.metadata == meta
+
+    @pytest.mark.asyncio
+    async def test_capabilities_metadata_round_trips(self, store: RedisWorkerStore) -> None:
+        """Capabilities.metadata must also survive the round-trip."""
+        caps = WorkerCapabilities(
+            worker_type=WorkerType.TTS,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+            metadata={"runtime": "onnx", "vram_gb": 24},
+        )
+        await store.register("w-caps-meta", "http://h", "http", caps)
+        w = await store.get("w-caps-meta")
+        assert w is not None
+        assert w.capabilities.metadata == {"runtime": "onnx", "vram_gb": 24}
+
+    @pytest.mark.asyncio
+    async def test_empty_metadata_defaults_to_empty_dict(self, store: RedisWorkerStore) -> None:
+        """When metadata is omitted, the deserialized value must be {} not None."""
+        await store.register("w-nometa", "http://h", "http", _tts_caps())
+        w = await store.get("w-nometa")
+        assert w is not None
+        assert w.metadata == {}
 
 
 class TestHealthTracking:
