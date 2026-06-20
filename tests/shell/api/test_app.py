@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from acheron.shell.api.app import create_app
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
-
-if TYPE_CHECKING:
-    pass
 
 
 def test_create_app_uses_injected_stores_without_consulting_env(

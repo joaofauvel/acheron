@@ -18,14 +18,15 @@ Four open findings: local_handlers.py has zero direct unit tests (medium); the c
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: src/acheron/shell/local_handlers.py
     lines: 20-31, 34-50, 53-68, 71-86, 89-93
