@@ -1,11 +1,17 @@
 """Pydantic models for API request/response serialization."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from acheron.core.models import JsonValue  # noqa: TC001  (pydantic v2 needs the type at runtime to build validators)
 
 
-class SubmitJobRequest(BaseModel):
+class _StrictRequest(BaseModel):
+    """Request body: reject unknown fields so client typos fail loudly."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SubmitJobRequest(_StrictRequest):
     """Request body for job submission."""
 
     source_type: str
@@ -35,7 +41,7 @@ class JobListResponse(BaseModel):
     jobs: list[JobResponse]
 
 
-class WorkerCapabilitiesRequest(BaseModel):
+class WorkerCapabilitiesRequest(_StrictRequest):
     """Worker capabilities in a registration request."""
 
     worker_type: str
@@ -49,7 +55,7 @@ class WorkerCapabilitiesRequest(BaseModel):
     metadata: dict[str, JsonValue] = {}
 
 
-class WorkerRegistrationRequest(BaseModel):
+class WorkerRegistrationRequest(_StrictRequest):
     """Request body for worker registration."""
 
     worker_id: str

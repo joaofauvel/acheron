@@ -1,8 +1,10 @@
 """Tests for worker API routes."""
 
+from typing import Any
+
 import pytest
 
-_WORKER_PAYLOAD = {
+_WORKER_PAYLOAD: dict[str, Any] = {
     "worker_id": "asr-1",
     "endpoint": "http://asr:8000",
     "transport": "http",
@@ -82,3 +84,25 @@ class TestRegistrationSecurity:
         """When ACHERON_REGISTRATION_TOKEN is unset, registration is open."""
         response = await client.post("/workers", json=_WORKER_PAYLOAD)
         assert response.status_code == 201
+
+
+class TestStrictRequest:
+    @pytest.mark.asyncio
+    async def test_register_rejects_extra_fields(self, client) -> None:  # type: ignore[no-untyped-def]
+        """WorkerRegistrationRequest must reject unknown fields so client typos fail loudly."""
+        payload = {
+            **_WORKER_PAYLOAD,
+            "endpoint_typo": "http://extra:8000",
+        }
+        response = await client.post("/workers", json=payload)
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_capabilities_rejects_extra_fields(self, client) -> None:  # type: ignore[no-untyped-def]
+        """WorkerCapabilitiesRequest must reject unknown fields inside capabilities."""
+        caps: dict[str, object] = {**_WORKER_PAYLOAD["capabilities"]}
+        caps["batch_capabel"] = True  # typo: missing 'e'
+        payload: dict[str, object] = {**_WORKER_PAYLOAD}
+        payload["capabilities"] = caps
+        response = await client.post("/workers", json=payload)
+        assert response.status_code == 422

@@ -149,3 +149,20 @@ class TestJobRoutes:
                 },
             )
             assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_submit_job_rejects_extra_fields(self, client) -> None:  # type: ignore[no-untyped-def]
+        """SubmitJobRequest must reject unknown fields so client typos fail loudly."""
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "/input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategi": "streaming",  # typo: missing 'y'
+            },
+        )
+        assert response.status_code == 422
+        body = response.json()
+        assert any("executor_strategi" in str(d).lower() for d in body.get("detail", []))
