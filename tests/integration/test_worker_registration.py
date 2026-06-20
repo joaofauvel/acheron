@@ -11,7 +11,7 @@ from acheron.cli import main
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
-from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -68,7 +68,12 @@ def _wire_app(
     """
     if reg is None:
         reg = InMemoryWorkerStore()
-    app = create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)
+    app = create_app(
+        registry=reg,
+        job_store=InMemoryJobStore(),
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
     asyncio.run(app.state.orchestrator.start())
     from httpx import ASGITransport
 

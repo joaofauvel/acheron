@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
-from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -67,7 +67,12 @@ async def make_app(tmp_path: Path) -> FastAPI:
     reg = InMemoryWorkerStore()
     await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
     await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
-    return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)
+    return create_app(
+        registry=reg,
+        job_store=InMemoryJobStore(),
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
 
 
 @pytest_asyncio.fixture

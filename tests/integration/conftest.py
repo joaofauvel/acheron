@@ -23,7 +23,7 @@ from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFil
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -94,7 +94,12 @@ async def make_app(
     await reg.register("asr-1", "http://127.0.0.1:3", "http", asr_caps())
     for worker_id, endpoint, transport, caps in extra_workers or []:
         await reg.register(worker_id, endpoint, transport, caps)
-    return create_app(registry=reg, cache=PlanCache(tmp_path), data_dir=tmp_path)
+    return create_app(
+        registry=reg,
+        job_store=InMemoryJobStore(),
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
 
 
 @pytest.fixture

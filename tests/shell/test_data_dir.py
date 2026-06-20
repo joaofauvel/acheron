@@ -9,7 +9,7 @@ import pytest
 from acheron.core.errors import AcheronError
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
-from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 
 def test_data_dir_is_public_attribute(tmp_path: Path) -> None:
@@ -23,7 +23,7 @@ def test_create_app_reads_acheron_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_
     from acheron.shell.api.app import create_app
 
     monkeypatch.setenv("ACHERON_DATA_DIR", str(tmp_path))
-    app = create_app(registry=InMemoryWorkerStore())
+    app = create_app(registry=InMemoryWorkerStore(), job_store=InMemoryJobStore())
     assert app.state.orchestrator._cache.data_dir == tmp_path  # noqa: SLF001
 
 

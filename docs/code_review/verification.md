@@ -240,14 +240,15 @@ related: [MAINT-002]
 ### TEST-004 — Conftest make_app and other API test sites do not inject job_store, leaking env-config dependence into the test suite
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: tests/shell/conftest.py
     lines: 65-70

@@ -128,9 +128,14 @@ class TestJobRoutes:
 
         from acheron.shell.api.app import create_app
         from acheron.shell.cache import PlanCache
-        from acheron.shell.stores.memory import InMemoryWorkerStore
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
-        app = create_app(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), data_dir=tmp_path)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+        )
         await app.state.orchestrator.start()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
