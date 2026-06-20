@@ -49,14 +49,14 @@ related: [CORR-002, MAINT-001]
 ### ARCH-002 — Store construction asymmetry: app.py injects WorkerStore but lets Orchestrator create JobStore internally
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/api/app.py
     lines: 44-53
