@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: a1b11b2
+last_updated_commit: d0b739b
 last_staleness_scan:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 ---
 
 # Correctness
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Three open findings: StreamingExecutor loses cost accounting on FAILED results (medium, regression risk from the CORR-001 fix); dead defensive AcheronError check on the final queue (low); and a latent non-linear-DAG limitation in streaming executor _END propagation (low). Five verified stories (CORR-001 through CORR-005) are immutable and not counted.
+Two open low-severity findings: a dead defensive AcheronError check on the final queue (remnant of an earlier design where errors propagated via queues), and a latent non-linear-DAG limitation in streaming executor _END propagation. All other stories are now verified or fixed: CORR-001 through CORR-005 are verified (immutable), CORR-008 (cost accounting on FAILED) is fixed at f394eec.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -156,16 +156,16 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in: []
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 97-100
+    lines: 102-103
 related: []
 ```
 
-**Issue.** `_consume_final_queue` (streaming.py:99) checks `isinstance(first, AcheronError)` on the first item from the final queue. The queue is typed `Queue[JobResult | None]` and stages only put `JobResult` objects or `None` (the `_END` sentinel) on queues — never `AcheronError`. Errors propagate via task exceptions caught by the TaskGroup, not via queue items. This check can never be True.
+**Issue.** `_consume_final_queue` (streaming.py:102) checks `isinstance(first, AcheronError)` on the first item from the final queue. The queue is typed `Queue[JobResult | None]` and stages only put `JobResult` objects or `None` (the `_END` sentinel) on queues — never `AcheronError`. Errors propagate via task exceptions caught by the TaskGroup, not via queue items. This check can never be True.
 
 **Why it matters.** Dead defensive code that suggests a misunderstanding of the error flow. A reader might believe errors are passed through queues, obscuring the actual exception-based error mechanism. Low because it has no functional impact.
 
@@ -181,34 +181,24 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in: []
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 190-196
+    lines: 201-208
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 238-239
 related: []
 ```
 
-**Issue.** The streaming executor models the plan as a linear pipeline: stage N reads from stage N-1's queue. If stage N-1 sends `_END` (because it failed or was skipped), stage N reads `_END` and skips (streaming.py:195-196). For a non-linear DAG where step C depends on step A (not B), but the topological order is [A, B, C], C reads from B's queue. If B fails and sends _END, C is skipped — even though C's actual dependency (A) succeeded. The TODO at streaming.py:193-194 acknowledges this limitation for future branch support.
+**Issue.** The streaming executor models the plan as a linear pipeline: stage N reads from stage N-1's queue. If stage N-1 sends `_END` (because it failed or was skipped), stage N reads `_END` and skips (streaming.py:206). For a non-linear DAG where step C depends on step A (not B), but the topological order is [A, B, C], C reads from B's queue. If B fails and sends _END, C is skipped — even though C's actual dependency (A) succeeded. The TODO at streaming.py:204 acknowledges this limitation for future branch support.
 
 **Why it matters.** If a non-linear Plan DAG is passed to the StreamingExecutor, steps that should run (their actual dependencies succeeded) would be silently skipped, producing incomplete output. The current planner only generates linear chains, so this is latent — but the Executor interface accepts arbitrary Plans. Low because the current planner never produces non-linear DAGs.
 
 **Recommendation.** Either reject non-linear DAGs in the StreamingExecutor (validate that each step depends on at most the immediately preceding step in topological order), or implement proper per-dependency queue fan-out. Until then, document the linear-only constraint in the class docstring.
 
 **Verification.** Construct a Plan with a non-linear DAG (e.g., A->B, A->C, B+C->D) and run through StreamingExecutor. Verify either an explicit error is raised or all steps whose dependencies succeeded execute correctly.
-
-## ML — ML correctness
-
-**Grade:** A
-
-No ML-specific findings. The codebase is not an ML training pipeline. Reviewed for data-flow integrity analogues (cross-job state contamination, step-cache key collisions, shared mutable state across concurrent jobs, look-ahead in pipeline ordering) — none found. Step cache keys are job_id/step_id (unique per job), GrpcWorker._batches is per-instance (no cross-job sharing), and no shared mutable state exists across concurrent jobs.
-
-## MATH — Numerical correctness
-
-**Grade:** A
-
-No numerical correctness findings. Chunking uses character-count arithmetic with no off-by-one errors (verified `_hard_split`, `_merge_parts`, `_split_on_punctuation` boundary handling in core/chunking.py). Cost/duration aggregation is simple addition with no precision concerns. No divide-by-zero, NaN propagation, or float-comparison issues found.
 
 ### CORR-008 — StreamingExecutor loses cost accounting when handler returns non-SUCCESS status
 
@@ -218,27 +208,32 @@ severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: pending
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in:
-  - pending
+  - f394eec53b1916a42c808146c3868969668d0358
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 211-222
+    lines: 220-237
+related: []
 ```
 
-**Issue.** The CORR-001 fix added `if result.status is not JobStatus.SUCCESS: raise WorkerError(msg)` at streaming.py:211-213. This raises before the `return result.metrics.cost_estimate or 0.0` at line 222. When a handler returns a FAILED (or PARTIAL) JobResult with a non-zero `metrics.cost_estimate`, the cost is discarded because the exception bypasses the return. AsyncExecutor (async_executor.py:60-61) and SequentialExecutor (sequential.py:53) both accumulate `result.metrics.cost_estimate or 0.0` on the FAILED branch, so the streaming executor's behavior is now inconsistent with the other two strategies for the same plan.
+**Issue.** The CORR-001 fix added `if result.status is not JobStatus.SUCCESS: raise WorkerError(msg)` at streaming.py:211-213. This raised before the `return result.metrics.cost_estimate or 0.0` at line 222. When a handler returned a FAILED (or PARTIAL) JobResult with a non-zero `metrics.cost_estimate`, the cost was discarded because the exception bypassed the return. AsyncExecutor and SequentialExecutor both accumulated `result.metrics.cost_estimate or 0.0` on the FAILED branch, so the streaming executor's behavior was inconsistent with the other two strategies.
 
-**Why it matters.** A worker that returns FAILED without raising (the standard non-exception failure signal) typically still incurred cost (GPU time, API calls, partial compute). The streaming executor is the default strategy; the loss of cost accounting on failed steps skews billing, budgeting, and observability. The test test_handler_returning_failed_status_marks_plan_failed uses `metrics=JobMetrics(duration_seconds=0.0)` with no cost_estimate, so the bug is silent in the test suite.
+**Why it matters.** A worker that returns FAILED without raising typically still incurred cost (GPU time, API calls, partial compute). The streaming executor is the default strategy; the loss of cost accounting on failed steps skews billing, budgeting, and observability. The test `test_handler_returning_failed_status_marks_plan_failed` used `metrics=JobMetrics(duration_seconds=0.0)` with no cost_estimate, so the bug was silent in the test suite.
 
-**Recommendation.** Before the status check at line 211, capture the cost: `cost = result.metrics.cost_estimate or 0.0`. After raising WorkerError, return the cost from a side channel. The cleanest approach is to make `_stage` always return a tuple `(cost, error)` and let `_run_pipeline` aggregate.
-
-**Verification.** Add a test that submits a plan where a step handler returns `JobResult(status=FAILED, metrics=JobMetrics(cost_estimate=0.42))` through StreamingExecutor and asserts `result.total_cost == 0.42`. Compare with AsyncExecutor to confirm parity.
-
-The CORR-001 fix added `if result.status is not JobStatus.SUCCESS: raise WorkerError(msg)` at streaming.py:211-213. This raises before the `return result.metrics.cost_estimate or 0.0` at line 222. When a handler returns a FAILED (or PARTIAL) JobResult with a non-zero `metrics.cost_estimate`, the cost is discarded because the exception bypasses the return. AsyncExecutor (async_executor.py:60-61) and SequentialExecutor (sequential.py:53) both accumulate `result.metrics.cost_estimate or 0.0` on the FAILED branch, so the streaming executor's behavior is now inconsistent with the other two strategies for the same plan.
-
-**Why it matters.** A worker that returns FAILED without raising (the standard non-exception failure signal) typically still incurred cost (GPU time, API calls, partial compute). The streaming executor is the default strategy; the loss of cost accounting on failed steps skews billing, budgeting, and observability. The test test_handler_returning_failed_status_marks_plan_failed uses `metrics=JobMetrics(duration_seconds=0.0)` with no cost_estimate, so the bug is silent in the test suite.
-
-**Recommendation.** Before the status check at line 211, capture the cost: `cost = result.metrics.cost_estimate or 0.0`. After raising WorkerError, return the cost from a side channel. The cleanest approach is to make `_stage` always return a tuple `(cost, error)` and let `_run_pipeline` aggregate.
+**Recommendation.** Before the status check, capture the cost: `cost = result.metrics.cost_estimate or 0.0`. After raising WorkerError, return the cost from a side channel. The cleanest approach: make `_stage` record cost into a shared list before any failure check, so cost survives TaskGroup cancellation.
 
 **Verification.** Add a test that submits a plan where a step handler returns `JobResult(status=FAILED, metrics=JobMetrics(cost_estimate=0.42))` through StreamingExecutor and asserts `result.total_cost == 0.42`. Compare with AsyncExecutor to confirm parity.
+
+## ML — ML correctness
+
+**Grade:** A
+
+No ML-specific findings. The codebase is not an ML training pipeline.
+
+## MATH — Numerical correctness
+
+**Grade:** A
+
+No numerical correctness findings. Cost/duration aggregation is simple addition with no precision concerns. No divide-by-zero, NaN propagation, or float-comparison issues found.

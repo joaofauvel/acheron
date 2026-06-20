@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: a1b11b2
+last_updated_commit: d0b739b
 last_staleness_scan:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 ---
 
 # Verification
 
 ## TEST — Test discipline
 
-**Grade:** B
+**Grade:** A
 
-Four open findings: local_handlers.py has zero direct unit tests (medium); the conftest make_app fixture leaks ACHERON_STORE_BACKEND env-config into the test suite (medium); test_orchestrator_works_with_redis_backend tests memory despite the name (medium); and a tautological assertion in test_get_capabilities_no_translation_worker (medium). One low finding (REPRO-002: timing-based asyncio.sleep windows in health monitor tests). DATA prefix carries DATA-001 through DATA-004 (B) - see that theme.
+Two open findings: a misleading test name claiming Redis coverage while actually testing memory (medium), and a tautological assertion that always passes (low). TEST-001 (direct local_handlers tests) and TEST-004 (conftest job_store injection) are now fixed. REPRO and DATA prefixes carry REPRO-001, REPRO-002 (open), and all DATA stories now fixed.
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -23,19 +23,19 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in:
-  - pending
+  - 8f29b8b0b65d1ba902a2e265ac9f25f87485c078
 files:
   - path: src/acheron/shell/local_handlers.py
     lines: 20-31, 34-50, 53-68, 71-86, 89-93
 related: []
 ```
 
-**Issue.** `extract_handler`, `chunk_handler`, and `package_handler` (the built-in local handlers for EXTRACTION/CHUNKING/PACKAGING) have no dedicated test file. They are only exercised indirectly through orchestrator integration tests. Their output construction — filename extraction from `source_path.rsplit('/', 1)[-1]`, `content_type` values, `size_bytes=0`, `checksum=''` — is never directly asserted. A grep for `extract_handler|chunk_handler|package_handler|local_handlers` across tests/ returns no imports.
+**Issue.** `extract_handler`, `chunk_handler`, and `package_handler` had no dedicated test file. They were only exercised indirectly through orchestrator integration tests. Their output construction — filename extraction from `source_path.rsplit('/', 1)[-1]`, `content_type` values, `size_bytes=0`, `checksum=''` — was never directly asserted. A grep for `extract_handler|chunk_handler|package_handler|local_handlers` across tests/ returned no imports.
 
-**Why it matters.** These handlers run on every job's extract/chunk/package steps. A regression in filename derivation or content_type would only be caught if an integration test happens to assert on those fields, which none do directly. Medium severity — core path with only transitive coverage.
+**Why it matters.** These handlers run on every job's extract/chunk/package steps. A regression in filename derivation or content_type would only be caught if an integration test happens to assert on those fields, which none did directly. Medium severity — core path with only transitive coverage.
 
 **Recommendation.** Add `tests/shell/test_local_handlers.py` with direct tests for each handler: assert OutputFile.filename, content_type, size_bytes, and path for representative payloads (including empty source_path, nested paths).
 
@@ -49,12 +49,12 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in: []
 files:
   - path: tests/integration/test_worker_integration.py
-    lines: 161-181
+    lines: 165-184
 related: []
 ```
 
@@ -74,8 +74,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in: []
 files:
   - path: tests/shell/test_orchestrator.py
@@ -95,8 +95,6 @@ related: []
 
 **Grade:** A
 
-One medium finding: `RedisWorkerStore.list_all()` returns non-deterministic order (iterates a `set` from `smembers`), making worker selection non-deterministic with the Redis backend. One low finding: health monitor tests rely on timing-based `asyncio.sleep` windows that are flake-prone under xdist load. No `random` usage found; deps are pinned with `~=`.
-
 ### REPRO-001 — Redis list_all() returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend
 
 ```yaml
@@ -105,8 +103,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
@@ -134,8 +132,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in: []
 files:
   - path: tests/shell/test_health_monitor.py
@@ -153,9 +151,9 @@ related: [PERF-001]
 
 ## DATA — Data quality
 
-**Grade:** B
+**Grade:** A
 
-Three medium findings: API pydantic schemas accept arbitrary extra fields (silently dropping client typos on fields with defaults), Redis deserialization corruption handling is inconsistent (`_deserialize_job` and `_deserialize_worker` raise raw `JSONDecodeError` while `_deserialize_capabilities` wraps in `CacheCorruptedError`), and Redis store round-trip tests don't cover `PlanStep.batch=True` or non-empty metadata. No dbt files exist in this project; DATA is reframed to in-process data integrity.
+All four DATA stories are now fixed. DATA-004 (previously split from DATA-003) covers the worker+capabilities metadata round-trip gap. DATA-003's original concern (PlanStep.batch and non-empty metadata untested) is fully resolved: PlanStep.batch was removed in e0da69f, and metadata round-trip is tested in a21fda7.
 
 ### DATA-001 — API pydantic schemas accept arbitrary extra fields, silently dropping client typos
 
@@ -165,17 +163,17 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in:
-  - pending
+  - cf3a658b518124a878021400ed3e2c1dfcfad7c4
 files:
   - path: src/acheron/shell/api/schemas.py
     lines: 1-88
 related: []
 ```
 
-**Issue.** None of the API request schemas (SubmitJobRequest, WorkerCapabilitiesRequest, WorkerRegistrationRequest) set `model_config = ConfigDict(extra='forbid')`. Pydantic v2 defaults to `extra='ignore'`, so unknown fields are silently dropped. A client typo on a field that has a default — e.g. `executor_strategi` instead of `executor_strategy` (defaults to 'streaming'), or `supported_formats_out` misspelled (defaults to []) — is accepted with the default value rather than rejected. No test asserts that extra fields are rejected.
+**Issue.** None of the API request schemas (SubmitJobRequest, WorkerCapabilitiesRequest, WorkerRegistrationRequest) set `model_config = ConfigDict(extra='forbid')`. Pydantic v2 defaults to `extra='ignore'`, so unknown fields are silently dropped. A client typo on a field that has a default — e.g. `executor_strategi` instead of `executor_strategy` — is accepted with the default value rather than rejected. No test asserted that extra fields are rejected.
 
 **Why it matters.** Silent field drops cause hard-to-diagnose misconfigurations: a worker registered with a typo'd `batch_capable` field silently registers as non-batch-capable, or a job submits with the wrong executor strategy. Medium severity because it only affects fields with defaults, but those include strategy and capability flags that change runtime behavior.
 
@@ -191,21 +189,19 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in:
-  - pending
+  - fd6e202ab56948407ae7a0e017da725632d0d9a2
 files:
-  - path: src/acheron/shell/stores/redis.py
-    lines: 178-256
   - path: src/acheron/shell/stores/redis.py
     lines: 178-256
 related: [MAINT-002]
 ```
 
-**Issue.** `_deserialize_capabilities` (redis.py:47-70) wraps `json.JSONDecodeError` and `KeyError`/`ValueError` into `CacheCorruptedError`. However, `_deserialize_job` (line 191) calls `json.loads(blob)` with no try/except — a corrupt job blob raises raw `JSONDecodeError`. Similarly, `_deserialize_worker` (line 100) calls `json.loads(fields.get('metadata_json', '{}'))` unwrapped — corrupt metadata raises raw `JSONDecodeError`. There are zero tests for corrupt Redis blobs in either store test file.
+**Issue.** `_deserialize_capabilities` (redis.py:47-70) wrapped `json.JSONDecodeError` and `KeyError`/`ValueError` into `CacheCorruptedError`. However, `_deserialize_job` called `json.loads(blob)` with no try/except — a corrupt job blob raised raw `JSONDecodeError`. Similarly, `_deserialize_worker` called `json.loads(fields.get('metadata_json', '{}'))` unwrapped — corrupt metadata raised raw `JSONDecodeError`. There were zero tests for corrupt Redis blobs in either store test file.
 
-**Why it matters.** Callers catching `CacheCorruptedError` to handle store corruption (as the streaming executor does for cache) will miss these cases and surface raw `JSONDecodeError` to users. Medium severity because corruption is rare but the inconsistency makes error handling unreliable.
+**Why it matters.** Callers catching `CacheCorruptedError` to handle store corruption (as the streaming executor does for cache) would miss these cases and surface raw `JSONDecodeError` to users. Medium severity because corruption is rare but the inconsistency makes error handling unreliable.
 
 **Recommendation.** Wrap `json.loads(blob)` in `_deserialize_job` and `json.loads(...metadata_json...)` in `_deserialize_worker` in try/except `json.JSONDecodeError` raising `CacheCorruptedError`. Add tests that write a corrupt blob to Redis and assert `CacheCorruptedError` on get/list_all.
 
@@ -214,62 +210,28 @@ related: [MAINT-002]
 ### DATA-003 — Redis store round-trip gaps: PlanStep.batch=True and non-empty metadata untested
 
 ```yaml
-status: stale
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
-fixed_in: []
+  commit: d0b739b
+  date: 2026-06-20
+fixed_in:
+  - a21fda749f8f278887f14770558ace3a784c1873
 files:
-  - path: tests/shell/stores/test_redis_job_store.py
-    lines: 33-57
-  - path: tests/shell/stores/test_redis_job_store.py
-    lines: 122-135
   - path: tests/shell/stores/test_redis_worker_store.py
-    lines: 14-69
+    lines: 99-130
 related: [MAINT-002]
 ```
 
-**Issue.** (1) The `_plan()` helper in test_redis_job_store.py creates a `synthesize` PlanStep without `batch=True` (line 49-55), and `test_plan_with_steps_round_trips` never asserts `batch` survives. Real plans set `batch=True` on synthesize steps. (2) No test in test_redis_worker_store.py passes non-empty `metadata` to `register()` — `_tts_caps()` omits capabilities `metadata` (defaults to `{}`), and no worker-level `metadata` dict is passed. The serialization code handles both (`_serialize_capabilities` includes `metadata`, `_worker_fields` includes `metadata_json`), but no test verifies non-empty values round-trip.
+**Issue.** (1) The `_plan()` helper in test_redis_job_store.py created a `synthesize` PlanStep without `batch=True`, and `test_plan_with_steps_round_trips` never asserted `batch` survives. PlanStep.batch was subsequently removed in e0da69f, resolving the batch concern. (2) No test in test_redis_worker_store.py passed non-empty `metadata` to `register()` — `_tts_caps()` omitted capabilities `metadata` (defaults to `{}`), and no worker-level `metadata` dict was passed. The serialization code handled both but no test verified non-empty values round-trip.
 
-**Why it matters.** If the serialization/deserialization code dropped or mangled `batch` or `metadata`, no test would catch it. Medium severity — these are real fields on real production paths (batch flag controls BatchAsyncExecutor dispatch; metadata carries worker config).
+**Why it matters.** If the serialization/deserialization code dropped or mangled `metadata`, no test would catch it. These are real fields on real production paths (metadata carries worker config like model source, version, vram_gb).
 
-**Recommendation.** Add a test asserting `loaded.plan.steps[i].batch is True` after a round-trip with `batch=True`. Add a test registering a worker with `metadata={'vram_gb': 8}` and capabilities `metadata={'version': '1.0'}` and asserting both round-trip.
+**Recommendation.** Add a test asserting non-empty metadata and capabilities.metadata round-trip through Redis serialization, and verify the empty-metadata default is `{}` not None.
 
-**Verification.** Run `just test tests/shell/stores/test_redis_job_store.py tests/shell/stores/test_redis_worker_store.py`.
-
-### TEST-004 — Conftest make_app and other API test sites do not inject job_store, leaking env-config dependence into the test suite
-
-```yaml
-status: fixed
-severity: medium
-effort: S
-reviewed_at: a1b11b2
-last_verified_at:
-  commit: pending
-  date: 2026-06-19
-fixed_in:
-  - pending
-files:
-  - path: tests/shell/conftest.py
-    lines: 65-70
-  - path: tests/shell/conftest.py
-    lines: 73-86
-  - path: tests/shell/conftest.py
-    lines: 89-98
-  - path: tests/shell/api/test_jobs.py
-    lines: 124-134
-```
-
-**Issue.** tests/shell/conftest.py:65 make_app() calls create_app(registry=..., cache=..., data_dir=tmp_path) without injecting job_store, and tests/shell/api/test_jobs.py:133 replicates the same pattern. create_app (src/acheron/shell/api/app.py:47-48) then falls through to create_job_store() which reads ACHERON_STORE_BACKEND from os.environ and, for 'redis', instantiates RedisJobStore pointed at REDIS_URL. The client and client_with_token fixtures inherit this and silently depend on the developer's shell environment being free of ACHERON_STORE_BACKEND=redis. The newly added tests/shell/api/test_app.py:15-35 demonstrates the correct pattern (inject both registry and job_store) but the conftest was not updated to match, leaving a regression-prone inconsistency between the new test and the existing fixtures. AGENTS.md states 'tests shouldn't use repo configuration files or depend on hardcoded project paths' — env-config dependence is in the same family of brittleness.
-
-**Why it matters.** Any developer with ACHERON_STORE_BACKEND=redis exported in their dev shell (or a CI matrix entry that sets it) will see all API tests under tests/shell/api/ fail with Redis connection errors, even though the tests claim to be hermetic. Conversely, if a future contributor makes create_app read another env var, no test in the conftest-driven suite would catch the regression.
-
-**Recommendation.** Update tests/shell/conftest.py:65-70 make_app() to pass job_store=InMemoryJobStore(), and update tests/shell/api/test_jobs.py:133 to do the same. Mirror the pattern in the new test_app.py:15 test.
-
-**Verification.** Run `just test tests/shell/api/` with both `ACHERON_STORE_BACKEND` unset and `ACHERON_STORE_BACKEND=redis REDIS_URL=redis://127.0.0.1:1` exported. Both should pass. Confirm create_app is called with both stores injected in every site by grepping `create_app(` under tests/.
+**Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py` — the TestMetadataRoundTrip class covers all metadata round-trip cases.
 
 ### DATA-004 — Redis store round-trip tests never exercise non-empty worker metadata, leaving a coverage gap for real production values
 
@@ -279,38 +241,20 @@ severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: pending
-  date: 2026-06-19
+  commit: d0b739b
+  date: 2026-06-20
 fixed_in:
-  - pending
+  - a21fda749f8f278887f14770558ace3a784c1873
 files:
   - path: tests/shell/stores/test_redis_worker_store.py
-    lines: 37-69
-  - path: tests/shell/stores/test_redis_job_store.py
-    lines: 121-135
+    lines: 99-130
 related: ['DATA-003']
 ```
 
-**Issue.** Replaces the obsolete DATA-003 PlanStep.batch concern (now stale since PlanStep.batch was removed in e0da69f). The non-empty worker metadata concern from DATA-003 is still valid: every register() call in tests/shell/stores/test_redis_worker_store.py uses four positional/keyword arguments and omits the metadata= kwarg, and _tts_caps() does not set capabilities.metadata. The serialization path in src/acheron/shell/stores/redis.py:77,85 and the deserialization at line 100 both touch this field, but no test ever passes a non-empty dict through them.
+**Issue.** The non-empty worker metadata concern from the original DATA-003 was still valid: every register() call in tests/shell/stores/test_redis_worker_store.py used four positional/keyword arguments and omitted the metadata= kwarg, and _tts_caps() did not set capabilities.metadata. The serialization path in src/acheron/shell/stores/redis.py:77,85 and the deserialization at line 100 both touched this field, but no test ever passed a non-empty dict through them.
 
-**Why it matters.** If the metadata round-trip in _worker_fields/_deserialize_worker were to silently drop, mangle, or re-order keys (e.g. via a future change to sort_keys=True vs False, or a switch to msgpack), no test would catch it. Production paths rely on metadata to carry worker configuration (model source, version, vram_gb, etc.) — see src/acheron/shell/api/schemas.py:49 where metadata is part of the registration API surface. A regression here would silently break worker capability reporting for production deployments.
+**Why it matters.** If the metadata round-trip in _worker_fields/_deserialize_worker were to silently drop, mangle, or re-order keys, no test would catch it. Production paths rely on metadata to carry worker configuration (model source, version, vram_gb, etc.).
 
-**Recommendation.** Add a test in tests/shell/stores/test_redis_worker_store.py that calls store.register('w-meta', 'http://h', 'http', _tts_caps(), metadata={'vram_gb': 8, 'version': '1.0'}) and asserts w.metadata == {'vram_gb': 8, 'version': '1.0'} on get. Optionally also assert capabilities.metadata round-trips by passing capabilities with metadata={'runtime': 'onnx'} and reading it back.
+**Recommendation.** Add a test that calls store.register with non-empty metadata and capabilities.metadata, and asserts both round-trip correctly.
 
-**Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py`; the new test should pass and the coverage report should show lines 77, 85, 100 of src/acheron/shell/stores/redis.py covered for the non-empty-metadata branch.
-
-tests/shell/conftest.py:65 make_app() calls create_app(registry=..., cache=..., data_dir=tmp_path) without injecting job_store, and tests/shell/api/test_jobs.py:133 replicates the same pattern. create_app (src/acheron/shell/api/app.py:47-48) then falls through to create_job_store() which reads ACHERON_STORE_BACKEND from os.environ and, for 'redis', instantiates RedisJobStore pointed at REDIS_URL. The client and client_with_token fixtures inherit this and silently depend on the developer's shell environment being free of ACHERON_STORE_BACKEND=redis. The newly added tests/shell/api/test_app.py:15-35 demonstrates the correct pattern (inject both registry and job_store) but the conftest was not updated to match, leaving a regression-prone inconsistency between the new test and the existing fixtures. AGENTS.md states 'tests shouldn't use repo configuration files or depend on hardcoded project paths' — env-config dependence is in the same family of brittleness.
-
-**Why it matters.** Any developer with ACHERON_STORE_BACKEND=redis exported in their dev shell (or a CI matrix entry that sets it) will see all API tests under tests/shell/api/ fail with Redis connection errors, even though the tests claim to be hermetic. Conversely, if a future contributor makes create_app read another env var, no test in the conftest-driven suite would catch the regression.
-
-**Recommendation.** Update tests/shell/conftest.py:65-70 make_app() to pass job_store=InMemoryJobStore(), and update tests/shell/api/test_jobs.py:133 to do the same. Mirror the pattern in the new test_app.py:15 test.
-
-**Verification.** Run `just test tests/shell/api/` with both `ACHERON_STORE_BACKEND` unset and `ACHERON_STORE_BACKEND=redis REDIS_URL=redis://127.0.0.1:1` exported. Both should pass. Confirm create_app is called with both stores injected in every site by grepping `create_app(` under tests/.
-
-Replaces the obsolete DATA-003 PlanStep.batch concern (now stale since PlanStep.batch was removed in e0da69f). The non-empty worker metadata concern from DATA-003 is still valid: every register() call in tests/shell/stores/test_redis_worker_store.py uses four positional/keyword arguments and omits the metadata= kwarg, and _tts_caps() does not set capabilities.metadata. The serialization path in src/acheron/shell/stores/redis.py:77,85 and the deserialization at line 100 both touch this field, but no test ever passes a non-empty dict through them.
-
-**Why it matters.** If the metadata round-trip in _worker_fields/_deserialize_worker were to silently drop, mangle, or re-order keys (e.g. via a future change to sort_keys=True vs False, or a switch to msgpack), no test would catch it. Production paths rely on metadata to carry worker configuration (model source, version, vram_gb, etc.) — see src/acheron/shell/api/schemas.py:49 where metadata is part of the registration API surface. A regression here would silently break worker capability reporting for production deployments.
-
-**Recommendation.** Add a test in tests/shell/stores/test_redis_worker_store.py that calls store.register('w-meta', 'http://h', 'http', _tts_caps(), metadata={'vram_gb': 8, 'version': '1.0'}) and asserts w.metadata == {'vram_gb': 8, 'version': '1.0'} on get. Optionally also assert capabilities.metadata round-trips by passing capabilities with metadata={'runtime': 'onnx'} and reading it back.
-
-**Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py`; the new test should pass and the coverage report should show lines 77, 85, 100 of src/acheron/shell/stores/redis.py covered for the non-empty-metadata branch.
+**Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py`; the TestMetadataRoundTrip class covers worker metadata, capabilities metadata, and empty-metadata-defaults.
