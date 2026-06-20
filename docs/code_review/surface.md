@@ -1,9 +1,9 @@
 ---
-branch: docs/code-review-initial
+branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 23c29e1
+last_updated_commit: a1b11b2
 last_staleness_scan:
-  commit: 23c29e1
+  commit: a1b11b2
   date: 2026-06-19
 ---
 
@@ -23,7 +23,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -58,7 +58,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -81,7 +81,7 @@ related: []
 
 **Grade:** A
 
-One low finding: three comments violate AGENTS.md comment discipline (impl-phase references, "now async def" past-refactor note, function-name coupling). All `src/acheron/**/__init__.py` have 1-line module docstrings; `core/interfaces.py` and `shell/stores/base.py` abstractions (Worker, StreamingWorker, Executor, WorkerStore, JobStore) are documented with Google-style docstrings; the single multi-line module docstring in `executors/streaming.py` is a justified exception for a genuinely complex bounded-queue/TaskGroup design. Per AGENTS.md "avoid stale-prone comments," DOC findings flag violations rather than recommending more comments.
+One medium finding: README architecture tree still names the removed BatchAsync strategy, the only user-facing doc to do so. One low finding on stale impl-phase comments elsewhere. PKG and DX prefixes are clean except for one each (jinja2 runtime dep used only by dashboard, Quick Start omits just certs step).
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -91,12 +91,12 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 151-152
+    lines: 88-89
   - path: scripts/generate_dev_certs.py
     lines: 46-48
   - path: scripts/generate_dev_certs.py
@@ -111,3 +111,35 @@ related: []
 **Recommendation.** Rewrite each to state the invariant without phase or symbol references: e.g. (1) drop "(now ``async def``)"; (2) "mode 0644 so any container user can read the cert"; (3) "dir world-executable so files are listable" without naming the writer functions.
 
 **Verification.** `just lint-strict` passes; grep the three sites to confirm no "now", "today", "future", or function-name references remain in the comments.
+
+### DOC-002 — README architecture tree references removed BatchAsync strategy
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: a1b11b2
+last_verified_at:
+  commit: a1b11b2
+  date: 2026-06-19
+fixed_in: []
+files:
+  - path: README.md
+    lines: 67
+```
+
+**Issue.** The diff deletes BatchAsyncExecutor (shell/executors/batch_async.py), its factory branch, ExecutorStrategy.BATCH_ASYNC, the StreamingWorker ABC and its three methods on GrpcWorker/HttpWorker, the BatchJob/BatchStatus models, PlanStep.batch, and the Redis (de)serialization of `batch`. The CLI default is flipped from `batch_async` to `streaming`. README.md:67 still reads `executors/      # Sequential, Async, BatchAsync, and Streaming execution strategies (Streaming is the default)`, naming a strategy that no longer exists in src/, tests/, stubs/, or dashboard/. The README is the only place in user-facing docs that still names the deleted class.
+
+**Why it matters.** The architecture tree at README.md:60-74 is the primary onboarding map for the package; a new dev trying to locate `BatchAsyncExecutor` will not find it and will be left unsure whether the doc or the code is wrong. This is exactly the kind of staleness AGENTS.md targets (timeless, objective docs) and the greenfield rule (replace/refactor over legacy fallbacks) — the doc should follow the deletion rather than re-introducing the impression that `batch_async` is a valid strategy.
+
+**Recommendation.** Drop `BatchAsync, and` from README.md:67 so the line reads `Sequential, Async, and Streaming execution strategies (Streaming is the default)`.
+
+**Verification.** `grep -rn 'BatchAsync\|batch_async' README.md Justfile src/ tests/ dashboard/ stubs/ proto/ scripts/` returns zero hits in user-facing paths; `just validate` passes.
+
+The diff deletes BatchAsyncExecutor (shell/executors/batch_async.py), its factory branch, ExecutorStrategy.BATCH_ASYNC, the StreamingWorker ABC and its three methods on GrpcWorker/HttpWorker, the BatchJob/BatchStatus models, PlanStep.batch, and the Redis (de)serialization of `batch`. The CLI default is flipped from `batch_async` to `streaming`. README.md:67 still reads `executors/      # Sequential, Async, BatchAsync, and Streaming execution strategies (Streaming is the default)`, naming a strategy that no longer exists in src/, tests/, stubs/, or dashboard/. The README is the only place in user-facing docs that still names the deleted class.
+
+**Why it matters.** The architecture tree at README.md:60-74 is the primary onboarding map for the package; a new dev trying to locate `BatchAsyncExecutor` will not find it and will be left unsure whether the doc or the code is wrong. This is exactly the kind of staleness AGENTS.md targets (timeless, objective docs) and the greenfield rule (replace/refactor over legacy fallbacks) — the doc should follow the deletion rather than re-introducing the impression that `batch_async` is a valid strategy.
+
+**Recommendation.** Drop `BatchAsync, and` from README.md:67 so the line reads `Sequential, Async, and Streaming execution strategies (Streaming is the default)`.
+
+**Verification.** `grep -rn 'BatchAsync\|batch_async' README.md Justfile src/ tests/ dashboard/ stubs/ proto/ scripts/` returns zero hits in user-facing paths; `just validate` passes.

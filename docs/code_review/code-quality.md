@@ -1,9 +1,9 @@
 ---
-branch: docs/code-review-initial
+branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 23c29e1
+last_updated_commit: a1b11b2
 last_staleness_scan:
-  commit: 23c29e1
+  commit: a1b11b2
   date: 2026-06-19
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-One high finding: the entire batch-submission subsystem (BatchAsyncExecutor duplicate class, StreamingWorker ABC methods, BatchJob/BatchStatus models, PlanStep.batch field, transport batch methods) is vestigial — and `batch_async` is the CLI default. One medium finding: redis.py hand-rolls ~155 lines of JSON ser/deser for domain models that cache.py serializes via pydantic, creating a dual-serialization drift hazard in the largest file. ABC vs Protocol usage is consistent across the codebase (no drift); no mutable default args found.
+Two open findings: redis.py hand-rolls JSON ser/deser for domain models that cache.py serializes via pydantic (medium, drift risk); and the module-private `_BUILT_IN_LOCAL_HANDLERS` symbol is imported across the orchestrator boundary (low). MAINT-001 is verified.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -23,9 +23,9 @@ severity: high
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
     lines: 16-79
@@ -60,16 +60,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 1-130
+    lines: 30-256
   - path: src/acheron/shell/cache.py
-    lines: 15-62
+    lines: 80-127
   - path: src/acheron/shell/cache.py
-    lines: 80-110
+    lines: 80-127
 related: [DATA-002, DATA-003]
 ```
 
@@ -95,7 +95,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -106,9 +106,9 @@ files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 202-204
   - path: src/acheron/shell/transports/grpc.py
-    lines: 67-75
+    lines: 66-71
   - path: src/acheron/shell/transports/http.py
-    lines: 44-59
+    lines: 39-52
   - path: src/acheron/shell/stores/redis.py
     lines: 1-391
 related: []
@@ -130,22 +130,22 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/core/chunking.py
     lines: 26-30
   - path: src/acheron/shell/cache.py
-    lines: 58-62
+    lines: 106-110
   - path: src/acheron/shell/cache.py
     lines: 106-110
   - path: src/acheron/shell/orchestrator.py
-    lines: 179-279
+    lines: 113-117, 213-218
   - path: src/acheron/shell/orchestrator.py
-    lines: 179-279
+    lines: 113-117, 213-218
   - path: src/acheron/shell/executors/streaming.py
-    lines: 207-209
+    lines: 202-209, 217-219
 related: []
 ```
 
@@ -171,14 +171,14 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/api_client.py
-    lines: 35-76
+    lines: 41-110
   - path: src/acheron/cli.py
-    lines: 169-236
+    lines: 169-254
   - path: src/acheron/shell/registry.py
     lines: 27
   - path: src/acheron/shell/stores/base.py
@@ -186,7 +186,7 @@ files:
   - path: src/acheron/shell/api/schemas.py
     lines: 49
   - path: src/acheron/core/models.py
-    lines: 58
+    lines: 57
 related: [ARCH-004]
 ```
 
@@ -206,18 +206,18 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/core/models.py
-    lines: 20-25
+    lines: 133
   - path: src/acheron/core/models.py
-    lines: 135
+    lines: 133
   - path: src/acheron/shell/job_store.py
     lines: 21
   - path: src/acheron/shell/orchestrator.py
-    lines: 243-281
+    lines: 180, 195, 205, 215, 218
   - path: src/acheron/shell/executors/sequential.py
     lines: 56
   - path: src/acheron/shell/executors/async_executor.py
@@ -225,7 +225,7 @@ files:
   - path: src/acheron/shell/executors/batch_async.py
     lines: 68
   - path: src/acheron/shell/executors/streaming.py
-    lines: 158-229
+    lines: 158, 168, 211-213, 225, 229
 related: [CORR-001]
 ```
 
@@ -236,3 +236,30 @@ related: [CORR-001]
 **Recommendation.** Introduce a `PlanStatus`/`JobLifecycleStatus` enum (or reuse JobStatus with aligned values) for `PlanResult.status` and `TrackedJob.status`; replace all string-literal assignments with enum members. Align the 'completed'/'success' vocabularies or document why they differ.
 
 **Verification.** `just type-check` (mypy flags string assignments to enum fields), `just lint-strict`. grep for `status\s*=\s*["']` returns zero hits in src.
+
+### MAINT-003 — _BUILT_IN_LOCAL_HANDLERS private symbol imported across module boundary
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: a1b11b2
+last_verified_at:
+  commit: a1b11b2
+  date: 2026-06-19
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 20
+  - path: src/acheron/shell/local_handlers.py
+    lines: 89-93
+related: ['ARCH-005']
+```
+
+**Issue.** The refactor that extracted capability aggregation to capabilities.py also moved _BUILT_IN_LOCAL_HANDLERS from orchestrator.py to local_handlers.py while keeping the leading underscore. orchestrator.py:20 now `from acheron.shell.local_handlers import _BUILT_IN_LOCAL_HANDLERS, ...` — a private-by-convention name imported across the module boundary. Other module-private helpers in this codebase (e.g. _collect_worker_caps, _pair_is_achievable in capabilities.py) stay module-internal. The leading underscore signals 'do not import', but the orchestrator cannot start without it.
+
+**Why it matters.** A leading-underscore name imported externally misleads readers and tools (e.g. IDE 'unused symbol' hints, future refactor scripts) into treating it as private. Future moves/renames of local_handlers internals will silently break the orchestrator. The pattern is also inconsistent with the rest of the refactor, which correctly made all_languages_caps public (no underscore).
+
+**Recommendation.** Either rename _BUILT_IN_LOCAL_HANDLERS to BUILT_IN_LOCAL_HANDLERS (public) in local_handlers.py and update the orchestrator import, or expose a public factory function get_built_in_local_handlers() -> dict[WorkerType, LocalJobHandler] in local_handlers.py. The dataclass-frozen list of (WorkerType -> handler) is a stable public contract — the underscore is misleading.
+
+**Verification.** grep -rn 'from acheron.shell.local_handlers import' src/ should not pull a name starting with underscore; `just lint-strict`, `just test`

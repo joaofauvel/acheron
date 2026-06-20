@@ -1,9 +1,9 @@
 ---
-branch: docs/code-review-initial
+branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 23c29e1
+last_updated_commit: a1b11b2
 last_staleness_scan:
-  commit: 23c29e1
+  commit: a1b11b2
   date: 2026-06-19
 ---
 
@@ -11,9 +11,9 @@ last_staleness_scan:
 
 ## ARCH — Architecture
 
-**Grade:** B
+**Grade:** A
 
-One high finding: BatchAsyncExecutor is a dead no-op duplicate of AsyncExecutor and the BATCH_ASYNC strategy knob — which is the CLI default — silently controls nothing, violating AGENTS.md's "no config knobs that don't control anything" hard rule. Three medium findings cover the Orchestrator accreting four responsibilities in one 345-line class, a store-construction asymmetry between app.py and the orchestrator, and a metadata type-contract mismatch (`dict[str, object]` vs `dict[str, JsonValue]`) that fails at Redis serialization time. The import-linter `core-shell-boundary` contract makes core→shell imports structurally impossible, so no such finding was filed.
+Two low findings carried in: a module-private `_BUILT_IN_LOCAL_HANDLERS` symbol imported cross-module from local_handlers.py, and Orchestrator.__init__ still derives the default StepCache from PlanCache.data_dir, weakening the ARCH-003 injection seam. Four verified stories (ARCH-001 through ARCH-004) are immutable. The core->shell import-linter contract holds.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -23,9 +23,9 @@ severity: high
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
     lines: 26-79
@@ -54,9 +54,9 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["b47c6a881a18f859b981f67d04aebc65c209fddc"]
 files:
   - path: src/acheron/shell/api/app.py
     lines: 44-53
@@ -81,9 +81,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["990b51f64ce8df8c288559bfa6f90548589d8afc"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 102-345
@@ -147,12 +147,12 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/__init__.py
-    lines: 17-37
+    lines: 39-53
   - path: src/acheron/shell/stores/__init__.py
     lines: 39-53
 related: [ARCH-002]
@@ -174,7 +174,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -185,7 +185,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 42-55
   - path: src/acheron/shell/transports/grpc.py
-    lines: 43-44
+    lines: 39-40
 related: [SEC-003]
 ```
 
@@ -196,3 +196,53 @@ related: [SEC-003]
 **Recommendation.** Extract the trust-store resolution into a single helper (e.g. `tls.resolve_ca_path() -> str | None`) and call it from both `tls.py` and `cli.py`. Extract the supported-languages set into a shared constant in `core/models.py` (or a `core/constants.py`) and import it in both `orchestrator.py` and `grpc.py`. Prefer making the gRPC worker's languages configurable via `WorkerCapabilities` rather than hardcoded, if feasible.
 
 **Verification.** `just test`; `just lint-strict`; grep to confirm only one site defines the language set and one site defines the CA resolution order.
+
+### ARCH-005 — _BUILT_IN_LOCAL_HANDLERS is a module-private (leading-underscore) name imported cross-module from local_handlers.py
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: a1b11b2
+last_verified_at:
+  commit: a1b11b2
+  date: 2026-06-19
+fixed_in: []
+files:
+  - path: src/acheron/shell/local_handlers.py
+    lines: 89-93
+  - path: src/acheron/shell/orchestrator.py
+    lines: 20
+```
+
+**Issue.** The ARCH-003 extraction moved `_BUILT_IN_LOCAL_HANDLERS` from `orchestrator.py` into `shell/local_handlers.py` (local_handlers.py:89-93), but the orchestrator still imports this name across a module boundary (orchestrator.py:20: `from acheron.shell.local_handlers import _BUILT_IN_LOCAL_HANDLERS, ...`). Leading-underscore names are the Python convention for module-private symbols; importing them from another module breaks the encapsulation contract and signals an unfinished refactor.
+
+**Why it matters.** Cross-module private imports make refactoring `local_handlers.py` (renaming, splitting, relocating) silently break the orchestrator's import. Today the only consumer is the orchestrator, but the import is a latent maintenance hazard that the original ARCH-003 cleanup did not resolve, and ruff's `PLC2701` (import-private-name) would flag it if the project enabled that rule.
+
+**Recommendation.** Pick one: (1) rename `_BUILT_IN_LOCAL_HANDLERS` to `BUILT_IN_LOCAL_HANDLERS` in local_handlers.py and drop the leading underscore at the import site in orchestrator.py:20; (2) move the registration loop out of `Orchestrator._register_built_in_local_workers` and into local_handlers.py as `async def register_built_in_local_workers(registry, local_handlers: dict[str, LocalJobHandler]) -> None`, then have the orchestrator call it. Option 2 is the cleaner separation of concerns.
+
+**Verification.** just test; just lint-strict; grep -rn '^from acheron.shell.local_handlers import _' src/ to confirm no leading-underscore imports remain.
+
+### ARCH-006 — Orchestrator.__init__ still derives StepCache from PlanCache.data_dir as the default, keeping the PlanCache coupling ARCH-003 wanted removed
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: a1b11b2
+last_verified_at:
+  commit: a1b11b2
+  date: 2026-06-19
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 40-52
+```
+
+**Issue.** ARCH-003 explicitly recommended 'Inject StepCache explicitly into Orchestrator rather than deriving it from PlanCache.data_dir.' The diff added a `step_cache: StepCache | None = None` keyword (orchestrator.py:47) and stores the injected value, but the default path still constructs `StepCache(cache.data_dir)` (orchestrator.py:51) and immediately calls `self._verify_data_dir_writable()` (orchestrator.py:52) — so any caller that does not inject a StepCache still couples Orchestrator construction to a writable PlanCache data dir.
+
+**Why it matters.** The default path defeats the purpose of the injection seam. Tests still need a `tmp_path` (or equivalent) to construct an Orchestrator, and any future code path that wants the CapabilityAggregator in isolation must drag a PlanCache + writable data dir along. Low because the seam exists for callers who want it, but the default is the wrong default.
+
+**Recommendation.** Either (a) make `step_cache` a required keyword argument (no default) and remove the `cache.data_dir` derivation entirely — callers must always pass a StepCache; (b) drop the `cache: PlanCache` parameter from Orchestrator and pass `StepCache` directly to the call sites that need it; or (c) move `self._verify_data_dir_writable()` out of `__init__` into `start()` so the construction probe is not a barrier to instantiation. (a) is the smallest change that actually delivers ARCH-003's stated intent.
+
+**Verification.** just test; assert that Orchestrator(...) without a `step_cache` argument raises a clear TypeError; assert that constructing an Orchestrator with a writable `tmp_path` PlanCache still works; just lint-strict.

@@ -1,9 +1,9 @@
 ---
-branch: docs/code-review-initial
+branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 23c29e1
+last_updated_commit: a1b11b2
 last_staleness_scan:
-  commit: 23c29e1
+  commit: a1b11b2
   date: 2026-06-19
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-Three medium findings on the dispatch hot path: `registry.list_all()` is called per step (N+1 Redis round-trips per plan), health checks run sequentially (blocking the sweep on dead workers), and worker transport instances (HTTP connections, gRPC channels) are reconstructed per step with no reuse. Redis deserialization uses `json.loads` throughout (not pickle) — safe, no SEC finding. Python 3.14's unparenthesized `except A, B:` syntax is used correctly in several files (verified) — not a finding.
+Three open medium findings: health checks run sequentially blocking the sweep on slow/dead workers; registry list_all() is called per step in the dispatch hot path (N+1 round-trips); and worker transport instances are reconstructed per step with no HTTP connection or gRPC channel reuse. SEC has three open medium findings (world-readable dev certs, fails-open registration token, silent TLS disablement) plus two low (dashboard X-Forwarded-User spoofing, unauthenticated routes).
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
@@ -23,12 +23,12 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
-    lines: 89-102
+    lines: 89-103
 related: [REPRO-002]
 ```
 
@@ -48,14 +48,14 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/step_handler.py
-    lines: 84-113
+    lines: 84-114
   - path: src/acheron/shell/orchestrator.py
-    lines: 119-233
+    lines: 105-188
 related: []
 ```
 
@@ -75,16 +75,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 111-113
   - path: src/acheron/shell/transports/http.py
-    lines: 41-49
+    lines: 28-44
   - path: src/acheron/shell/transports/grpc.py
-    lines: 34-41
+    lines: 31-34
 related: []
 ```
 
@@ -110,14 +110,14 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 196-249
+    lines: 133-219
   - path: src/acheron/shell/orchestrator.py
-    lines: 196-249
+    lines: 133-219
 related: [OBS-004]
 ```
 
@@ -137,7 +137,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -162,16 +162,16 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 224-263
+    lines: 161-173,261-263
   - path: src/acheron/shell/health.py
-    lines: 96-102
+    lines: 96-103
   - path: src/acheron/shell/step_handler.py
-    lines: 111-113
+    lines: 111
 related: []
 ```
 
@@ -191,12 +191,12 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 276-282
+    lines: 213-219
 related: [CORR-004, OBS-001]
 ```
 
@@ -222,7 +222,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -247,7 +247,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -272,7 +272,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -299,12 +299,12 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: dashboard/app.py
-    lines: 37-39
+    lines: 36-39
 related: []
 ```
 
@@ -324,7 +324,7 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:

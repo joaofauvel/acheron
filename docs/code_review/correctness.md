@@ -1,19 +1,19 @@
 ---
-branch: docs/code-review-initial
+branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 23c29e1
+last_updated_commit: a1b11b2
 last_staleness_scan:
-  commit: 23c29e1
+  commit: a1b11b2
   date: 2026-06-19
 ---
 
 # Correctness
 
-## CORR — General correctness
+## CORR — Correctness
 
-**Grade:** C
+**Grade:** A
 
-One critical defect: the default StreamingExecutor never checks `JobResult.status`, silently treating FAILED results as SUCCESS and propagating invalid outputs downstream. Four medium findings cover a dead batch executor duplicate, non-functional gRPC batch submission, SequentialExecutor losing error detail on exceptions, and ASR worker selection ignoring output-language capability. Two low findings flag dead defensive code and a latent non-linear-DAG limitation in the streaming executor.
+Three open findings: StreamingExecutor loses cost accounting on FAILED results (medium, regression risk from the CORR-001 fix); dead defensive AcheronError check on the final queue (low); and a latent non-linear-DAG limitation in streaming executor _END propagation (low). Five verified stories (CORR-001 through CORR-005) are immutable and not counted.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -23,9 +23,9 @@ severity: critical
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["9279c5152389a77b32280e24f94dc6e5fb6ca79f"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 198-218
@@ -50,9 +50,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
     lines: 16-79
@@ -77,9 +77,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 103-106
@@ -106,9 +106,9 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["9817feaa0f5e3e209b58b12779964ab45e029e37"]
 files:
   - path: src/acheron/shell/executors/sequential.py
     lines: 38-46
@@ -131,9 +131,9 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["913943031f3667a13cec2210f8085d6ea04cc316"]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 64-65
@@ -156,7 +156,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
@@ -181,12 +181,12 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: a1b11b2
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 191-196
+    lines: 190-196
 related: []
 ```
 
@@ -209,3 +209,35 @@ No ML-specific findings. The codebase is not an ML training pipeline. Reviewed f
 **Grade:** A
 
 No numerical correctness findings. Chunking uses character-count arithmetic with no off-by-one errors (verified `_hard_split`, `_merge_parts`, `_split_on_punctuation` boundary handling in core/chunking.py). Cost/duration aggregation is simple addition with no precision concerns. No divide-by-zero, NaN propagation, or float-comparison issues found.
+
+### CORR-008 — StreamingExecutor loses cost accounting when handler returns non-SUCCESS status
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: a1b11b2
+last_verified_at:
+  commit: a1b11b2
+  date: 2026-06-19
+fixed_in: []
+files:
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 211-222
+```
+
+**Issue.** The CORR-001 fix added `if result.status is not JobStatus.SUCCESS: raise WorkerError(msg)` at streaming.py:211-213. This raises before the `return result.metrics.cost_estimate or 0.0` at line 222. When a handler returns a FAILED (or PARTIAL) JobResult with a non-zero `metrics.cost_estimate`, the cost is discarded because the exception bypasses the return. AsyncExecutor (async_executor.py:60-61) and SequentialExecutor (sequential.py:53) both accumulate `result.metrics.cost_estimate or 0.0` on the FAILED branch, so the streaming executor's behavior is now inconsistent with the other two strategies for the same plan.
+
+**Why it matters.** A worker that returns FAILED without raising (the standard non-exception failure signal) typically still incurred cost (GPU time, API calls, partial compute). The streaming executor is the default strategy; the loss of cost accounting on failed steps skews billing, budgeting, and observability. The test test_handler_returning_failed_status_marks_plan_failed uses `metrics=JobMetrics(duration_seconds=0.0)` with no cost_estimate, so the bug is silent in the test suite.
+
+**Recommendation.** Before the status check at line 211, capture the cost: `cost = result.metrics.cost_estimate or 0.0`. After raising WorkerError, return the cost from a side channel. The cleanest approach is to make `_stage` always return a tuple `(cost, error)` and let `_run_pipeline` aggregate.
+
+**Verification.** Add a test that submits a plan where a step handler returns `JobResult(status=FAILED, metrics=JobMetrics(cost_estimate=0.42))` through StreamingExecutor and asserts `result.total_cost == 0.42`. Compare with AsyncExecutor to confirm parity.
+
+The CORR-001 fix added `if result.status is not JobStatus.SUCCESS: raise WorkerError(msg)` at streaming.py:211-213. This raises before the `return result.metrics.cost_estimate or 0.0` at line 222. When a handler returns a FAILED (or PARTIAL) JobResult with a non-zero `metrics.cost_estimate`, the cost is discarded because the exception bypasses the return. AsyncExecutor (async_executor.py:60-61) and SequentialExecutor (sequential.py:53) both accumulate `result.metrics.cost_estimate or 0.0` on the FAILED branch, so the streaming executor's behavior is now inconsistent with the other two strategies for the same plan.
+
+**Why it matters.** A worker that returns FAILED without raising (the standard non-exception failure signal) typically still incurred cost (GPU time, API calls, partial compute). The streaming executor is the default strategy; the loss of cost accounting on failed steps skews billing, budgeting, and observability. The test test_handler_returning_failed_status_marks_plan_failed uses `metrics=JobMetrics(duration_seconds=0.0)` with no cost_estimate, so the bug is silent in the test suite.
+
+**Recommendation.** Before the status check at line 211, capture the cost: `cost = result.metrics.cost_estimate or 0.0`. After raising WorkerError, return the cost from a side channel. The cleanest approach is to make `_stage` always return a tuple `(cost, error)` and let `_run_pipeline` aggregate.
+
+**Verification.** Add a test that submits a plan where a step handler returns `JobResult(status=FAILED, metrics=JobMetrics(cost_estimate=0.42))` through StreamingExecutor and asserts `result.total_cost == 0.42`. Compare with AsyncExecutor to confirm parity.
