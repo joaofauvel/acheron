@@ -12,6 +12,18 @@ services:
       retries: 3
       start_period: 5s
 
+  # One-shot: generates dev certs into the shared `certs/` bind mount on first
+  # `docker compose up` so a fresh clone works without a separate `just certs` step.
+  # Re-running on an existing certs/ overwrites the files (idempotent), so this is
+  # safe on every `up`.
+  certs-init:
+    build:
+      context: .
+      target: certs-init
+    volumes:
+      - ./certs:/certs
+    restart: "no"
+
   orchestrator:
     build:
       context: .
@@ -42,6 +54,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      certs-init:
+        condition: service_completed_successfully
 
   dashboard:
     build:

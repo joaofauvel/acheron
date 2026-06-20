@@ -43,3 +43,10 @@ COPY proto/ ./proto/
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
 ENV PYTHONPATH=/app
 CMD ["python", "-m", "stubs.grpc_worker_stub"]
+
+FROM python:3.14-slim AS certs-init
+
+WORKDIR /app
+RUN pip install --no-cache-dir cryptography~=49.0
+COPY scripts/generate_dev_certs.py ./scripts/generate_dev_certs.py
+CMD ["python", "scripts/generate_dev_certs.py", "--out-dir", "/certs"]

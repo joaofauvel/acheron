@@ -18,14 +18,15 @@ One medium finding: the README Quick Start omits `just certs`, so a fresh clone 
 ### DX-001 — Quick Start omits `just certs` — fresh clone breaks `docker compose up`
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: README.md
     lines: 12-13

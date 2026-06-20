@@ -16,6 +16,8 @@ docker compose up --build
 acheron submit book.epub --src en --dest es
 ```
 
+Dev TLS certs under `certs/` are auto-generated on first `docker compose up` by a one-shot `certs-init` service; no manual `just certs` step is needed. Re-running overwrites the certs (idempotent).
+
 Services:
 - Orchestrator: `http://localhost:8000`
 - Dashboard: `http://localhost:8080`
