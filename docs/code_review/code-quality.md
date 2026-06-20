@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: d0b739b
+last_updated_commit: be7b3ab
 last_staleness_scan:
-  commit: d0b739b
+  commit: be7b3ab
   date: 2026-06-20
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-MAINT-003 and MAINT-004 are now verified (_BUILT_IN_LOCAL_HANDLERS renamed public; dead _stage return value removed). MAINT-002 remains open.
+MAINT-003 and MAINT-004 are now verified at 92ed9da and 640bb03 respectively. MAINT-002 remains open. One new low finding: MAINT-005 — `Orchestrator._execute` duplicates the same `PlanResult` constructor in its adjacent exception handlers.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -67,11 +67,11 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 30-270
   - path: src/acheron/shell/cache.py
-    lines: 39-110
+    lines: 28-112
 related: [DATA-002]
 ```
 
-**Issue.** redis.py hand-rolls ~150 lines of JSON serialization for TrackedJob/Plan/PlanStep/PlanResult/WorkerCapabilities (`_serialize_job`, `_deserialize_job`, `_serialize_capabilities`, `_deserialize_capabilities`, `_deserialize_worker` — redis.py:30-270) via json.dumps/loads with field-by-field reconstruction and a manual `source_type` match dispatch. cache.py serializes the same Plan/OutputFile models via pydantic `TypeAdapter` (cache.py:44,59,85,107 — `_plan_adapter.dump_json`/`validate_json`). Adding a field to PlanStep/Plan/PlanResult requires editing the redis ser site and the deser site separately, while cache.py adapts automatically. The manual deser re-derives `source_type` via a match on AudioRequest/EpubRequest, duplicating planner logic rather than persisting it. The CORR-008 and DATA-002 fixes added CacheCorruptedError wrapping and PlanStatus enum serialization, but the fundamental duplication remains — redis.py is still 403 lines.
+**Issue.** redis.py hand-rolls ~150 lines of JSON serialization for TrackedJob/Plan/PlanStep/PlanResult/WorkerCapabilities (`_serialize_job`, `_deserialize_job`, `_serialize_capabilities`, `_deserialize_capabilities`, `_deserialize_worker` — redis.py:30-270) via json.dumps/loads with field-by-field reconstruction and a manual `source_type` match dispatch. cache.py serializes the same Plan/OutputFile models via pydantic `TypeAdapter` (cache.py:44,59,85,107 — `_plan_adapter.dump_json`/`validate_json`). Adding a field to PlanStep/Plan/PlanResult requires editing the redis ser site and the deser site separately, while cache.py adapts automatically. The manual deser re-derives `source_type` via a match on AudioRequest/EpubRequest, duplicating planner logic rather than persisting it. The fundamental duplication remains — redis.py is still the largest file in the shell package.
 
 **Why it matters.** Two divergent serialization paths for the same domain models is a fragility hotspot: field additions silently desync between the Redis and disk-cache backends, and a round-trip mismatch would surface only at runtime. Medium — no current bug, but a clear maintainability and drift risk in the largest file.
 
@@ -87,14 +87,15 @@ severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 92ed9da
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 20
+    lines: 19-20
   - path: src/acheron/shell/local_handlers.py
-    lines: 89-93
+    lines: 90
 related: ['ARCH-005']
 ```
 
@@ -114,14 +115,15 @@ severity: low
 effort: S
 reviewed_at: d0b739b
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 640bb03
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 180-237
+    lines: 190-245
   - path: src/acheron/shell/executors/streaming.py
-    lines: 67-98
+    lines: 78-109
 related: [CORR-008]
 ```
 
@@ -133,11 +135,36 @@ related: [CORR-008]
 
 **Verification.** `just test`; `just type-check`; grep `def _stage` confirms no return type annotation.
 
+### MAINT-005 — Orchestrator._execute duplicates PlanResult construction across adjacent exception handlers
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: be7b3ab
+last_verified_at:
+  commit: be7b3ab
+  date: 2026-06-20
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 216-238
+related: [OBS-004]
+```
+
+**Issue.** `Orchestrator._execute` duplicates the same 9-field `PlanResult` constructor in its `except AcheronError` and `except Exception` blocks. The two blocks differ only in their log messages; the failure result is identical.
+
+**Why it matters.** Duplicated domain-object construction across adjacent exception handlers is a small maintainability hotspot. Adding a field to `PlanResult` or changing failure semantics requires editing both sites, and they can drift silently.
+
+**Recommendation.** Extract a helper such as `_record_failure(tracked, exc)` that sets `tracked.status = PlanStatus.FAILED` and builds the `PlanResult` once, called from both exception handlers.
+
+**Verification.** `just test`; `just type-check`. Both except blocks should reduce to a single helper call.
+
 ## EXC — Exception discipline
 
 **Grade:** A
 
-EXC-001 (medium): `tenacity` remains an unused production dependency, and `WorkerTimeoutError`/`PlanValidationError` are still never raised — while transient network calls have no retry. EXC-002 is now verified (narrowed `except Exception` to specific types in chunking.py and cache.py).
+EXC-001 (medium) remains open: `tenacity` is still unused and transient network calls have no retry. EXC-002 is now verified at a5b1ff0, which narrowed `except Exception` to specific types in chunking.py and cache.py.
 
 ### EXC-001 — tenacity dependency is unused; WorkerTimeoutError/PlanValidationError are never raised; transient network calls have no retry
 
@@ -175,15 +202,16 @@ related: []
 ### EXC-002 — Broad `except Exception` at boundary sites is mostly well-applied but two could name narrower types
 
 ```yaml
-  status: verified
-  severity: low
-  effort: S
-  reviewed_at: 23c29e1
-  last_verified_at:
-    commit: pending
-    date: 2026-06-20
-  fixed_in: ["pending"]
-  files:
+status: verified
+severity: low
+effort: S
+reviewed_at: 23c29e1
+last_verified_at:
+  commit: be7b3ab
+  date: 2026-06-20
+fixed_in:
+  - a5b1ff0
+files:
   - path: src/acheron/core/chunking.py
     lines: 28
   - path: src/acheron/shell/cache.py
@@ -191,13 +219,13 @@ related: []
   - path: src/acheron/shell/cache.py
     lines: 108
   - path: src/acheron/shell/orchestrator.py
-    lines: 115-116
+    lines: 123-128
   - path: src/acheron/shell/orchestrator.py
-    lines: 226-238
+    lines: 216-238
   - path: src/acheron/shell/executors/streaming.py
-    lines: 225
+    lines: 230
   - path: src/acheron/shell/executors/streaming.py
-    lines: 239
+    lines: 244
 related: []
 ```
 
@@ -213,7 +241,7 @@ related: []
 
 **Grade:** A
 
-TYPE-002 is now verified (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the AcheronClient `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue (`dict[str, object]` → `dict[str, JsonValue]`) is resolved across registry.py, stores/base.py, and schemas.py.
+TYPE-002 remains verified (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the `AcheronClient` `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue is resolved.
 
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 

@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: d0b739b
+last_updated_commit: be7b3ab
 last_staleness_scan:
-  commit: d0b739b
+  commit: be7b3ab
   date: 2026-06-20
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Two open findings: a misleading test name claiming Redis coverage while actually testing memory (medium), and a tautological assertion that always passes (low). TEST-001 (direct local_handlers tests) and TEST-004 (conftest job_store injection) are now verified. REPRO and DATA prefixes carry REPRO-001, REPRO-002 (open), and all DATA stories now verified.
+TEST-002 (misleading Redis test name) remains open. TEST-003 is now verified at be7b3ab, which replaced the tautological assertion with a concrete check. TEST-001 and TEST-004 remain verified.
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -69,14 +69,15 @@ related: []
 ### TEST-003 — Tautological assertion in test_get_capabilities_no_translation_worker
 
 ```yaml
-  status: verified
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - be7b3ab
 files:
   - path: tests/shell/test_orchestrator.py
     lines: 224-227
@@ -127,6 +128,8 @@ related: []
 
 **Grade:** A
 
+REPRO-001 remains open. REPRO-002 is now verified at be7b3ab, which replaced fixed `asyncio.sleep` windows with deadline-based polling in the health monitor tests.
+
 ### REPRO-001 — Redis list_all() returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend
 
 ```yaml
@@ -142,13 +145,13 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 306-315
   - path: src/acheron/shell/step_handler.py
-    lines: 96-109
+    lines: 86-121
   - path: tests/integration/test_worker_integration.py
     lines: 222-238
 related: []
 ```
 
-**Issue.** `RedisWorkerStore.list_all()` (redis.py:310) iterates `await self._redis.smembers(_WORKERS_SET)` which returns a `set` — iteration order is non-deterministic. `step_handler.create_step_handler` (step_handler.py:96-109) iterates `registry.list_all()` and picks the first matching worker (`selected = w; break`). With Redis backend and multiple matching workers, which worker is selected is non-deterministic. The integration test `test_multiple_tts_workers_uses_first` asserts `tts_workers[0].worker_id == 'tts-http'` but only uses InMemoryWorkerStore (insertion-ordered), so it does not cover the Redis non-determinism.
+**Issue.** `RedisWorkerStore.list_all()` (redis.py:310) iterates `await self._redis.smembers(_WORKERS_SET)` which returns a `set` — iteration order is non-deterministic. `step_handler.create_step_handler` (step_handler.py:86-121) iterates `registry.list_all()` and picks the first matching worker (`selected = w; break`). With Redis backend and multiple matching workers, which worker is selected is non-deterministic. The integration test `test_multiple_tts_workers_uses_first` asserts `tts_workers[0].worker_id == 'tts-http'` but only uses InMemoryWorkerStore (insertion-ordered), so it does not cover the Redis non-determinism.
 
 **Why it matters.** With Redis backend, two TTS workers supporting the same language could be selected in any order across requests, leading to non-deterministic load distribution and potentially inconsistent results if workers have different models. Medium severity — affects production dispatch determinism, not just tests.
 
@@ -159,17 +162,18 @@ related: []
 ### REPRO-002 — Health monitor tests rely on timing-based asyncio.sleep windows flake-prone under xdist load
 
 ```yaml
-  status: verified
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - be7b3ab
 files:
   - path: tests/shell/test_health_monitor.py
-    lines: 57-92
+    lines: 72-145
 related: [PERF-001]
 ```
 

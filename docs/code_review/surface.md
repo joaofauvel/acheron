@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: d0b739b
+last_updated_commit: be7b3ab
 last_staleness_scan:
-  commit: d0b739b
+  commit: be7b3ab
   date: 2026-06-20
 ---
 
@@ -83,7 +83,7 @@ related: []
 
 **Grade:** A
 
-All stories verified. No open findings.
+DOC-001 is now verified at 92ed9da, which removed the "now async def" phase reference and the internal function-name reference in the cert-generation comment. DOC-002 remains verified. No open findings.
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -93,14 +93,15 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 92ed9da
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 88-89
+    lines: 87-88
   - path: scripts/generate_dev_certs.py
-    lines: 144
+    lines: 143-144
 related: []
 ```
 

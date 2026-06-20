@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: d0b739b
+last_updated_commit: be7b3ab
 last_staleness_scan:
-  commit: d0b739b
+  commit: be7b3ab
   date: 2026-06-20
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-PERF-001 is verified (concurrent health probes at 0818bff). PERF-002 and PERF-003 are now verified: step_handler caches `list_all()` per plan_id and reuses `Worker` instances per worker_id, eliminating redundant registry round-trips and gRPC channel churn in the dispatch hot path.
+PERF-001 remains verified. PERF-002 and PERF-003 are now verified at c8066e7, which caches `registry.list_all()` per plan_id and reuses `Worker` instances per worker_id in the dispatch hot path.
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
@@ -49,14 +49,15 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - c8066e7
 files:
   - path: src/acheron/shell/step_handler.py
-    lines: 84-114
+    lines: 86-99
   - path: src/acheron/shell/orchestrator.py
-    lines: 143-188
+    lines: 170
 related: []
 ```
 
@@ -76,12 +77,13 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - c8066e7
 files:
   - path: src/acheron/shell/step_handler.py
-    lines: 111-113
+    lines: 124-127
   - path: src/acheron/shell/transports/http.py
     lines: 28-44
   - path: src/acheron/shell/transports/grpc.py
@@ -101,7 +103,7 @@ related: []
 
 **Grade:** A
 
-OBS-004 is now verified (execution failures persist a minimal PlanResult with error detail in tracked.result).
+OBS-001 (shutdown drain) and OBS-003 (structured logging) remain open. OBS-002 is now verified at be7b3ab, which logs dashboard-orchestrator connection errors. OBS-004 is now verified at 92ed9da, which persists a minimal `PlanResult` with error detail on execution failure.
 
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
@@ -118,13 +120,13 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 133-141
   - path: src/acheron/shell/orchestrator.py
-    lines: 184-186
+    lines: 185-186
   - path: src/acheron/shell/orchestrator.py
-    lines: 190-239
+    lines: 190-238
 related: [OBS-004]
 ```
 
-**Issue.** `Orchestrator.shutdown()` (orchestrator.py:133-141) stops only the health monitor; it never cancels or awaits the `_execute` tasks tracked in `self._tasks` (populated at submit_job:184-186). The FastAPI lifespan (api/app.py:30-32) then calls `close()` which tears down the Redis pool. When the loop tears down, in-flight `_execute` tasks are cancelled mid-run; `CancelledError` is a `BaseException` so the `except AcheronError`/`except Exception` guards at lines 213,216 don't catch it, and the final `await self._job_store.put(tracked)` at line 219 sits outside any `finally`, so it is skipped. The job is left persisted with status="running" and never updated. The PlanStatus enum fix (TYPE-002) changed `status = "failed"` to `status = PlanStatus.FAILED` but did not address the drain gap.
+**Issue.** `Orchestrator.shutdown()` (orchestrator.py:133-141) stops only the health monitor; it never cancels or awaits the `_execute` tasks tracked in `self._tasks` (populated at submit_job:185-186). The FastAPI lifespan (api/app.py:30-32) then calls `close()` which tears down the Redis pool. When the loop tears down, in-flight `_execute` tasks are cancelled mid-run; `CancelledError` is a `BaseException` so the `except AcheronError`/`except Exception` guards at lines 216,233 don't catch it, and the final `await self._job_store.put(tracked)` at line 238 sits outside any `finally`, so it is skipped. The job is left persisted with status="running" and never updated.
 
 **Why it matters.** After any orchestrator restart, previously in-flight jobs are permanently stuck at "running" in the job store with nothing executing them; operators and the dashboard cannot distinguish truly-running from orphaned jobs. Medium severity: silent persisted-state corruption that misleads observability and can block cleanup/retry logic.
 
@@ -135,17 +137,18 @@ related: [OBS-004]
 ### OBS-002 — Dashboard silently swallows orchestrator connection errors
 
 ```yaml
-  status: verified
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - be7b3ab
 files:
   - path: dashboard/app.py
-    lines: 27-34
+    lines: 27-37
 related: []
 ```
 
@@ -165,20 +168,22 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 161-168
+    lines: 160-168
   - path: src/acheron/shell/health.py
     lines: 89-112
   - path: src/acheron/shell/step_handler.py
     lines: 123
+  - path: dashboard/app.py
+    lines: 36
 related: []
 ```
 
-**Issue.** All logging uses free-form `%s` format strings (e.g. orchestrator.py:224 "Submitting job %s: %s → %s (%s, %s)"). There is no structured/JSON logging and no correlation token beyond job_id appearing inside message text. In a distributed system with concurrent jobs, workers, and health checks, correlating a failure across orchestrator→transport→worker requires grepping free-text rather than filtering on fields.
+**Issue.** All logging uses free-form `%s` format strings (e.g. orchestrator.py:166 "Submitting job %s: %s → %s (%s, %s)"). There is no structured/JSON logging and no correlation token beyond job_id appearing inside message text. In a distributed system with concurrent jobs, workers, and health checks, correlating a failure across orchestrator→transport→worker requires grepping free-text rather than filtering on fields.
 
 **Why it matters.** Free-form logs are harder to query and aggregate in prod log systems and lack stable field names for job_id/worker_id/step_id/trace_id, weakening cross-component traceability. Low severity: a consistency/observability gap, not a functional failure.
 
@@ -194,16 +199,17 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 92ed9da
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 213-219
+    lines: 213-238
 related: [CORR-004, OBS-001]
 ```
 
-**Issue.** When `executor.run()` raises `AcheronError` or `Exception`, `_execute` (orchestrator.py:213-219) sets `tracked.status = PlanStatus.FAILED` but never populates `tracked.result` (it stays None), then persists the job at line 219. The API's `_tracked_to_response` (jobs.py:72-83) returns `errors=[]` when result is None, so a consumer of `GET /jobs/{id}` sees `status="failed"` with no error detail — the failure reason exists only in server logs. The PlanStatus enum fix changed the status assignment but did not address the missing error detail.
+**Issue.** When `executor.run()` raises `AcheronError` or `Exception`, `_execute` (orchestrator.py:213-238) sets `tracked.status = PlanStatus.FAILED` and now populates `tracked.result` with a minimal `PlanResult` carrying the error string. The API's `_tracked_to_response` (jobs.py:72-83) returns `errors=[]` when result is None, so a consumer of `GET /jobs/{id}` sees `status="failed"` with no error detail — the failure reason exists only in server logs. The PlanStatus enum fix changed the status assignment but did not address the missing error detail.
 
 **Why it matters.** Operators diagnosing failures via the API see a failed job with an empty error list, forcing them to correlate logs by job_id/time. Low severity: the status is correct and the detail is in logs, but the API is misleading for triage.
 
@@ -215,7 +221,7 @@ related: [CORR-004, OBS-001]
 
 **Grade:** A
 
-SEC-001 through SEC-003 are now verified. SEC-004 is now verified (X-Forwarded-User gated behind ACHERON_TRUST_REVERSE_PROXY=1). SEC-005 (unauthenticated routes, low) remains open. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable (server-generated UUIDs).
+SEC-001 through SEC-004 are now verified. SEC-005 (unauthenticated routes, low) remains open. One new low finding: SEC-006 — the OBS-004 fix persists raw `str(exc)` from unexpected exceptions in API responses, potentially exposing internal paths or worker endpoints. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable.
 
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
@@ -300,17 +306,18 @@ related: [CFG-002]
 ### SEC-004 — Dashboard trusts spoofable X-Forwarded-User header as identity
 
 ```yaml
-  status: verified
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - be7b3ab
 files:
   - path: dashboard/app.py
-    lines: 36-39
+    lines: 39-47
 related: []
 ```
 
@@ -348,3 +355,28 @@ related: []
 **Recommendation.** Document the trusted-network/proxy assumption explicitly, or add an optional auth dependency (e.g. the same token or an API key) to the mutating routes gated by an env var so prod can enforce it without changing the dev default.
 
 **Verification.** Confirm the documented deployment model states the auth boundary; if an auth dependency is added, assert unauthenticated `POST /jobs` is rejected when the token is set.
+
+### SEC-006 — Raw exception strings exposed in PlanResult.errors via OBS-004 fix
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: be7b3ab
+last_verified_at:
+  commit: be7b3ab
+  date: 2026-06-20
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 226-238
+related: [OBS-004]
+```
+
+**Issue.** The OBS-004 fix persists raw `str(exc)` from the top-level `except Exception` handler directly into `tracked.result.errors`. Unexpected exceptions may contain worker endpoints, file paths, library internals, or other implementation details that are now returned by `GET /jobs/{id}`.
+
+**Why it matters.** Before the fix these details only lived in server logs; now they are exposed in API responses to anyone who can query job status, broadening the information-disclosure surface for the unauthenticated job routes noted in SEC-005.
+
+**Recommendation.** Keep `logger.exception` for the full traceback, but populate `PlanResult.errors` with a sanitized or categorized message. For generic `Exception`, return a generic failure message and put the original exception detail in logs only.
+
+**Verification.** Submit a job that fails with an exception whose message contains an internal path or endpoint; assert `GET /jobs/{id}` returns an error that does not contain that internal detail.

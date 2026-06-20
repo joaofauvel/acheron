@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: d0b739b
+last_updated_commit: be7b3ab
 last_staleness_scan:
-  commit: d0b739b
+  commit: be7b3ab
   date: 2026-06-20
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Two open low-severity findings are now verified: CORR-006 (dead AcheronError check on final queue removed) and CORR-007 (linear-only constraint documented in class docstring). All other stories are now verified.
+CORR-006 and CORR-007 are now verified at the commits that removed the dead queue check and documented the linear-only constraint. One new medium finding: CORR-009 — the step handler caches `registry.list_all()` per plan and reuses `Worker` instances per worker_id, which can dispatch to stale worker state if registrations change. All other stories remain verified.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -156,12 +156,13 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 640bb03
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 102-103
+    lines: 118-123
 related: []
 ```
 
@@ -181,14 +182,15 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 640bb03
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 201-208
+    lines: 204-211
   - path: src/acheron/shell/executors/streaming.py
-    lines: 238-239
+    lines: 4-8
 related: []
 ```
 
@@ -225,6 +227,31 @@ related: []
 **Recommendation.** Before the status check, capture the cost: `cost = result.metrics.cost_estimate or 0.0`. After raising WorkerError, return the cost from a side channel. The cleanest approach: make `_stage` record cost into a shared list before any failure check, so cost survives TaskGroup cancellation.
 
 **Verification.** Add a test that submits a plan where a step handler returns `JobResult(status=FAILED, metrics=JobMetrics(cost_estimate=0.42))` through StreamingExecutor and asserts `result.total_cost == 0.42`. Compare with AsyncExecutor to confirm parity.
+
+### CORR-009 — Step handler caches worker list and worker instances across steps and plans
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: be7b3ab
+last_verified_at:
+  commit: be7b3ab
+  date: 2026-06-20
+fixed_in: []
+files:
+  - path: src/acheron/shell/step_handler.py
+    lines: 87-128
+related: []
+```
+
+**Issue.** `create_step_handler` now caches `registry.list_all()` per `plan_id` and reuses `Worker` instances per `worker_id`. The worker list is never refreshed within a plan, and `_worker_instances` is never invalidated when the plan changes or when a worker's registration changes. If a worker is removed, moved to a new endpoint, or re-registered with different capabilities between plans (or, less commonly, mid-plan), the handler may still dispatch to the stale cached instance.
+
+**Why it matters.** The optimization trades freshness of dispatch decisions for performance. A job can be sent to a removed worker or to an old endpoint/capability set, producing runtime failures or incorrect output. Because the handler is created once per `Orchestrator` and reused for all jobs, stale instances persist for the process lifetime unless the `worker_id` changes.
+
+**Recommendation.** Scope worker-instance reuse to a single plan: clear `_worker_instances` whenever `plan.plan_id` changes, or create instances per step if cross-plan reuse is not required. If cross-plan reuse is intentional, add registry-version-based invalidation so the cache is refreshed whenever the registry changes.
+
+**Verification.** Add a test that registers worker 'w1' at endpoint A, executes a step, then re-registers 'w1' at endpoint B and executes a step for a new plan. Assert that the handler uses the current registry entry and that removing 'w1' causes a `WorkerError` rather than dispatching to a stale instance.
 
 ## ML — ML correctness
 

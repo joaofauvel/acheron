@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: d0b739b
+last_updated_commit: be7b3ab
 last_staleness_scan:
-  commit: d0b739b
+  commit: be7b3ab
   date: 2026-06-20
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Two low findings are now verified: ARCH-005 (private import renamed) and ARCH-006 (data-dir probe moved to start()). One remains: Orchestrator.__init__ still derives the default StepCache from PlanCache.data_dir. Four verified stories (ARCH-001 through ARCH-004) are immutable. The core->shell import-linter contract holds.
+ARCH-005, ARCH-006, and ARCH-007 are now verified at the commits that renamed the private import, moved data-dir verification to `start()`, and refactored the streaming executor cost side-channel. One new low finding: ARCH-008 — the default `Orchestrator` constructor still derives `StepCache` from `PlanCache.data_dir`, preserving the coupling ARCH-006 only partially removed. ARCH-001 through ARCH-004 remain immutable.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -137,7 +137,7 @@ related: [TYPE-001]
 
 **Grade:** A
 
-CFG-001 is verified (unified store backend selection at f5ce538). CFG-002 is now verified (extracted SUPPORTED_LANGUAGES constant and resolve_ca_path helper, eliminating duplicated knowledge).
+CFG-001 remains verified. CFG-002 is now verified at be7b3ab, which extracted `SUPPORTED_LANGUAGES` into `core/models.py` and `resolve_ca_path()` into `tls.py`, eliminating the duplicated knowledge.
 
 ### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
 
@@ -170,19 +170,22 @@ related: [ARCH-002]
 ### CFG-002 — Duplicated knowledge: TLS CA env-read logic and hardcoded language set repeated across modules
 
 ```yaml
-  status: verified
-  severity: low
-  effort: S
-  reviewed_at: 23c29e1
-  last_verified_at:
-    commit: pending
-    date: 2026-06-20
-  fixed_in: ["pending"]
+status: verified
+severity: low
+effort: S
+reviewed_at: 23c29e1
+last_verified_at:
+  commit: be7b3ab
+  date: 2026-06-20
+fixed_in:
+  - be7b3ab
 files:
   - path: src/acheron/shell/tls.py
     lines: 74
   - path: src/acheron/cli.py
     lines: 46
+  - path: src/acheron/core/models.py
+    lines: 20
   - path: src/acheron/shell/local_handlers.py
     lines: 24-25
   - path: src/acheron/shell/transports/grpc.py
@@ -206,14 +209,15 @@ severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 92ed9da
 files:
   - path: src/acheron/shell/local_handlers.py
-    lines: 89-93
+    lines: 90
   - path: src/acheron/shell/orchestrator.py
-    lines: 20
+    lines: 19-20
 related: []
 ```
 
@@ -233,12 +237,15 @@ severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 92ed9da
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 40-52
+    lines: 47-52
+  - path: src/acheron/shell/orchestrator.py
+    lines: 123-128
 related: []
 ```
 
@@ -258,14 +265,15 @@ severity: low
 effort: S
 reviewed_at: d0b739b
 last_verified_at:
-  commit: pending
+  commit: be7b3ab
   date: 2026-06-20
-fixed_in: ["pending"]
+fixed_in:
+  - 640bb03
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 180-237
+    lines: 190-245
   - path: src/acheron/shell/executors/streaming.py
-    lines: 67-98
+    lines: 78-109
 related: [CORR-008]
 ```
 
@@ -276,3 +284,28 @@ related: [CORR-008]
 **Recommendation.** Wrap `_stage`'s cost information in a structured type (e.g. `@dataclass class StageOutcome: cost: float | None; error: AcheronError | None`) or use `asyncio.Task.add_done_callback` to extract the cost even on failure. Either would let `_stage` shrink back to 4-5 parameters and drop the `noqa: PLR0913`.
 
 **Verification.** `just test`; `just type-check`; grep for `# noqa: PLR0913` in streaming.py to confirm the suppression is gone.
+
+### ARCH-008 — Orchestrator.__init__ still derives default StepCache from PlanCache.data_dir
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: be7b3ab
+last_verified_at:
+  commit: be7b3ab
+  date: 2026-06-20
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 47-51
+related: [ARCH-006]
+```
+
+**Issue.** The ARCH-006 fix moved the writable-data-dir probe into `start()`, but the default constructor path still builds `StepCache(cache.data_dir)` when no `step_cache` is injected. The `cache` parameter is therefore still required only to derive the default step cache, preserving the coupling between `Orchestrator` construction and `PlanCache`'s internal `data_dir` shape.
+
+**Why it matters.** The default path keeps the injection seam optional in name only. Callers that do not need a `PlanCache` (e.g., capability aggregation or tests that never call `start()`) must still supply one, and future refactors of `PlanCache` will still ripple into `Orchestrator`.
+
+**Recommendation.** Make `step_cache` a required keyword argument and remove the `cache: PlanCache` parameter from `Orchestrator`, or keep both parameters but stop deriving the default from `cache.data_dir`. Prefer the required-parameter option because it makes the dependency explicit and matches ARCH-003's intent.
+
+**Verification.** `just test`; assert that `Orchestrator(...)` can be constructed with only a `registry` and `StepCache` and no `PlanCache`; `just lint-strict`.
