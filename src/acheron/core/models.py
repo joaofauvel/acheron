@@ -39,7 +39,6 @@ class ExecutorStrategy(Enum):
 
     SEQUENTIAL = "sequential"
     ASYNC = "async"
-    BATCH_ASYNC = "batch_async"
     STREAMING = "streaming"
 
 
@@ -111,7 +110,6 @@ class PlanStep:
     depends_on: tuple[str, ...]
     status: StepStatus
     payload: dict[str, JsonValue]
-    batch: bool = False
 
 
 @dataclass(frozen=True)
@@ -161,26 +159,6 @@ class AudioRequest:
 
 
 type JobRequest = EpubRequest | AudioRequest
-
-
-@dataclass(frozen=True)
-class BatchJob:
-    """A batch of jobs for streaming worker submission."""
-
-    batch_id: str
-    jobs: tuple[Job, ...]
-
-
-@dataclass(frozen=True)
-class BatchStatus:
-    """Progress tracking for a batch of jobs."""
-
-    batch_id: str
-    total: int
-    completed: int
-    failed: int
-    pending: int
-    results: tuple[JobResult, ...]
 
 
 @dataclass(frozen=True)

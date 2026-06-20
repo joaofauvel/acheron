@@ -26,7 +26,7 @@ def _tracked(job_id: str = "job-1") -> TrackedJob:
     return TrackedJob(
         job_id=job_id,
         request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
-        strategy=ExecutorStrategy.BATCH_ASYNC,
+        strategy=ExecutorStrategy.STREAMING,
     )
 
 
@@ -37,7 +37,7 @@ def _plan() -> Plan:
         source_type="epub",
         source_language="en",
         target_language="es",
-        executor_strategy=ExecutorStrategy.BATCH_ASYNC,
+        executor_strategy=ExecutorStrategy.STREAMING,
         steps=(
             PlanStep(
                 step_id="extract",
@@ -100,7 +100,7 @@ class TestPut:
         assert loaded.request.source_path == "/input/book.epub"
         assert loaded.request.source_language == "en"
         assert loaded.request.target_language == "es"
-        assert loaded.strategy == ExecutorStrategy.BATCH_ASYNC
+        assert loaded.strategy == ExecutorStrategy.STREAMING
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self, store: RedisJobStore) -> None:
@@ -132,7 +132,7 @@ class TestPlanRoundTrip:
         assert loaded.plan.steps[0].type == WorkerType.EXTRACTION
         assert loaded.plan.steps[1].depends_on == ("extract",)
         assert loaded.plan.steps[1].status == StepStatus.FAILED
-        assert loaded.plan.executor_strategy == ExecutorStrategy.BATCH_ASYNC
+        assert loaded.plan.executor_strategy == ExecutorStrategy.STREAMING
 
     @pytest.mark.asyncio
     async def test_result_round_trips(self, store: RedisJobStore) -> None:

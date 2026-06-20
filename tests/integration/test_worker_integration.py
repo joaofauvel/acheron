@@ -150,7 +150,7 @@ class TestWorkerIntegrationErrorPath:
             handler=_no_op_handler,
         )
         request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
-        tracked = await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+        tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
         await _wait_for_completion(tracked)
 
         assert tracked.status == "completed", f"job failed: {tracked.result.errors if tracked.result else 'no result'}"

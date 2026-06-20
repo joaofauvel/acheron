@@ -14,11 +14,9 @@ from acheron.core.errors import (
     WorkerTimeoutError,
     WorkerUnavailableError,
 )
-from acheron.core.interfaces import Executor, StreamingWorker, Worker
+from acheron.core.interfaces import Executor, Worker
 from acheron.core.models import (
     AudioRequest,
-    BatchJob,
-    BatchStatus,
     Chunk,
     EpubRequest,
     ExecutorStrategy,
@@ -42,8 +40,6 @@ from acheron.shell.executors import create_executor
 __all__ = [
     "AcheronError",
     "AudioRequest",
-    "BatchJob",
-    "BatchStatus",
     "CacheCorruptedError",
     "CacheError",
     "CacheMissError",
@@ -66,7 +62,6 @@ __all__ = [
     "PlanStep",
     "PlanValidationError",
     "StepStatus",
-    "StreamingWorker",
     "Worker",
     "WorkerCapabilities",
     "WorkerError",

@@ -15,7 +15,6 @@ from grpc_health.v1 import health, health_pb2_grpc
 
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
-    BatchJob,
     Job,
     JobStatus,
     WorkerType,
@@ -130,34 +129,6 @@ class TestGrpcWorkerExecute:
         with pytest.raises(WorkerUnavailableError, match="unavailable"):
             await worker.execute(job)
         await channel.close()
-
-
-class TestGrpcWorkerBatch:
-    @pytest.mark.asyncio
-    async def test_submit_batch_returns_handle(self, grpc_worker: GrpcWorker) -> None:
-        batch = BatchJob(
-            batch_id="b-1",
-            jobs=(
-                Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola"}, chapter_id="ch1"),
-                Job(job_id="j-2", job_type=WorkerType.TTS, payload={"text": "adios"}, chapter_id="ch1"),
-            ),
-        )
-        handle = await grpc_worker.submit_batch(batch)
-        assert handle == "b-1"
-
-    @pytest.mark.asyncio
-    async def test_collect_results_returns_all(self, grpc_worker: GrpcWorker) -> None:
-        batch = BatchJob(
-            batch_id="b-1",
-            jobs=(
-                Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola"}, chapter_id="ch1"),
-                Job(job_id="j-2", job_type=WorkerType.TTS, payload={"text": "adios"}, chapter_id="ch1"),
-            ),
-        )
-        await grpc_worker.submit_batch(batch)
-        results = await grpc_worker.collect_results("b-1")
-        assert len(results) == 2
-        assert all(r.status == JobStatus.SUCCESS for r in results)
 
 
 @pytest.mark.asyncio

@@ -131,7 +131,6 @@ def _epub_steps(request: EpubRequest) -> list[PlanStep]:
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
                 payload={"target_language": request.target_language},
-                batch=True,
             ),
             PlanStep(
                 step_id="package",
@@ -195,7 +194,6 @@ def _audio_steps(request: AudioRequest) -> list[PlanStep]:
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
                 payload={"target_language": request.target_language},
-                batch=True,
             ),
             PlanStep(
                 step_id="package",

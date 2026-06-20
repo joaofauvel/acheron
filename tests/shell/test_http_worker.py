@@ -6,7 +6,6 @@ import respx
 
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
-    BatchJob,
     Job,
     JobStatus,
     WorkerType,
@@ -106,73 +105,3 @@ class TestHttpWorkerExecute:
         job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
         with pytest.raises(WorkerUnavailableError):
             await worker.execute(job)
-
-
-class TestHttpWorkerBatch:
-    @respx.mock
-    @pytest.mark.asyncio
-    async def test_submit_batch_returns_handle(self) -> None:
-        respx.post(f"{_BASE_URL}/submit-batch").mock(
-            return_value=httpx.Response(200, json={"batch_handle": "batch-abc"})
-        )
-        worker = HttpWorker(_BASE_URL)
-        batch = BatchJob(
-            batch_id="b-1",
-            jobs=(
-                Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1"),
-                Job(job_id="j-2", job_type=WorkerType.TTS, payload={}, chapter_id="ch1"),
-            ),
-        )
-        handle = await worker.submit_batch(batch)
-        assert handle == "batch-abc"
-
-    @respx.mock
-    @pytest.mark.asyncio
-    async def test_poll_batch_returns_status(self) -> None:
-        respx.get(f"{_BASE_URL}/poll/batch-abc").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "batch_id": "b-1",
-                    "total": 2,
-                    "completed": 1,
-                    "failed": 0,
-                    "pending": 1,
-                    "results": [],
-                },
-            )
-        )
-        worker = HttpWorker(_BASE_URL)
-        status = await worker.poll_batch("batch-abc")
-        assert status.total == 2
-        assert status.completed == 1
-        assert status.pending == 1
-
-    @respx.mock
-    @pytest.mark.asyncio
-    async def test_collect_results_returns_completed(self) -> None:
-        respx.get(f"{_BASE_URL}/poll/batch-abc").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "batch_id": "b-1",
-                    "total": 1,
-                    "completed": 1,
-                    "failed": 0,
-                    "pending": 0,
-                    "results": [
-                        {
-                            "job_id": "j-1",
-                            "status": "success",
-                            "outputs": [],
-                            "metrics": {"duration_seconds": 0.5},
-                            "error": None,
-                        }
-                    ],
-                },
-            )
-        )
-        worker = HttpWorker(_BASE_URL)
-        results = await worker.collect_results("batch-abc")
-        assert len(results) == 1
-        assert results[0].status == JobStatus.SUCCESS

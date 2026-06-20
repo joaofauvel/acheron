@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from acheron.core.models import ExecutorStrategy
 from acheron.shell.executors.async_executor import AsyncExecutor
-from acheron.shell.executors.batch_async import BatchAsyncExecutor
 from acheron.shell.executors.sequential import SequentialExecutor
 from acheron.shell.executors.streaming import StreamingExecutor
 
@@ -28,8 +27,6 @@ def create_executor(
             return SequentialExecutor(handler)
         case ExecutorStrategy.ASYNC:
             return AsyncExecutor(handler)
-        case ExecutorStrategy.BATCH_ASYNC:
-            return BatchAsyncExecutor(handler)
         case ExecutorStrategy.STREAMING:
             if step_cache is None:
                 msg = "StreamingExecutor requires a step_cache"
@@ -39,7 +36,6 @@ def create_executor(
 
 __all__ = [
     "AsyncExecutor",
-    "BatchAsyncExecutor",
     "SequentialExecutor",
     "StreamingExecutor",
     "create_executor",

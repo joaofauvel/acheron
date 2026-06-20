@@ -18,14 +18,14 @@ One high finding: the entire batch-submission subsystem (BatchAsyncExecutor dupl
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
 ```yaml
-status: open
+status: verified
 severity: high
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
     lines: 16-79
@@ -60,7 +60,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -171,7 +171,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:

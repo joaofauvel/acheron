@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 
@@ -11,10 +10,8 @@ import grpc.aio
 from grpc.health.v1 import health_pb2, health_pb2_grpc
 
 from acheron.core.errors import WorkerError, WorkerUnavailableError
-from acheron.core.interfaces import StreamingWorker
+from acheron.core.interfaces import Worker
 from acheron.core.models import (
-    BatchJob,
-    BatchStatus,
     Job,
     JobMetrics,
     JobResult,
@@ -28,14 +25,13 @@ from acheron.proto import synthesis_pb2, synthesis_pb2_grpc
 logger = logging.getLogger(__name__)
 
 
-class GrpcWorker(StreamingWorker):
+class GrpcWorker(Worker):
     """Worker that delegates TTS execution to a remote gRPC endpoint."""
 
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
         self._stub = synthesis_pb2_grpc.SynthesisStub(channel)  # type: ignore[no-untyped-call]
         self._health_stub = health_pb2_grpc.HealthStub(channel)
-        self._batches: dict[str, tuple[JobResult, ...]] = {}
 
     async def capabilities(self) -> WorkerCapabilities:  # noqa: D102
         return WorkerCapabilities(
@@ -99,27 +95,3 @@ class GrpcWorker(StreamingWorker):
             return False
         else:
             return response.status == health_pb2.HealthCheckResponse.SERVING  # type: ignore[no-any-return]
-
-    async def submit_batch(self, batch: BatchJob) -> str:  # noqa: D102
-        results = await asyncio.gather(*[self.execute(job) for job in batch.jobs])
-        self._batches[batch.batch_id] = tuple(results)
-        return batch.batch_id
-
-    async def poll_batch(self, batch_handle: str) -> BatchStatus:  # noqa: D102
-        results = self._batches.get(batch_handle, ())
-        total = len(results)
-        completed = sum(1 for r in results if r.status == JobStatus.SUCCESS)
-        failed = sum(1 for r in results if r.status == JobStatus.FAILED)
-        return BatchStatus(
-            batch_id=batch_handle,
-            total=total,
-            completed=completed,
-            failed=failed,
-            pending=0,
-            results=results,
-        )
-
-    async def collect_results(self, batch_handle: str) -> tuple[JobResult, ...]:  # noqa: D102
-        status = await self.poll_batch(batch_handle)
-        self._batches.pop(batch_handle, None)
-        return status.results

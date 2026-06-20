@@ -138,7 +138,7 @@ def main(verbose: bool) -> None:  # noqa: FBT001
 @click.argument("file", type=click.Path(exists=True))
 @click.option("--src", required=True, help="Source language (ISO 639-1)")
 @click.option("--dest", required=True, help="Target language (ISO 639-1)")
-@click.option("--executor", default="batch_async", show_default=True, help="Executor strategy")
+@click.option("--executor", default="streaming", show_default=True, help="Executor strategy")
 @click.option("--asr", "asr_model", default=None, help="ASR model (for audio input)")
 @click.option("--type", "source_type", default=None, help="Source type override (epub/audio)")
 def submit(  # noqa: PLR0913

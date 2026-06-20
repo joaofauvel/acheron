@@ -25,7 +25,7 @@ def _sample_plan(plan_id: str = "plan-1") -> Plan:
         source_type="epub",
         source_language="en",
         target_language="es",
-        executor_strategy=ExecutorStrategy.BATCH_ASYNC,
+        executor_strategy=ExecutorStrategy.STREAMING,
         steps=(
             PlanStep(
                 step_id="extract",
@@ -78,30 +78,6 @@ class TestPlanCache:
         cache = PlanCache(tmp_path)
         cache.save_plan(_sample_plan())
         assert (tmp_path / "plan-1" / "plan.json").exists()
-
-    def test_round_trip_preserves_batch_flag(self, tmp_path: Path) -> None:
-        cache = PlanCache(tmp_path)
-        plan = Plan(
-            plan_id="p-2",
-            job_id="j-2",
-            source_type="epub",
-            source_language="en",
-            target_language="es",
-            executor_strategy=ExecutorStrategy.BATCH_ASYNC,
-            steps=(
-                PlanStep(
-                    step_id="tts",
-                    type=WorkerType.TTS,
-                    depends_on=(),
-                    status=StepStatus.PENDING,
-                    payload={},
-                    batch=True,
-                ),
-            ),
-        )
-        cache.save_plan(plan)
-        loaded = cache.load_plan("p-2")
-        assert loaded.steps[0].batch is True
 
 
 class TestStepCache:

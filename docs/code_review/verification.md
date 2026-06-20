@@ -23,7 +23,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -48,7 +48,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -73,7 +73,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -104,7 +104,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -133,7 +133,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -164,7 +164,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -189,7 +189,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -216,7 +216,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:

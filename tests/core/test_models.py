@@ -1,8 +1,6 @@
 import pytest
 
 from acheron.core.models import (
-    BatchJob,
-    BatchStatus,
     ExecutorStrategy,
     Job,
     JobMetrics,
@@ -196,18 +194,7 @@ class TestPlanStep:
             status=StepStatus.PENDING,
             payload={"source_path": "/input/book.epub"},
         )
-        assert step.batch is False
-
-    def test_batch_flag(self) -> None:
-        step = PlanStep(
-            step_id="synthesize-ch1",
-            type=WorkerType.TTS,
-            depends_on=("translate-ch1",),
-            status=StepStatus.PENDING,
-            payload={},
-            batch=True,
-        )
-        assert step.batch is True
+        assert step.payload["source_path"] == "/input/book.epub"
 
 
 class TestPlan:
@@ -227,7 +214,7 @@ class TestPlan:
             source_type="epub",
             source_language="en",
             target_language="es",
-            executor_strategy=ExecutorStrategy.BATCH_ASYNC,
+            executor_strategy=ExecutorStrategy.STREAMING,
             steps=steps,
         )
         assert len(plan.steps) == 1
@@ -246,27 +233,3 @@ class TestPlanResult:
             total_duration_seconds=120.0,
         )
         assert result.status == "completed"
-
-
-class TestBatchJob:
-    def test_construction(self) -> None:
-        jobs = (
-            Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1"),
-            Job(job_id="j-2", job_type=WorkerType.TTS, payload={}, chapter_id="ch1"),
-        )
-        batch = BatchJob(batch_id="b-1", jobs=jobs)
-        assert len(batch.jobs) == 2
-
-
-class TestBatchStatus:
-    def test_construction(self) -> None:
-        status = BatchStatus(
-            batch_id="b-1",
-            total=10,
-            completed=7,
-            failed=1,
-            pending=2,
-            results=(),
-        )
-        assert status.completed == 7
-        assert status.pending == 2

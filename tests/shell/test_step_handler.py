@@ -50,7 +50,7 @@ def _make_plan() -> Plan:
         source_type="epub",
         source_language="en",
         target_language="es",
-        executor_strategy=ExecutorStrategy.BATCH_ASYNC,
+        executor_strategy=ExecutorStrategy.STREAMING,
         steps=(
             PlanStep(
                 step_id="synthesize",

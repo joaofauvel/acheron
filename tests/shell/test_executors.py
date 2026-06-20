@@ -14,7 +14,6 @@ from acheron.core.models import (
 )
 from acheron.shell.executors import (
     AsyncExecutor,
-    BatchAsyncExecutor,
     SequentialExecutor,
     create_executor,
 )
@@ -239,29 +238,6 @@ class TestAsyncExecutor:
         assert result.status == "completed"
 
 
-class TestBatchAsyncExecutor:
-    @pytest.mark.asyncio
-    async def test_runs_regular_steps(self) -> None:
-        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
-            return _success_result()
-
-        plan = _plan((_step("a"), _step("b")))
-        result = await BatchAsyncExecutor(handler).run(plan)
-        assert result.status == "completed"
-
-    @pytest.mark.asyncio
-    async def test_skips_dependents_of_failed_step(self) -> None:
-        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
-            if step.step_id == "a":
-                return _fail_result()
-            return _success_result()
-
-        plan = _plan((_step("a"), _step("b", ("a",))))
-        result = await BatchAsyncExecutor(handler).run(plan)
-        assert result.status == "failed"
-        assert result.completed_steps == 0
-
-
 class TestCreateExecutor:
     def test_sequential(self) -> None:
         async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
@@ -276,13 +252,6 @@ class TestCreateExecutor:
 
         executor = create_executor(ExecutorStrategy.ASYNC, handler)
         assert isinstance(executor, AsyncExecutor)
-
-    def test_batch_async(self) -> None:
-        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
-            return _success_result()
-
-        executor = create_executor(ExecutorStrategy.BATCH_ASYNC, handler)
-        assert isinstance(executor, BatchAsyncExecutor)
 
 
 class TestErrorCapture:

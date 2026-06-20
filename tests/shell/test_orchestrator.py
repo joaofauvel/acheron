@@ -37,7 +37,7 @@ class TestOrchestrator:
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
         with pytest.raises(RuntimeError, match="start"):
-            await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+            await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
     @pytest.mark.asyncio
     async def test_start_skips_already_registered_types(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -64,7 +64,7 @@ class TestOrchestrator:
         await orch.start()
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
-        tracked = await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+        tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
         assert tracked.job_id.startswith("job-")
         assert tracked.status == "running"
@@ -78,7 +78,7 @@ class TestOrchestrator:
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
         with pytest.raises(InvalidLanguagePathError):
-            await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+            await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
     @pytest.mark.asyncio
     async def test_get_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -89,7 +89,7 @@ class TestOrchestrator:
         await orch.start()
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
-        tracked = await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+        tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
         found = await orch.get_job(tracked.job_id)
         assert found is not None
@@ -166,7 +166,7 @@ class TestOrchestrator:
         await orch.start()
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
-        await orch.submit_job(request, ExecutorStrategy.BATCH_ASYNC)
+        await orch.submit_job(request, ExecutorStrategy.STREAMING)
         await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
 
         jobs = await orch.list_jobs()

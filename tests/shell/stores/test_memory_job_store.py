@@ -11,7 +11,7 @@ def _tracked(job_id: str = "job-1") -> TrackedJob:
     return TrackedJob(
         job_id=job_id,
         request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
-        strategy=ExecutorStrategy.BATCH_ASYNC,
+        strategy=ExecutorStrategy.STREAMING,
     )
 
 
