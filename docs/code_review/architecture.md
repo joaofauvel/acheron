@@ -110,9 +110,9 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: fb69e0e
   date: 2026-06-19
-fixed_in: ["pending"]
+fixed_in: ["fb69e0e"]
 files:
   - path: src/acheron/shell/registry.py
     lines: 27
