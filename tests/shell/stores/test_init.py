@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -11,11 +12,17 @@ from acheron.shell.stores import create_job_store, create_stores, create_worker_
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 
-@pytest.fixture(autouse=True)
-def _clear_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+@contextmanager
+def _cleared_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("ACHERON_STORE_BACKEND", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
-    return
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with _cleared_env(monkeypatch):
+        yield
 
 
 def test_worker_store_default_is_memory() -> None:
