@@ -62,7 +62,7 @@ def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str,
         case WorkerType.TRANSLATION:
             return src in caps.supported_languages_in and dst in caps.supported_languages_out
         case WorkerType.ASR:
-            return src in caps.supported_languages_in
+            return src in caps.supported_languages_in and src in caps.supported_languages_out
         case WorkerType.TTS:
             return dst in caps.supported_languages_in and dst in caps.supported_languages_out
         case _:

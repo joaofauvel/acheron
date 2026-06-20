@@ -126,14 +126,14 @@ related: [OBS-004]
 ### CORR-005 — ASR worker selection ignores output language — may dispatch worker that can't produce required output
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 64-65
