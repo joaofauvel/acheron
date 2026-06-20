@@ -115,14 +115,15 @@ related: []
 ### DOC-002 — README architecture tree references removed BatchAsync strategy
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: README.md
     lines: 67
@@ -135,8 +136,6 @@ files:
 **Recommendation.** Drop `BatchAsync, and` from README.md:67 so the line reads `Sequential, Async, and Streaming execution strategies (Streaming is the default)`.
 
 **Verification.** `grep -rn 'BatchAsync\|batch_async' README.md Justfile src/ tests/ dashboard/ stubs/ proto/ scripts/` returns zero hits in user-facing paths; `just validate` passes.
-
-The diff deletes BatchAsyncExecutor (shell/executors/batch_async.py), its factory branch, ExecutorStrategy.BATCH_ASYNC, the StreamingWorker ABC and its three methods on GrpcWorker/HttpWorker, the BatchJob/BatchStatus models, PlanStep.batch, and the Redis (de)serialization of `batch`. The CLI default is flipped from `batch_async` to `streaming`. README.md:67 still reads `executors/      # Sequential, Async, BatchAsync, and Streaming execution strategies (Streaming is the default)`, naming a strategy that no longer exists in src/, tests/, stubs/, or dashboard/. The README is the only place in user-facing docs that still names the deleted class.
 
 **Why it matters.** The architecture tree at README.md:60-74 is the primary onboarding map for the package; a new dev trying to locate `BatchAsyncExecutor` will not find it and will be left unsure whether the doc or the code is wrong. This is exactly the kind of staleness AGENTS.md targets (timeless, objective docs) and the greenfield rule (replace/refactor over legacy fallbacks) — the doc should follow the deletion rather than re-introducing the impression that `batch_async` is a valid strategy.
 

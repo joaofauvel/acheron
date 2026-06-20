@@ -64,7 +64,7 @@ src/acheron/
     api/            # FastAPI routes
     stores/         # WorkerStore + JobStore ABCs; memory + redis impls
     transports/     # HttpWorker, GrpcWorker, LocalWorker
-    executors/      # Sequential, Async, BatchAsync, and Streaming execution strategies (Streaming is the default)
+    executors/      # Sequential, Async, and Streaming execution strategies (Streaming is the default)
   proto/            # Generated protobuf code (gitignored)
 dashboard/          # HTMX monitoring dashboard (separate package)
 stubs/              # Stub workers for local dev (HTTP + gRPC)
