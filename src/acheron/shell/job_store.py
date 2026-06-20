@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from acheron.core.models import PlanStatus
+
 if TYPE_CHECKING:
     from acheron.core.models import ExecutorStrategy, JobRequest, Plan, PlanResult
 
@@ -18,4 +20,4 @@ class TrackedJob:
     strategy: ExecutorStrategy
     plan: Plan | None = None
     result: PlanResult | None = None
-    status: str = "pending"
+    status: PlanStatus = PlanStatus.PENDING

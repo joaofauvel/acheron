@@ -15,6 +15,7 @@ from acheron.core.models import (
     OutputFile,
     Plan,
     PlanResult,
+    PlanStatus,
     PlanStep,
     StepStatus,
     WorkerType,
@@ -61,7 +62,7 @@ def _plan() -> Plan:
 def _result() -> PlanResult:
     return PlanResult(
         plan_id="plan-x",
-        status="failed",
+        status=PlanStatus.FAILED,
         completed_steps=2,
         total_steps=5,
         outputs=(
@@ -97,7 +98,7 @@ class TestPut:
         loaded = await store.get("job-1")
         assert loaded is not None
         assert loaded.job_id == "job-1"
-        assert loaded.status == "pending"
+        assert loaded.status == PlanStatus.PENDING
         assert loaded.request.source_path == "/input/book.epub"
         assert loaded.request.source_language == "en"
         assert loaded.request.target_language == "es"
@@ -124,11 +125,11 @@ class TestPut:
     async def test_put_overwrites(self, store: RedisJobStore) -> None:
         await store.put(_tracked("j-1"))
         job2 = _tracked("j-1")
-        job2.status = "running"
+        job2.status = PlanStatus.RUNNING
         await store.put(job2)
         loaded = await store.get("j-1")
         assert loaded is not None
-        assert loaded.status == "running"
+        assert loaded.status == PlanStatus.RUNNING
 
 
 class TestPlanRoundTrip:
@@ -156,7 +157,7 @@ class TestPlanRoundTrip:
         loaded = await store.get("job-1")
         assert loaded is not None
         assert loaded.result is not None
-        assert loaded.result.status == "failed"
+        assert loaded.result.status == PlanStatus.FAILED
         assert loaded.result.completed_steps == 2
         assert loaded.result.total_steps == 5
         assert loaded.result.total_cost == 0.5

@@ -21,7 +21,7 @@ from acheron.core.errors import (
     WorkerError,
 )
 from acheron.core.interfaces import Executor
-from acheron.core.models import JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStep
+from acheron.core.models import JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStatus, PlanStep
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 if TYPE_CHECKING:
@@ -158,7 +158,7 @@ class StreamingExecutor(Executor):
         if last_error is None:
             return PlanResult(
                 plan_id=plan.plan_id,
-                status="completed",
+                status=PlanStatus.COMPLETED,
                 completed_steps=len(steps),
                 total_steps=len(steps),
                 outputs=outputs,
@@ -168,7 +168,7 @@ class StreamingExecutor(Executor):
             )
         return PlanResult(
             plan_id=plan.plan_id,
-            status="failed",
+            status=PlanStatus.FAILED,
             completed_steps=completed_count,
             total_steps=len(steps),
             outputs=outputs,
@@ -241,7 +241,7 @@ class StreamingExecutor(Executor):
     def _empty_result(self, plan: Plan, start: float) -> PlanResult:
         return PlanResult(
             plan_id=plan.plan_id,
-            status="completed",
+            status=PlanStatus.COMPLETED,
             completed_steps=0,
             total_steps=0,
             outputs=(),

@@ -149,7 +149,7 @@ def _serialize_job(job: TrackedJob) -> str:
     if job.result is not None:
         result_dict = {
             "plan_id": job.result.plan_id,
-            "status": job.result.status,
+            "status": job.result.status.value,
             "completed_steps": job.result.completed_steps,
             "total_steps": job.result.total_steps,
             "outputs": [
@@ -173,7 +173,7 @@ def _serialize_job(job: TrackedJob) -> str:
             "source_type": source_type,
             "request": request_dict,
             "strategy": job.strategy.value,
-            "status": job.status,
+            "status": job.status.value,
             "plan": plan_dict,
             "result": result_dict,
         },
@@ -188,6 +188,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
         EpubRequest,
         ExecutorStrategy,
         Plan,
+        PlanStatus,
         PlanStep,
         StepStatus,
         WorkerType,
@@ -239,7 +240,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
         rd = data["result"]
         result = PlanResult(
             plan_id=rd["plan_id"],
-            status=rd["status"],
+            status=PlanStatus(rd["status"]),
             completed_steps=rd["completed_steps"],
             total_steps=rd["total_steps"],
             outputs=tuple(
@@ -263,7 +264,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
         strategy=ExecutorStrategy(data["strategy"]),
         plan=plan,
         result=result,
-        status=data["status"],
+        status=PlanStatus(data["status"]),
     )
 
 

@@ -201,14 +201,15 @@ related: [ARCH-004]
 ### TYPE-002 — PlanResult.status and TrackedJob.status are stringly-typed with a vocabulary diverging from the JobStatus enum
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: src/acheron/core/models.py
     lines: 133
@@ -222,8 +223,6 @@ files:
     lines: 56
   - path: src/acheron/shell/executors/async_executor.py
     lines: 64
-  - path: src/acheron/shell/executors/batch_async.py
-    lines: 68
   - path: src/acheron/shell/executors/streaming.py
     lines: 158, 168, 211-213, 225, 229
 related: [CORR-001]

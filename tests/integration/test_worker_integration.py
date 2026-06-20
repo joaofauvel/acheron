@@ -18,6 +18,7 @@ from acheron.core.models import (
     JobResult,
     JobStatus,
     OutputFile,
+    PlanStatus,
     WorkerCapabilities,
     WorkerType,
 )
@@ -29,7 +30,7 @@ from acheron.shell.stores.memory import InMemoryWorkerStore
 async def _wait_for_completion(tracked: Any, timeout: float = 5.0) -> None:  # noqa: ASYNC109
     """Wait for a tracked job to complete. Raises TimeoutError if stuck."""
     deadline = asyncio.get_running_loop().time() + timeout
-    while tracked.status == "running":
+    while tracked.status == PlanStatus.RUNNING:
         if asyncio.get_running_loop().time() > deadline:
             msg = f"Job {tracked.job_id} still running after {timeout}s"
             raise TimeoutError(msg)
@@ -45,7 +46,7 @@ class TestWorkerIntegrationHappyPath:
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
-        assert tracked.status == "completed"
+        assert tracked.status == PlanStatus.COMPLETED
         assert tracked.result is not None
         assert tracked.result.completed_steps == 5
         assert tracked.result.total_steps == 5
@@ -90,7 +91,7 @@ class TestWorkerIntegrationHappyPath:
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
-        assert tracked.status == "completed"
+        assert tracked.status == PlanStatus.COMPLETED
         assert tracked.result is not None
         assert tracked.result.completed_steps == 6
         assert tracked.result.total_steps == 6
@@ -153,7 +154,9 @@ class TestWorkerIntegrationErrorPath:
         tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
         await _wait_for_completion(tracked)
 
-        assert tracked.status == "completed", f"job failed: {tracked.result.errors if tracked.result else 'no result'}"
+        assert tracked.status == PlanStatus.COMPLETED, (
+            f"job failed: {tracked.result.errors if tracked.result else 'no result'}"
+        )
         assert tracked.result is not None
         assert tracked.result.completed_steps == 5
         assert tracked.result.total_steps == 5
@@ -216,7 +219,7 @@ class TestWorkerIntegrationErrorPath:
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
-        assert tracked.status in ("failed", "partial")
+        assert tracked.status in (PlanStatus.FAILED, PlanStatus.PARTIAL)
 
 
 class TestWorkerIntegrationEdgeCases:
@@ -234,7 +237,7 @@ class TestWorkerIntegrationEdgeCases:
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
-        assert tracked.status == "completed"
+        assert tracked.status == PlanStatus.COMPLETED
         assert tracked.result is not None
 
 

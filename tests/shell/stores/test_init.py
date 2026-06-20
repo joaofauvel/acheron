@@ -15,7 +15,7 @@ from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 def _clear_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("ACHERON_STORE_BACKEND", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
-    yield
+    return
 
 
 def test_worker_store_default_is_memory() -> None:

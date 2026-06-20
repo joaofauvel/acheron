@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from acheron.core.errors import InvalidLanguagePathError
-from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus, WorkerType
+from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus, PlanStatus, WorkerType
 from acheron.shell.cache import PlanCache
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
@@ -67,7 +67,7 @@ class TestOrchestrator:
         tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
         assert tracked.job_id.startswith("job-")
-        assert tracked.status == "running"
+        assert tracked.status == PlanStatus.RUNNING
         assert tracked.plan is not None
 
     @pytest.mark.asyncio

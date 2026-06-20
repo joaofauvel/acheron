@@ -73,7 +73,7 @@ def _tracked_to_response(tracked: TrackedJob) -> JobResponse:
     result = tracked.result
     return JobResponse(
         job_id=tracked.job_id,
-        status=tracked.status,
+        status=tracked.status.value,
         plan_id=tracked.plan.plan_id if tracked.plan else None,
         completed_steps=result.completed_steps if result else 0,
         total_steps=result.total_steps if result else 0,

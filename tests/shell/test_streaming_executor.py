@@ -15,6 +15,7 @@ from acheron.core.models import (
     JobStatus,
     OutputFile,
     Plan,
+    PlanStatus,
     PlanStep,
     StepStatus,
     WorkerType,
@@ -108,7 +109,7 @@ class TestNormalCompletion:
 
         result = await executor.run(plan)
 
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         assert result.completed_steps == 3
         assert result.total_steps == 3
         assert calls == ["extract", "chunk", "package"]
@@ -134,7 +135,7 @@ class TestStepTimeout:
         executor = StreamingExecutor(slow_handler, step_cache, step_timeout=0.05)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert "timed out" in result.errors[0].lower()
 
 
@@ -152,7 +153,7 @@ class TestWorkerError:
         executor = StreamingExecutor(failing_handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert any("no worker" in e.lower() for e in result.errors)
 
 
@@ -189,7 +190,7 @@ class TestNonSuccessResult:
         executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert result.total_steps == 3
         assert result.completed_steps == 0
         assert downstream_called == []
@@ -217,7 +218,7 @@ class TestNonSuccessResult:
         executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert any("partial" in e.lower() for e in result.errors)
 
     @pytest.mark.asyncio
@@ -249,7 +250,7 @@ class TestNonSuccessResult:
         executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert result.total_cost == 0.42  # failed step's cost preserved
 
 
@@ -265,7 +266,7 @@ class TestUnexpectedException:
         executor = StreamingExecutor(bad_handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert any("unexpected failure in stage" in e.lower() for e in result.errors)
 
 
@@ -292,7 +293,7 @@ class TestCacheFailure:
 
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert any("save_outputs" in e.lower() for e in result.errors)
 
 
@@ -328,7 +329,7 @@ class TestSentinelDrain:
         executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert completed == []
 
 
@@ -349,7 +350,7 @@ class TestCostAccumulation:
         executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         # 3 steps * 0.5 each = 1.5
         assert result.total_cost == 1.5
 
@@ -376,7 +377,7 @@ class TestCompletedStepsCount:
         executor = StreamingExecutor(handler, step_cache)
         result = await executor.run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert result.total_steps == 3
         assert result.completed_steps == 2  # extract + chunk succeeded
 
@@ -415,7 +416,7 @@ class TestCacheCorruptionResilience:
         fresh_executor = StreamingExecutor(fresh_handler, step_cache)
         result = await fresh_executor.run(plan)
 
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         assert result.completed_steps == 3
 
 

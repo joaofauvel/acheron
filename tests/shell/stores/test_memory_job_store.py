@@ -2,7 +2,7 @@
 
 import pytest
 
-from acheron.core.models import EpubRequest, ExecutorStrategy
+from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.stores.memory import InMemoryJobStore
 
@@ -55,8 +55,8 @@ class TestJobStore:
         store = InMemoryJobStore()
         job = _tracked()
         await store.put(job)
-        job.status = "running"
+        job.status = PlanStatus.RUNNING
         await store.put(job)
         stored = await store.get("job-1")
         assert stored is not None
-        assert stored.status == "running"
+        assert stored.status == PlanStatus.RUNNING

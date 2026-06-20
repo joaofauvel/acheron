@@ -8,6 +8,7 @@ from acheron.core.models import (
     OutputFile,
     Plan,
     PlanResult,
+    PlanStatus,
 )
 from acheron.shell.executors._utils import StepHandler, topological_order
 
@@ -53,7 +54,7 @@ class SequentialExecutor(Executor):
             total_cost += result.metrics.cost_estimate or 0.0
 
         duration = time.monotonic() - start
-        status = "completed" if failed == 0 else "failed" if completed == 0 else "partial"
+        status = PlanStatus.COMPLETED if failed == 0 else PlanStatus.FAILED if completed == 0 else PlanStatus.PARTIAL
 
         return PlanResult(
             plan_id=plan.plan_id,

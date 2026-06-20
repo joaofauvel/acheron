@@ -8,6 +8,7 @@ from acheron.core.models import (
     JobResult,
     JobStatus,
     Plan,
+    PlanStatus,
     PlanStep,
     StepStatus,
     WorkerType,
@@ -72,7 +73,7 @@ class TestSequentialExecutor:
         plan = _plan((_step("a"), _step("b"), _step("c")))
         result = await SequentialExecutor(handler).run(plan)
         assert order == ["a", "b", "c"]
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         assert result.completed_steps == 3
 
     @pytest.mark.asyncio
@@ -87,7 +88,7 @@ class TestSequentialExecutor:
         result = await SequentialExecutor(handler).run(plan)
         assert order.index("a") < order.index("b")
         assert order.index("b") < order.index("c")
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
 
     @pytest.mark.asyncio
     async def test_failed_step_produces_partial(self) -> None:
@@ -98,7 +99,7 @@ class TestSequentialExecutor:
 
         plan = _plan((_step("a"), _step("b"), _step("c")))
         result = await SequentialExecutor(handler).run(plan)
-        assert result.status == "partial"
+        assert result.status == PlanStatus.PARTIAL
         assert result.completed_steps == 2
 
     @pytest.mark.asyncio
@@ -108,7 +109,7 @@ class TestSequentialExecutor:
 
         plan = _plan((_step("a"), _step("b")))
         result = await SequentialExecutor(handler).run(plan)
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert result.completed_steps == 0
 
     @pytest.mark.asyncio
@@ -124,7 +125,7 @@ class TestSequentialExecutor:
         plan = _plan((_step("a"), _step("b", ("a",)), _step("c", ("a",))))
         result = await SequentialExecutor(handler).run(plan)
         assert executed == ["a"]
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert result.completed_steps == 0
 
     @pytest.mark.asyncio
@@ -133,7 +134,7 @@ class TestSequentialExecutor:
             return _success_result()
 
         result = await SequentialExecutor(handler).run(_plan(()))
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         assert result.total_steps == 0
 
     @pytest.mark.asyncio
@@ -142,7 +143,7 @@ class TestSequentialExecutor:
             return _success_result()
 
         result = await SequentialExecutor(handler).run(_plan((_step("a"),)))
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         assert result.completed_steps == 1
 
     @pytest.mark.asyncio
@@ -160,7 +161,7 @@ class TestSequentialExecutor:
         plan = _plan((_step("a"), _step("b", ("a",)), _step("c")))
         result = await SequentialExecutor(handler).run(plan)
 
-        assert result.status == "partial"
+        assert result.status == PlanStatus.PARTIAL
         assert result.total_steps == 3
         assert result.completed_steps == 1
         assert any("a" in e and "RuntimeError" in e and "worker crashed" in e for e in result.errors)
@@ -175,7 +176,7 @@ class TestSequentialExecutor:
         plan = _plan((_step("a"),))
         result = await SequentialExecutor(handler).run(plan)
 
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
         assert result.total_steps == 1
         assert result.completed_steps == 0
         assert any("RuntimeError" in e and "boom" in e for e in result.errors)
@@ -198,7 +199,7 @@ class TestAsyncExecutor:
 
         plan = _plan((_step("a"), _step("b"), _step("c")))
         result = await AsyncExecutor(handler).run(plan)
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
         assert result.completed_steps == 3
 
     @pytest.mark.asyncio
@@ -223,7 +224,7 @@ class TestAsyncExecutor:
 
         plan = _plan((_step("a"), _step("b"), _step("c")))
         result = await AsyncExecutor(handler).run(plan)
-        assert result.status == "partial"
+        assert result.status == PlanStatus.PARTIAL
         assert result.completed_steps == 2
 
     @pytest.mark.asyncio
@@ -241,7 +242,7 @@ class TestAsyncExecutor:
         assert "a" in executed
         assert "b" not in executed
         assert "c" not in executed
-        assert result.status == "failed"
+        assert result.status == PlanStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_handler_raises_counts_as_failure(self) -> None:
@@ -252,7 +253,7 @@ class TestAsyncExecutor:
 
         plan = _plan((_step("a"), _step("b"), _step("c")))
         result = await AsyncExecutor(handler).run(plan)
-        assert result.status == "partial"
+        assert result.status == PlanStatus.PARTIAL
         assert result.completed_steps == 2
 
     @pytest.mark.asyncio
@@ -261,7 +262,7 @@ class TestAsyncExecutor:
             return _success_result()
 
         result = await AsyncExecutor(handler).run(_plan(()))
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED
 
 
 class TestCreateExecutor:

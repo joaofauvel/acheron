@@ -9,6 +9,7 @@ from acheron.core.models import (
     OutputFile,
     Plan,
     PlanResult,
+    PlanStatus,
     PlanStep,
     StepStatus,
     WorkerCapabilities,
@@ -225,11 +226,11 @@ class TestPlanResult:
     def test_construction(self) -> None:
         result = PlanResult(
             plan_id="plan-1",
-            status="completed",
+            status=PlanStatus.COMPLETED,
             completed_steps=5,
             total_steps=5,
             outputs=(),
             total_cost=0.50,
             total_duration_seconds=120.0,
         )
-        assert result.status == "completed"
+        assert result.status == PlanStatus.COMPLETED

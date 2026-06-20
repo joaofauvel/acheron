@@ -9,7 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
-from acheron.core.models import AudioRequest, EpubRequest, JsonValue, WorkerCapabilities
+from acheron.core.models import AudioRequest, EpubRequest, JsonValue, PlanStatus, WorkerCapabilities
 from acheron.core.planner import compile_plan
 from acheron.shell.cache import StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
@@ -177,7 +177,7 @@ class Orchestrator:
             request=request,
             strategy=strategy,
             plan=plan,
-            status="running",
+            status=PlanStatus.RUNNING,
         )
         await self._job_store.put(tracked)
 
@@ -192,7 +192,7 @@ class Orchestrator:
         logger.info("Executing %s (%s strategy)", tracked.job_id, tracked.strategy.value)
         try:
             if tracked.plan is None:
-                tracked.status = "failed"
+                tracked.status = PlanStatus.FAILED
                 logger.error("No plan for %s", tracked.job_id)
             else:
                 executor = create_executor(
@@ -212,10 +212,10 @@ class Orchestrator:
                 )
         except AcheronError:
             logger.exception("Plan execution failed for %s", tracked.job_id)
-            tracked.status = "failed"
+            tracked.status = PlanStatus.FAILED
         except Exception:
             logger.exception("Unexpected error executing %s", tracked.job_id)
-            tracked.status = "failed"
+            tracked.status = PlanStatus.FAILED
         await self._job_store.put(tracked)
 
     async def get_job(self, job_id: str) -> TrackedJob | None:

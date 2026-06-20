@@ -34,6 +34,16 @@ class StepStatus(Enum):
     FAILED = "failed"
 
 
+class PlanStatus(Enum):
+    """Lifecycle status of a plan (TrackedJob.status) and its final outcome (PlanResult.status)."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
 class ExecutorStrategy(Enum):
     """Plan execution strategy."""
 
@@ -130,7 +140,7 @@ class PlanResult:
     """Outcome of executing a full plan."""
 
     plan_id: str
-    status: str
+    status: PlanStatus
     completed_steps: int
     total_steps: int
     outputs: tuple[OutputFile, ...]
