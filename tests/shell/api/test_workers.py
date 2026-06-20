@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+from httpx import AsyncClient
 
 _WORKER_PAYLOAD: dict[str, Any] = {
     "worker_id": "asr-1",
@@ -80,8 +81,27 @@ class TestRegistrationSecurity:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_register_without_token_env_open(self, client) -> None:  # type: ignore[no-untyped-def]
-        """When ACHERON_REGISTRATION_TOKEN is unset, registration is open."""
+    async def test_register_without_token_env_rejected_by_default(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ACHERON_REGISTRATION_TOKEN is unset, registration is rejected
+        unless ACHERON_OPEN_REGISTRATION=1 is explicitly set."""
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.delenv("ACHERON_OPEN_REGISTRATION", raising=False)
+        response = await client.post("/workers", json=_WORKER_PAYLOAD)
+        assert response.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_register_without_token_env_opt_in_open(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ACHERON_OPEN_REGISTRATION=1 explicitly opens registration."""
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
         response = await client.post("/workers", json=_WORKER_PAYLOAD)
         assert response.status_code == 201
 

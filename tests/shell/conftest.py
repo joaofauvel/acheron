@@ -76,13 +76,18 @@ async def make_app(tmp_path: Path) -> FastAPI:
 
 
 @pytest_asyncio.fixture
-async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
+async def client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[AsyncClient]:
     """Create an async HTTP client for testing the API.
 
     Calls ``orchestrator.start()`` explicitly because httpx's ASGITransport
     does not trigger the FastAPI lifespan, so local workers would otherwise
     not be registered before the first request.
     """
+    monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
     app = await make_app(tmp_path)
     await app.state.orchestrator.start()
     transport = ASGITransport(app=app)
