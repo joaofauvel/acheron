@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-PERF-001 is verified (concurrent health probes at 0818bff). Two open medium findings: registry list_all() is still called per step in the dispatch hot path, and worker transport instances are reconstructed per step with no HTTP connection or gRPC channel reuse.
+PERF-001 is verified (concurrent health probes at 0818bff). PERF-002 and PERF-003 are now verified: step_handler caches `list_all()` per plan_id and reuses `Worker` instances per worker_id, eliminating redundant registry round-trips and gRPC channel churn in the dispatch hot path.
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
@@ -44,14 +44,14 @@ related: [REPRO-002]
 ### PERF-002 — Registry list_all() called per step in dispatch hot path (N+1 round-trips)
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 84-114
@@ -71,14 +71,14 @@ related: []
 ### PERF-003 — Worker transport instances reconstructed per step (no HTTP connection or gRPC channel reuse)
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 111-113
@@ -163,7 +163,7 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
 fixed_in: []
 files:
@@ -172,7 +172,7 @@ files:
   - path: src/acheron/shell/health.py
     lines: 89-112
   - path: src/acheron/shell/step_handler.py
-    lines: 111
+    lines: 123
 related: []
 ```
 

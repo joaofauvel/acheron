@@ -16,6 +16,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
+from acheron.shell.registry import RegisteredWorker
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores.memory import InMemoryWorkerStore
 from acheron.shell.transports.local import LocalWorker
@@ -167,3 +168,97 @@ class TestStepHandler:
         )
         await handler(plan.steps[0], plan)
         assert chosen_worker_id == ["asr-good"]
+
+    @pytest.mark.asyncio
+    async def test_list_all_cached_per_plan(self) -> None:
+        """registry.list_all() is called once when handling multiple steps of the same plan."""
+        call_count = 0
+
+        class CountingStore(InMemoryWorkerStore):
+            async def list_all(self) -> tuple[RegisteredWorker, ...]:
+                nonlocal call_count
+                call_count += 1
+                return await super().list_all()
+
+        reg = CountingStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        local_worker = LocalWorker(
+            worker_type=WorkerType.TTS,
+            handler=_echo_job_result,
+            supported_languages_in=frozenset({"es"}),
+            supported_languages_out=frozenset({"es"}),
+        )
+        handler = create_step_handler(reg, worker_factory=lambda _reg: local_worker)
+        plan = Plan(
+            plan_id="plan-1",
+            job_id="job-1",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.STREAMING,
+            steps=(
+                PlanStep(
+                    step_id="s1",
+                    type=WorkerType.TTS,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={"target_language": "es", "chapter_id": "ch1"},
+                ),
+                PlanStep(
+                    step_id="s2",
+                    type=WorkerType.TTS,
+                    depends_on=("s1",),
+                    status=StepStatus.PENDING,
+                    payload={"target_language": "es", "chapter_id": "ch2"},
+                ),
+            ),
+        )
+        await handler(plan.steps[0], plan)
+        await handler(plan.steps[1], plan)
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_worker_factory_called_once_per_worker_id(self) -> None:
+        """worker_factory is called once per worker_id across multiple steps."""
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        factory_calls: list[str] = []
+        worker = LocalWorker(
+            worker_type=WorkerType.TTS,
+            handler=_echo_job_result,
+            supported_languages_in=frozenset({"es"}),
+            supported_languages_out=frozenset({"es"}),
+        )
+
+        def _factory(registered: object) -> LocalWorker:
+            factory_calls.append(getattr(registered, "worker_id", ""))
+            return worker
+
+        handler = create_step_handler(reg, worker_factory=_factory)
+        plan = Plan(
+            plan_id="plan-1",
+            job_id="job-1",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.STREAMING,
+            steps=(
+                PlanStep(
+                    step_id="s1",
+                    type=WorkerType.TTS,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={"target_language": "es", "chapter_id": "ch1"},
+                ),
+                PlanStep(
+                    step_id="s2",
+                    type=WorkerType.TTS,
+                    depends_on=("s1",),
+                    status=StepStatus.PENDING,
+                    payload={"target_language": "es", "chapter_id": "ch2"},
+                ),
+            ),
+        )
+        await handler(plan.steps[0], plan)
+        await handler(plan.steps[1], plan)
+        assert factory_calls == ["tts-1"]

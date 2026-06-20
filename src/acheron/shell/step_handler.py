@@ -78,14 +78,26 @@ def create_step_handler(
 
     ``local_handlers`` maps worker_id to its in-process handler. Required when
     the registry contains local workers (transport == "local").
+
+    Caches ``registry.list_all()`` per plan (plan_id) and reuses ``Worker``
+    instances per worker_id across steps to avoid redundant registry round-trips
+    and gRPC channel / HTTP connection churn.
     """
     factory = worker_factory or (lambda reg: default_worker_factory(reg, local_handlers))
+    _cached_workers: tuple[RegisteredWorker, ...] | None = None
+    _cached_plan_id: str | None = None
+    _worker_instances: dict[str, Worker] = {}
 
     async def handler(step: PlanStep, plan: Plan) -> JobResult:
+        nonlocal _cached_workers, _cached_plan_id
         src = plan.source_language
         dst = plan.target_language
 
-        workers = await registry.list_all()
+        if _cached_workers is None or plan.plan_id != _cached_plan_id:
+            _cached_workers = await registry.list_all()
+            _cached_plan_id = plan.plan_id
+        workers = _cached_workers
+
         selected: RegisteredWorker | None = None
         for w in workers:
             caps = w.capabilities
@@ -109,7 +121,10 @@ def create_step_handler(
         )
 
         logger.info("Dispatching %s to %s", step.step_id, selected.worker_id)
-        worker_instance = factory(selected)
+        worker_instance = _worker_instances.get(selected.worker_id)
+        if worker_instance is None:
+            worker_instance = factory(selected)
+            _worker_instances[selected.worker_id] = worker_instance
         return await worker_instance.execute(job)
 
     return handler
