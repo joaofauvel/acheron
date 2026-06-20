@@ -120,7 +120,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 184-186
   - path: src/acheron/shell/orchestrator.py
-    lines: 190-219
+    lines: 190-239
 related: [OBS-004]
 ```
 
@@ -170,7 +170,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 161-173
+    lines: 161-168
   - path: src/acheron/shell/health.py
     lines: 89-112
   - path: src/acheron/shell/step_handler.py

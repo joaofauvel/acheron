@@ -191,9 +191,9 @@ files:
   - path: src/acheron/shell/cache.py
     lines: 108
   - path: src/acheron/shell/orchestrator.py
-    lines: 116
+    lines: 115-116
   - path: src/acheron/shell/orchestrator.py
-    lines: 216
+    lines: 226-238
   - path: src/acheron/shell/executors/streaming.py
     lines: 225
   - path: src/acheron/shell/executors/streaming.py
