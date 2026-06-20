@@ -219,7 +219,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 243-281
   - path: src/acheron/shell/executors/sequential.py
-    lines: 49
+    lines: 56
   - path: src/acheron/shell/executors/async_executor.py
     lines: 64
   - path: src/acheron/shell/executors/batch_async.py

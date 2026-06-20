@@ -35,7 +35,14 @@ class SequentialExecutor(Executor):
                 errors.append(f"{step.step_id}: skipped (dependency failed)")
                 continue
 
-            result = await self._handler(step, plan)
+            try:
+                result = await self._handler(step, plan)
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                failed_steps.add(step.step_id)
+                errors.append(f"{step.step_id}: {type(exc).__name__}: {exc}")
+                continue
+
             if result.status == JobStatus.SUCCESS:
                 completed += 1
                 outputs.extend(result.outputs)

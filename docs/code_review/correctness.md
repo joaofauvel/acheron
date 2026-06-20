@@ -101,14 +101,14 @@ related: [MAINT-001]
 ### CORR-004 — SequentialExecutor lets handler exceptions propagate — no PlanResult returned, API shows total_steps=0
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/sequential.py
     lines: 38-46

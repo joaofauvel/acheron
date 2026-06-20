@@ -146,13 +146,39 @@ class TestSequentialExecutor:
         assert result.completed_steps == 1
 
     @pytest.mark.asyncio
-    async def test_handler_raises_exception(self) -> None:
-        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
-            raise RuntimeError("worker crashed")
+    async def test_handler_raises_exception_returns_failed_plan(self) -> None:
+        """A handler that raises must produce a PlanResult, not propagate the
+        exception: the failing step in errors, dependents skipped, unrelated
+        steps still run."""
 
-        plan = _plan((_step("a"), _step("b", ("a",))))
-        with pytest.raises(RuntimeError, match="worker crashed"):
-            await SequentialExecutor(handler).run(plan)
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            if step.step_id == "a":
+                msg = "worker crashed"
+                raise RuntimeError(msg)
+            return _success_result()
+
+        plan = _plan((_step("a"), _step("b", ("a",)), _step("c")))
+        result = await SequentialExecutor(handler).run(plan)
+
+        assert result.status == "partial"
+        assert result.total_steps == 3
+        assert result.completed_steps == 1
+        assert any("a" in e and "RuntimeError" in e and "worker crashed" in e for e in result.errors)
+        assert any("skipped" in e for e in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_handler_raises_on_only_step_marks_failed(self) -> None:
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        plan = _plan((_step("a"),))
+        result = await SequentialExecutor(handler).run(plan)
+
+        assert result.status == "failed"
+        assert result.total_steps == 1
+        assert result.completed_steps == 0
+        assert any("RuntimeError" in e and "boom" in e for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_cost_accumulated(self) -> None:
