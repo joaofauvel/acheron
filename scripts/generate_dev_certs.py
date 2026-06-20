@@ -140,8 +140,8 @@ def _build_server_cert(
 def generate(out_dir: Path) -> None:
     """Generate the Acheron CA and per-service certs in `out_dir`."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    # World-executable dir so workers can `ls` and `stat` files; permissions
-    # on the files themselves are set in _write_pem_{cert,key}.
+    # World-executable dir so workers can `ls` and `stat` files; file-level
+    # permissions (0600 for keys, 0644 for certs) are set at write time.
     out_dir.chmod(0o755)
     ca_cert, ca_key = _build_ca(out_dir)
     for service in SERVICES:

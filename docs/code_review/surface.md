@@ -83,19 +83,19 @@ related: []
 
 **Grade:** A
 
-DOC-002 is verified (BatchAsync removed from README architecture tree at 51a3ffa). DOC-001 (low) persists: two stale-prone comments remain — one referencing a past refactor ("now async def") and one coupling to internal function names.
+All stories verified. No open findings.
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 88-89

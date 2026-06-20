@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Three low findings are now verified: ARCH-007 (stage parameter bloat resolved — _stage reduced from 7 to 5 params). Two remain: a module-private _BUILT_IN_LOCAL_HANDLERS symbol imported cross-module, and Orchestrator.__init__ still derives the default StepCache from PlanCache.data_dir. Four verified stories (ARCH-001 through ARCH-004) are immutable. The core->shell import-linter contract holds.
+Two low findings are now verified: ARCH-005 (private import renamed) and ARCH-006 (data-dir probe moved to start()). One remains: Orchestrator.__init__ still derives the default StepCache from PlanCache.data_dir. Four verified stories (ARCH-001 through ARCH-004) are immutable. The core->shell import-linter contract holds.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -201,14 +201,14 @@ related: [SEC-003]
 ### ARCH-005 — _BUILT_IN_LOCAL_HANDLERS is a module-private name imported cross-module from local_handlers.py
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/local_handlers.py
     lines: 89-93
@@ -228,14 +228,14 @@ related: []
 ### ARCH-006 — Orchestrator.__init__ still derives StepCache from PlanCache.data_dir as the default
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 40-52

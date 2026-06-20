@@ -101,6 +101,8 @@ related: []
 
 **Grade:** A
 
+OBS-004 is now verified (execution failures persist a minimal PlanResult with error detail in tracked.result).
+
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
 ```yaml
@@ -187,14 +189,14 @@ related: []
 ### OBS-004 — Top-level execution failures set status but persist no error detail
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 213-219

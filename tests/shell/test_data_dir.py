@@ -27,26 +27,33 @@ def test_create_app_reads_acheron_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_
     assert app.state.orchestrator._cache.data_dir == tmp_path  # noqa: SLF001
 
 
-def test_orchestrator_creates_data_dir_if_missing(tmp_path: Path) -> None:
-    """Orchestrator creates the data dir if it doesn't exist."""
+@pytest.mark.asyncio
+async def test_orchestrator_creates_data_dir_if_missing(tmp_path: Path) -> None:
+    """Orchestrator.start() creates the data dir if it doesn't exist."""
     target = tmp_path / "new" / "subdir"
     reg = InMemoryWorkerStore()
     cache = PlanCache(data_dir=target)
-    Orchestrator(registry=reg, cache=cache)
+    orch = Orchestrator(registry=reg, cache=cache)
+    try:
+        await orch.start()
+    finally:
+        await orch.close()
     assert target.exists()
     assert target.is_dir()
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can write to read-only dirs")
-def test_orchestrator_raises_on_unwritable_data_dir(tmp_path: Path) -> None:
-    """Orchestrator raises AcheronError if data dir is not writable."""
+@pytest.mark.asyncio
+async def test_orchestrator_raises_on_unwritable_data_dir(tmp_path: Path) -> None:
+    """Orchestrator.start() raises AcheronError if data dir is not writable."""
     target = tmp_path / "locked"
     target.mkdir()
     target.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)  # read-only
     reg = InMemoryWorkerStore()
     cache = PlanCache(data_dir=target)
+    orch = Orchestrator(registry=reg, cache=cache)
     try:
         with pytest.raises(AcheronError, match="not writable"):
-            Orchestrator(registry=reg, cache=cache)
+            await orch.start()
     finally:
         target.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)  # restore for cleanup

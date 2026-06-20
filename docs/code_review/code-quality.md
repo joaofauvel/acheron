@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Three open findings: redis.py still hand-rolls JSON ser/deser for domain models duplicating the pydantic path in cache.py (medium, drift risk); the module-private `_BUILT_IN_LOCAL_HANDLERS` symbol is imported across the orchestrator boundary (low); MAINT-004 is now verified (dead _stage return value removed; _stage now returns None with cost recorded via callable side-channel).
+MAINT-003 and MAINT-004 are now verified (_BUILT_IN_LOCAL_HANDLERS renamed public; dead _stage return value removed). MAINT-002 remains open.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -82,14 +82,14 @@ related: [DATA-002]
 ### MAINT-003 — _BUILT_IN_LOCAL_HANDLERS private symbol imported across module boundary
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 20

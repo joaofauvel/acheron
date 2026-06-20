@@ -86,7 +86,7 @@ async def package_handler(job: Job) -> JobResult:
     )
 
 
-_BUILT_IN_LOCAL_HANDLERS: dict[WorkerType, LocalJobHandler] = {
+BUILT_IN_LOCAL_HANDLERS: dict[WorkerType, LocalJobHandler] = {
     WorkerType.EXTRACTION: extract_handler,
     WorkerType.CHUNKING: chunk_handler,
     WorkerType.PACKAGING: package_handler,

@@ -9,7 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
-from acheron.core.models import AudioRequest, EpubRequest, JsonValue, PlanStatus, WorkerCapabilities
+from acheron.core.models import AudioRequest, EpubRequest, JsonValue, PlanResult, PlanStatus, WorkerCapabilities
 from acheron.core.planner import compile_plan
 from acheron.shell.cache import StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
@@ -17,7 +17,7 @@ from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.local_handlers import (
-    _BUILT_IN_LOCAL_HANDLERS,
+    BUILT_IN_LOCAL_HANDLERS,
     LocalJobHandler,
     all_languages_caps,
 )
@@ -49,7 +49,6 @@ class Orchestrator:
         self._registry = registry
         self._cache = cache
         self._step_cache = step_cache if step_cache is not None else StepCache(cache.data_dir)
-        self._verify_data_dir_writable()
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
         self._job_store = job_store if job_store is not None else create_job_store()
@@ -59,8 +58,8 @@ class Orchestrator:
         self._health_monitor = HealthMonitor(registry)
 
     def _verify_data_dir_writable(self) -> None:
-        """Ensure the data dir exists and is writable. Raises AcheronError otherwise."""
-        data_dir = self._cache.data_dir
+        """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
+        data_dir = self._step_cache.data_dir
         probe = data_dir / ".acheron_write_test"
         try:
             data_dir.mkdir(parents=True, exist_ok=True)
@@ -86,9 +85,9 @@ class Orchestrator:
         JSON-serializable and would break non-memory backends like Redis.
 
         Idempotent: safe to call multiple times. Called from ``start()`` so the
-        store methods (now ``async def``) can be awaited.
+        store async methods can be awaited.
         """
-        for worker_type, handler in _BUILT_IN_LOCAL_HANDLERS.items():
+        for worker_type, handler in BUILT_IN_LOCAL_HANDLERS.items():
             existing = await self._registry.find_by_type(worker_type)
             if existing:
                 continue
@@ -124,6 +123,7 @@ class Orchestrator:
         """
         if self._started:
             return
+        self._verify_data_dir_writable()
         await self._registry.connect()
         await self._job_store.connect()
         self._started = True
@@ -210,12 +210,32 @@ class Orchestrator:
                     result.completed_steps,
                     result.total_steps,
                 )
-        except AcheronError:
+        except AcheronError as exc:
             logger.exception("Plan execution failed for %s", tracked.job_id)
             tracked.status = PlanStatus.FAILED
-        except Exception:
+            tracked.result = PlanResult(
+                plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
+                status=PlanStatus.FAILED,
+                completed_steps=0,
+                total_steps=len(tracked.plan.steps) if tracked.plan else 0,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=0.0,
+                errors=(str(exc),),
+            )
+        except Exception as exc:
             logger.exception("Unexpected error executing %s", tracked.job_id)
             tracked.status = PlanStatus.FAILED
+            tracked.result = PlanResult(
+                plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
+                status=PlanStatus.FAILED,
+                completed_steps=0,
+                total_steps=len(tracked.plan.steps) if tracked.plan else 0,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=0.0,
+                errors=(str(exc),),
+            )
         await self._job_store.put(tracked)
 
     async def get_job(self, job_id: str) -> TrackedJob | None:
