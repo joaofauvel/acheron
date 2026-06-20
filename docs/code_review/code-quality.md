@@ -158,7 +158,7 @@ files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 220-223
   - path: src/acheron/shell/transports/grpc.py
-    lines: 60-75
+    lines: 64-72
   - path: src/acheron/shell/transports/http.py
     lines: 39-52
 related: []
@@ -230,7 +230,7 @@ files:
   - path: src/acheron/api_client.py
     lines: 41-110
   - path: src/acheron/cli.py
-    lines: 169-254
+    lines: 169-255
 related: [ARCH-004]
 ```
 

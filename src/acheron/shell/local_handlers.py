@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from acheron.core.models import (
+    SUPPORTED_LANGUAGES,
     Job,
     JobMetrics,
     JobResult,
@@ -21,8 +22,8 @@ def all_languages_caps(worker_type: WorkerType) -> WorkerCapabilities:
     """Capabilities advertising every built-in language for a built-in worker."""
     return WorkerCapabilities(
         worker_type=worker_type,
-        supported_languages_in=frozenset({"en", "es", "fr", "de"}),
-        supported_languages_out=frozenset({"en", "es", "fr", "de"}),
+        supported_languages_in=SUPPORTED_LANGUAGES,
+        supported_languages_out=SUPPORTED_LANGUAGES,
         supported_formats_in=frozenset(),
         supported_formats_out=frozenset(),
         max_payload_bytes=None,

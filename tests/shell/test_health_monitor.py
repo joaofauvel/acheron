@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
@@ -17,7 +18,21 @@ from acheron.shell.health import HealthMonitor, _default_health_check
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
+
+
+async def _poll_for(
+    condition: Callable[[], Awaitable[bool] | bool], *, deadline: float = 3.0, interval: float = 0.01
+) -> None:
+    """Poll until ``condition()`` returns ``True`` or the deadline expires."""
+    end = asyncio.get_running_loop().time() + deadline
+    while asyncio.get_running_loop().time() < end:
+        result = condition()
+        if inspect.iscoroutine(result):
+            result = await result
+        if result:
+            return
+        await asyncio.sleep(interval)
 
 
 def _tts_caps() -> WorkerCapabilities:
@@ -61,7 +76,7 @@ class TestHealthMonitor:
         health_check = AsyncMock(return_value=True)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
-        await asyncio.sleep(0.05)
+        await _poll_for(lambda: health_check.called)
         await monitor.stop()
         health_check.assert_called()
         w = await reg.get("w1")
@@ -75,7 +90,12 @@ class TestHealthMonitor:
         health_check = AsyncMock(return_value=False)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
-        await asyncio.sleep(0.05)
+
+        async def _condition() -> bool:
+            w = await reg.get("w1")
+            return w is None or w.consecutive_failures > 0
+
+        await _poll_for(_condition)
         await monitor.stop()
         w = await reg.get("w1")
         assert w is None or w.consecutive_failures > 0
@@ -87,7 +107,11 @@ class TestHealthMonitor:
         health_check = AsyncMock(return_value=False)
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
-        await asyncio.sleep(0.15)
+
+        async def _condition() -> bool:
+            return await reg.get("w1") is None
+
+        await _poll_for(_condition)
         await monitor.stop()
         assert await reg.get("w1") is None
 
@@ -131,7 +155,12 @@ class TestHealthMonitorTransportAware:
         await reg.register("tts-grpc", grpc_health_server, "grpc", _tts_caps())
         monitor = HealthMonitor(reg, interval=0.01)
         await monitor.start()
-        await asyncio.sleep(0.05)
+
+        async def _condition() -> bool:
+            w = await reg.get("tts-grpc")
+            return w is not None and w.consecutive_failures == 0
+
+        await _poll_for(_condition)
         await monitor.stop()
         w = await reg.get("tts-grpc")
         assert w is not None

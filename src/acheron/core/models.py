@@ -17,6 +17,9 @@ class WorkerType(Enum):
     PACKAGING = "packaging"
 
 
+SUPPORTED_LANGUAGES = frozenset({"en", "es", "fr", "de"})
+
+
 class JobStatus(Enum):
     """Outcome status of a completed job."""
 

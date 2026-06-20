@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request  # noqa: TC002
 
+_LOGGER = logging.getLogger(__name__)
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
@@ -31,11 +33,17 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPError, OSError:
+            _LOGGER.warning("Dashboard cannot reach orchestrator at %s%s", orchestrator_url, path)
             return {}
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
-        user = request.headers.get("X-Forwarded-User", "")
+        # Only trust X-Forwarded-User when behind a reverse proxy that
+        # authenticates and strips the header. Unauthenticated clients can
+        # set this header to any value; no access decision depends on it.
+        user = ""
+        if os.environ.get("ACHERON_TRUST_REVERSE_PROXY") == "1":
+            user = request.headers.get("X-Forwarded-User", "")
         return _TEMPLATES.TemplateResponse(request, "index.html", context={"user": user})
 
     @app.get("/partials/jobs", response_class=HTMLResponse)

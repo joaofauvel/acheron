@@ -69,14 +69,14 @@ related: []
 ### TEST-003 — Tautological assertion in test_get_capabilities_no_translation_worker
 
 ```yaml
-status: open
+  status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: tests/shell/test_orchestrator.py
     lines: 224-227
@@ -159,14 +159,14 @@ related: []
 ### REPRO-002 — Health monitor tests rely on timing-based asyncio.sleep windows flake-prone under xdist load
 
 ```yaml
-status: open
+  status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: tests/shell/test_health_monitor.py
     lines: 57-92

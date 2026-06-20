@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from acheron.api_client import AcheronClient
+from acheron.shell.tls import resolve_ca_path
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -43,7 +44,7 @@ def _resolve_trust_store() -> bool | str:
     honored by httpx/stdlib ssl, then the dev CA at ``./certs/acheron-ca.crt``
     (host-side dev convenience), then the system trust store (``True``).
     """
-    explicit = os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE")
+    explicit = resolve_ca_path()
     if explicit:
         return explicit
     dev_ca = Path.cwd() / "certs" / "acheron-ca.crt"

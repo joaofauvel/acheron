@@ -137,7 +137,7 @@ related: [TYPE-001]
 
 **Grade:** A
 
-CFG-001 is verified (unified store backend selection at f5ce538). CFG-002 (duplicated-knowledge low) persists: the TLS CA env-read logic and hardcoded language set remain duplicated across modules, only the file locations shifted.
+CFG-001 is verified (unified store backend selection at f5ce538). CFG-002 is now verified (extracted SUPPORTED_LANGUAGES constant and resolve_ca_path helper, eliminating duplicated knowledge).
 
 ### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
 
@@ -170,14 +170,14 @@ related: [ARCH-002]
 ### CFG-002 — Duplicated knowledge: TLS CA env-read logic and hardcoded language set repeated across modules
 
 ```yaml
-status: open
-severity: low
-effort: S
-reviewed_at: 23c29e1
-last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
-fixed_in: []
+  status: verified
+  severity: low
+  effort: S
+  reviewed_at: 23c29e1
+  last_verified_at:
+    commit: pending
+    date: 2026-06-20
+  fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/tls.py
     lines: 74

@@ -135,14 +135,14 @@ related: [OBS-004]
 ### OBS-002 — Dashboard silently swallows orchestrator connection errors
 
 ```yaml
-status: open
+  status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: dashboard/app.py
     lines: 27-34
@@ -215,7 +215,7 @@ related: [CORR-004, OBS-001]
 
 **Grade:** A
 
-SEC-001 through SEC-003 are now verified. SEC-004 (dashboard X-Forwarded-User spoofing, low) and SEC-005 (unauthenticated routes, low) remain open. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable (server-generated UUIDs).
+SEC-001 through SEC-003 are now verified. SEC-004 is now verified (X-Forwarded-User gated behind ACHERON_TRUST_REVERSE_PROXY=1). SEC-005 (unauthenticated routes, low) remains open. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable (server-generated UUIDs).
 
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
@@ -300,14 +300,14 @@ related: [CFG-002]
 ### SEC-004 — Dashboard trusts spoofable X-Forwarded-User header as identity
 
 ```yaml
-status: open
+  status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: dashboard/app.py
     lines: 36-39

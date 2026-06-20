@@ -12,6 +12,7 @@ from grpc.health.v1 import health_pb2, health_pb2_grpc
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.interfaces import Worker
 from acheron.core.models import (
+    SUPPORTED_LANGUAGES,
     Job,
     JobMetrics,
     JobResult,
@@ -36,8 +37,8 @@ class GrpcWorker(Worker):
     async def capabilities(self) -> WorkerCapabilities:  # noqa: D102
         return WorkerCapabilities(
             worker_type=WorkerType.TTS,
-            supported_languages_in=frozenset({"en", "es", "fr", "de"}),
-            supported_languages_out=frozenset({"en", "es", "fr", "de"}),
+            supported_languages_in=SUPPORTED_LANGUAGES,
+            supported_languages_out=SUPPORTED_LANGUAGES,
             supported_formats_in=frozenset({"text"}),
             supported_formats_out=frozenset({"wav", "pcm"}),
             max_payload_bytes=None,

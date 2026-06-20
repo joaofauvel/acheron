@@ -224,7 +224,7 @@ class TestOrchestrator:
         caps = await orch.get_capabilities()
         pairs = {(p.src, p.dst) for p in caps}
         assert ("en", "es") not in pairs
-        assert ("en", "en") not in pairs or ("en", "en") in pairs
+        assert ("en", "en") not in pairs
 
     @pytest.mark.asyncio
     async def test_get_capabilities_same_language_without_translation(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

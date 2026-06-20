@@ -63,15 +63,26 @@ def grpc_server_credentials() -> grpc.ServerCredentials | None:
     return grpc.ssl_server_credentials([(key_pem, cert_pem)])
 
 
+def resolve_ca_path() -> str | None:
+    """Resolve the CA certificate path from environment variables.
+
+    Reads ``ACHERON_TLS_CA_FILE`` first, then falls back to the standard
+    ``SSL_CERT_FILE`` (honored by httpx and stdlib ``ssl``). Returns None
+    when neither is set — callers decide whether to fall back to insecure
+    or system trust.
+    """
+    return os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE") or None
+
+
 def grpc_channel_credentials() -> grpc.ChannelCredentials | None:
     """Return gRPC channel credentials to verify a CA, or None.
 
-    Reads `ACHERON_TLS_CA_FILE` first, then falls back to the standard
-    `SSL_CERT_FILE` (honored by httpx and stdlib `ssl`) so the orchestrator
+    Reads ``ACHERON_TLS_CA_FILE`` first, then falls back to the standard
+    ``SSL_CERT_FILE`` (honored by httpx and stdlib ``ssl``) so the orchestrator
     can use a single trust-store env var. If neither is set, returns None
     and callers should use an insecure channel.
     """
-    ca = os.environ.get("ACHERON_TLS_CA_FILE") or os.environ.get("SSL_CERT_FILE")
+    ca = resolve_ca_path()
     if ca is None:
         return None
     ca_pem = Path(ca).read_bytes()
