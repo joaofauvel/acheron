@@ -25,7 +25,7 @@ def chunk_text(text: str, chapter_id: str, max_length: int = 250) -> tuple[Chunk
 
     try:
         sentences = nltk.sent_tokenize(normalized)
-    except Exception as exc:
+    except (LookupError, OSError) as exc:
         msg = f"NLTK sentence tokenization failed: {exc}"
         raise ChunkingError(msg) from exc
 

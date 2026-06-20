@@ -60,14 +60,14 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 30-270
   - path: src/acheron/shell/cache.py
-    lines: 44-107
+    lines: 39-110
 related: [DATA-002]
 ```
 
@@ -137,7 +137,7 @@ related: [CORR-008]
 
 **Grade:** A
 
-EXC-001 (medium): `tenacity` remains an unused production dependency, and `WorkerTimeoutError`/`PlanValidationError` are still never raised — while transient network calls have no retry. EXC-002 (low): two `except Exception` sites could name narrower types (chunking.py:28 catches NLTK failures broadly; cache.py:60,108 catch pydantic validation broadly), though all boundary catches wrap and log rather than silently swallow.
+EXC-001 (medium): `tenacity` remains an unused production dependency, and `WorkerTimeoutError`/`PlanValidationError` are still never raised — while transient network calls have no retry. EXC-002 is now verified (narrowed `except Exception` to specific types in chunking.py and cache.py).
 
 ### EXC-001 — tenacity dependency is unused; WorkerTimeoutError/PlanValidationError are never raised; transient network calls have no retry
 
@@ -175,15 +175,15 @@ related: []
 ### EXC-002 — Broad `except Exception` at boundary sites is mostly well-applied but two could name narrower types
 
 ```yaml
-status: open
-severity: low
-effort: S
-reviewed_at: 23c29e1
-last_verified_at:
-  commit: pending
-  date: 2026-06-20
-fixed_in: []
-files:
+  status: verified
+  severity: low
+  effort: S
+  reviewed_at: 23c29e1
+  last_verified_at:
+    commit: pending
+    date: 2026-06-20
+  fixed_in: ["pending"]
+  files:
   - path: src/acheron/core/chunking.py
     lines: 28
   - path: src/acheron/shell/cache.py

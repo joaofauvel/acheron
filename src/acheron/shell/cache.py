@@ -7,7 +7,7 @@ import hashlib
 from pathlib import Path
 
 import aiofiles
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from acheron.core.errors import CacheCorruptedError, CacheMissError
 from acheron.core.models import OutputFile, Plan
@@ -57,7 +57,7 @@ class PlanCache:
             raise CacheMissError(msg)
         try:
             return _plan_adapter.validate_json(plan_file.read_text())
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, ValidationError) as exc:
             msg = f"Corrupted plan file: {plan_id}"
             raise CacheCorruptedError(msg) from exc
 
@@ -105,7 +105,7 @@ class StepCache:
             raise CacheCorruptedError(msg) from exc
         try:
             return _output_adapter.validate_json(blob)
-        except Exception as exc:
+        except ValidationError as exc:
             msg = f"Corrupted manifest: {job_id}/{step_id}"
             raise CacheCorruptedError(msg) from exc
 
