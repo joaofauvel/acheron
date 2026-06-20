@@ -217,14 +217,15 @@ Three medium findings: dev cert private keys are written world-readable (mode 06
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: scripts/generate_dev_certs.py
     lines: 38-49

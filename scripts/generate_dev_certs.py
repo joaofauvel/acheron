@@ -43,10 +43,7 @@ def _write_pem_key(path: Path, key: rsa.RSAPrivateKey) -> None:
             encryption_algorithm=serialization.NoEncryption(),
         )
     )
-    # World-readable: workers in docker-compose run as root today, but if a
-    # future non-root user is added (e.g. for `docker run --user 1000`),
-    # mode 0644 lets them read the cert regardless of who generated it.
-    path.chmod(0o644)
+    path.chmod(0o600)
 
 
 def _write_pem_cert(path: Path, cert: x509.Certificate) -> None:

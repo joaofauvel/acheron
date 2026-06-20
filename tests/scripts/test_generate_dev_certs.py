@@ -70,6 +70,24 @@ def test_ca_is_self_signed_and_loadable(tmp_path: Path) -> None:
     assert ca.not_valid_after_utc > datetime.datetime.now(datetime.UTC)
 
 
+def test_private_keys_are_owner_only(tmp_path: Path) -> None:
+    """Private keys must be 0600; the CA key in particular must not be world-readable."""
+    _run(tmp_path)
+    key_files = [tmp_path / "acheron-ca.key", *(tmp_path / f"{svc}.key" for svc in SERVICES)]
+    for kf in key_files:
+        mode = kf.stat().st_mode & 0o777
+        assert mode == 0o600, f"{kf.name} has mode {oct(mode)}, expected 0o600"
+
+
+def test_certs_are_world_readable(tmp_path: Path) -> None:
+    """Certificates are public and stay 0644."""
+    _run(tmp_path)
+    cert_files = [tmp_path / "acheron-ca.crt", *(tmp_path / f"{svc}.crt" for svc in SERVICES)]
+    for cf in cert_files:
+        mode = cf.stat().st_mode & 0o777
+        assert mode == 0o644, f"{cf.name} has mode {oct(mode)}, expected 0o644"
+
+
 def test_https_handshake_succeeds(tmp_path: Path) -> None:
     """End-to-end: a server using one of the certs completes a TLS handshake
     against a client that trusts the Acheron CA.
