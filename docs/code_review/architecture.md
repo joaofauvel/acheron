@@ -142,14 +142,15 @@ One medium finding: `ACHERON_STORE_BACKEND` / `REDIS_URL` selection logic is dup
 ### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: src/acheron/shell/stores/__init__.py
     lines: 39-53
