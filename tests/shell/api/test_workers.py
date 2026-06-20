@@ -1,9 +1,11 @@
 """Tests for worker API routes."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from httpx import AsyncClient
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 _WORKER_PAYLOAD: dict[str, Any] = {
     "worker_id": "asr-1",
