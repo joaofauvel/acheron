@@ -76,14 +76,14 @@ related: [CFG-001]
 ### ARCH-003 — Orchestrator accretes capability aggregation, worker registration, job lifecycle, and data-dir verification in one 345-line class
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 102-345

@@ -217,7 +217,7 @@ files:
   - path: src/acheron/shell/job_store.py
     lines: 21
   - path: src/acheron/shell/orchestrator.py
-    lines: 243-281
+    lines: 143-219
   - path: src/acheron/shell/executors/sequential.py
     lines: 56
   - path: src/acheron/shell/executors/async_executor.py

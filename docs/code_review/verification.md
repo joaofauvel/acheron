@@ -28,7 +28,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/local_handlers.py
-    lines: 12-64
+    lines: 20-31, 34-86, 89-93
 related: []
 ```
 

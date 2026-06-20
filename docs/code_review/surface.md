@@ -23,7 +23,7 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -58,7 +58,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
@@ -91,12 +91,12 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 23c29e1
+  commit: pending
   date: 2026-06-19
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 151-152
+    lines: 88-89
   - path: scripts/generate_dev_certs.py
     lines: 46-48
   - path: scripts/generate_dev_certs.py

@@ -4,9 +4,31 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFile
+from acheron.core.models import (
+    Job,
+    JobMetrics,
+    JobResult,
+    JobStatus,
+    OutputFile,
+    WorkerCapabilities,
+    WorkerType,
+)
 
 type LocalJobHandler = Callable[[Job], Awaitable[JobResult]]
+
+
+def all_languages_caps(worker_type: WorkerType) -> WorkerCapabilities:
+    """Capabilities advertising every built-in language for a built-in worker."""
+    return WorkerCapabilities(
+        worker_type=worker_type,
+        supported_languages_in=frozenset({"en", "es", "fr", "de"}),
+        supported_languages_out=frozenset({"en", "es", "fr", "de"}),
+        supported_formats_in=frozenset(),
+        supported_formats_out=frozenset(),
+        max_payload_bytes=None,
+        batch_capable=False,
+        model_source=None,
+    )
 
 
 async def extract_handler(job: Job) -> JobResult:
@@ -62,3 +84,10 @@ async def package_handler(job: Job) -> JobResult:
         ),
         metrics=JobMetrics(duration_seconds=0.0),
     )
+
+
+_BUILT_IN_LOCAL_HANDLERS: dict[WorkerType, LocalJobHandler] = {
+    WorkerType.EXTRACTION: extract_handler,
+    WorkerType.CHUNKING: chunk_handler,
+    WorkerType.PACKAGING: package_handler,
+}
