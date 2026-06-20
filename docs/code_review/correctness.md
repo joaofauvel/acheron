@@ -213,14 +213,15 @@ No numerical correctness findings. Chunking uses character-count arithmetic with
 ### CORR-008 — StreamingExecutor loses cost accounting when handler returns non-SUCCESS status
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 211-222

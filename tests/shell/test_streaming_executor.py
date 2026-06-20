@@ -220,6 +220,38 @@ class TestNonSuccessResult:
         assert result.status == "failed"
         assert any("partial" in e.lower() for e in result.errors)
 
+    @pytest.mark.asyncio
+    async def test_failed_status_preserves_cost_estimate(
+        self,
+        tmp_path: Path,
+        step_cache: StepCache,
+    ) -> None:
+        """A handler that returns FAILED with a non-zero cost_estimate must
+        preserve that cost in the final PlanResult, matching AsyncExecutor."""
+        plan = _linear_plan()
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            if step.step_id == "extract":
+                return JobResult(
+                    job_id=plan.job_id,
+                    status=JobStatus.FAILED,
+                    outputs=(),
+                    metrics=JobMetrics(duration_seconds=0.0, cost_estimate=0.42),
+                    error="worker reported failure",
+                )
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
+                metrics=JobMetrics(duration_seconds=0.0, cost_estimate=0.1),
+            )
+
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+
+        assert result.status == "failed"
+        assert result.total_cost == 0.42  # failed step's cost preserved
+
 
 class TestUnexpectedException:
     @pytest.mark.asyncio

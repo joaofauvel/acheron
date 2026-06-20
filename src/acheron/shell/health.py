@@ -101,10 +101,10 @@ class HealthMonitor:
             return_exceptions=True,
         )
         for worker, healthy in zip(workers, results, strict=True):
+            ok = healthy if not isinstance(healthy, BaseException) else False
             if isinstance(healthy, BaseException):
                 logger.warning("Health check for %s raised: %s", worker.worker_id, healthy)
-                healthy = False
-            if healthy:
+            if ok:
                 await self._registry.record_health_success(worker.worker_id)
             else:
                 removed = await self._registry.record_health_failure(worker.worker_id)
