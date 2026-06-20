@@ -65,7 +65,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 30-258
+    lines: 1-130
   - path: src/acheron/shell/cache.py
     lines: 15-62
   - path: src/acheron/shell/cache.py
@@ -110,7 +110,7 @@ files:
   - path: src/acheron/shell/transports/http.py
     lines: 44-59
   - path: src/acheron/shell/stores/redis.py
-    lines: 270-292
+    lines: 1-391
 related: []
 ```
 
@@ -141,9 +141,9 @@ files:
   - path: src/acheron/shell/cache.py
     lines: 106-110
   - path: src/acheron/shell/orchestrator.py
-    lines: 176-180
+    lines: 179-279
   - path: src/acheron/shell/orchestrator.py
-    lines: 276-281
+    lines: 179-279
   - path: src/acheron/shell/executors/streaming.py
     lines: 207-209
 related: []
@@ -217,7 +217,7 @@ files:
   - path: src/acheron/shell/job_store.py
     lines: 21
   - path: src/acheron/shell/orchestrator.py
-    lines: 143-219
+    lines: 243-281
   - path: src/acheron/shell/executors/sequential.py
     lines: 56
   - path: src/acheron/shell/executors/async_executor.py

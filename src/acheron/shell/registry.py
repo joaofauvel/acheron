@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from acheron.core.models import WorkerCapabilities
+    from acheron.core.models import JsonValue, WorkerCapabilities
 
 
 @dataclass
@@ -24,4 +24,4 @@ class RegisteredWorker:
     capabilities: WorkerCapabilities
     consecutive_failures: int = 0
     last_health_check: float | None = None
-    metadata: dict[str, object] = field(default_factory=dict)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)

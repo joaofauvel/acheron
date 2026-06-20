@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
-    from acheron.core.models import WorkerCapabilities, WorkerType
+    from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
 
@@ -25,7 +25,7 @@ class InMemoryWorkerStore(WorkerStore):
         endpoint: str,
         transport: str,
         capabilities: WorkerCapabilities,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, JsonValue] | None = None,
     ) -> None:
         """Register a new worker or re-register an existing one."""
         from acheron.shell.registry import RegisteredWorker  # noqa: PLC0415

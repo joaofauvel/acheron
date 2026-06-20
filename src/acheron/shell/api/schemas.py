@@ -1,8 +1,8 @@
 """Pydantic models for API request/response serialization."""
 
-from typing import Any
-
 from pydantic import BaseModel
+
+from acheron.core.models import JsonValue  # noqa: TC001  (pydantic v2 needs the type at runtime to build validators)
 
 
 class SubmitJobRequest(BaseModel):
@@ -46,7 +46,7 @@ class WorkerCapabilitiesRequest(BaseModel):
     max_payload_bytes: int | None = None
     batch_capable: bool = False
     model_source: str | None = None
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, JsonValue] = {}
 
 
 class WorkerRegistrationRequest(BaseModel):

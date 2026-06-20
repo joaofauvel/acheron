@@ -195,7 +195,7 @@ class TestWorkerIntegrationErrorPath:
 
         reg = InMemoryWorkerStore()
         for wt in (WorkerType.EXTRACTION, WorkerType.CHUNKING, WorkerType.PACKAGING):
-            await reg.register(f"{wt.value}-local", "local", "local", _caps(wt), metadata={"handler": _noop})
+            await reg.register(f"{wt.value}-local", "local", "local", _caps(wt))
         await reg.register(
             "trans-http",
             "http://127.0.0.1:9999",

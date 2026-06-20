@@ -9,7 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import AcheronError
-from acheron.core.models import AudioRequest, EpubRequest, WorkerCapabilities
+from acheron.core.models import AudioRequest, EpubRequest, JsonValue, WorkerCapabilities
 from acheron.core.planner import compile_plan
 from acheron.shell.cache import StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
@@ -244,7 +244,7 @@ class Orchestrator:
         endpoint: str,
         transport: str,
         capabilities: WorkerCapabilities,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, JsonValue] | None = None,
         *,
         handler: LocalJobHandler | None = None,
     ) -> None:

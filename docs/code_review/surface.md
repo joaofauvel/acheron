@@ -96,7 +96,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 88-89
+    lines: 151-152
   - path: scripts/generate_dev_certs.py
     lines: 46-48
   - path: scripts/generate_dev_certs.py

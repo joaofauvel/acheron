@@ -109,7 +109,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 308-317
+    lines: 300-320
   - path: src/acheron/shell/step_handler.py
     lines: 88-97
   - path: tests/integration/test_worker_integration.py
@@ -169,7 +169,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 8-58
+    lines: 1-88
 related: []
 ```
 
@@ -194,9 +194,9 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 89-101
+    lines: 60-110
   - path: src/acheron/shell/stores/redis.py
-    lines: 179-191
+    lines: 60-110
 related: [MAINT-002]
 ```
 

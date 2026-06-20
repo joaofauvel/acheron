@@ -105,14 +105,14 @@ related: []
 ### ARCH-004 — metadata typed dict[str, object] on RegisteredWorker/WorkerStore ABC vs dict[str, JsonValue] on WorkerCapabilities — Redis serde requires JSON-serializable but the type permits non-serializable
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/registry.py
     lines: 27
@@ -183,7 +183,7 @@ files:
   - path: src/acheron/cli.py
     lines: 46
   - path: src/acheron/shell/orchestrator.py
-    lines: 48-49
+    lines: 42-55
   - path: src/acheron/shell/transports/grpc.py
     lines: 43-44
 related: [SEC-003]

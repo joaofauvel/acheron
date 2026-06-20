@@ -55,7 +55,7 @@ files:
   - path: src/acheron/shell/step_handler.py
     lines: 84-113
   - path: src/acheron/shell/orchestrator.py
-    lines: 143-188
+    lines: 119-233
 related: []
 ```
 
@@ -115,9 +115,9 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 133-141, 143-188, 190-219
+    lines: 196-249
   - path: src/acheron/shell/orchestrator.py
-    lines: 133-141, 143-188, 190-219
+    lines: 196-249
 related: [OBS-004]
 ```
 
@@ -167,7 +167,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 161-168
+    lines: 224-263
   - path: src/acheron/shell/health.py
     lines: 96-102
   - path: src/acheron/shell/step_handler.py
@@ -196,7 +196,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 190-219
+    lines: 276-282
 related: [CORR-004, OBS-001]
 ```
 

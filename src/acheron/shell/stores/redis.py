@@ -16,7 +16,7 @@ from acheron.core.models import AudioRequest, EpubRequest
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
-    from acheron.core.models import WorkerCapabilities, WorkerType
+    from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
 
@@ -74,7 +74,7 @@ def _worker_fields(
     endpoint: str,
     transport: str,
     capabilities: WorkerCapabilities,
-    metadata: dict[str, object],
+    metadata: dict[str, JsonValue],
 ) -> dict[str, str]:
     return {
         "endpoint": endpoint,
@@ -279,7 +279,7 @@ class RedisWorkerStore(WorkerStore):
         endpoint: str,
         transport: str,
         capabilities: WorkerCapabilities,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, JsonValue] | None = None,
     ) -> None:
         """Register a new worker or re-register an existing one."""
         fields = _worker_fields(endpoint, transport, capabilities, dict(metadata or {}))
