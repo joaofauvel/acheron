@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Three open findings: redis.py still hand-rolls JSON ser/deser for domain models duplicating the pydantic path in cache.py (medium, drift risk); the module-private `_BUILT_IN_LOCAL_HANDLERS` symbol is imported across the orchestrator boundary (low); and StreamingExecutor._stage returns `float | None` that `_run_pipeline` never consumes, a dead return value surviving the CORR-008 fix (low). MAINT-001 is verified.
+Three open findings: redis.py still hand-rolls JSON ser/deser for domain models duplicating the pydantic path in cache.py (medium, drift risk); the module-private `_BUILT_IN_LOCAL_HANDLERS` symbol is imported across the orchestrator boundary (low); MAINT-004 is now verified (dead _stage return value removed; _stage now returns None with cost recorded via callable side-channel).
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -109,14 +109,14 @@ related: ['ARCH-005']
 ### MAINT-004 — _stage return value in StreamingExecutor is dead code — computed cost returned as float|None but never consumed by _run_pipeline
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: d0b739b
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 180-237
@@ -147,7 +147,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
 fixed_in: []
 files:
@@ -156,7 +156,7 @@ files:
   - path: src/acheron/core/errors.py
     lines: 16-29
   - path: src/acheron/shell/executors/streaming.py
-    lines: 213-218
+    lines: 220-223
   - path: src/acheron/shell/transports/grpc.py
     lines: 60-75
   - path: src/acheron/shell/transports/http.py
@@ -180,7 +180,7 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
 fixed_in: []
 files:
@@ -195,9 +195,9 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 216
   - path: src/acheron/shell/executors/streaming.py
-    lines: 218
+    lines: 225
   - path: src/acheron/shell/executors/streaming.py
-    lines: 232
+    lines: 239
 related: []
 ```
 

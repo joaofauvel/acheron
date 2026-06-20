@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Two open low-severity findings: a dead defensive AcheronError check on the final queue (remnant of an earlier design where errors propagated via queues), and a latent non-linear-DAG limitation in streaming executor _END propagation. All other stories are now verified: CORR-001 through CORR-005 are consistent verified, and CORR-008 (cost accounting on FAILED) is verified at f394eec.
+Two open low-severity findings are now verified: CORR-006 (dead AcheronError check on final queue removed) and CORR-007 (linear-only constraint documented in class docstring). All other stories are now verified.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -151,14 +151,14 @@ related: []
 ### CORR-006 — _consume_final_queue checks for AcheronError on queue — dead code, queue only holds JobResult | None
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 102-103
@@ -176,14 +176,14 @@ related: []
 ### CORR-007 — Streaming executor _END propagation skips unrelated downstream steps in non-linear DAGs
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 201-208

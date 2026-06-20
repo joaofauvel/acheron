@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Three low findings: a module-private `_BUILT_IN_LOCAL_HANDLERS` symbol imported cross-module, Orchestrator.__init__ still derives the default StepCache from PlanCache.data_dir, and StreamingExecutor._stage grew to 7 parameters with a mutable-list side-channel for cost tracking. Four verified stories (ARCH-001 through ARCH-004) are immutable. The core->shell import-linter contract holds.
+Three low findings are now verified: ARCH-007 (stage parameter bloat resolved — _stage reduced from 7 to 5 params). Two remain: a module-private _BUILT_IN_LOCAL_HANDLERS symbol imported cross-module, and Orchestrator.__init__ still derives the default StepCache from PlanCache.data_dir. Four verified stories (ARCH-001 through ARCH-004) are immutable. The core->shell import-linter contract holds.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -253,14 +253,14 @@ related: []
 ### ARCH-007 — StreamingExecutor._stage has 7 parameters and uses shared mutable list[float | None] as cost side-channel
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: d0b739b
 last_verified_at:
-  commit: d0b739b
+  commit: pending
   date: 2026-06-20
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 180-237

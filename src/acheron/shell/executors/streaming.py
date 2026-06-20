@@ -4,6 +4,11 @@ The plan's stages are dispatched sequentially via bounded queues. Each stage
 runs in the outer ``asyncio.TaskGroup`` so a single failure cancels the
 rest cleanly. Outputs are written to ``StepCache`` after each stage and
 ``PlanResult.outputs`` is built by scanning the cache at the end.
+
+The executor models the plan as a linear pipeline; stages are connected via
+queues in topological order and ``_END`` propagates downstream on failure.
+Non-linear DAGs where a step depends on a non-immediately-preceding step
+are not supported — the current planner only generates linear chains.
 """
 
 from __future__ import annotations
@@ -12,6 +17,9 @@ import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from acheron.core.errors import (
     AcheronError,
@@ -70,11 +78,15 @@ class StreamingExecutor(Executor):
         plan: Plan,
         queues: list[asyncio.Queue[JobResult | None]],
     ) -> tuple[AcheronError | None, float]:
-        """Run the per-stage TaskGroup. Returns (first AcheronError, total cost from completed steps)."""
-        # Shared list so each stage can record its cost even if the TaskGroup
-        # cancels it before _stage returns — failed/partial steps that ran
-        # still contribute to total_cost.
+        """Run the per-stage TaskGroup. Returns (first AcheronError, total cost from completed stages)."""
         stage_costs: list[float | None] = [None] * len(steps)
+
+        def _make_recorder(idx: int) -> Callable[[float], None]:
+            def record(cost: float) -> None:
+                stage_costs[idx] = cost
+
+            return record
+
         try:
             async with asyncio.TaskGroup() as tg:
                 stage_tasks = [
@@ -84,8 +96,7 @@ class StreamingExecutor(Executor):
                             plan,
                             queues[i] if i > 0 else None,
                             queues[i + 1],
-                            i,
-                            stage_costs,
+                            _make_recorder(i),
                         ),
                     )
                     for i, step in enumerate(steps)
@@ -98,9 +109,8 @@ class StreamingExecutor(Executor):
         return None, sum(c for c in stage_costs if c is not None)
 
     async def _consume_final_queue(self, tg: asyncio.TaskGroup, final_queue: asyncio.Queue[JobResult | None]) -> None:
-        first = await final_queue.get()
-        if isinstance(first, AcheronError):
-            raise first
+        """Drain the final queue until _END; spawn a background drain task."""
+        await final_queue.get()
 
         async def _drain() -> None:
             while True:
@@ -177,22 +187,19 @@ class StreamingExecutor(Executor):
             errors=(str(last_error),),
         )
 
-    async def _stage(  # noqa: PLR0913
+    async def _stage(
         self,
         step: PlanStep,
         plan: Plan,
         upstream: asyncio.Queue[JobResult | None] | None,
         downstream: asyncio.Queue[JobResult | None],
-        stage_index: int,
-        stage_costs: list[float | None],
-    ) -> float | None:
-        """Run a single stage. Returns the step's cost (including on FAILED), None if no work ran.
+        record_cost: Callable[[float], None],
+    ) -> None:
+        """Run a single stage. Records cost via ``record_cost`` before any status check.
 
-        The cost is preserved when the handler returns a non-SUCCESS ``JobResult``
-        so failed steps that incurred upstream cost (GPU time, API calls) still
-        contribute to ``PlanResult.total_cost``. This matches ``AsyncExecutor``
-        and ``SequentialExecutor`` behavior. ``stage_costs[stage_index]`` is
-        set before any failure check so the cost survives a TaskGroup cancel.
+        ``record_cost`` is a closure capturing the stage's index into a shared
+        cost list, so the cost survives ``TaskGroup`` cancellation — a return
+        value would be lost when a task raises after recording the cost.
 
         First stage has upstream=None and dispatches immediately. Subsequent
         stages read from upstream; a ``None`` sentinel means "no more work,
@@ -204,7 +211,7 @@ class StreamingExecutor(Executor):
                 # TODO(branchy-future): when plans gain parallel branches, distinguish
                 # expected drain (upstream finished) from premature termination.
                 if upstream_value is _END:
-                    return None
+                    return
             try:
                 result = await asyncio.wait_for(
                     self._handler(step, plan),
@@ -221,7 +228,7 @@ class StreamingExecutor(Executor):
 
             # Capture cost before any status check so failed/partial steps
             # still report what they spent.
-            stage_costs[stage_index] = result.metrics.cost_estimate or 0.0
+            record_cost(result.metrics.cost_estimate or 0.0)
 
             if result.status is not JobStatus.SUCCESS:
                 msg = f"step {step.step_id} returned {result.status.value}: {result.error or 'unknown error'}"
@@ -234,7 +241,6 @@ class StreamingExecutor(Executor):
                 raise PipelineError(msg) from exc
 
             await downstream.put(result)
-            return stage_costs[stage_index]
         finally:
             await downstream.put(_END)
 
