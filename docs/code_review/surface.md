@@ -53,14 +53,15 @@ One low finding: `jinja2` is declared as a runtime dependency of the acheron whe
 ### PKG-001 — `jinja2` is a runtime dep of the acheron wheel but is only used by the separate dashboard package
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: pyproject.toml
     lines: 16

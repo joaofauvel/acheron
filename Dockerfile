@@ -20,7 +20,7 @@ FROM python:3.14-slim AS dashboard
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
 COPY dashboard/ ./dashboard/
-RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
+RUN pip install --no-cache-dir ./*.whl[dashboard] && rm ./*.whl
 ENV PYTHONPATH=/app
 CMD ["uvicorn", "dashboard.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
 
