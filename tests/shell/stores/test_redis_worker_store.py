@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 import redis
+import redis.asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
@@ -94,6 +95,25 @@ class TestListing:
         tts_workers = await store.find_by_type(WorkerType.TTS)
         assert len(tts_workers) == 1
         assert tts_workers[0].worker_id == "tts-1"
+
+
+class TestCorruption:
+    @pytest.mark.asyncio
+    async def test_corrupt_worker_metadata_raises_cache_corrupted(
+        self, store: RedisWorkerStore, redis_url: str
+    ) -> None:
+        """A corrupt metadata_json field must raise CacheCorruptedError, not raw JSONDecodeError."""
+        from acheron.core.errors import CacheCorruptedError
+        from acheron.shell.stores.redis import _WORKER_KEY
+
+        r = aioredis.Redis.from_url(redis_url)
+        await r.hset(  # type: ignore[misc]
+            _WORKER_KEY.format(worker_id="w-corrupt"),
+            mapping={"metadata_json": "{ bad json", "capabilities_json": "{}"},
+        )
+        await r.aclose()
+        with pytest.raises(CacheCorruptedError, match="metadata is not valid JSON"):
+            await store.get("w-corrupt")
 
 
 class TestMetadataRoundTrip:

@@ -87,9 +87,15 @@ def _worker_fields(
 
 
 def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWorker:
+    from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
     from acheron.shell.registry import RegisteredWorker  # noqa: PLC0415
 
     last_hc = fields.get("last_health_check") or ""
+    try:
+        metadata = json.loads(fields.get("metadata_json", "{}"))
+    except json.JSONDecodeError as exc:
+        msg = f"Worker {worker_id} metadata is not valid JSON: {exc}"
+        raise CacheCorruptedError(msg) from exc
     return RegisteredWorker(
         worker_id=worker_id,
         endpoint=fields["endpoint"],
@@ -97,7 +103,7 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
         capabilities=_deserialize_capabilities(fields["capabilities_json"]),
         consecutive_failures=int(fields.get("consecutive_failures", "0")),
         last_health_check=float(last_hc) if last_hc else None,
-        metadata=json.loads(fields.get("metadata_json", "{}")),
+        metadata=metadata,
     )
 
 
@@ -176,6 +182,7 @@ def _serialize_job(job: TrackedJob) -> str:
 
 
 def _deserialize_job(blob: str) -> TrackedJob:
+    from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
     from acheron.core.models import (  # noqa: PLC0415
         AudioRequest,
         EpubRequest,
@@ -187,7 +194,11 @@ def _deserialize_job(blob: str) -> TrackedJob:
     )
     from acheron.shell.job_store import TrackedJob  # noqa: PLC0415
 
-    data = json.loads(blob)
+    try:
+        data = json.loads(blob)
+    except json.JSONDecodeError as exc:
+        msg = f"Job blob is not valid JSON: {exc}"
+        raise CacheCorruptedError(msg) from exc
     if data["source_type"] == "epub":
         request: EpubRequest | AudioRequest = EpubRequest(
             source_path=data["request"]["source_path"],

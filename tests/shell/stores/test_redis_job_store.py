@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 import redis
+import redis.asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from acheron.core.models import (
@@ -106,6 +107,18 @@ class TestPut:
     async def test_get_nonexistent(self, store: RedisJobStore) -> None:
         result = await store.get("nope")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_corrupt_job_blob_raises_cache_corrupted(self, store: RedisJobStore, redis_url: str) -> None:
+        """A corrupt JSON job blob must raise CacheCorruptedError, not raw JSONDecodeError."""
+        from acheron.core.errors import CacheCorruptedError
+        from acheron.shell.stores.redis import _JOB_KEY
+
+        r = aioredis.Redis.from_url(redis_url)
+        await r.set(_JOB_KEY.format(job_id="j-corrupt"), "{ not valid json")
+        await r.aclose()
+        with pytest.raises(CacheCorruptedError, match="Job blob is not valid JSON"):
+            await store.get("j-corrupt")
 
     @pytest.mark.asyncio
     async def test_put_overwrites(self, store: RedisJobStore) -> None:
