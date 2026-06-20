@@ -137,12 +137,12 @@ related: [TYPE-001]
 
 **Grade:** A
 
-CFG-001 is fixed (unified store backend selection at f5ce538). CFG-002 (duplicated-knowledge low) persists: the TLS CA env-read logic and hardcoded language set remain duplicated across modules, only the file locations shifted.
+CFG-001 is verified (unified store backend selection at f5ce538). CFG-002 (duplicated-knowledge low) persists: the TLS CA env-read logic and hardcoded language set remain duplicated across modules, only the file locations shifted.
 
 ### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1

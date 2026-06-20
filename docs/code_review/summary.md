@@ -52,19 +52,19 @@ No quick wins this cycle — all medium+ severity open stories require effort M.
 |---|---|
 | open | 25 |
 | in-progress | 0 |
-| fixed | 16 |
-| verified | 10 |
+| fixed | 0 |
+| verified | 26 |
 | stale | 0 |
 | wontfix | 0 |
 
 ## Changes since last review
 
-The diff a1b11b2..d0b739b resolved 15 pending stories — a concentrated fix wave addressing the B-grade themes from the initial review:
+The diff a1b11b2..d0b739b resolved all 16 stories that were `fixed` — now graduated to `verified` after correctness and doc-staleness passes confirmed all fixes are sound and no open stories were invalidated. The fix wave addressed the B-grade themes from the initial review:
 
-- **TEST improved B→A**: TEST-001 (local_handlers unit tests) and TEST-004 (conftest job_store injection) fixed. 1 medium + 1 low remain.
-- **DATA improved B→A**: DATA-001 (extra='forbid'), DATA-002 (CacheCorruptedError wrapping), DATA-003 (metadata round-trip tests), DATA-004 (worker metadata coverage) all fixed. Zero open.
-- **PERF improved B→A**: PERF-001 (concurrent health probes) fixed. 2 medium remain (list_all N+1, transport reuse).
-- **SEC improved B→A**: SEC-001 (private key 0600), SEC-002 (registration opt-in), SEC-003 (TLS warnings) fixed. 2 low remain (X-Forwarded-User, unauthenticated routes).
+- **TEST improved B→A**: TEST-001 (local_handlers unit tests) and TEST-004 (conftest job_store injection) verified.
+- **DATA improved B→A**: DATA-001 (extra='forbid'), DATA-002 (CacheCorruptedError wrapping), DATA-003 (metadata round-trip tests), DATA-004 (worker metadata coverage) verified. Zero open.
+- **PERF improved B→A**: PERF-001 (concurrent health probes) verified.
+- **SEC improved B→A**: SEC-001 (private key 0600), SEC-002 (registration opt-in), SEC-003 (TLS warnings) verified.
 
 New stories: ARCH-007 (`_stage` parameter bloat + mutable-list side-channel, low) and MAINT-004 (`_stage` dead return value, low).
 

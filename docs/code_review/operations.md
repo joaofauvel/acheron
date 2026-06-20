@@ -13,12 +13,12 @@ last_staleness_scan:
 
 **Grade:** A
 
-PERF-001 is fixed (concurrent health probes at 0818bff). Two open medium findings: registry list_all() is still called per step in the dispatch hot path, and worker transport instances are reconstructed per step with no HTTP connection or gRPC channel reuse.
+PERF-001 is verified (concurrent health probes at 0818bff). Two open medium findings: registry list_all() is still called per step in the dispatch hot path, and worker transport instances are reconstructed per step with no HTTP connection or gRPC channel reuse.
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -213,12 +213,12 @@ related: [CORR-004, OBS-001]
 
 **Grade:** A
 
-SEC-001 through SEC-003 are now fixed. SEC-004 (dashboard X-Forwarded-User spoofing, low) and SEC-005 (unauthenticated routes, low) remain open. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable (server-generated UUIDs).
+SEC-001 through SEC-003 are now verified. SEC-004 (dashboard X-Forwarded-User spoofing, low) and SEC-005 (unauthenticated routes, low) remain open. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable (server-generated UUIDs).
 
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -244,7 +244,7 @@ related: []
 ### SEC-002 — Worker registration fails open when ACHERON_REGISTRATION_TOKEN is unset
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -270,7 +270,7 @@ related: []
 ### SEC-003 — TLS silently disabled when CA env vars are unset (gRPC insecure_channel / uvicorn plain HTTP)
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1

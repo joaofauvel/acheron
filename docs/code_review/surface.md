@@ -13,12 +13,12 @@ last_staleness_scan:
 
 **Grade:** A
 
-DX-001 is fixed (auto-generated dev certs via certs-init compose service at c8879ec). All Justfile recipes are documented; `just validate` runs the full gate. No new DX findings.
+DX-001 is verified (auto-generated dev certs via certs-init compose service at c8879ec). All Justfile recipes are documented; `just validate` runs the full gate. No new DX findings.
 
 ### DX-001 — Quick Start omits `just certs` — fresh clone breaks `docker compose up`
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -49,12 +49,12 @@ related: []
 
 **Grade:** A
 
-PKG-001 is fixed (jinja2 moved to optional-dependencies[dashboard] at b603046). All dev tools are in `[dependency-groups] dev`; deps are pinned with `~=`.
+PKG-001 is verified (jinja2 moved to optional-dependencies[dashboard] at b603046). All dev tools are in `[dependency-groups] dev`; deps are pinned with `~=`.
 
 ### PKG-001 — `jinja2` is a runtime dep of the acheron wheel but is only used by the separate dashboard package
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: 23c29e1
@@ -83,7 +83,7 @@ related: []
 
 **Grade:** A
 
-DOC-002 is fixed (BatchAsync removed from README architecture tree at 51a3ffa). DOC-001 (low) persists: two stale-prone comments remain — one referencing a past refactor ("now async def") and one coupling to internal function names.
+DOC-002 is verified (BatchAsync removed from README architecture tree at 51a3ffa). DOC-001 (low) persists: two stale-prone comments remain — one referencing a past refactor ("now async def") and one coupling to internal function names.
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -115,7 +115,7 @@ related: []
 ### DOC-002 — README architecture tree references removed BatchAsync strategy
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: a1b11b2

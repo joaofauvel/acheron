@@ -13,12 +13,12 @@ last_staleness_scan:
 
 **Grade:** A
 
-Two open findings: a misleading test name claiming Redis coverage while actually testing memory (medium), and a tautological assertion that always passes (low). TEST-001 (direct local_handlers tests) and TEST-004 (conftest job_store injection) are now fixed. REPRO and DATA prefixes carry REPRO-001, REPRO-002 (open), and all DATA stories now fixed.
+Two open findings: a misleading test name claiming Redis coverage while actually testing memory (medium), and a tautological assertion that always passes (low). TEST-001 (direct local_handlers tests) and TEST-004 (conftest job_store injection) are now verified. REPRO and DATA prefixes carry REPRO-001, REPRO-002 (open), and all DATA stories now verified.
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -91,6 +91,38 @@ related: []
 
 **Verification.** Run `just test tests/shell/test_orchestrator.py::TestOrchestrator::test_get_capabilities_no_translation_worker`.
 
+### TEST-004 — Conftest make_app and other API test sites do not inject job_store, leaking env-config dependence
+
+```yaml
+status: verified
+severity: medium
+effort: S
+reviewed_at: a1b11b2
+last_verified_at:
+  commit: d0b739b
+  date: 2026-06-20
+fixed_in:
+  - 2e0e46ddd406a91112b66247c13fab693f8b9066
+files:
+  - path: tests/shell/conftest.py
+    lines: 67-77
+  - path: tests/shell/conftest.py
+    lines: 79-93
+  - path: tests/shell/conftest.py
+    lines: 96-103
+  - path: tests/shell/api/test_jobs.py
+    lines: 129-140
+related: []
+```
+
+**Issue.** tests/shell/conftest.py:65 make_app() called create_app(registry=..., cache=..., data_dir=tmp_path) without injecting job_store, and tests/shell/api/test_jobs.py:133 replicated the same pattern. create_app then fell through to create_job_store() which reads ACHERON_STORE_BACKEND from os.environ and, for 'redis', instantiates RedisJobStore pointed at REDIS_URL. The client and client_with_token fixtures inherited this and silently depended on the developer's shell environment being free of ACHERON_STORE_BACKEND=redis. AGENTS.md states "tests shouldn't use repo configuration files or depend on hardcoded project paths" — env-config dependence is in the same family of brittleness.
+
+**Why it matters.** Any developer with ACHERON_STORE_BACKEND=redis exported in their dev shell would see all API tests fail with Redis connection errors, even though the tests claim to be hermetic. Medium because it breaks test isolation for a plausible developer configuration.
+
+**Recommendation.** Update tests/shell/conftest.py make_app() to pass job_store=InMemoryJobStore(), and update all other create_app() call sites in tests to inject the job store.
+
+**Verification.** Run `just test tests/shell/api/` with both `ACHERON_STORE_BACKEND` unset and `ACHERON_STORE_BACKEND=redis REDIS_URL=redis://127.0.0.1:1` exported. Both should pass.
+
 ## REPRO — Reproducibility
 
 **Grade:** A
@@ -153,12 +185,12 @@ related: [PERF-001]
 
 **Grade:** A
 
-All four DATA stories are now fixed. DATA-004 (previously split from DATA-003) covers the worker+capabilities metadata round-trip gap. DATA-003's original concern (PlanStep.batch and non-empty metadata untested) is fully resolved: PlanStep.batch was removed in e0da69f, and metadata round-trip is tested in a21fda7.
+All four DATA stories are now verified. DATA-004 (previously split from DATA-003) covers the worker+capabilities metadata round-trip gap. DATA-003's original concern (PlanStep.batch and non-empty metadata untested) is fully resolved: PlanStep.batch was removed in e0da69f, and metadata round-trip is tested in a21fda7.
 
 ### DATA-001 — API pydantic schemas accept arbitrary extra fields, silently dropping client typos
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -184,7 +216,7 @@ related: []
 ### DATA-002 — Redis deserialization corruption handling inconsistent — _deserialize_job and _deserialize_worker metadata raise raw JSONDecodeError
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -210,7 +242,7 @@ related: [MAINT-002]
 ### DATA-003 — Redis store round-trip gaps: PlanStep.batch=True and non-empty metadata untested
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
@@ -236,7 +268,7 @@ related: [MAINT-002]
 ### DATA-004 — Redis store round-trip tests never exercise non-empty worker metadata, leaving a coverage gap for real production values
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: a1b11b2

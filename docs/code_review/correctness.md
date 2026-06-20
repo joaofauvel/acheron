@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Two open low-severity findings: a dead defensive AcheronError check on the final queue (remnant of an earlier design where errors propagated via queues), and a latent non-linear-DAG limitation in streaming executor _END propagation. All other stories are now verified or fixed: CORR-001 through CORR-005 are verified (immutable), CORR-008 (cost accounting on FAILED) is fixed at f394eec.
+Two open low-severity findings: a dead defensive AcheronError check on the final queue (remnant of an earlier design where errors propagated via queues), and a latent non-linear-DAG limitation in streaming executor _END propagation. All other stories are now verified: CORR-001 through CORR-005 are consistent verified, and CORR-008 (cost accounting on FAILED) is verified at f394eec.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -203,7 +203,7 @@ related: []
 ### CORR-008 — StreamingExecutor loses cost accounting when handler returns non-SUCCESS status
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: a1b11b2

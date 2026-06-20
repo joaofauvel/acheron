@@ -213,7 +213,7 @@ related: []
 
 **Grade:** A
 
-TYPE-002 is now fixed (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the AcheronClient `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue (`dict[str, object]` → `dict[str, JsonValue]`) is resolved across registry.py, stores/base.py, and schemas.py.
+TYPE-002 is now verified (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the AcheronClient `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue (`dict[str, object]` → `dict[str, JsonValue]`) is resolved across registry.py, stores/base.py, and schemas.py.
 
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 
@@ -245,7 +245,7 @@ related: [ARCH-004]
 ### TYPE-002 — PlanResult.status and TrackedJob.status are stringly-typed with a vocabulary diverging from the JobStatus enum
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: 23c29e1
