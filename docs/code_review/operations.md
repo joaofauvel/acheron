@@ -18,14 +18,15 @@ Three open medium findings: health checks run sequentially blocking the sweep on
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
+  commit: pending
   date: 2026-06-19
-fixed_in: []
+fixed_in:
+  - pending
 files:
   - path: src/acheron/shell/health.py
     lines: 89-103
