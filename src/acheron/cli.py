@@ -135,7 +135,12 @@ def main(verbose: bool) -> None:  # noqa: FBT001
         logging.basicConfig(level=logging.WARNING)
 
 
-@main.command()
+@main.group()
+def job() -> None:
+    """Manage jobs."""
+
+
+@job.command()
 @click.argument("file", type=click.Path(exists=True))
 @click.option("--src", required=True, help="Source language (ISO 639-1)")
 @click.option("--dest", required=True, help="Target language (ISO 639-1)")
@@ -174,9 +179,30 @@ def submit(  # noqa: PLR0913
 
 
 @main.command()
+def status() -> None:
+    """Show orchestrator service status."""
+    health = _run(_get_client().get_health())
+    workers_list = _run(_get_client().list_workers())
+    pairs = _run(_get_client().get_capabilities())
+    active_workers: dict[str, int] = {}
+    for worker in workers_list:
+        worker_type = str(worker["worker_type"])
+        active_workers[worker_type] = active_workers.get(worker_type, 0) + 1
+
+    console.print(f"Orchestrator: [bold]{health.get('status', 'unknown')}[/bold]")
+    table = Table(title="Workers")
+    table.add_column("Type")
+    table.add_column("Count")
+    for worker_type, count in sorted(active_workers.items()):
+        table.add_row(worker_type, str(count))
+    console.print(table)
+    console.print(f"Capabilities: {len(pairs)}")
+
+
+@job.command("status")
 @click.argument("job_id")
 @click.option("--verbose", "-v", is_flag=True, help="Show step details")
-def status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
+def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     """Check job status."""
     result = _run(_get_client().get_job(job_id))
     console.print(f"Job: [bold]{result['job_id']}[/bold]")
@@ -188,6 +214,16 @@ def status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     if verbose and result.get("errors"):
         for err in result["errors"]:
             console.print(f"[red]Error: {err}[/red]")
+
+
+@job.command()
+@click.argument("job_id")
+@click.option("--force-fresh", is_flag=True, help="Delete cached step outputs before resuming")
+def resume(job_id: str, force_fresh: bool) -> None:  # noqa: FBT001
+    """Resume a job."""
+    result = _run(_get_client().resume_job(job_id, force_fresh=force_fresh))
+    console.print(f"Job resumed: [bold]{result['job_id']}[/bold]")
+    console.print(f"Status: {result['status']}")
 
 
 @main.command("jobs")

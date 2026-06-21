@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 
-from acheron.core.errors import AcheronError
+from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
 from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy
 from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
 from acheron.shell.api.schemas import JobListResponse, JobResponse, SubmitJobRequest
@@ -59,6 +59,20 @@ async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
     tracked = await orch.get_job(job_id)
     if tracked is None:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    return _tracked_to_response(tracked)
+
+
+@router.post("/{job_id}/resume", response_model=JobResponse)
+async def resume_job(job_id: str, orch: OrchestratorDep, force_fresh: bool = False) -> JobResponse:  # noqa: FBT001, FBT002
+    """Resume a saved job."""
+    try:
+        tracked = await orch.resume_job(job_id, force_fresh=force_fresh)
+    except JobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JobAlreadyRunningError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AcheronError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _tracked_to_response(tracked)
 
 

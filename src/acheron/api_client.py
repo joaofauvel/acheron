@@ -73,6 +73,24 @@ class AcheronClient:
             resp.raise_for_status()
             return cast("dict[str, Any]", resp.json())
 
+    async def resume_job(self, job_id: str, *, force_fresh: bool = False) -> dict[str, Any]:
+        """Resume a saved job."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post(f"/jobs/{job_id}/resume", params={"force_fresh": force_fresh})
+            resp.raise_for_status()
+            return cast("dict[str, Any]", resp.json())
+
+    async def get_health(self) -> dict[str, Any]:
+        """Get orchestrator health."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.get("/health")
+            resp.raise_for_status()
+            return cast("dict[str, Any]", resp.json())
+
     async def list_jobs(self) -> list[dict[str, Any]]:
         """List all jobs."""
         async with httpx.AsyncClient(
