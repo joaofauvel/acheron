@@ -413,3 +413,44 @@ class TestOrchestrator:
         await asyncio.gather(*tasks)
 
         assert handler_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_generates_and_persists_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from acheron.shell.config import OrchestratorSettings, Settings
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+
+        # Token should be automatically generated
+        token = orch.settings.orchestrator.registration_token
+        assert token is not None
+        assert len(token) == 32  # 16-byte hex is 32 chars
+
+        # Token should be saved to file
+        token_file = tmp_path / ".registration_token"
+        assert token_file.exists()
+        assert token_file.read_text(encoding="utf-8").strip() == token
+
+        # Clean up
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_loads_existing_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from acheron.shell.config import OrchestratorSettings, Settings
+
+        # Pre-populate token file
+        token_file = tmp_path / ".registration_token"
+        token_file.write_text("pre-existing-token", encoding="utf-8")
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+
+        # Should load the pre-existing token
+        assert orch.settings.orchestrator.registration_token == "pre-existing-token"
+
+        # Clean up
+        await orch.close()
+        await orch.shutdown()

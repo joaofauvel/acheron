@@ -19,7 +19,10 @@ def get_orchestrator(request: Request) -> Orchestrator:
 OrchestratorDep = Annotated[Orchestrator, Depends(get_orchestrator)]
 
 
-def verify_registration_token(authorization: str | None = Header(None)) -> None:
+def verify_registration_token(
+    orch: OrchestratorDep,
+    authorization: str | None = Header(None),
+) -> None:
     """Validate registration token.
 
     - If ``ACHERON_REGISTRATION_TOKEN`` is set: require a matching bearer token.
@@ -27,10 +30,11 @@ def verify_registration_token(authorization: str | None = Header(None)) -> None:
       to enable open registration. Without the flag, registration is rejected
       so a missing token does not silently fail open in production.
     """
-    token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
+    if os.environ.get("ACHERON_OPEN_REGISTRATION") == "1":
+        return
+
+    token = orch.settings.orchestrator.registration_token
     if not token:
-        if os.environ.get("ACHERON_OPEN_REGISTRATION") == "1":
-            return
         raise HTTPException(
             status_code=503,
             detail=(

@@ -79,10 +79,14 @@ class _EnvAliasSettingsSource(PydanticBaseSettingsSource):
         return None, "", False
 
     def __call__(self) -> dict[str, Any]:
+        res: dict[str, Any] = {}
         data_dir = os.environ.get("ACHERON_DATA_DIR")
         if data_dir:
-            return {"orchestrator": {"data_dir": Path(data_dir)}}
-        return {}
+            res.setdefault("orchestrator", {})["data_dir"] = Path(data_dir)
+        token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
+        if token:
+            res.setdefault("orchestrator", {})["registration_token"] = token
+        return res
 
 
 class Settings(BaseSettings):

@@ -133,7 +133,7 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 
 **Design**:
 - `WorkerRegistry` and `JobStore` get Redis implementations alongside existing in-memory ones. Selected via config/env var.
-- Registration security: `ACHERON_REGISTRATION_TOKEN` env var, `Authorization: Bearer <token>` on `POST /workers`. 401 on mismatch. Unset = open registration (dev mode).
+- Registration security: `registration_token` configuration value (overridable via `ACHERON_REGISTRATION_TOKEN` environment variable). `POST /workers` requires `Authorization: Bearer <token>`. Unset token auto-generates a secure token at startup and persists it to `{data_dir}/.registration_token`. Explicitly opt into open registration with `ACHERON_OPEN_REGISTRATION=1`.
 - TLS: self-signed certs or reverse proxy (nginx/caddy) for local dev. Production uses cert-manager or cloud provider certs.
 - Persistent volumes: `/data/jobs/` for cached step outputs, Redis data volume.
 - Resource limits: CPU/memory constraints per container in Compose.

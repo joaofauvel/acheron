@@ -363,7 +363,7 @@ Runs on the orchestrator (CPU-only, NLTK punkt tokenizer).
 
 Workers self-register via `POST /workers` on the orchestrator API. The registry state lives in a `WorkerStore` (abstract base class) with two implementations: `InMemoryWorkerStore` (default, lost on restart) and `RedisWorkerStore` (persists across restarts). Backend selection is via the `ACHERON_STORE_BACKEND` env var (`memory` or `redis`, default `memory`). The orchestrator and `create_app` use the factory `create_worker_store()` by default; tests pass instances explicitly.
 
-**Registration security:** Shared secret model. Orchestrator has `ACHERON_REGISTRATION_TOKEN` env var. `POST /workers` requires `Authorization: Bearer <token>` header. Missing or invalid token → 401. If env var is unset, registration is open (dev mode).
+**Registration security:** Shared secret model. The orchestrator uses the `registration_token` configuration value (set via `acheron.yaml` or overridden via `ACHERON_REGISTRATION_TOKEN` environment variable). `POST /workers` requires `Authorization: Bearer <token>` header. Missing or invalid token → 401. If the token is unset, the orchestrator automatically generates a random secure registration token and persists it to `{data_dir}/.registration_token` at startup. To run with open registration, the user must explicitly opt in by setting `ACHERON_OPEN_REGISTRATION=1`.
 
 **Health monitoring:** A `HealthMonitor` background task polls all registered workers every 30s, dispatching by transport:
 - HTTP workers: `GET {endpoint}/health`

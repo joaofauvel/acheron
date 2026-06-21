@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import secrets
 import shutil
 import uuid
 import weakref
@@ -76,6 +77,11 @@ class Orchestrator:
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),
         )
+
+    @property
+    def settings(self) -> Settings:
+        """Get the configuration settings."""
+        return self._settings
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
@@ -164,6 +170,26 @@ class Orchestrator:
         if self._started:
             return
         self._verify_data_dir_writable()
+
+        if not self._settings.orchestrator.registration_token:
+            token_file = self._settings.orchestrator.data_dir / ".registration_token"
+            if token_file.is_file():
+                try:
+                    token = token_file.read_text(encoding="utf-8").strip()
+                    self._settings.orchestrator.registration_token = token
+                    logger.info("Loaded persistent registration token from %s", token_file)
+                except OSError as exc:
+                    logger.warning("Failed to read persistent registration token from %s: %s", token_file, exc)
+
+            if not self._settings.orchestrator.registration_token:
+                token = secrets.token_hex(16)
+                self._settings.orchestrator.registration_token = token
+                try:
+                    token_file.write_text(token, encoding="utf-8")
+                    logger.info("Generated and persisted registration token: %s", token)
+                except OSError as exc:
+                    logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
+
         await self._registry.connect()
         await self._job_store.connect()
         self._started = True

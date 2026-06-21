@@ -136,7 +136,7 @@ stubs/tests/
 
 ## Orchestrator Changes
 
-The orchestrator's `POST /workers` endpoint must validate the `Authorization: Bearer <token>` header against `ACHERON_REGISTRATION_TOKEN`. If the env var is unset, registration is open (backward compatible with current tests).
+The orchestrator's `POST /workers` endpoint must validate the `Authorization: Bearer <token>` header against the configured registration token. If the token is unset, it is auto-generated on orchestrator startup. To enable open registration, set `ACHERON_OPEN_REGISTRATION=1`.
 
 ## What This Doesn't Do
 

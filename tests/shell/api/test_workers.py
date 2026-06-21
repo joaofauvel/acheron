@@ -93,7 +93,7 @@ class TestRegistrationSecurity:
         monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
         monkeypatch.delenv("ACHERON_OPEN_REGISTRATION", raising=False)
         response = await client.post("/workers", json=_WORKER_PAYLOAD)
-        assert response.status_code == 503
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_register_without_token_env_opt_in_open(
