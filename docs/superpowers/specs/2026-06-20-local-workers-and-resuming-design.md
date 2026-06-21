@@ -34,7 +34,7 @@ The built-in workers execute as `local` transport handlers registered by the orc
 ### A. EXTRACTION Worker
 * **EPUB Source**:
   * Parses the EPUB archive using standard Python `zipfile`.
-  * Locates the Package Document (`.opf`) file using `defusedxml.ElementTree` (safe XML parsing to prevent entity expansion attacks).
+  * Locates the Package Document (`.opf`) file using `defusedxml.ElementTree`. EPUBs are user-uploaded, so we use `defusedxml` rather than stdlib `xml.etree.ElementTree` for defense-in-depth against XML attacks (billion laughs, quadratic blowup, XXE). Enforced by ruff S314.
   * Resolves spine order: the `<spine>` element lists `<itemref idref="...">` entries referencing `id` attributes in the `<manifest>`. Resolve each `idref` to a `href` via the manifest before reading the XHTML content document. Do not assume `idref` == filename.
   * Strips HTML tags and writes each chapter as a plain text file (`chapter_001.txt`, `chapter_002.txt`, etc.) in the step cache directory under `{data_dir}/{plan_job_id}/extract/` (use configured `data_dir`, not a hardcoded `/data/jobs`). Block-level HTML tags (`<p>`, `<h1>-<h6>`, `<div>`, `<br>`, `<li>`) insert spaces at both start and end tags to prevent word merging across block boundaries.
   * Manifest `href` values are URL-decoded (`urllib.parse.unquote`) to handle percent-encoded paths (e.g. `ch%201.xhtml`).
