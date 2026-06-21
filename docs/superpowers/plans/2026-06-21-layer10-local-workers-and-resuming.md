@@ -140,22 +140,42 @@ class Settings(BaseSettings):
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     workers: WorkerSettings = Field(default_factory=WorkerSettings)
 
-def load_settings() -> Settings:
-    config_path_env = os.environ.get("ACHERON_CONFIG_PATH")
-    search_paths = []
-    if config_path_env:
-        search_paths.append(Path(config_path_env))
-    search_paths.extend([Path("./acheron.yaml"), Path("/etc/acheron/acheron.yaml")])
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        class YamlConfigSettingsSource(PydanticBaseSettingsSource):
+            def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+                return None, "", False
 
-    for path in search_paths:
-        if path.is_file():
-            try:
-                with path.open("r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                # F-05: Instantiate using **data to allow BaseSettings environment overrides
-                return Settings(**data)
-            except Exception:
-                pass
+            def __call__(self) -> dict[str, Any]:
+                config_path_env = os.environ.get("ACHERON_CONFIG_PATH")
+                search_paths = []
+                if config_path_env:
+                    search_paths.append(Path(config_path_env))
+                search_paths.extend([Path("./acheron.yaml"), Path("/etc/acheron/acheron.yaml")])
+
+                for path in search_paths:
+                    if path.is_file():
+                        try:
+                            with path.open("r", encoding="utf-8") as f:
+                                return yaml.safe_load(f) or {}
+                        except Exception:
+                            pass
+                return {}
+
+        return (
+            init_settings,
+            env_settings,
+            YamlConfigSettingsSource(settings_cls),
+        )
+
+def load_settings() -> Settings:
     return Settings()
 ```
 
@@ -919,19 +939,55 @@ def test_orchestrator_initialization_with_settings(tmp_path: Path) -> None:
 Run: `pytest tests/shell/test_orchestrator.py`
 Expected: FAIL (TypeError: `Orchestrator.__init__() got an unexpected keyword argument 'settings'`)
 
-- [ ] **Step 3: Modify Orchestrator initialization to accept settings**
+- [ ] **Step 3: Modify Orchestrator initialization to accept settings and track active state**
 
 Modify `src/acheron/shell/orchestrator.py`:
 - Import `Settings`, `load_settings` from `acheron.shell.config`.
 - Import `ExtractionHandler`, `ChunkingHandler`, `PackagingHandler` from `local_handlers`.
+- Import `weakref`.
 - Add `settings: Settings | None = None` to `Orchestrator.__init__` and store in `self._settings`. If None, load defaults.
 - Use `self._settings.orchestrator.data_dir` to instantiate `self._step_cache` and `PlanCache` default directory.
+- Initialize `self._active_jobs: set[str] = set()` to track executing jobs in-process.
+- Initialize `self._job_locks = weakref.WeakValueDictionary()` for concurrency safety on resumes.
 - F-08: Instantiate health monitor with correct signature using Settings:
 ```python
         self._health_monitor = HealthMonitor(
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),
         )
+```
+- Wrap non-streaming executor handler dispatches to auto-cache step outputs for local workers:
+```python
+    async def _execute(self, tracked: TrackedJob) -> None:
+        logger.info("Executing %s (%s strategy)", tracked.job_id, tracked.strategy.value)
+        self._active_jobs.add(tracked.job_id)
+        try:
+            if tracked.plan is None:
+                tracked.status = PlanStatus.FAILED
+                logger.error("No plan for %s", tracked.job_id)
+            else:
+                # Wrap handler for non-streaming executors to cache outputs so local workers can load them
+                handler = self._handler
+                if tracked.strategy != ExecutorStrategy.STREAMING:
+                    async def caching_handler(step: PlanStep, plan: Plan) -> JobResult:
+                        res = await self._handler(step, plan)
+                        if res.status == JobStatus.SUCCESS:
+                            plan_job_id = plan.job_id.rsplit("-", 1)[0]
+                            await self._step_cache.save_outputs(plan_job_id, step.step_id, res.outputs)
+                        return res
+                    handler = caching_handler
+
+                executor = create_executor(
+                    tracked.strategy,
+                    handler,
+                    step_cache=self._step_cache,
+                )
+                result = await executor.run(tracked.plan)
+                tracked.result = result
+                tracked.status = result.status
+        ...
+        finally:
+            self._active_jobs.discard(tracked.job_id)
 ```
 - Rewrite `_register_built_in_local_workers` to instantiate classes:
 ```python
@@ -1333,20 +1389,25 @@ Expected: FAIL (AttributeError: 'Orchestrator' has no attribute 'resume_job')
 - [ ] **Step 4: Implement Orchestrator resume_job**
 
 Modify `src/acheron/shell/orchestrator.py`:
-- Initialize `self._job_locks: dict[str, asyncio.Lock] = {}` in `Orchestrator.__init__`.
 - Implement `resume_job(self, job_id: str, force_fresh: bool = False) -> TrackedJob`:
 ```python
     async def resume_job(self, job_id: str, force_fresh: bool = False) -> TrackedJob:
         from acheron.core.errors import JobAlreadyRunningError, JobNotFoundError
         
-        lock = self._job_locks.setdefault(job_id, asyncio.Lock())
+        lock = self._job_locks.get(job_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._job_locks[job_id] = lock
+            
         async with lock:
             tracked = await self._job_store.get(job_id)
             if tracked is None:
                 raise JobNotFoundError(f"Job not found: {job_id}")
                 
             if tracked.status == PlanStatus.RUNNING:
-                raise JobAlreadyRunningError(f"Job {job_id} is already running")
+                if job_id in self._active_jobs:
+                    raise JobAlreadyRunningError(f"Job {job_id} is already running")
+                logger.warning("Job %s status is RUNNING but not active in this process. Overriding stale state.", job_id)
                 
             # F-11: Warn when resuming sequential or async executor strategy
             if tracked.strategy != ExecutorStrategy.STREAMING:
@@ -1374,10 +1435,15 @@ Modify `src/acheron/shell/orchestrator.py`:
             
             return tracked
 ```
-- In `Orchestrator._execute`, add idempotency guard:
+- In `Orchestrator._execute`, add database-level idempotency guard:
 ```python
-        if tracked.status != PlanStatus.RUNNING:
-            logger.warning("Idempotency guard: job %s has status %s, skipping execution", tracked.job_id, tracked.status)
+        db_job = await self._job_store.get(tracked.job_id)
+        if db_job is None or db_job.status != PlanStatus.RUNNING:
+            logger.warning(
+                "Idempotency guard: job %s has database status %s, skipping execution",
+                tracked.job_id,
+                db_job.status if db_job else "None"
+            )
             return
 ```
 
@@ -1398,7 +1464,14 @@ Add to `tests/shell/api/test_jobs.py`:
         )
         job_id = response.json()["job_id"]
         
-        await asyncio.sleep(0.5)
+        # Poll until the job is no longer running or pending
+        for _ in range(50):
+            status_resp = await client.get(f"/jobs/{job_id}")
+            if status_resp.json()["status"] in ("completed", "failed"):
+                break
+            await asyncio.sleep(0.1)
+        else:
+            pytest.fail("Job did not complete in time")
         
         resume_resp = await client.post(f"/jobs/{job_id}/resume")
         assert resume_resp.status_code == 200
