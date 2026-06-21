@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -89,18 +90,24 @@ def create_app() -> FastAPI:
     @app.post("/execute")
     async def execute(body: dict[str, Any]) -> dict[str, Any]:
         job_id = body.get("job_id", "unknown")
+        plan_job_id = job_id.rsplit("-", 1)[0]
         text = body.get("payload", {}).get("text", "")
         src = body.get("payload", {}).get("source_language", "en")
         dst = body.get("payload", {}).get("target_language", "es")
         translated = f"{text} [translated {src}→{dst}]"
+        data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
+        step_dir = data_dir / plan_job_id / "translate"
+        step_dir.mkdir(parents=True, exist_ok=True)
+        out_path = step_dir / f"{job_id}.txt"
+        out_path.write_text(translated, encoding="utf-8")
         return {
             "job_id": job_id,
             "status": "success",
             "outputs": [
                 {
-                    "path": f"{job_id}.txt",
+                    "path": str(out_path),
                     "filename": f"{job_id}.txt",
-                    "size_bytes": len(translated),
+                    "size_bytes": out_path.stat().st_size,
                     "checksum": "",
                     "content_type": "text/plain",
                 }

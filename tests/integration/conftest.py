@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import socket
+import zipfile
 from collections.abc import AsyncIterator, Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -178,7 +180,6 @@ async def _start_uvicorn(app_factory: Callable[[], FastAPI]) -> tuple[str, async
 @pytest_asyncio.fixture
 async def http_tts_stub() -> AsyncIterator[str]:
     """Start a TTS HTTP stub worker."""
-    import os
 
     saved = {
         k: os.environ.get(k)
@@ -209,7 +210,6 @@ async def http_tts_stub() -> AsyncIterator[str]:
 @pytest_asyncio.fixture
 async def http_translation_stub() -> AsyncIterator[str]:
     """Start a translation HTTP stub worker."""
-    import os
 
     saved = {
         k: os.environ.get(k)
@@ -257,12 +257,15 @@ async def wired_orchestrator(
     http_tts_stub: str,
     http_translation_stub: str,
     grpc_tts_stub: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[Orchestrator]:
     """Orchestrator with real stub workers registered.
 
     EXTRACTION/CHUNKING/PACKAGING are auto-registered by the orchestrator as
     built-in local workers (with their own handlers).
     """
+    monkeypatch.setenv("ACHERON_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ACHERON_ORCHESTRATOR__DATA_DIR", str(tmp_path))
 
     reg = InMemoryWorkerStore()
 
@@ -309,3 +312,32 @@ async def wired_orchestrator(
     await orch.start()
     yield orch
     await orch.shutdown()
+
+
+@pytest.fixture
+def epub_file(tmp_path: Path) -> Path:
+    """Minimal valid EPUB for integration tests."""
+    epub_path = tmp_path / "test.epub"
+    with zipfile.ZipFile(epub_path, "w") as z:
+        container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+        z.writestr("META-INF/container.xml", container_xml)
+
+        opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
+  <manifest>
+    <item href="ch1.xhtml" id="html1" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="html1"/>
+  </spine>
+</package>"""
+        z.writestr("OEBPS/content.opf", opf)
+
+        ch1 = "<html><body><p>Hello chapter one text.</p></body></html>"
+        z.writestr("OEBPS/ch1.xhtml", ch1)
+    return epub_path

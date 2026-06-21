@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 async def test_submit_epub_shows_job_id(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
-    result = runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
     assert result.exit_code == 0
     assert "Job submitted:" in result.output
     assert "job-" in result.output
@@ -29,7 +29,7 @@ async def test_submit_epub_shows_job_id(runner: CliRunner, wired_app: FastAPI, t
 async def test_submit_audio_with_asr(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     mp3 = tmp_path / "podcast.mp3"
     mp3.touch()
-    result = runner.invoke(main, ["submit", str(mp3), "--src", "en", "--dest", "es", "--asr", "whisper-v3"])
+    result = runner.invoke(main, ["job", "submit", str(mp3), "--src", "en", "--dest", "es", "--asr", "whisper-v3"])
     assert result.exit_code == 0
     assert "job-" in result.output
 
@@ -38,12 +38,12 @@ async def test_submit_audio_with_asr(runner: CliRunner, wired_app: FastAPI, tmp_
 async def test_submit_then_status(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
-    submit_result = runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    submit_result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
     assert submit_result.exit_code == 0
 
     job_id = next(w for w in submit_result.output.split() if w.startswith("job-"))
 
-    status_result = runner.invoke(main, ["status", job_id])
+    status_result = runner.invoke(main, ["job", "status", job_id])
     assert status_result.exit_code == 0
     assert job_id in status_result.output
 
@@ -52,10 +52,10 @@ async def test_submit_then_status(runner: CliRunner, wired_app: FastAPI, tmp_pat
 async def test_submit_then_status_verbose(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
-    submit_result = runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    submit_result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
     job_id = next(w for w in submit_result.output.split() if w.startswith("job-"))
 
-    status_result = runner.invoke(main, ["status", job_id, "-v"])
+    status_result = runner.invoke(main, ["job", "status", job_id, "-v"])
     assert status_result.exit_code == 0
     assert job_id in status_result.output
 
@@ -64,7 +64,7 @@ async def test_submit_then_status_verbose(runner: CliRunner, wired_app: FastAPI,
 async def test_submit_then_list_jobs(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
-    runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
 
     result = runner.invoke(main, ["jobs"])
     assert result.exit_code == 0
@@ -75,7 +75,7 @@ async def test_submit_then_list_jobs(runner: CliRunner, wired_app: FastAPI, tmp_
 async def test_submit_then_list_jobs_active(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
-    runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
 
     result = runner.invoke(main, ["jobs", "--active"])
     assert result.exit_code == 0
@@ -86,7 +86,7 @@ async def test_submit_then_list_jobs_active(runner: CliRunner, wired_app: FastAP
 async def test_submit_then_list_jobs_completed_filter(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
-    runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
 
     result = runner.invoke(main, ["jobs", "--completed"])
     assert result.exit_code == 0
@@ -95,7 +95,7 @@ async def test_submit_then_list_jobs_completed_filter(runner: CliRunner, wired_a
 
 @pytest.mark.asyncio
 async def test_status_nonexistent_job(runner: CliRunner, wired_app: FastAPI) -> None:
-    result = runner.invoke(main, ["status", "job-nonexistent"])
+    result = runner.invoke(main, ["job", "status", "job-nonexistent"])
     assert result.exit_code != 0
 
 

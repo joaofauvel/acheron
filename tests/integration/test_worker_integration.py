@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
@@ -39,10 +40,10 @@ async def _wait_for_completion(tracked: Any, timeout: float = 5.0) -> None:  # n
 
 class TestWorkerIntegrationHappyPath:
     @pytest.mark.asyncio
-    async def test_epub_full_pipeline(self, wired_orchestrator: Orchestrator) -> None:
+    async def test_epub_full_pipeline(self, wired_orchestrator: Orchestrator, epub_file: Path) -> None:
         """EPUB request runs full pipeline: extract → chunk → translate → synthesize → package."""
         orch = wired_orchestrator
-        request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
+        request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
@@ -53,19 +54,28 @@ class TestWorkerIntegrationHappyPath:
         assert tracked.result.total_duration_seconds > 0
 
     @pytest.mark.asyncio
-    async def test_audio_pipeline(self, wired_orchestrator: Orchestrator) -> None:
+    async def test_audio_pipeline(self, wired_orchestrator: Orchestrator, tmp_path: Path) -> None:
         """Audio request runs: extract → transcribe → chunk → translate → synthesize → package."""
         orch = wired_orchestrator
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake audio")
 
         async def _asr_handler(job: Job) -> JobResult:
+            plan_job_id = job.job_id.rsplit("-", 1)[0]
+            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/tmp"))
+            trans_dir = data_dir / plan_job_id / "transcribe"
+            trans_dir.mkdir(parents=True, exist_ok=True)
+            out_path = trans_dir / f"{job.job_id}.txt"
+            out_path.write_text("mock transcription", encoding="utf-8")
+
             return JobResult(
                 job_id=job.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(
                     OutputFile(
-                        path=f"/tmp/{job.job_id}",
+                        path=str(out_path),
                         filename=f"{job.job_id}.txt",
-                        size_bytes=50,
+                        size_bytes=out_path.stat().st_size,
                         checksum="",
                         content_type="text/plain",
                     ),
@@ -87,7 +97,7 @@ class TestWorkerIntegrationHappyPath:
             handler=_asr_handler,
         )
 
-        request = AudioRequest(source_path="/tmp/test.mp3", source_language="en", target_language="es")
+        request = AudioRequest(source_path=str(audio_path), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
@@ -97,10 +107,10 @@ class TestWorkerIntegrationHappyPath:
         assert tracked.result.total_steps == 6
 
     @pytest.mark.asyncio
-    async def test_translation_uses_real_stub(self, wired_orchestrator: Orchestrator) -> None:
+    async def test_translation_uses_real_stub(self, wired_orchestrator: Orchestrator, epub_file: Path) -> None:
         """Translation step uses the real HTTP stub and returns mock translated text."""
         orch = wired_orchestrator
-        request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
+        request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
@@ -110,21 +120,60 @@ class TestWorkerIntegrationHappyPath:
 
 class TestWorkerIntegrationErrorPath:
     @pytest.mark.asyncio
-    async def test_no_matching_language_pair(self, wired_orchestrator: Orchestrator) -> None:
+    async def test_no_matching_language_pair(self, wired_orchestrator: Orchestrator, epub_file: Path) -> None:
         """Job for unsupported language pair fails at plan compilation."""
         orch = wired_orchestrator
-        request = EpubRequest(source_path="/tmp/test.epub", source_language="xx", target_language="yy")
+        request = EpubRequest(source_path=str(epub_file), source_language="xx", target_language="yy")
         with pytest.raises(InvalidLanguagePathError):
             await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
 
     @pytest.mark.asyncio
-    async def test_orchestration_steps_have_built_in_handlers(self, tmp_path: Path) -> None:
+    async def test_orchestration_steps_have_built_in_handlers(self, tmp_path: Path, epub_file: Path) -> None:
         """EXTRACTION/CHUNKING/PACKAGING are handled locally when no worker is registered.
 
         External workers (TTS/ASR/TRANSLATION) still go through the registry.
         """
+        import struct
+
         from acheron.shell.cache import PlanCache
         from acheron.shell.stores.memory import InMemoryWorkerStore
+
+        def _dummy_wav(path: Path) -> bytes:
+            sample_rate = 22050
+            data_size = sample_rate * 2
+            audio = (
+                b"RIFF"
+                + struct.pack("<I", 36 + data_size)
+                + b"WAVE"
+                + b"fmt "
+                + struct.pack("<IHHIIHH", 16, 1, 1, sample_rate, sample_rate * 2, 2, 16)
+                + b"data"
+                + struct.pack("<I", data_size)
+                + b"\x00" * data_size
+            )
+            path.write_bytes(audio)
+            return audio
+
+        async def _tts_handler(job: Job) -> JobResult:
+            plan_job_id = job.job_id.rsplit("-", 1)[0]
+            step_dir = tmp_path / plan_job_id / "synthesize"
+            step_dir.mkdir(parents=True, exist_ok=True)
+            wav_path = step_dir / f"{job.job_id}.wav"
+            audio = _dummy_wav(wav_path)
+            return JobResult(
+                job_id=job.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(
+                    OutputFile(
+                        path=str(wav_path),
+                        filename=wav_path.name,
+                        size_bytes=len(audio),
+                        checksum="",
+                        content_type="audio/wav",
+                    ),
+                ),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
 
         async def _no_op_handler(job: Job) -> JobResult:
             return JobResult(
@@ -148,9 +197,9 @@ class TestWorkerIntegrationErrorPath:
             "local",
             "local",
             _caps(WorkerType.TTS, langs_in=frozenset({"es"}), langs_out=frozenset({"es"}), batch_capable=True),
-            handler=_no_op_handler,
+            handler=_tts_handler,
         )
-        request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
+        request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
         await _wait_for_completion(tracked)
 
@@ -184,7 +233,7 @@ class TestWorkerIntegrationErrorPath:
             os.environ.pop("ACHERON_STORE_BACKEND", None)
 
     @pytest.mark.asyncio
-    async def test_worker_unreachable(self, tmp_path: Path) -> None:
+    async def test_worker_unreachable(self, tmp_path: Path, epub_file: Path) -> None:
         """Job fails when TTS worker is unreachable."""
         from acheron.shell.cache import PlanCache
 
@@ -215,7 +264,7 @@ class TestWorkerIntegrationErrorPath:
         handler = create_step_handler(reg)
         orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
         await orch.start()
-        request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
+        request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
@@ -224,7 +273,7 @@ class TestWorkerIntegrationErrorPath:
 
 class TestWorkerIntegrationEdgeCases:
     @pytest.mark.asyncio
-    async def test_multiple_tts_workers_uses_first(self, wired_orchestrator: Orchestrator) -> None:
+    async def test_multiple_tts_workers_uses_first(self, wired_orchestrator: Orchestrator, epub_file: Path) -> None:
         """First matching TTS worker is used when multiple exist (tts-http registered before tts-grpc)."""
         orch = wired_orchestrator
         registered = await orch.list_workers()
@@ -233,7 +282,7 @@ class TestWorkerIntegrationEdgeCases:
         assert tts_workers[0].worker_id == "tts-http"
         assert tts_workers[1].worker_id == "tts-grpc"
 
-        request = EpubRequest(source_path="/tmp/test.epub", source_language="en", target_language="es")
+        request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
         await _wait_for_completion(tracked)
 
