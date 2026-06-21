@@ -2,11 +2,11 @@
 
 This specification defines the implementation details for the built-in local workers (Extraction, Chunking, Packaging), settings configuration via `acheron.yaml`, and the job resuming mechanics across the API, CLI, and executors.
 
-## 1. settings Configuration (`acheron.yaml`)
+## 1. Settings Configuration (`acheron.yaml`)
 
 We add a settings module utilizing `pydantic` in `src/acheron/shell/config.py`.
 
-* A new `acheron.yaml` file (or custom path via `ACHERON_CONFIG_PATH`) defines the system parameters:
+* A new `acheron.yaml` file (or custom path via `ACHERON_CONFIG_PATH`) defines the system parameters. Default search order: `$ACHERON_CONFIG_PATH` → `./acheron.yaml` → `/etc/acheron/acheron.yaml`.
   ```yaml
   orchestrator:
     data_dir: "/data/jobs"
@@ -20,33 +20,34 @@ We add a settings module utilizing `pydantic` in `src/acheron/shell/config.py`.
       bitrate: "128k"
       codec: "aac"
   ```
-* At orchestrator startup, these settings are loaded, validated, and overwrite default variables.
+* Settings are loaded at orchestrator startup via a `Settings` Pydantic model (use `pydantic-settings` for env-var interpolation). The `Settings` instance is passed to `Orchestrator.__init__` rather than mutating module-level globals, which would be fragile and hard to test.
+* Worker-specific settings (`max_chunk_length`, `bitrate`, `codec`) are threaded into the local handler constructors directly — handlers must accept these as constructor parameters.
 
 ## 2. Built-in Local Workers Implementation
 
 The built-in workers execute as `local` transport handlers registered by the orchestrator.
 
 ### A. EXTRACTION Worker
-* **EPUB Source**: 
+* **EPUB Source**:
   * Parses the EPUB archive using standard Python `zipfile`.
   * Locates the Package Document (`.opf`) file using standard `xml.etree.ElementTree`.
-  * Extracts the XHTML documents in the order specified by the `<spine>` chapter sequence.
-  * Strips HTML tags and writes each chapter as a plain text file (`chapter_001.txt`, `chapter_002.txt`, etc.) in the step cache directory `/data/jobs/{job_id}/extract/`.
-* **Audio Source**: 
-  * Copies the source audio file directly to `/data/jobs/{job_id}/extract/`.
+  * Resolves spine order: the `<spine>` element lists `<itemref idref="...">` entries referencing `id` attributes in the `<manifest>`. Resolve each `idref` to a `href` via the manifest before reading the XHTML content document. Do not assume `idref` == filename.
+  * Strips HTML tags and writes each chapter as a plain text file (`chapter_001.txt`, `chapter_002.txt`, etc.) in the step cache directory under `{data_dir}/{job_id}/extract/` (use configured `data_dir`, not a hardcoded `/data/jobs`).
+* **Audio Source**:
+  * Copies the source audio file directly to `{data_dir}/{job_id}/extract/`.
 
 ### B. CHUNKING Worker
-* Reads the chapter text files from `/data/jobs/{job_id}/extract/`.
+* Reads the chapter text files from `{data_dir}/{job_id}/extract/`.
 * Runs the chunking engine (`chunk_text()`) using configured `max_chunk_length`.
-* Writes `chunks.json` (a list of serialized `Chunk` objects) to `/data/jobs/{job_id}/chunk/`.
+* Writes `chunks.json` (a list of serialized `Chunk` objects) to `{data_dir}/{job_id}/chunk/`.
 
 ### C. PACKAGING Worker (Option B: Concat Demuxer)
 * Reads the WAV outputs of the `synthesize` step from the step cache.
-* Calculates the duration of each WAV file by reading the standard WAV RIFF header (sample rate, channel count, bytes per second, data block size).
+* Calculates the duration of each WAV file by reading the standard WAV RIFF header (sample rate, channel count, bytes per second, data block size). Assumes standard PCM WAV output from TTS workers — add an assertion or header validation on the `RIFF`/`WAVE` magic bytes to fail fast on unexpected formats.
 * Sums the durations of all WAV files grouped by their `chapter_id` to determine chapter start/end timestamps.
 * Generates an `FFMETADATA` file containing chapter titles and timestamps.
 * Writes an `inputs.txt` concat demuxer file listing all WAV file paths.
-* Invokes `ffmpeg` asynchronously:
+* Invokes `ffmpeg` asynchronously via `asyncio.create_subprocess_exec`. Capture stdout/stderr. On non-zero exit code, raise `WorkerError` with the captured stderr:
   ```bash
   ffmpeg -f concat -safe 0 -i inputs.txt -i FFMETADATA -map_metadata 1 -c:a aac -b:a 128k output.m4b
   ```
@@ -57,17 +58,21 @@ The built-in workers execute as `local` transport handlers registered by the orc
 * In `StreamingExecutor._stage`, before executing a step, the executor runs:
   `await self._cache.step_has_valid_cache(plan.job_id, step.step_id)`
 * If `True`, it loads outputs from the manifest and puts them downstream immediately, skipping worker dispatch.
+* **Note:** This behavior is not present in the current (9a) implementation. The resume-aware `_stage` is the deliverable of this spec; 9a's `_stage` always dispatches unconditionally.
 
 ### B. API Endpoint `POST /jobs/{job_id}/resume`
 * Accepts query parameter `force_fresh: bool = False`.
-* If `force_fresh=True`, deletes the job's step-cache folder (`/data/jobs/{job_id}`).
+* If `force_fresh=True`, deletes the job's step-cache folder (`{data_dir}/{job_id}`). Log the deletion path before removing.
 * If the job is already `RUNNING`, returns `400 Bad Request`.
-* Otherwise, updates the job status to `RUNNING` in the store and spawns `_execute(tracked)` in the background.
+* Status update and `_execute` spawning must be treated as an atomic unit: update status to `RUNNING` in the store **and immediately** spawn `_execute(tracked)` without any `await` in between. A crash between the two would leave the job permanently `RUNNING`. An idempotency guard in `_execute` (e.g. check that status is still `RUNNING` before proceeding) provides a safety net.
+* Concurrent `resume` calls: two concurrent requests that both read `PENDING` before either writes `RUNNING` can race. If this becomes a concern, guard with a compare-and-swap update in the store or a per-job asyncio lock.
 
 ## 4. CLI Refactoring
 
+**Note:** Moving `acheron status <job_id>` to `acheron job status <job_id>` and `acheron submit` to `acheron job submit` are **breaking changes** for existing users. Implement the full restructure in a single commit — avoid a partially-migrated state where both old and new command forms exist simultaneously.
+
 * **Service Status (`acheron status`)**:
-  * Moved from checking a job's status.
+  * Repurposed from per-job status to overall service health.
   * Queries the orchestrator `/health`, `/workers`, and `/capabilities` endpoints.
   * Displays orchestrator connection, count of active workers by type, and active capabilities.
 * **Job Subcommands Group (`acheron job`)**:
@@ -75,3 +80,4 @@ The built-in workers execute as `local` transport handlers registered by the orc
     * `acheron job status <job_id>`
     * `acheron job resume <job_id> [--force-fresh]`
     * `acheron job submit` (moved from `submit`)
+
