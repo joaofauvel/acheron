@@ -34,7 +34,7 @@ The built-in workers execute as `local` transport handlers registered by the orc
 ### A. EXTRACTION Worker
 * **EPUB Source**:
   * Parses the EPUB archive using standard Python `zipfile`.
-  * Locates the Package Document (`.opf`) file using `defusedxml.ElementTree`. EPUBs are user-uploaded, so we use `defusedxml` rather than stdlib `xml.etree.ElementTree` for defense-in-depth against XML attacks (billion laughs, quadratic blowup, XXE). Enforced by ruff S314.
+  * Locates the Package Document (`.opf`) file using stdlib `xml.etree.ElementTree`. EPUBs are user-uploaded, but Expat 2.7.1+ (bundled since Python 3.11) is not vulnerable to billion laughs, quadratic blowup, or large tokens (see [cpython#135294](https://github.com/python/cpython/pull/135294)). `defusedxml` was considered but is unmaintained (0.7.1 from 2021) and the Python docs removed the recommendation to use it. S314 is suppressed with a comment referencing the CPython PR.
   * Resolves spine order: the `<spine>` element lists `<itemref idref="...">` entries referencing `id` attributes in the `<manifest>`. Resolve each `idref` to a `href` via the manifest before reading the XHTML content document. Do not assume `idref` == filename.
   * Strips HTML tags and writes each chapter as a plain text file (`chapter_001.txt`, `chapter_002.txt`, etc.) in the step cache directory under `{data_dir}/{plan_job_id}/extract/` (use configured `data_dir`, not a hardcoded `/data/jobs`). Block-level HTML tags (`<p>`, `<h1>-<h6>`, `<div>`, `<br>`, `<li>`) insert spaces at both start and end tags to prevent word merging across block boundaries.
   * Manifest `href` values are URL-decoded (`urllib.parse.unquote`) to handle percent-encoded paths (e.g. `ch%201.xhtml`).

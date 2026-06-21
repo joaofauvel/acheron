@@ -11,13 +11,12 @@ import shutil
 import struct
 import time
 import urllib.parse
+import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Awaitable, Callable
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO
-
-from defusedxml import ElementTree as DefusedET
+from typing import BinaryIO
 
 from acheron.core.chunking import chunk_text
 from acheron.core.errors import CacheCorruptedError, CacheMissError, WorkerError
@@ -33,9 +32,6 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.shell.cache import StepCache
-
-if TYPE_CHECKING:
-    import xml.etree.ElementTree as ET
 
 type LocalJobHandler = Callable[[Job], Awaitable[JobResult]]
 
@@ -119,7 +115,7 @@ def _resolve_opf_path(z: zipfile.ZipFile) -> str:
     """Locate the OPF package document path inside an EPUB archive."""
     try:
         container_xml = z.read("META-INF/container.xml")
-        root = DefusedET.fromstring(container_xml)
+        root = ET.fromstring(container_xml)  # noqa: S314 (Expat 2.8.1; see cpython#135294)
         rootfile_el = root.find(".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
         if rootfile_el is None:
             rootfile_el = root.find(".//rootfile")
@@ -204,7 +200,7 @@ def _extract_epub(source_path: Path, extract_dir: Path) -> list[OutputFile]:
         with zipfile.ZipFile(source_path, "r") as z:
             opf_path = _resolve_opf_path(z)
             opf_bytes = z.read(opf_path)
-            opf_root = DefusedET.fromstring(opf_bytes)
+            opf_root = ET.fromstring(opf_bytes)  # noqa: S314 (Expat 2.8.1; see cpython#135294)
             opf_dir = Path(opf_path).parent
             spine_hrefs = _resolve_spine_hrefs(opf_root)
 

@@ -9,7 +9,6 @@ authors = [{ name = "Julia" }]
 dependencies = [
     "aiofiles~=24.0",
     "click~=8.4",
-    "defusedxml~=0.7",
     "fastapi~=0.137",
     "grpcio~=1.81",
     "grpcio-health-checking~=1.81",
@@ -99,7 +98,7 @@ mypy_path = "src:stubs"
 exclude = ["src/acheron/proto/"]
 
 [[tool.mypy.overrides]]
-module = ["grpc.*", "grpc_health.*", "google.protobuf.*", "testcontainers.*", "defusedxml.*"]
+module = ["grpc.*", "grpc_health.*", "google.protobuf.*", "testcontainers.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
