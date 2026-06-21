@@ -6,7 +6,7 @@ This specification defines the decoupling and containerization of model-specific
 
 To keep workers completely modular, each model is packaged as its own self-contained codebase and Docker image:
 
-* **Location:** Each worker resides under `workers/<model_name>/` (e.g., `workers/qwen3tts/`, `workers/whisperv3large/`).
+* **Location:** Each worker resides under `workers/<model_name>/` (e.g., `workers/qwen3tts/`, `workers/whisperv3large/`, `workers/translategemma/`).
 * **Zero Coupling:** Workers have no dependency on the `acheron` orchestrator code or package. They interact solely over HTTP/gRPC standard APIs:
   * For HTTP: Implement `/health`, `/capabilities`, and `/execute` endpoints.
   * For gRPC: Implement the bidirectional stream service defined in `proto/synthesis.proto`.
@@ -15,6 +15,7 @@ To keep workers completely modular, each model is packaged as its own self-conta
     * `Dockerfile.orchestrator` → `ghcr.io/<repo>/acheron-orchestrator:latest`
     * `workers/qwen3tts/Dockerfile` → `ghcr.io/<repo>/qwen3tts-worker:latest`
     * `workers/whisperv3large/Dockerfile` → `ghcr.io/<repo>/whisperv3large-worker:latest`
+    * `workers/translategemma/Dockerfile` → `ghcr.io/<repo>/translategemma-worker:latest`
 * **Local Dev Builds:** A `just build-workers` target (or equivalent) should cover local image builds outside CI. Confirm `workers/` is not `.gitignore`d — model weights must not land there accidentally.
 
 ## 2. Decoupled Provider Health Checks
