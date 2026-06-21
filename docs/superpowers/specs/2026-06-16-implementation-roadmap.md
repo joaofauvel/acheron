@@ -179,7 +179,7 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 9b-i | done | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
 | 9b-ii | done | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
 | 9a | done | Streaming pipeline executor (`StreamingExecutor` is the new default; `PipelineError`; per-step timeout; per-stage queue with sentinel drain) |
-| 10 | planned | Built-in local workers (Extraction, Chunking, Packaging), settings via `acheron.yaml`, API/CLI resume |
+| 10 | done | Built-in local workers (Extraction, Chunking, Packaging), settings via `acheron.yaml`, API/CLI resume |
 | 11 | planned | Decoupled platform health checks (RunPod/HF), CI/CD publish to GHCR, dashboard error & status updates |
 
 
