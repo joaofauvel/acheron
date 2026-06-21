@@ -19,3 +19,4 @@ src/acheron/proto/synthesis_pb2_grpc.py
 
 certs/
 .worktrees/
+.agents/

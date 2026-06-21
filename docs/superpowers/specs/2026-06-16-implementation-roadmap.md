@@ -143,25 +143,21 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 
 ---
 
-### Layer 8 — Real GPU Workers
+### Layer 8 — Real GPU Workers (Plug-and-play)
 
-**Scope**: PyTorch-based TTS and ASR workers with real models. GPU Dockerfiles. Deployment configs.
+**Scope**: Decoupled, model-specific GPU workers with PyTorch/CUDA. Fully self-contained applications.
 
 **Files**:
-- `src/acheron/shell/transports/local.py` — extended with TTS/ASR implementations
-- `workers/tts/` — TTS worker app + Dockerfile
-- `workers/asr/` — ASR worker app + Dockerfile
-- `workers/tts/Dockerfile` — PyTorch + CUDA base, Qwen3-TTS model
-- `workers/asr/Dockerfile` — PyTorch + CUDA base, Whisper-v3 model
+- `workers/qwen3tts/` — Qwen3 TTS worker codebase and dedicated `Dockerfile`
+- `workers/whisperv3large/` — Whisper-v3 Large ASR worker codebase and dedicated `Dockerfile`
 
 **Design**:
-- TTS: Qwen3-TTS-12Hz-1.7B, HuggingFace Transformers. Accepts text, returns audio bytes. Min 8GB VRAM.
-- ASR: Whisper-v3 Large, HuggingFace Transformers. Accepts audio, returns text. Min 10GB VRAM.
-- Deployment: RunPod serverless, HuggingFace Inference Endpoints, local GPU (`docker compose --gpus`).
-- Model management: pre-downloaded at build time or fetched on first run with persistent volume caching.
-- Workers implement same HTTP interface as stubs (`/health`, `/submit`, `/capabilities`).
+- Every worker is self-contained and does not import `acheron` or share its package dependencies.
+- Workers interact with the orchestrator solely through standard REST/gRPC specifications.
+- Deployment targets: RunPod Serverless, Hugging Face Inference Endpoints, local GPU via standalone Compose files.
+- Configuration: Managed natively on each worker container, bypassing orchestrator configuration.
 
-**Deps**: Layer 0-7. External: PyTorch, Transformers, CUDA
+**Deps**: CUDA, PyTorch, Transformers (independent per worker)
 
 ---
 
@@ -179,10 +175,13 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 7a | done | Storage abstraction + Redis backend (sync `redis.Redis` client) |
 | 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check, gRPC HTTP /health sidecar (FastAPI) |
 | 7c | done | TLS via env vars: `ACHERON_TLS_{CERT,KEY,CA}_FILE`; dev cert script (`just certs`); compose wires certs, env vars, and HTTPS healthchecks; dashboard stays HTTP |
-| 8 | planned | Real GPU workers: TTS (Qwen3), ASR (Whisper-v3) |
+| 8 | planned | Real GPU workers: decoupled `qwen3tts` and `whisperv3large` |
 | 9b-i | done | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
 | 9b-ii | done | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
 | 9a | done | Streaming pipeline executor (`StreamingExecutor` is the new default; `PipelineError`; per-step timeout; per-stage queue with sentinel drain) |
+| 10 | planned | Built-in local workers (Extraction, Chunking, Packaging), settings via `acheron.yaml`, API/CLI resume |
+| 11 | planned | Decoupled platform health checks (RunPod/HF), CI/CD publish to GHCR, dashboard error & status updates |
+
 
 ## Layer 7 — Decomposition
 
@@ -235,3 +234,25 @@ Swap `RedisWorkerStore` and `RedisJobStore` from `redis.Redis` to `redis.asyncio
 ### Sub-project 9a — Streaming pipeline executor
 
 New `StreamingExecutor` is the new default strategy. Per-stage `asyncio.Queue` pipeline with bounded backpressure (linear topology — current plans have 4-5 single-step stages), fail-fast all-or-nothing job semantics, per-step `asyncio.wait_for()` timeout (default 1800s, configurable per instance), and `StepCache.save_outputs()` per chunk as resumability foundation. `StepCache` itself becomes async via aiofiles. New `PipelineError(AcheronError)` in `core/errors.py` for executor-internal invariants (cache, sentinel protocol, unexpected stage exceptions). `ExecutorStrategy.STREAMING` added; API and client default changed to `"streaming"`; `BatchAsyncExecutor` remains as opt-in. Per-chapter parallelism deferred to a future layer (plans are linear today).
+
+---
+
+## Layer 10 — Built-in Local Workers & Resuming Core
+
+Implement real built-in workers, yaml-based configuration settings, and execution resuming functionality. See [Layer 10 design spec](./2026-06-20-local-workers-and-resuming-design.md).
+
+- **Local Workers**: Implement standard ZIP+ElementTree parsing for EPUB chapter extraction, chunking logic via NLTK, and M4B concatenator and chapterizer metadata utilizing `ffmpeg` and `ffprobe`.
+- **Configuration settings**: Introduce `acheron.yaml` utilizing `pydantic` configuration validation in `src/acheron/shell/config.py`.
+- **Resuming Core**: Check cache validity before starting executor stages. Add `/jobs/{id}/resume` POST API route and `acheron job resume` Click CLI subcommand.
+
+---
+
+## Layer 11 — Decoupled Platform Health Checks & Dashboard Integration
+
+Implement decoupled provider health checks, modular container image compilation, and dashboard updates. See [Layer 11 design spec](./2026-06-20-deployment-and-dashboard-design.md).
+
+- **Decoupled health checks**: Abstract `HealthProvider` class configuration mapping platform-specific endpoints (RunPod/HF) using API keys defined in `acheron.yaml`.
+- **Modular Workers**: Define isolated worker packages and custom Dockerfiles (e.g. `workers/qwen3tts/`, `workers/whisperv3large/`) without orchestrator dependencies.
+- **CI/CD Build**: Configure GitHub Action workflow to build separate packages and publish to GHCR.
+- **Dashboard Updates**: Integrate backend status endpoint (green/red dot) and log viewer modal for worker errors.
+
