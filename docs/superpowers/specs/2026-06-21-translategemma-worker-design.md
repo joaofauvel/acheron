@@ -4,11 +4,12 @@ Defines the implementation of the `translategemma-worker` container — the GPU-
 
 ## Model
 
-**`google/translategemma-4b-it`** (TranslateGemma 4B, instruction-tuned)
+**`google/translategemma-12b-it`** (TranslateGemma 12B, instruction-tuned)
 
-- Built on Gemma 3, fine-tuned for machine translation via SFT + RL.
+- Built on Gemma 3, fine-tuned for machine translation via SFT + RL distillation from Gemini.
+- Outperforms the 27B general-purpose baseline by ~23.5% error reduction on WMT24++ benchmarks.
 - Supports 55 languages; covers all language pairs the orchestrator plans today.
-- Min 8GB VRAM (fits on a single 10GB/16GB A10/L4/T4 GPU).
+- Min ~16GB VRAM in bfloat16 (fits on a 24GB/40GB GPU; use quantization for tighter cards).
 - Inference via HuggingFace `transformers` — `AutoModelForCausalLM` + `AutoTokenizer`.
 - Uses the model's native chat template (`apply_chat_template`) for structuring translation requests. Do not use a bare prompt; the model is opinionated about its input format.
 
@@ -37,7 +38,7 @@ Returns the worker's identity and supported language pairs. All 55 TranslateGemm
   "supported_formats_out": ["text/plain"],
   "max_payload_bytes": 524288,
   "batch_capable": false,
-  "model_source": "google/translategemma-4b-it"
+  "model_source": "google/translategemma-12b-it"
 }
 ```
 
@@ -100,9 +101,9 @@ Translates a single chunk of text.
 ```python
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-tokenizer = AutoTokenizer.from_pretrained("google/translategemma-4b-it")
+tokenizer = AutoTokenizer.from_pretrained("google/translategemma-12b-it")
 model = AutoModelForCausalLM.from_pretrained(
-    "google/translategemma-4b-it",
+    "google/translategemma-12b-it",
     device_map="auto",
     torch_dtype=torch.bfloat16,
 )
@@ -154,15 +155,15 @@ The registration endpoint and token are provided via environment variables:
 | `ACHERON_ORCHESTRATOR_URL` | — | Required. Orchestrator URL for self-registration. |
 | `ACHERON_REGISTRATION_TOKEN` | — | Required. Registration bearer token. |
 | `WORKER_PORT` | `8002` | Port to listen on. |
-| `MODEL_ID` | `google/translategemma-4b-it` | HuggingFace model ID (allows swapping to 27B variant). |
+| `MODEL_ID` | `google/translategemma-12b-it` | HuggingFace model ID. |
 | `MAX_NEW_TOKENS` | `1024` | Max tokens generated per request. |
 | `HF_HOME` | `/data/hf_cache` | HuggingFace cache dir (mount a persistent volume here). |
 
 ## Deployment
 
-* **Serverless (RunPod / Hugging Face Inference Endpoints):** Cold-start time ~60–120s while loading the 4B model. The `HealthProvider` mechanism (see [deployment spec](./2026-06-20-deployment-and-dashboard-design.md)) handles this: the orchestrator marks the worker as `Booting` until `/health` returns 200.
+* **Serverless (RunPod / Hugging Face Inference Endpoints):** Cold-start time ~90–150s while loading the 12B model. The `HealthProvider` mechanism (see [deployment spec](./2026-06-20-deployment-and-dashboard-design.md)) handles this: the orchestrator marks the worker as `Booting` until `/health` returns 200. Target at least a 24GB GPU pod (e.g. RTX 4090, L4, A10G).
 * **Local GPU (Docker Compose):** Add service to `docker-compose.yml` with `deploy.resources.reservations.devices` for GPU access. Mount a volume at `HF_HOME` to persist the model cache across restarts.
-* **VRAM:** 4B model in bfloat16 ≈ 8GB. Use the `google/translategemma-27b-it` variant for higher quality at the cost of ~20GB VRAM.
+* **VRAM:** ~16GB in bfloat16. Fits comfortably on a 24GB consumer GPU or any 40GB+ enterprise card (A100, H100).
 
 ## Dockerfile sketch
 
@@ -176,7 +177,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV HF_HOME=/data/hf_cache
-ENV MODEL_ID=google/translategemma-4b-it
+ENV MODEL_ID=google/translategemma-12b-it
 
 EXPOSE 8002
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

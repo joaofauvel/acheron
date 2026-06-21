@@ -501,7 +501,7 @@ Workers are completely decoupled, model-specific containers built with PyTorch a
 
 * **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B for text synthesis. Min 8GB VRAM.
 * **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM.
-* **translategemma-worker:** Run TranslateGemma-4B (`google/translategemma-4b-it`) for text translation across 55 languages. Min 8GB VRAM. Used when `source_language != target_language`; skipped otherwise.
+* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 55 languages. Min ~16GB VRAM. Used when `source_language != target_language`; skipped otherwise.
 
 **Deployment & API:**
 * Deployed as serverless functions (RunPod Serverless, Hugging Face Inference Endpoints) or standalone cloud instances.
@@ -618,7 +618,7 @@ System: Eres un traductor profesional literario. Traduce el siguiente texto en {
 **Translation Worker (Layer 8):**
 - PyTorch + CUDA
 - HuggingFace Transformers
-- TranslateGemma-4B (`google/translategemma-4b-it`)
+- TranslateGemma-12B (`google/translategemma-12b-it`)
 
 **Dashboard:**
 - Python 3.14+
