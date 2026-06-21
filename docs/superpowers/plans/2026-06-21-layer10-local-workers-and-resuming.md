@@ -4,7 +4,7 @@
 
 **Goal:** Implement real built-in local workers (EPUB extraction, text chunking, audiobook packaging), YAML-based configuration settings via `acheron.yaml`, and job resuming mechanics across the executors, API, and CLI.
 
-**Architecture:** We introduce a Pydantic Settings-based config module loaded at orchestrator startup. We swap the stub local handlers for real implementations using standard zipfile/ElementTree parsing, NLTK chunking, and FFmpeg concatenation. We update the streaming executor to skip steps with valid caches, wrap resume operations in a per-job lock for concurrency safety, and restructure Click CLI commands.
+**Architecture:** We introduce a Pydantic Settings-based config module loaded at orchestrator startup that seamlessly merges YAML configuration with environment overrides. We swap the stub local handlers for real implementations using standard zipfile/ElementTree parsing, NLTK chunking, and FFmpeg concatenation. We update the streaming executor to skip steps with valid caches, wrap resume operations in a per-job lock for concurrency safety, and restructure Click CLI commands.
 
 **Tech Stack:** Python 3.14, Pydantic v2, Pydantic Settings, PyYAML, FFmpeg, Click, Rich, FastAPI.
 
@@ -22,8 +22,9 @@ We will create/modify the following files:
 * **Modify**: `src/acheron/shell/executors/streaming.py` — Add step cache inspection to `_stage`.
 * **Modify**: `src/acheron/api_client.py` — Add client methods `get_health` and `resume_job`.
 * **Modify**: `src/acheron/cli.py` — Group job subcommands under `acheron job` and repurpose top-level `status`.
-* **Modify**: `tests/integration/conftest.py` — Minimal EPUB helper fixture.
-* **Modify**: `tests/integration/test_worker_integration.py` — Update integration tests to use the EPUB helper fixture.
+* **Modify**: `tests/integration/conftest.py` — EPUB helper fixture and environment setup for uvicorn stubs.
+* **Modify**: `tests/integration/test_worker_integration.py` — Update integration tests to use the EPUB helper fixture and update the ASR stub to write real files.
+* **Modify**: `stubs/worker_stub.py` — Update the TTS stub worker to write real WAV output to the data directory.
 * **Modify**: `tests/shell/test_local_worker.py` — Adapt tests for the new local worker handlers.
 * **Modify**: `tests/shell/test_orchestrator.py` — Test job resuming.
 * **Modify**: `tests/shell/test_cli.py` — Update CLI test commands.
@@ -85,6 +86,17 @@ workers:
     assert settings.workers.chunking.max_chunk_length == 500
     assert settings.workers.packaging.bitrate == "192k"
     assert settings.workers.packaging.codec == "mp3"
+
+def test_settings_env_var_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # F-05: Ensure environment variables override loaded YAML settings
+    yaml_content = "orchestrator:\n  data_dir: '/tmp/yaml_dir'"
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ACHERON_ORCHESTRATOR__DATA_DIR", "/tmp/env_dir")
+    
+    settings = load_settings()
+    assert settings.orchestrator.data_dir == Path("/tmp/env_dir")
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
@@ -140,7 +152,8 @@ def load_settings() -> Settings:
             try:
                 with path.open("r", encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
-                return Settings.model_validate(data)
+                # F-05: Instantiate using **data to allow BaseSettings environment overrides
+                return Settings(**data)
             except Exception:
                 pass
     return Settings()
@@ -189,10 +202,11 @@ def _create_dummy_epub(path: Path) -> None:
 </container>"""
         z.writestr("META-INF/container.xml", container_xml)
         
+        # F-07: Use percent-encoded href to verify unquoting
         opf = """<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
   <manifest>
-    <item href="ch1.xhtml" id="html1" media-type="application/xhtml+xml"/>
+    <item href="ch%201.xhtml" id="html1" media-type="application/xhtml+xml"/>
   </manifest>
   <spine>
     <itemref idref="html1"/>
@@ -200,8 +214,9 @@ def _create_dummy_epub(path: Path) -> None:
 </package>"""
         z.writestr("OEBPS/content.opf", opf)
         
+        # F-06: Check block tag boundaries to ensure words do not merge
         ch1 = "<html><body><h1>Chapter 1</h1><p>Hello World!</p></body></html>"
-        z.writestr("OEBPS/ch1.xhtml", ch1)
+        z.writestr("OEBPS/ch 1.xhtml", ch1)
 
 @pytest.mark.asyncio
 async def test_extraction_handler_epub(tmp_path: Path) -> None:
@@ -221,6 +236,7 @@ async def test_extraction_handler_epub(tmp_path: Path) -> None:
     out_file = Path(result.outputs[0].path)
     assert out_file.exists()
     assert out_file.name == "chapter_001.txt"
+    # Verify F-06 block tag space addition
     assert out_file.read_text(encoding="utf-8") == "Chapter 1 Hello World!"
 ```
 
@@ -238,21 +254,28 @@ import xml.etree.ElementTree as ET
 import shutil
 import hashlib
 import time
+import urllib.parse
 from pathlib import Path
 from html.parser import HTMLParser
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFile, SUPPORTED_LANGUAGES, WorkerCapabilities, WorkerType
 
 class HTMLStripper(HTMLParser):
+    BLOCK_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "br", "li"}
+    
     def __init__(self) -> None:
         super().__init__()
         self.reset()
-        self.strict = False
         self.convert_charrefs = True
         self.text: list[str] = []
 
     def handle_data(self, d: str) -> None:
         self.text.append(d)
+
+    def handle_endtag(self, tag: str) -> None:
+        # F-06: Append spacer for block level elements to prevent words merging
+        if tag in self.BLOCK_TAGS:
+            self.text.append(" ")
 
     def get_data(self) -> str:
         return "".join(self.text)
@@ -273,7 +296,9 @@ class ExtractionHandler:
         if not source_path.exists():
             raise WorkerError(f"Source file not found: {source_path}")
             
-        extract_dir = self.data_dir / job.job_id / "extract"
+        # F-02: Use resolved plan job ID instead of job.job_id to avoid path suffix mismatch
+        plan_job_id = job.job_id.rsplit("-", 1)[0]
+        extract_dir = self.data_dir / plan_job_id / "extract"
         extract_dir.mkdir(parents=True, exist_ok=True)
         
         outputs: list[OutputFile] = []
@@ -312,7 +337,8 @@ class ExtractionHandler:
                         item_id = item.get("id")
                         href = item.get("href")
                         if item_id and href:
-                            manifest_map[item_id] = href
+                            # F-07: Unescape URL percent encoding in manifest paths
+                            manifest_map[item_id] = urllib.parse.unquote(href)
                             
                     itemrefs = opf_root.findall(".//{http://www.idpf.org/2007/opf}itemref")
                     if not itemrefs:
@@ -434,16 +460,28 @@ Append this test to `tests/shell/test_local_handlers.py`:
 ```python
 import json
 from acheron.shell.local_handlers import ChunkingHandler
+from acheron.shell.cache import StepCache
 
 @pytest.mark.asyncio
 async def test_chunking_handler(tmp_path: Path) -> None:
-    extract_dir = tmp_path / "job2-chunk" / "extract"
+    # Set up job dir and step cache
+    job_id = "job2"
+    extract_dir = tmp_path / job_id / "extract"
     extract_dir.mkdir(parents=True)
-    (extract_dir / "chapter_001.txt").write_text("Hello World! This is a test chapter that should be chunked.", encoding="utf-8")
+    txt_file = extract_dir / "chapter_001.txt"
+    txt_file.write_text("Hello World! This is a test chapter that should be chunked.", encoding="utf-8")
+    
+    # Save to step cache mock output
+    cache = StepCache(tmp_path)
+    await cache.save_outputs(
+        job_id,
+        "extract",
+        (OutputFile(path=str(txt_file), filename="chapter_001.txt", size_bytes=txt_file.stat().st_size, checksum="", content_type="text/plain"),)
+    )
     
     handler = ChunkingHandler(tmp_path, max_chunk_length=30)
     job = Job(
-        job_id="job2-chunk",
+        job_id=f"{job_id}-chunk",
         job_type=WorkerType.CHUNKING,
         payload={},
         chapter_id=""
@@ -473,6 +511,7 @@ Modify `src/acheron/shell/local_handlers.py`:
 import json
 import dataclasses
 from acheron.core.chunking import chunk_text
+from acheron.core.errors import CacheMissError
 
 class ChunkingHandler:
     def __init__(self, data_dir: Path, max_chunk_length: int) -> None:
@@ -481,21 +520,35 @@ class ChunkingHandler:
 
     async def __call__(self, job: Job) -> JobResult:
         start_time = time.monotonic()
-        extract_dir = self.data_dir / job.job_id / "extract"
-        chunk_dir = self.data_dir / job.job_id / "chunk"
+        # F-02: Use resolved parent plan job ID
+        plan_job_id = job.job_id.rsplit("-", 1)[0]
+        chunk_dir = self.data_dir / plan_job_id / "chunk"
         chunk_dir.mkdir(parents=True, exist_ok=True)
         
-        txt_files = sorted(extract_dir.glob("*.txt"))
-        if not txt_files:
-            raise WorkerError("No extracted text files found for chunking")
+        # F-03: Do not hardcode /extract, check step cache for transcribed (ASR) text or extracted (EPUB) text
+        cache = StepCache(self.data_dir)
+        upstream_outputs = None
+        for step_dep in ("transcribe", "extract"):
+            try:
+                upstream_outputs = await cache.load_outputs(plan_job_id, step_dep)
+                break
+            except Exception:
+                continue
+                
+        if not upstream_outputs:
+            raise WorkerError("No upstream text files found for chunking")
             
         all_chunks = []
-        for file_path in txt_files:
-            chapter_id = file_path.stem
-            text = file_path.read_text(encoding="utf-8")
-            chunks = chunk_text(text, chapter_id, max_length=self.max_chunk_length)
-            all_chunks.extend(chunks)
-            
+        for out in upstream_outputs:
+            if out.content_type == "text/plain":
+                file_path = Path(out.path)
+                if not file_path.exists():
+                    raise WorkerError(f"Upstream text file does not exist: {file_path}")
+                chapter_id = file_path.stem
+                text = file_path.read_text(encoding="utf-8")
+                chunks = chunk_text(text, chapter_id, max_length=self.max_chunk_length)
+                all_chunks.extend(chunks)
+                
         chunks_json_path = chunk_dir / "chunks.json"
         serialized = [dataclasses.asdict(c) for c in all_chunks]
         
@@ -671,6 +724,10 @@ def read_wav_duration(path: Path) -> float:
                     
             if fmt_chunk is None or data_size is None:
                 raise WorkerError(f"Missing fmt or data chunk in WAV: {path}")
+            
+            # F-09: Add length validation before parsing fmt parameters
+            if len(fmt_chunk) < 12:
+                raise WorkerError(f"Corrupted fmt chunk (too short) in WAV: {path}")
                 
             audio_format, num_channels, sample_rate, byte_rate = struct.unpack("<HHII", fmt_chunk[0:12])
             if audio_format != 1:
@@ -837,7 +894,7 @@ git commit -m "feat: implement PackagingHandler and remove stub handlers"
 
 ### Task 5: Wiring Settings & Workers in Orchestrator & App
 
-Pass `Settings` through `create_app` to `Orchestrator`, wire settings to the three local handler constructors, and fix tests.
+Pass `Settings` through `create_app` to `Orchestrator`, wire settings to the local handler constructors, set environment variable in test configurations, and fix health monitor instantiation parameters.
 
 **Files:**
 * Modify: `src/acheron/shell/orchestrator.py`
@@ -868,7 +925,14 @@ Modify `src/acheron/shell/orchestrator.py`:
 - Import `Settings`, `load_settings` from `acheron.shell.config`.
 - Import `ExtractionHandler`, `ChunkingHandler`, `PackagingHandler` from `local_handlers`.
 - Add `settings: Settings | None = None` to `Orchestrator.__init__` and store in `self._settings`. If None, load defaults.
-- Use `self._settings.orchestrator.data_dir` to instantiate `self._step_cache` and health monitor.
+- Use `self._settings.orchestrator.data_dir` to instantiate `self._step_cache` and `PlanCache` default directory.
+- F-08: Instantiate health monitor with correct signature using Settings:
+```python
+        self._health_monitor = HealthMonitor(
+            registry,
+            interval=float(self._settings.orchestrator.health_check_interval_seconds),
+        )
+```
 - Rewrite `_register_built_in_local_workers` to instantiate classes:
 ```python
     async def _register_built_in_local_workers(self) -> None:
@@ -959,15 +1023,33 @@ git commit -m "feat: inject Settings into Orchestrator and initialize handlers w
 
 ---
 
-### Task 6: Integration Tests EPUB Fixture
+### Task 6: Integration Tests EPUB Fixture & Mock File Writing
 
-Add a pytest fixture to write a minimal valid EPUB zip file on the fly and update integration tests to use it.
+Add a pytest fixture to write a minimal valid EPUB zip file on the fly, export environment variables in uvicorn test fixtures, and update integration tests to write real files in mock handlers.
 
 **Files:**
 * Modify: `tests/integration/conftest.py`
 * Modify: `tests/integration/test_worker_integration.py`
+* Modify: `stubs/worker_stub.py`
 
-- [ ] **Step 1: Add a minimal EPUB fixture**
+- [ ] **Step 1: Set ACHERON_DATA_DIR in wired_orchestrator test fixture**
+
+Modify `tests/integration/conftest.py` inside `wired_orchestrator` to set the environment variable:
+```python
+@pytest_asyncio.fixture
+async def wired_orchestrator(
+    tmp_path: Path,
+    http_tts_stub: str,
+    http_translation_stub: str,
+    grpc_tts_stub: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[Orchestrator]:
+    # F-04: export ACHERON_DATA_DIR so uvicorn stub processes write files to the correct temp directory
+    monkeypatch.setenv("ACHERON_DATA_DIR", str(tmp_path))
+    # ... (remaining registration code) ...
+```
+
+- [ ] **Step 2: Add a minimal EPUB fixture**
 
 Add to `tests/integration/conftest.py`:
 ```python
@@ -1000,7 +1082,7 @@ def epub_file(tmp_path: Path) -> Path:
 ```
 Ensure you import `zipfile` at the top of `conftest.py`.
 
-- [ ] **Step 2: Update integration tests to use epub_file fixture**
+- [ ] **Step 3: Update integration tests to use epub_file fixture**
 
 Modify `tests/integration/test_worker_integration.py` to use `epub_file` instead of `"/tmp/test.epub"`.
 For example:
@@ -1010,16 +1092,76 @@ For example:
         request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
 ```
 
-- [ ] **Step 3: Run integration tests**
+- [ ] **Step 4: Update ASR test stub handler to write real text file**
+
+Modify `_asr_handler` in `tests/integration/test_worker_integration.py` to write its output file:
+```python
+        async def _asr_handler(job: Job) -> JobResult:
+            plan_job_id = job.job_id.rsplit("-", 1)[0]
+            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/tmp"))
+            trans_dir = data_dir / plan_job_id / "transcribe"
+            trans_dir.mkdir(parents=True, exist_ok=True)
+            out_path = trans_dir / f"{job.job_id}.txt"
+            out_path.write_text("mock transcription", encoding="utf-8")
+            
+            return JobResult(
+                job_id=job.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(
+                    OutputFile(
+                        path=str(out_path),
+                        filename=f"{job.job_id}.txt",
+                        size_bytes=out_path.stat().st_size,
+                        checksum="",
+                        content_type="text/plain",
+                    ),
+                ),
+                metrics=JobMetrics(duration_seconds=0.01),
+            )
+```
+
+- [ ] **Step 5: Update stubs/worker_stub.py to write real WAV files**
+
+Modify the `execute` endpoint in `stubs/worker_stub.py` for TTS:
+```python
+        job_id = body.get("job_id", "unknown")
+        if cfg["worker_type"] == "TTS":
+            audio = _silent_wav()
+            # F-04: Write mock wav file to step cache path
+            plan_job_id = job_id.rsplit("-", 1)[0]
+            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
+            step_dir = data_dir / plan_job_id / "synthesize"
+            step_dir.mkdir(parents=True, exist_ok=True)
+            out_path = step_dir / f"{job_id}.wav"
+            out_path.write_bytes(audio)
+            
+            return {
+                "job_id": job_id,
+                "status": "success",
+                "outputs": [
+                    {
+                        "path": str(out_path),
+                        "filename": f"{job_id}.wav",
+                        "size_bytes": len(audio),
+                        "checksum": "",
+                        "content_type": "audio/wav",
+                    }
+                ],
+                "metrics": {"duration_seconds": 0.01},
+                "error": None,
+            }
+```
+
+- [ ] **Step 6: Run integration tests**
 
 Run: `pytest tests/integration/test_worker_integration.py`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add tests/integration/conftest.py tests/integration/test_worker_integration.py
-git commit -m "test: add epub_file fixture and update integration tests to use it"
+git add tests/integration/conftest.py tests/integration/test_worker_integration.py stubs/worker_stub.py
+git commit -m "test: add epub_file fixture and update integration tests & stubs to write real files"
 ```
 
 ---
@@ -1206,6 +1348,14 @@ Modify `src/acheron/shell/orchestrator.py`:
             if tracked.status == PlanStatus.RUNNING:
                 raise JobAlreadyRunningError(f"Job {job_id} is already running")
                 
+            # F-11: Warn when resuming sequential or async executor strategy
+            if tracked.strategy != ExecutorStrategy.STREAMING:
+                logger.warning(
+                    "Job %s was run with strategy %s; resuming will re-run all steps from scratch.",
+                    job_id,
+                    tracked.strategy
+                )
+                
             if force_fresh:
                 job_dir = self._step_cache.data_dir / job_id
                 logger.info("force_fresh=True: deleting job step-cache directory: %s", job_dir)
@@ -1216,11 +1366,12 @@ Modify `src/acheron/shell/orchestrator.py`:
             tracked.result = None
             tracked.status = PlanStatus.RUNNING
             
+            # F-01: Update the store first, then immediately spawn task without awaits in between
+            await self._job_store.put(tracked)
             task = asyncio.create_task(self._execute(tracked))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
             
-            await self._job_store.put(tracked)
             return tracked
 ```
 - In `Orchestrator._execute`, add idempotency guard:
@@ -1293,7 +1444,7 @@ Update `AcheronClient` and restructure Click command groups to match the new com
 **Files:**
 * Modify: `src/acheron/api_client.py`
 * Modify: `src/acheron/cli.py`
-* Test: `tests/shell/test_cli.py`
+* Modify: `tests/shell/test_cli.py`
 
 - [ ] **Step 1: Add resume and health to AcheronClient**
 
@@ -1320,14 +1471,13 @@ Modify `src/acheron/api_client.py`:
             return cast("dict[str, Any]", resp.json())
 ```
 
-- [ ] **Step 2: Write test for new CLI structure**
+- [ ] **Step 2: Modify tests in test_cli.py for command restructure**
 
-Modify `tests/shell/test_cli.py` to assert correct execution of:
-- `acheron job submit`
-- `acheron job status`
-- `acheron job resume`
-- `acheron job list`
-- `acheron status` (overall health)
+F-10: Update CliRunner calls in `tests/shell/test_cli.py` to match the new nested subcommand structure.
+For example, change:
+`runner.invoke(main, ["submit", ...])` -> `runner.invoke(main, ["job", "submit", ...])`
+`runner.invoke(main, ["status", "job-abc"])` -> `runner.invoke(main, ["job", "status", "job-abc"])`
+And add tests for `status` (service health) and `job resume`.
 
 - [ ] **Step 3: Run CLI tests to verify they fail**
 
