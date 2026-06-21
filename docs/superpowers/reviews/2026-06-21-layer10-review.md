@@ -68,3 +68,41 @@ The design for Layer 10 (Local Workers, Pydantic settings configuration, resumin
 - **Location:** `tests/shell/api/test_jobs.py`
 - **Issue:** The test relies on a fixed `await asyncio.sleep(0.5)` which is timing-dependent and flaky under load.
 - **Suggestion:** Poll the job status until it transitions away from `running` before triggering the `/resume` request.
+
+---
+
+## Round 2 (post-implementation review)
+
+**Date:** 2026-06-21
+**Verdict:** all findings addressed
+
+All 8 prior findings (RED-10-1 through RED-10-8) were properly addressed in the implementation.
+
+### New findings (round 2)
+
+**RED-10-9: Empty checksums in stubs defeat cache-skip resume** — Major — Fixed
+- Stubs wrote `"checksum": ""` in manifests; `step_has_valid_cache` compares computed SHA-256 against `output.checksum`, so it always returned `False`, defeating resume. Fixed by computing real checksums in all stubs and test handlers.
+
+**RED-10-10: CacheCorruptedError not caught when loading upstream outputs** — Minor — Fixed
+- `ChunkingHandler` and `PackagingHandler` caught `CacheMissError, OSError` but not `CacheCorruptedError`. Added to both except clauses.
+
+**RED-10-11: PackagingHandler concat paths not resolved to absolute** — Minor — Fixed
+- Used `Path(out.path).as_posix()` without `.resolve()`. FFmpeg resolves relative to CWD, not inputs.txt. Fixed with `.resolve()`.
+
+**RED-10-12: worker_stub else branch writes to "translate" for all non-TTS** — Minor — Accepted
+- The else branch writes to `translate/` for any non-TTS type. Currently only used for TRANSLATION (separate stub handles ASR inline). Latent bug if reused for ASR; accepted as low risk.
+
+**RED-10-13: Missing test coverage for resume edge cases** — Minor — Accepted
+- No `force_fresh=True` API test, no 400 response test for active jobs at route level, no re-execution verification. Accepted as technical debt for future test improvement.
+
+**RED-10-14: test_resume_job_route leaves spawned _execute task uncleaned** — Nit — Accepted
+- Background task cancelled on loop teardown. May produce warnings. Accepted as low impact.
+
+**RED-10-15: shutil.rmtree without ignore_errors** — Nit — Fixed
+- Added `ignore_errors=True` to prevent TOCTOU race.
+
+**RED-10-16: client fixture doesn't call orch.close()** — Nit — Accepted
+- Inconsistent with `wired_app` fixture but harmless for InMemory stores.
+
+**RED-10-17: YAML config silently swallows malformed errors** — Nit — Fixed
+- Changed blind `except Exception` to catch `yaml.YAMLError` with a warning log and `OSError` silently. Malformed explicit config now warns.
