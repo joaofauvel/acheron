@@ -136,7 +136,9 @@ Acheron services serve TLS when configured. Three env vars control it:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard: orchestrator URL (use `http://` to skip TLS) |
-| `ACHERON_REGISTRATION_TOKEN` | `dev-registration-token` | Worker registration shared secret |
+| `ACHERON_REGISTRATION_TOKEN` | (auto-generated) | Worker registration shared secret. If not configured (unset/null), the orchestrator automatically generates a secure token on startup and writes it to `{data_dir}/.registration_token`. |
+| `ACHERON_OPEN_REGISTRATION` | (unset) | Set to `1` to enable open worker registration (bypasses token checks, useful for local dev). |
+| `ACHERON_CONFIG_PATH` | (unset) | Custom path to the settings configuration file (searches for `acheron.yaml` / `acheron.yml`). |
 | `ACHERON_DATA_DIR` | `/data/jobs` | Orchestrator: plan and step-output cache directory (must be writable) |
 | `ACHERON_STORE_BACKEND` | `memory` | Orchestrator: `memory` (in-process) or `redis` (persistent) |
 | `REDIS_URL` | `redis://localhost:6379` | Orchestrator: Redis connection (used when `ACHERON_STORE_BACKEND=redis`) |
@@ -145,13 +147,36 @@ Acheron services serve TLS when configured. Three env vars control it:
 | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key (set with `ACHERON_TLS_CERT_FILE` to enable HTTPS) |
 | `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs (falls back to `SSL_CERT_FILE`, then `./certs/acheron-ca.crt` in the CLI's CWD) |
 
+### Configuration File
+
+In addition to environment variables, Acheron can be configured using a YAML configuration file (`acheron.yaml` or `acheron.yml`).
+
+The orchestrator searches for configuration files in the following order:
+1. `$ACHERON_CONFIG_PATH` (if defined)
+2. `./acheron.yaml` or `./acheron.yml` in the current working directory
+3. `/etc/acheron/acheron.yaml` or `/etc/acheron/acheron.yml`
+
+An example template configuration file is provided in [acheron.yaml.example](acheron.yaml.example). To customize settings:
+
+```bash
+cp acheron.yaml.example acheron.yaml
+```
+
+Environment variables always take precedence over values defined in the configuration file. For nested configuration keys, use a double underscore `__` prefix (e.g. `ACHERON_ORCHESTRATOR__DATA_DIR` maps to the `orchestrator.data_dir` key).
+
 ## CLI
 
 ```bash
-acheron submit book.epub --src en --dest es
-acheron submit podcast.mp3 --src en --dest es --asr whisper-v3
-acheron status job-xyz
-acheron status job-xyz --verbose
+# Submit and manage jobs
+acheron job submit book.epub --src en --dest es
+acheron job submit podcast.mp3 --src en --dest es --asr whisper-v3
+acheron job status job-xyz
+acheron job status job-xyz --verbose
+acheron job resume job-xyz
+acheron job resume job-xyz --force-fresh
+
+# View system status, workers, and capabilities
+acheron status
 acheron jobs --active
 acheron jobs --completed
 acheron workers
