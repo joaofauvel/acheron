@@ -430,13 +430,13 @@ The CLI exposes this as `acheron capabilities [--src LANG] [--dest LANG]`.
 
 ```bash
 # Resume from last completed step
-acheron resume job-xyz
+acheron job resume job-xyz
 
 # Force fresh start
-acheron resume job-xyz --force-fresh
+acheron job resume job-xyz --force-fresh
 ```
 
-On resume, the executor checks each step: if the step is `complete` and its output directory has a valid manifest, skip it. Corrupted or partial cache → re-run that step.
+On resume, the executor checks each step: if the step is `complete` and its output directory has a valid manifest, skip it. Corrupted or partial cache → re-run that step. See the [local workers and resuming spec](./2026-06-20-local-workers-and-resuming-design.md) for endpoint details.
 
 ## Error Handling
 
@@ -495,35 +495,17 @@ A representative service:
         condition: service_healthy
 ```
 
-### GPU Worker (RunPod / HuggingFace) — Layer 8
+### GPU Worker (Decoupled & Plug-and-play) — Layer 8
 
-Real TTS/ASR implementations (not stubs). Separate Docker images per worker type, built on PyTorch base with GPU support.
+Workers are completely decoupled, model-specific containers built with PyTorch and CUDA. They have no dependence on orchestrator libraries or configuration, communicating solely via the standardized REST/gRPC interfaces.
 
-**TTS Worker:**
-- Model: Qwen3-TTS-12Hz-1.7B (HuggingFace Transformers)
-- Dependencies: PyTorch, Transformers, CUDA
-- Accepts text chunks, returns synthesized audio bytes
-- GPU required (minimum 8GB VRAM for 1.7B model)
+* **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B for text synthesis. Min 8GB VRAM.
+* **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM.
 
-**ASR Worker:**
-- Model: Whisper-v3 Large (HuggingFace Transformers)
-- Dependencies: PyTorch, Transformers, CUDA
-- Accepts audio bytes, returns transcription text
-- GPU required (minimum 10GB VRAM for Large model)
-
-**Deployment targets:**
-- RunPod serverless (GPU pods with pre-built images)
-- HuggingFace Inference Endpoints
-- Local GPU (Docker Compose with `--gpus` flag)
-
-**Model management:** Models pre-downloaded at image build time or fetched on first run with caching to persistent volume.
-
-Worker exposes:
-- `POST /execute` — single job
-- `POST /submit-batch` — streaming batch
-- `GET /poll/{handle}` — batch status
-- `GET /health` — liveness
-- `GET /capabilities` — self-description
+**Deployment & API:**
+* Deployed as serverless functions (RunPod Serverless, Hugging Face Inference Endpoints) or standalone cloud instances.
+* Exposed endpoints: `/health` (health probe), `/capabilities` (supported target/source languages), and `/execute` (job execution).
+* On container boot, they register their endpoint URL and capabilities with the orchestrator (`POST /workers`).
 
 ## Dashboard
 
@@ -562,17 +544,21 @@ HTMX + Jinja2, separate container (`dashboard/`), polling orchestrator API every
 ### Implemented Commands
 
 ```bash
-# Job submission (auto-detects source type from extension: .epub → epub, .mp3/.wav/.flac/.ogg/.m4a → audio)
-acheron submit book.epub --src en --dest es
-acheron submit podcast.mp3 --src en --dest es --asr whisper-v3
-acheron submit book.epub --src en --dest es --executor batch_async
-acheron submit input.dat --src en --dest es --type epub   # explicit type override
+# Service status
+acheron status
 
-# Status
-acheron status job-xyz
-acheron status job-xyz --verbose   # also shows errors
+# Job commands Click group:
+acheron job submit book.epub --src en --dest es
+acheron job submit podcast.mp3 --src en --dest es --asr whisper-v3
+acheron job submit book.epub --src en --dest es --executor streaming
 
-# Jobs (filters are client-side — full list fetched then filtered)
+acheron job status job-xyz
+acheron job status job-xyz --verbose   # also shows errors
+
+acheron job resume job-xyz
+acheron job resume job-xyz --force-fresh
+
+# Jobs listing (filters are client-side)
 acheron jobs --active       # status == "running"
 acheron jobs --completed    # status in ("completed", "failed")
 
@@ -590,9 +576,8 @@ acheron capabilities --dest es
 These commands require API endpoints that don't exist yet:
 
 ```bash
-acheron resume job-xyz [--force-fresh]   # resume from last completed step
-acheron cancel job-xyz                   # cancel a running job
-acheron package job-xyz --output ./      # package completed job to M4B
+acheron job cancel job-xyz               # cancel a running job
+acheron job package job-xyz --output ./  # package completed job to M4B (manual run)
 ```
 
 ## Translation Engine
