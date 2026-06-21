@@ -380,3 +380,29 @@ related: [OBS-004]
 **Recommendation.** Keep `logger.exception` for the full traceback, but populate `PlanResult.errors` with a sanitized or categorized message. For generic `Exception`, return a generic failure message and put the original exception detail in logs only.
 
 **Verification.** Submit a job that fails with an exception whose message contains an internal path or endpoint; assert `GET /jobs/{id}` returns an error that does not contain that internal detail.
+
+### SEC-007 — Host Path Traversal & Arbitrary Local File Read in ExtractionHandler
+
+```yaml
+status: open
+severity: high
+effort: M
+reviewed_at: d9dc740
+last_verified_at:
+  commit: d9dc740
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/local_handlers.py
+    lines: 242-265
+related: []
+```
+
+**Issue.** `ExtractionHandler` (local_handlers.py:242-265) accepts the `source_path` parameter directly from the user-controlled `job.payload` and reads or copies it without verifying that it lies within a permitted/sandboxed directory. For non-EPUB formats, it calls `_copy_audio` which copies the file directly into the step cache folder.
+
+**Why it matters.** This allows any client to read arbitrary files accessible to the orchestrator process (e.g., `/etc/passwd`, private keys, env configurations) by submitting a request with `source_path` pointing to a sensitive file, posing a critical security risk.
+
+**Recommendation.** Validate that `source_path` resolves to a path within a designated safe directory (e.g. using `Path.resolve()`), or implement strict sandboxing.
+
+**Verification.** Submit an audio job with a path pointing to a sensitive file outside the workspace and verify it is rejected.
+

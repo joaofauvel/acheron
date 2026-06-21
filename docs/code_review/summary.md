@@ -1,7 +1,7 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: d9dc740
 last_staleness_scan:
   commit: be7b3ab
   date: 2026-06-20
@@ -26,23 +26,23 @@ last_staleness_scan:
 | DATA | A | 0 critical, 0 high, 0 medium, 0 low |
 | PERF | A | 0 critical, 0 high, 0 medium, 0 low |
 | OBS | A | 0 critical, 0 high, 1 medium, 1 low |
-| SEC | A | 0 critical, 0 high, 0 medium, 2 low |
+| SEC | B | 0 critical, 1 high, 0 medium, 2 low |
 | DX | A | 0 critical, 0 high, 0 medium, 0 low |
 | PKG | A | 0 critical, 0 high, 0 medium, 0 low |
 | DOC | A | 0 critical, 0 high, 0 medium, 0 low |
 
 ## Top concerns
 
-1. CORR-009 — Step handler caches worker list and worker instances across steps and plans [medium] — `correctness.md`
-2. MAINT-002 — redis.py hand-rolls JSON ser/deser duplicating pydantic path [medium] — `code-quality.md`
-3. EXC-001 — tenacity unused; transient network calls have no retry [medium] — `code-quality.md`
-4. TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys [medium] — `code-quality.md`
-5. TEST-002 — misleading test name claims Redis coverage while testing memory [medium] — `verification.md`
-6. REPRO-001 — Redis list_all() non-deterministic order [medium] — `verification.md`
-7. OBS-001 — Shutdown does not drain in-flight _execute tasks [medium] — `operations.md`
-8. ARCH-008 — Orchestrator.__init__ still derives default StepCache from PlanCache.data_dir [low] — `architecture.md`
-9. MAINT-005 — Orchestrator._execute duplicates PlanResult construction across adjacent exception handlers [low] — `code-quality.md`
-10. OBS-003 — Logs are free-form with no structured fields or trace correlation [low] — `operations.md`
+1. SEC-007 — Host Path Traversal & Arbitrary Local File Read in ExtractionHandler [high] — `operations.md`
+2. CORR-009 — Step handler caches worker list and worker instances across steps and plans [medium] — `correctness.md`
+3. MAINT-002 — redis.py hand-rolls JSON ser/deser duplicating pydantic path [medium] — `code-quality.md`
+4. EXC-001 — tenacity unused; transient network calls have no retry [medium] — `code-quality.md`
+5. TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys [medium] — `code-quality.md`
+6. TEST-002 — misleading test name claims Redis coverage while testing memory [medium] — `verification.md`
+7. REPRO-001 — Redis list_all() non-deterministic order [medium] — `verification.md`
+8. OBS-001 — Shutdown does not drain in-flight _execute tasks [medium] — `operations.md`
+9. ARCH-008 — Orchestrator.__init__ still derives default StepCache from PlanCache.data_dir [low] — `architecture.md`
+10. MAINT-005 — Orchestrator._execute duplicates PlanResult construction across adjacent exception handlers [low] — `code-quality.md`
 
 ## Quick wins
 
@@ -52,7 +52,7 @@ last_staleness_scan:
 
 | Status | Count |
 |---|---|
-| open | 12 |
+| open | 13 |
 | in-progress | 0 |
 | fixed | 0 |
 | verified | 43 |
@@ -67,8 +67,9 @@ The diff d0b739b..be7b3ab resolved 17 stories that were `fixed` with pending pla
 - **ARCH-008**: residual coupling — `Orchestrator.__init__` still derives the default `StepCache` from `PlanCache.data_dir`.
 - **MAINT-005**: `Orchestrator._execute` duplicates the same `PlanResult` constructor in its adjacent exception handlers.
 - **SEC-006**: the OBS-004 fix persists raw `str(exc)` in API responses, potentially exposing internal paths or endpoints.
+- **SEC-007**: host path traversal and arbitrary local file read vulnerability in `ExtractionHandler` via un-sandboxed `source_path`.
 
-All 17 themes still grade A.
+16 themes still grade A (SEC grades B).
 
 ## Last orientation snapshot
 
