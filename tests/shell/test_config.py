@@ -75,3 +75,16 @@ def test_settings_structured_env_beats_flat_alias(tmp_path: Path, monkeypatch: p
 
     settings = load_settings()
     assert settings.orchestrator.data_dir == structured
+
+
+def test_load_settings_default_search_path_yml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Orchestrator loads settings from ./acheron.yml if ACHERON_CONFIG_PATH is unset and no acheron.yaml is present."""
+    yaml_content = "orchestrator:\n  data_dir: '/tmp/yml_default_dir'"
+    yml_file = tmp_path / "acheron.yml"
+    yml_file.write_text(yaml_content, encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ACHERON_CONFIG_PATH", raising=False)
+
+    settings = load_settings()
+    assert settings.orchestrator.data_dir == Path("/tmp/yml_default_dir")

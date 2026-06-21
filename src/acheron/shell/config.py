@@ -52,7 +52,14 @@ class _YamlConfigSettingsSource(PydanticBaseSettingsSource):
         search_paths: list[Path] = []
         if config_path_env:
             search_paths.append(Path(config_path_env))
-        search_paths.extend([Path("./acheron.yaml"), Path("/etc/acheron/acheron.yaml")])
+        search_paths.extend(
+            [
+                Path("./acheron.yaml"),
+                Path("./acheron.yml"),
+                Path("/etc/acheron/acheron.yaml"),
+                Path("/etc/acheron/acheron.yml"),
+            ]
+        )
 
         for path in search_paths:
             if not path.is_file():
