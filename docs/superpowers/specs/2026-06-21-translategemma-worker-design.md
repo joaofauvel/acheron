@@ -165,6 +165,8 @@ The registration endpoint and token are provided via environment variables:
 * **Local GPU (Docker Compose):** Add service to `docker-compose.yml` with `deploy.resources.reservations.devices` for GPU access. Mount a volume at `HF_HOME` to persist the model cache across restarts.
 * **VRAM:** ~16GB in bfloat16. Fits comfortably on a 24GB consumer GPU or any 40GB+ enterprise card (A100, H100).
 
+> **Future evaluation:** `Unbabel/TowerInstruct-13B-v0.1` is a strong alternative candidate optimised for literary tone and instruction-following (e.g. style consistency, terminology). Same VRAM footprint, same HTTP worker interface — swap via `MODEL_ID` env var when ready to compare.
+
 ## Dockerfile sketch
 
 ```dockerfile
