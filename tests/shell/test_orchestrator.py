@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
-from acheron.core.errors import InvalidLanguagePathError
-from acheron.core.models import EpubRequest, ExecutorStrategy, JobMetrics, JobResult, JobStatus, PlanStatus, WorkerType
+from acheron.core.errors import InvalidLanguagePathError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.models import (
+    EpubRequest,
+    ExecutorStrategy,
+    JobMetrics,
+    JobResult,
+    JobStatus,
+    Plan,
+    PlanStatus,
+    PlanStep,
+    StepStatus,
+    WorkerType,
+)
 from acheron.shell.cache import PlanCache
+from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 from tests.shell.conftest import translation_caps, tts_caps
@@ -18,6 +32,26 @@ async def _success_handler(_step, _plan):  # type: ignore[no-untyped-def]
         status=JobStatus.SUCCESS,
         outputs=(),
         metrics=JobMetrics(duration_seconds=0.01),
+    )
+
+
+def _single_step_plan(job_id: str) -> Plan:
+    return Plan(
+        plan_id=f"{job_id}-plan",
+        job_id=job_id,
+        source_type="epub",
+        source_language="en",
+        target_language="en",
+        executor_strategy=ExecutorStrategy.SEQUENTIAL,
+        steps=(
+            PlanStep(
+                step_id="extract",
+                type=WorkerType.EXTRACTION,
+                depends_on=(),
+                status=StepStatus.PENDING,
+                payload={"source_path": "/input/book.epub"},
+            ),
+        ),
     )
 
 
@@ -171,6 +205,56 @@ class TestOrchestrator:
 
         jobs = await orch.list_jobs()
         assert len(jobs) == 2
+
+    @pytest.mark.asyncio
+    async def test_resume_job_restarts_stale_running_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        reg = InMemoryWorkerStore()
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        tracked = TrackedJob(
+            job_id="job-stale",
+            request=request,
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=_single_step_plan("job-stale"),
+            status=PlanStatus.RUNNING,
+        )
+        await jobs.put(tracked)
+
+        resumed = await orch.resume_job("job-stale")
+        assert resumed.status == PlanStatus.RUNNING
+        assert orch._tasks  # noqa: SLF001
+        for task in tuple(orch._tasks):  # noqa: SLF001
+            task.cancel()
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_resume_job_rejects_active_running_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        tracked = TrackedJob(
+            job_id="job-active",
+            request=request,
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=None,
+            status=PlanStatus.RUNNING,
+        )
+        await jobs.put(tracked)
+        orch._active_jobs.add("job-active")  # noqa: SLF001
+
+        with pytest.raises(JobAlreadyRunningError):
+            await orch.resume_job("job-active")
+
+    @pytest.mark.asyncio
+    async def test_resume_job_missing_job_raises(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
+        await orch.start()
+
+        with pytest.raises(JobNotFoundError):
+            await orch.resume_job("missing")
 
     @pytest.mark.asyncio
     async def test_register_and_list_workers(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

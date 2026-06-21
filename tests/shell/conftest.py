@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pytest  # noqa: TC002
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 

@@ -122,6 +122,31 @@ class TestJobRoutes:
         assert len(response.json()["jobs"]) == 1
 
     @pytest.mark.asyncio
+    async def test_resume_job_route(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "/input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        job_id = response.json()["job_id"]
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 5.0
+        while loop.time() < deadline:
+            status_resp = await client.get(f"/jobs/{job_id}")
+            if status_resp.json()["status"] in ("completed", "failed", "partial"):
+                break
+            await asyncio.sleep(0.05)
+
+        resume_resp = await client.post(f"/jobs/{job_id}/resume")
+        assert resume_resp.status_code == 200
+        assert resume_resp.json()["status"] == "running"
+
+    @pytest.mark.asyncio
     async def test_submit_job_unsupported_language(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """Test that submitting a job with unsupported language returns 422."""
         from httpx import ASGITransport, AsyncClient

@@ -30,7 +30,7 @@ def test_submit_epub(tmp_path: Path) -> None:
         return_value=httpx.Response(201, json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1"})
     )
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
     assert result.exit_code == 0
     assert "job-abc" in result.output
     assert "running" in result.output
@@ -44,7 +44,7 @@ def test_submit_audio(tmp_path: Path) -> None:
         return_value=httpx.Response(201, json={"job_id": "job-def", "status": "running"})
     )
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", str(mp3), "--src", "en", "--dest", "es", "--asr", "whisper-v3"])
+    result = runner.invoke(main, ["job", "submit", str(mp3), "--src", "en", "--dest", "es", "--asr", "whisper-v3"])
     assert result.exit_code == 0
     assert "job-def" in result.output
 
@@ -57,7 +57,7 @@ def test_submit_with_type_override(tmp_path: Path) -> None:
         return_value=httpx.Response(201, json={"job_id": "job-xyz", "status": "running"})
     )
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", str(unknown), "--src", "en", "--dest", "es", "--type", "epub"])
+    result = runner.invoke(main, ["job", "submit", str(unknown), "--src", "en", "--dest", "es", "--type", "epub"])
     assert result.exit_code == 0
     assert "job-xyz" in result.output
 
@@ -66,14 +66,14 @@ def test_submit_unknown_type(tmp_path: Path) -> None:
     unknown = tmp_path / "input.dat"
     unknown.touch()
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", str(unknown), "--src", "en", "--dest", "es"])
+    result = runner.invoke(main, ["job", "submit", str(unknown), "--src", "en", "--dest", "es"])
     assert result.exit_code == 1
     assert "Cannot detect source type" in result.output
 
 
 def test_submit_missing_file() -> None:
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", "/nonexistent.epub", "--src", "en", "--dest", "es"])
+    result = runner.invoke(main, ["job", "submit", "/nonexistent.epub", "--src", "en", "--dest", "es"])
     assert result.exit_code != 0
 
 
@@ -92,7 +92,7 @@ def test_status() -> None:
         )
     )
     runner = CliRunner()
-    result = runner.invoke(main, ["status", "job-abc"])
+    result = runner.invoke(main, ["job", "status", "job-abc"])
     assert result.exit_code == 0
     assert "job-abc" in result.output
     assert "2/5" in result.output
@@ -107,7 +107,7 @@ def test_status_verbose() -> None:
         )
     )
     runner = CliRunner()
-    result = runner.invoke(main, ["status", "job-abc", "-v"])
+    result = runner.invoke(main, ["job", "status", "job-abc", "-v"])
     assert result.exit_code == 0
     assert "Worker timeout" in result.output
 
@@ -116,10 +116,39 @@ def test_status_verbose() -> None:
 def test_status_not_found() -> None:
     respx.get(f"{_BASE_URL}/jobs/nonexistent").mock(return_value=httpx.Response(404, json={"detail": "Job not found"}))
     runner = CliRunner()
-    result = runner.invoke(main, ["status", "nonexistent"])
+    result = runner.invoke(main, ["job", "status", "nonexistent"])
     assert result.exit_code != 0
     assert "404" in result.output
     assert "Job not found" in result.output
+
+
+@respx.mock
+def test_status_service() -> None:
+    respx.get(f"{_BASE_URL}/health").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+    respx.get(f"{_BASE_URL}/workers").mock(
+        return_value=httpx.Response(200, json={"workers": [{"worker_id": "w1", "worker_type": "tts"}]})
+    )
+    respx.get(f"{_BASE_URL}/capabilities").mock(
+        return_value=httpx.Response(200, json={"language_pairs": [{"src": "en", "dst": "es", "workers": ["w1"]}]})
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["status"])
+    assert result.exit_code == 0
+    assert "ok" in result.output
+    assert "tts" in result.output
+    assert "Capabilities: 1" in result.output
+
+
+@respx.mock
+def test_job_resume() -> None:
+    route = respx.post(f"{_BASE_URL}/jobs/job-abc/resume").mock(
+        return_value=httpx.Response(200, json={"job_id": "job-abc", "status": "running"})
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "resume", "job-abc", "--force-fresh"])
+    assert result.exit_code == 0
+    assert route.calls[0].request.url.params["force_fresh"] == "true"
+    assert "job-abc" in result.output
 
 
 @respx.mock
@@ -300,7 +329,7 @@ def test_submit_server_error_shows_friendly_message(tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "es"])
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
     assert result.exit_code != 0
     assert "500" in result.output
     assert "Internal server error" in result.output
@@ -334,7 +363,7 @@ def test_submit_validation_error_shows_detail(tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
     runner = CliRunner()
-    result = runner.invoke(main, ["submit", str(epub), "--src", "en", "--dest", "xx"])
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "xx"])
     assert result.exit_code != 0
     assert "422" in result.output
     assert "Invalid language path" in result.output

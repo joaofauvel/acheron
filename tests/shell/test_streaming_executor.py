@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ def _real_output(tmp_path: Path, name: str, body: bytes = b"x" * 16) -> OutputFi
         path=str(p),
         filename=name,
         size_bytes=len(body),
-        checksum="placeholder",
+        checksum=hashlib.sha256(body).hexdigest(),
         content_type="audio/wav",
     )
 
@@ -116,6 +117,24 @@ class TestNormalCompletion:
         assert len(result.outputs) == 3
         filenames = {o.filename for o in result.outputs}
         assert filenames == {"extracted.txt", "chunked.txt", "out.wav"}
+
+    @pytest.mark.asyncio
+    async def test_valid_cached_step_is_not_dispatched(self, tmp_path: Path, step_cache: StepCache) -> None:
+        plan = _linear_plan(job_id="job-cache-test")
+        cached = (_real_output(tmp_path, "cached-extract.txt"),)
+        await step_cache.save_outputs(plan.job_id, "extract", cached)
+        outputs = {
+            "chunk": [_real_output(tmp_path, "chunked.txt")],
+            "package": [_real_output(tmp_path, "out.wav", body=b"audio-bytes")],
+        }
+        handler, calls = _make_handler(outputs)
+        executor = StreamingExecutor(handler, step_cache)
+
+        result = await executor.run(plan)
+
+        assert result.status == PlanStatus.COMPLETED
+        assert calls == ["chunk", "package"]
+        assert {out.filename for out in result.outputs} == {"cached-extract.txt", "chunked.txt", "out.wav"}
 
 
 class TestStepTimeout:
