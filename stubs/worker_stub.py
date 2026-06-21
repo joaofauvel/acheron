@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import logging
 import os
 import struct
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
             step_dir.mkdir(parents=True, exist_ok=True)
             out_path = step_dir / f"{job_id}.wav"
             out_path.write_bytes(audio)
+            checksum = hashlib.sha256(audio).hexdigest()
             return {
                 "job_id": job_id,
                 "status": "success",
@@ -127,17 +129,19 @@ def create_app() -> FastAPI:
                         "path": str(out_path),
                         "filename": f"{job_id}.wav",
                         "size_bytes": len(audio),
-                        "checksum": "",
+                        "checksum": checksum,
                         "content_type": "audio/wav",
                     }
                 ],
                 "metrics": {"duration_seconds": 0.01},
                 "error": None,
             }
+        text = "mock translated text"
         step_dir = data_dir / plan_job_id / "translate"
         step_dir.mkdir(parents=True, exist_ok=True)
         out_path = step_dir / f"{job_id}.txt"
-        out_path.write_text("mock translated text", encoding="utf-8")
+        out_path.write_text(text, encoding="utf-8")
+        checksum = hashlib.sha256(text.encode("utf-8")).hexdigest()
         return {
             "job_id": job_id,
             "status": "success",
@@ -146,7 +150,7 @@ def create_app() -> FastAPI:
                     "path": str(out_path),
                     "filename": f"{job_id}.txt",
                     "size_bytes": out_path.stat().st_size,
-                    "checksum": "",
+                    "checksum": checksum,
                     "content_type": "text/plain",
                 }
             ],

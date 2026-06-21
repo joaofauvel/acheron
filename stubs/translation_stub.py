@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
         step_dir.mkdir(parents=True, exist_ok=True)
         out_path = step_dir / f"{job_id}.txt"
         out_path.write_text(translated, encoding="utf-8")
+        checksum = hashlib.sha256(translated.encode("utf-8")).hexdigest()
         return {
             "job_id": job_id,
             "status": "success",
@@ -108,7 +110,7 @@ def create_app() -> FastAPI:
                     "path": str(out_path),
                     "filename": f"{job_id}.txt",
                     "size_bytes": out_path.stat().st_size,
-                    "checksum": "",
+                    "checksum": checksum,
                     "content_type": "text/plain",
                 }
             ],

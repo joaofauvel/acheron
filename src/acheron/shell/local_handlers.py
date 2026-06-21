@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from defusedxml import ElementTree as DefusedET
 
 from acheron.core.chunking import chunk_text
-from acheron.core.errors import CacheMissError, WorkerError
+from acheron.core.errors import CacheCorruptedError, CacheMissError, WorkerError
 from acheron.core.models import (
     SUPPORTED_LANGUAGES,
     Chunk,
@@ -297,7 +297,7 @@ class ChunkingHandler:
             try:
                 upstream_outputs = await cache.load_outputs(plan_job_id, step_dep)
                 break
-            except CacheMissError, OSError:
+            except CacheMissError, CacheCorruptedError, OSError:
                 continue
 
         if not upstream_outputs:
@@ -484,7 +484,7 @@ class PackagingHandler:
         cache = StepCache(self.data_dir)
         try:
             synthesize_outputs = await cache.load_outputs(plan_job_id, "synthesize")
-        except (CacheMissError, OSError) as e:
+        except (CacheMissError, CacheCorruptedError, OSError) as e:
             msg = f"Packaging failed: could not load outputs of synthesize step: {e}"
             raise WorkerError(msg) from e
 
@@ -502,7 +502,7 @@ class PackagingHandler:
         ffmetadata_path = package_dir / "FFMETADATA"
         await asyncio.to_thread(ffmetadata_path.write_text, ffmetadata, "utf-8")
 
-        concat_lines = [f"file '{Path(out.path).as_posix()}'" for out in sorted_outputs]
+        concat_lines = await asyncio.to_thread(self._build_concat_lines, sorted_outputs)
         inputs_txt_path = package_dir / "inputs.txt"
         await asyncio.to_thread(inputs_txt_path.write_text, "\n".join(concat_lines), "utf-8")
 
@@ -537,6 +537,11 @@ class PackagingHandler:
             chapter_id = _extract_chapter_id(out.filename)
             chapter_durations[chapter_id] = chapter_durations.get(chapter_id, 0.0) + duration
         return chapter_durations
+
+    @staticmethod
+    def _build_concat_lines(sorted_outputs: list[OutputFile]) -> list[str]:
+        """Build concat demuxer input lines with absolute paths."""
+        return [f"file '{Path(out.path).resolve().as_posix()}'" for out in sorted_outputs]
 
     async def _run_ffmpeg(self, inputs_path: Path, ffmetadata_path: Path, output_path: Path) -> None:
         """Invoke ffmpeg to concatenate WAVs into an M4B."""

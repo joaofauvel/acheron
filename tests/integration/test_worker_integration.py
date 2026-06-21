@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,9 @@ class TestWorkerIntegrationHappyPath:
             trans_dir = data_dir / plan_job_id / "transcribe"
             trans_dir.mkdir(parents=True, exist_ok=True)
             out_path = trans_dir / f"{job.job_id}.txt"
-            out_path.write_text("mock transcription", encoding="utf-8")
+            content = "mock transcription"
+            out_path.write_text(content, encoding="utf-8")
+            checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
             return JobResult(
                 job_id=job.job_id,
@@ -76,7 +79,7 @@ class TestWorkerIntegrationHappyPath:
                         path=str(out_path),
                         filename=f"{job.job_id}.txt",
                         size_bytes=out_path.stat().st_size,
-                        checksum="",
+                        checksum=checksum,
                         content_type="text/plain",
                     ),
                 ),
@@ -160,6 +163,7 @@ class TestWorkerIntegrationErrorPath:
             step_dir.mkdir(parents=True, exist_ok=True)
             wav_path = step_dir / f"{job.job_id}.wav"
             audio = _dummy_wav(wav_path)
+            checksum = hashlib.sha256(audio).hexdigest()
             return JobResult(
                 job_id=job.job_id,
                 status=JobStatus.SUCCESS,
@@ -168,7 +172,7 @@ class TestWorkerIntegrationErrorPath:
                         path=str(wav_path),
                         filename=wav_path.name,
                         size_bytes=len(audio),
-                        checksum="",
+                        checksum=checksum,
                         content_type="audio/wav",
                     ),
                 ),

@@ -333,7 +333,7 @@ class Orchestrator:
                 job_dir = self._step_cache.data_dir / job_id
                 logger.info("force_fresh=True: deleting job step-cache directory: %s", job_dir)
                 if job_dir.exists():
-                    await asyncio.to_thread(shutil.rmtree, job_dir)
+                    await asyncio.to_thread(shutil.rmtree, job_dir, ignore_errors=True)
 
             tracked.status = PlanStatus.RUNNING
             tracked.result = None
