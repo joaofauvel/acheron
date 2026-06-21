@@ -26,7 +26,7 @@ from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 from tests.shell.conftest import translation_caps, tts_caps
 
 
-async def _success_handler(_step, _plan):  # type: ignore[no-untyped-def]
+async def _success_handler(_step: PlanStep, _plan: Plan) -> JobResult:
     return JobResult(
         job_id="noop",
         status=JobStatus.SUCCESS,
@@ -321,3 +321,95 @@ class TestOrchestrator:
         caps = await orch.get_capabilities()
         pairs = {(p.src, p.dst) for p in caps}
         assert ("en", "en") in pairs
+
+    @pytest.mark.asyncio
+    async def test_resume_job_concurrent_race_prevention(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        reg = InMemoryWorkerStore()
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        tracked = TrackedJob(
+            job_id="job-race",
+            request=request,
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=_single_step_plan("job-race"),
+            status=PlanStatus.FAILED,
+        )
+        await jobs.put(tracked)
+
+        # Call resume twice concurrently
+        results = await asyncio.gather(
+            orch.resume_job("job-race"),
+            orch.resume_job("job-race"),
+            return_exceptions=True,
+        )
+
+        # One should succeed, the other should raise JobAlreadyRunningError
+        exceptions = [r for r in results if isinstance(r, Exception)]
+        assert len(exceptions) == 1
+        assert isinstance(exceptions[0], JobAlreadyRunningError)
+
+        # Clean up tasks
+        for task in tuple(orch._tasks):  # noqa: SLF001
+            task.cancel()
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_sequential_executor_uses_step_cache(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("en"))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+
+        handler_calls = 0
+
+        async def counting_handler(step: PlanStep, plan: Plan) -> JobResult:
+            nonlocal handler_calls
+            handler_calls += 1
+            return await _success_handler(step, plan)
+
+        orch = Orchestrator(reg, PlanCache(tmp_path), counting_handler)
+        await orch.start()
+
+        # Submit a job to compile a plan
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
+
+        # Cancel first execution
+        for task in tuple(orch._tasks):  # noqa: SLF001
+            task.cancel()
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+
+        # Populate cache for all steps
+        from acheron.core.models import OutputFile
+
+        cache = orch._step_cache  # noqa: SLF001
+        output_file = tmp_path / "chapter_001.txt"
+        output_file.write_text("Hello World", encoding="utf-8")
+        import hashlib
+
+        checksum = hashlib.sha256(b"Hello World").hexdigest()
+        outputs = (
+            OutputFile(
+                path=str(output_file),
+                filename="chapter_001.txt",
+                size_bytes=output_file.stat().st_size,
+                checksum=checksum,
+                content_type="text/plain",
+            ),
+        )
+        plan = tracked.plan
+        assert plan is not None
+        for step in plan.steps:
+            await cache.save_outputs(tracked.job_id, step.step_id, outputs)
+
+        # Resume job and verify
+        orch._active_jobs.clear()  # noqa: SLF001
+        handler_calls = 0
+        await orch.resume_job(tracked.job_id)
+
+        # Wait for execute tasks
+        tasks = list(orch._tasks)  # noqa: SLF001
+        await asyncio.gather(*tasks)
+
+        assert handler_calls == 0

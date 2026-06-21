@@ -12,6 +12,7 @@ def test_default_settings() -> None:
     assert settings.orchestrator.data_dir == Path("/data/jobs")
     assert settings.workers.chunking.max_chunk_length == 250
     assert settings.workers.packaging.bitrate == "128k"
+    assert settings.workers.packaging.max_fmt_chunk_length == 65536
 
 
 def test_load_settings_from_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,6 +26,7 @@ workers:
   packaging:
     bitrate: "192k"
     codec: "mp3"
+    max_fmt_chunk_length: 1024
 """
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml_content, encoding="utf-8")
@@ -36,6 +38,7 @@ workers:
     assert settings.workers.chunking.max_chunk_length == 500
     assert settings.workers.packaging.bitrate == "192k"
     assert settings.workers.packaging.codec == "mp3"
+    assert settings.workers.packaging.max_fmt_chunk_length == 1024
 
 
 def test_settings_env_var_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

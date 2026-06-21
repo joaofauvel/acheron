@@ -31,6 +31,7 @@ class PackagingSettings(BaseModel):
 
     bitrate: str = Field(default="128k")
     codec: str = Field(default="aac")
+    max_fmt_chunk_length: int = Field(default=65536)
 
 
 class WorkerSettings(BaseModel):

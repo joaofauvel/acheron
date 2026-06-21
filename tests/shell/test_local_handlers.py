@@ -166,3 +166,16 @@ async def test_packaging_handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     cmd = mock_run_called[0]
     assert "-b:a" in cmd
     assert "128k" in cmd
+
+
+@pytest.mark.asyncio
+async def test_packaging_handler_rejects_huge_fmt_chunk(tmp_path: Path) -> None:
+    path = tmp_path / "huge_fmt.wav"
+    header = b"RIFF" + struct.pack("<I", 36 + 100) + b"WAVE" + b"fmt " + struct.pack("<I", 0x7FFFFFFF)
+    path.write_bytes(header)
+
+    from acheron.core.errors import WorkerError
+    from acheron.shell.local_handlers import read_wav_duration
+
+    with pytest.raises(WorkerError, match="Invalid format chunk size"):
+        read_wav_duration(path, max_fmt_chunk_length=65536)

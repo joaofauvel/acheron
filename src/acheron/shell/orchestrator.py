@@ -123,6 +123,7 @@ class Orchestrator:
                 self._settings.orchestrator.data_dir,
                 self._settings.workers.packaging.bitrate,
                 self._settings.workers.packaging.codec,
+                self._settings.workers.packaging.max_fmt_chunk_length,
             ),
         }
 
@@ -247,9 +248,23 @@ class Orchestrator:
                 else:
                     handler = self._handler
                     if tracked.strategy != ExecutorStrategy.STREAMING:
-                        from acheron.core.models import JobResult, JobStatus, Plan, PlanStep  # noqa: PLC0415
+                        from acheron.core.models import (  # noqa: PLC0415
+                            JobMetrics,
+                            JobResult,
+                            JobStatus,
+                            Plan,
+                            PlanStep,
+                        )
 
                         async def caching_handler(step: PlanStep, plan: Plan) -> JobResult:
+                            if await self._step_cache.step_has_valid_cache(plan.job_id, step.step_id):
+                                outputs = await self._step_cache.load_outputs(plan.job_id, step.step_id)
+                                return JobResult(
+                                    job_id=plan.job_id,
+                                    status=JobStatus.SUCCESS,
+                                    outputs=outputs,
+                                    metrics=JobMetrics(duration_seconds=0.0),
+                                )
                             res = await self._handler(step, plan)
                             if res.status == JobStatus.SUCCESS:
                                 await self._step_cache.save_outputs(plan.job_id, step.step_id, res.outputs)
@@ -335,6 +350,7 @@ class Orchestrator:
                 if job_dir.exists():
                     await asyncio.to_thread(shutil.rmtree, job_dir, ignore_errors=True)
 
+            self._active_jobs.add(job_id)
             tracked.status = PlanStatus.RUNNING
             tracked.result = None
             await self._job_store.put(tracked)

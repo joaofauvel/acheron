@@ -342,7 +342,7 @@ class ChunkingHandler:
         return all_chunks
 
 
-def _read_wav_chunks(f: BinaryIO) -> tuple[bytes | None, int | None]:
+def _read_wav_chunks(f: BinaryIO, max_fmt_chunk_length: int = 65536) -> tuple[bytes | None, int | None]:
     """Read fmt and data chunks from a WAV file object.
 
     Returns (fmt_chunk, data_size); either may be None if not found.
@@ -355,6 +355,9 @@ def _read_wav_chunks(f: BinaryIO) -> tuple[bytes | None, int | None]:
             break
         chunk_id, chunk_len = struct.unpack("<4sI", chunk_header)
         if chunk_id == b"fmt ":
+            if chunk_len > max_fmt_chunk_length:
+                msg = f"Invalid format chunk size: {chunk_len}"
+                raise WorkerError(msg)
             fmt_chunk = f.read(chunk_len)
             if len(fmt_chunk) < chunk_len:
                 msg = "Corrupted fmt chunk in WAV"
@@ -401,7 +404,7 @@ def _require_chunks(fmt_chunk: bytes | None, data_size: int | None, path: Path) 
     return fmt_chunk, data_size
 
 
-def _parse_wav_header(path: Path) -> tuple[int, int]:
+def _parse_wav_header(path: Path, max_fmt_chunk_length: int = 65536) -> tuple[int, int]:
     """Parse a WAV file header and return (data_size, byte_rate).
 
     Raises:
@@ -412,7 +415,7 @@ def _parse_wav_header(path: Path) -> tuple[int, int]:
             riff_header = f.read(_RIFF_HEADER_LEN)
             _validate_riff_header(riff_header, path)
 
-            fmt_chunk, data_size = _read_wav_chunks(f)
+            fmt_chunk, data_size = _read_wav_chunks(f, max_fmt_chunk_length=max_fmt_chunk_length)
             fmt_chunk, data_size = _require_chunks(fmt_chunk, data_size, path)
 
             byte_rate = _validate_wav_format(fmt_chunk, path)
@@ -424,9 +427,9 @@ def _parse_wav_header(path: Path) -> tuple[int, int]:
         raise WorkerError(msg) from e
 
 
-def read_wav_duration(path: Path) -> float:
+def read_wav_duration(path: Path, max_fmt_chunk_length: int = 65536) -> float:
     """Read the duration of a PCM WAV file from its header."""
-    data_size, byte_rate = _parse_wav_header(path)
+    data_size, byte_rate = _parse_wav_header(path, max_fmt_chunk_length=max_fmt_chunk_length)
     return data_size / byte_rate
 
 
@@ -467,10 +470,11 @@ def _build_ffmetadata(plan_job_id: str, chapter_durations: dict[str, float]) -> 
 class PackagingHandler:
     """Local handler for audiobook packaging via FFmpeg concat demuxer."""
 
-    def __init__(self, data_dir: Path, bitrate: str, codec: str) -> None:
+    def __init__(self, data_dir: Path, bitrate: str, codec: str, max_fmt_chunk_length: int = 65536) -> None:
         self.data_dir = data_dir
         self.bitrate = bitrate
         self.codec = codec
+        self.max_fmt_chunk_length = max_fmt_chunk_length
 
     async def __call__(self, job: Job) -> JobResult:
         """Package synthesized WAV files into a single M4B audiobook."""
@@ -529,7 +533,7 @@ class PackagingHandler:
         chapter_durations: dict[str, float] = {}
         for out in sorted_outputs:
             wav_path = Path(out.path)
-            duration = read_wav_duration(wav_path)
+            duration = read_wav_duration(wav_path, max_fmt_chunk_length=self.max_fmt_chunk_length)
             chapter_id = _extract_chapter_id(out.filename)
             chapter_durations[chapter_id] = chapter_durations.get(chapter_id, 0.0) + duration
         return chapter_durations
