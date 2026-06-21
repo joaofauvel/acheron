@@ -52,3 +52,15 @@ class PipelineError(AcheronError):
     unexpected stage failures). Worker-dispatch failures continue to be
     represented by ``WorkerError`` subclasses.
     """
+
+
+class JobError(AcheronError):
+    """Errors related to tracked job lifecycle operations."""
+
+
+class JobNotFoundError(JobError):
+    """Requested tracked job does not exist."""
+
+
+class JobAlreadyRunningError(JobError):
+    """Requested tracked job is already active in this orchestrator."""

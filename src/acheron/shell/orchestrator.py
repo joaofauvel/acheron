@@ -5,19 +5,30 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import shutil
 import uuid
+import weakref
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import AcheronError
-from acheron.core.models import AudioRequest, EpubRequest, JsonValue, PlanResult, PlanStatus, WorkerCapabilities
+from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.models import (
+    AudioRequest,
+    EpubRequest,
+    ExecutorStrategy,
+    JsonValue,
+    PlanResult,
+    PlanStatus,
+    WorkerCapabilities,
+    WorkerType,
+)
 from acheron.core.planner import compile_plan
 from acheron.shell.cache import StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
+from acheron.shell.config import Settings, load_settings
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.local_handlers import (
-    BUILT_IN_LOCAL_HANDLERS,
     LocalJobHandler,
     all_languages_caps,
 )
@@ -25,7 +36,7 @@ from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 
 if TYPE_CHECKING:
-    from acheron.core.models import ExecutorStrategy, JobRequest
+    from acheron.core.models import JobRequest
     from acheron.shell.cache import PlanCache
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.registry import RegisteredWorker
@@ -37,7 +48,7 @@ logger = logging.getLogger(__name__)
 class Orchestrator:
     """Service layer wiring together all pipeline components."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         registry: WorkerStore,
         cache: PlanCache,
@@ -45,17 +56,26 @@ class Orchestrator:
         *,
         job_store: JobStore | None = None,
         step_cache: StepCache | None = None,
+        settings: Settings | None = None,
     ) -> None:
+        self._settings = settings or load_settings()
+        if settings is None:
+            self._settings.orchestrator.data_dir = cache.data_dir
         self._registry = registry
         self._cache = cache
-        self._step_cache = step_cache if step_cache is not None else StepCache(cache.data_dir)
+        self._step_cache = step_cache if step_cache is not None else StepCache(self._settings.orchestrator.data_dir)
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)
         self._tasks: set[asyncio.Task[None]] = set()
+        self._active_jobs: set[str] = set()
+        self._job_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._started = False
-        self._health_monitor = HealthMonitor(registry)
+        self._health_monitor = HealthMonitor(
+            registry,
+            interval=float(self._settings.orchestrator.health_check_interval_seconds),
+        )
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
@@ -87,7 +107,26 @@ class Orchestrator:
         Idempotent: safe to call multiple times. Called from ``start()`` so the
         store async methods can be awaited.
         """
-        for worker_type, handler in BUILT_IN_LOCAL_HANDLERS.items():
+        from acheron.shell.local_handlers import (  # noqa: PLC0415
+            ChunkingHandler,
+            ExtractionHandler,
+            PackagingHandler,
+        )
+
+        handlers: dict[WorkerType, LocalJobHandler] = {
+            WorkerType.EXTRACTION: ExtractionHandler(self._settings.orchestrator.data_dir),
+            WorkerType.CHUNKING: ChunkingHandler(
+                self._settings.orchestrator.data_dir,
+                self._settings.workers.chunking.max_chunk_length,
+            ),
+            WorkerType.PACKAGING: PackagingHandler(
+                self._settings.orchestrator.data_dir,
+                self._settings.workers.packaging.bitrate,
+                self._settings.workers.packaging.codec,
+            ),
+        }
+
+        for worker_type, handler in handlers.items():
             existing = await self._registry.find_by_type(worker_type)
             if existing:
                 continue
@@ -189,58 +228,121 @@ class Orchestrator:
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status."""
+        db_job = await self._job_store.get(tracked.job_id)
+        if db_job is None or db_job.status != PlanStatus.RUNNING:
+            logger.warning(
+                "Idempotency guard: job %s has database status %s, skipping execution",
+                tracked.job_id,
+                db_job.status if db_job else "None",
+            )
+            return
+
         logger.info("Executing %s (%s strategy)", tracked.job_id, tracked.strategy.value)
+        self._active_jobs.add(tracked.job_id)
         try:
-            if tracked.plan is None:
+            try:
+                if tracked.plan is None:
+                    tracked.status = PlanStatus.FAILED
+                    logger.error("No plan for %s", tracked.job_id)
+                else:
+                    handler = self._handler
+                    if tracked.strategy != ExecutorStrategy.STREAMING:
+                        from acheron.core.models import JobResult, JobStatus, Plan, PlanStep  # noqa: PLC0415
+
+                        async def caching_handler(step: PlanStep, plan: Plan) -> JobResult:
+                            res = await self._handler(step, plan)
+                            if res.status == JobStatus.SUCCESS:
+                                await self._step_cache.save_outputs(plan.job_id, step.step_id, res.outputs)
+                            return res
+
+                        handler = caching_handler
+
+                    executor = create_executor(
+                        tracked.strategy,
+                        handler,
+                        step_cache=self._step_cache,
+                    )
+                    result = await executor.run(tracked.plan)
+                    tracked.result = result
+                    tracked.status = result.status
+                    logger.info(
+                        "Completed %s: %s (%d/%d steps)",
+                        tracked.job_id,
+                        result.status,
+                        result.completed_steps,
+                        result.total_steps,
+                    )
+            except AcheronError as exc:
+                logger.exception("Plan execution failed for %s", tracked.job_id)
                 tracked.status = PlanStatus.FAILED
-                logger.error("No plan for %s", tracked.job_id)
-            else:
-                executor = create_executor(
-                    tracked.strategy,
-                    self._handler,
-                    step_cache=self._step_cache,
+                tracked.result = PlanResult(
+                    plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
+                    status=PlanStatus.FAILED,
+                    completed_steps=0,
+                    total_steps=len(tracked.plan.steps) if tracked.plan else 0,
+                    outputs=(),
+                    total_cost=0.0,
+                    total_duration_seconds=0.0,
+                    errors=(str(exc),),
                 )
-                result = await executor.run(tracked.plan)
-                tracked.result = result
-                tracked.status = result.status
-                logger.info(
-                    "Completed %s: %s (%d/%d steps)",
-                    tracked.job_id,
-                    result.status,
-                    result.completed_steps,
-                    result.total_steps,
+            except Exception as exc:
+                logger.exception("Unexpected error executing %s", tracked.job_id)
+                tracked.status = PlanStatus.FAILED
+                tracked.result = PlanResult(
+                    plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
+                    status=PlanStatus.FAILED,
+                    completed_steps=0,
+                    total_steps=len(tracked.plan.steps) if tracked.plan else 0,
+                    outputs=(),
+                    total_cost=0.0,
+                    total_duration_seconds=0.0,
+                    errors=(str(exc),),
                 )
-        except AcheronError as exc:
-            logger.exception("Plan execution failed for %s", tracked.job_id)
-            tracked.status = PlanStatus.FAILED
-            tracked.result = PlanResult(
-                plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
-                status=PlanStatus.FAILED,
-                completed_steps=0,
-                total_steps=len(tracked.plan.steps) if tracked.plan else 0,
-                outputs=(),
-                total_cost=0.0,
-                total_duration_seconds=0.0,
-                errors=(str(exc),),
-            )
-        except Exception as exc:
-            logger.exception("Unexpected error executing %s", tracked.job_id)
-            tracked.status = PlanStatus.FAILED
-            tracked.result = PlanResult(
-                plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
-                status=PlanStatus.FAILED,
-                completed_steps=0,
-                total_steps=len(tracked.plan.steps) if tracked.plan else 0,
-                outputs=(),
-                total_cost=0.0,
-                total_duration_seconds=0.0,
-                errors=(str(exc),),
-            )
-        await self._job_store.put(tracked)
+            await self._job_store.put(tracked)
+        finally:
+            self._active_jobs.discard(tracked.job_id)
 
     async def get_job(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
         return await self._job_store.get(job_id)
+
+    async def resume_job(self, job_id: str, force_fresh: bool = False) -> TrackedJob:  # noqa: FBT001, FBT002
+        """Resume a tracked job, optionally discarding existing step cache."""
+        lock = self._job_locks.get(job_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._job_locks[job_id] = lock
+
+        async with lock:
+            tracked = await self._job_store.get(job_id)
+            if tracked is None:
+                msg = f"Job not found: {job_id}"
+                raise JobNotFoundError(msg)
+            if tracked.status == PlanStatus.RUNNING:
+                if job_id in self._active_jobs:
+                    msg = f"Job {job_id} is already running"
+                    raise JobAlreadyRunningError(msg)
+                logger.warning(
+                    "Job %s status is RUNNING but not active in this process; overriding stale state", job_id
+                )
+            if tracked.plan is None:
+                msg = f"Job {job_id} has no saved plan to resume"
+                raise AcheronError(msg)
+
+            if force_fresh:
+                job_dir = self._step_cache.data_dir / job_id
+                logger.info("force_fresh=True: deleting job step-cache directory: %s", job_dir)
+                if job_dir.exists():
+                    await asyncio.to_thread(shutil.rmtree, job_dir)
+
+            tracked.status = PlanStatus.RUNNING
+            tracked.result = None
+            await self._job_store.put(tracked)
+
+            task = asyncio.create_task(self._execute(tracked))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+            return tracked
 
     async def list_jobs(self) -> tuple[TrackedJob, ...]:
         """List all tracked jobs."""

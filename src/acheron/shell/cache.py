@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 from pathlib import Path
 
-import aiofiles
 from pydantic import TypeAdapter, ValidationError
 
 from acheron.core.errors import CacheCorruptedError, CacheMissError
@@ -80,11 +79,9 @@ class StepCache:
     async def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
         """Write output manifest. Creates the step directory if needed."""
         step_dir = self._data_dir / job_id / step_id
-        step_dir.mkdir(parents=True, exist_ok=True)
         manifest_file = step_dir / "manifest.json"
         manifest = _output_adapter.dump_json(outputs, indent=2)
-        async with aiofiles.open(manifest_file, "wb") as f:
-            await f.write(manifest)
+        await asyncio.to_thread(self._write_manifest, step_dir, manifest_file, manifest)
 
     async def load_outputs(self, job_id: str, step_id: str) -> tuple[OutputFile, ...]:
         """Load output files from a step manifest.
@@ -98,8 +95,7 @@ class StepCache:
             msg = f"Step cache miss: {job_id}/{step_id}"
             raise CacheMissError(msg)
         try:
-            async with aiofiles.open(manifest_file, "rb") as f:
-                blob = await f.read()
+            blob = await asyncio.to_thread(manifest_file.read_bytes)
         except OSError as exc:
             msg = f"Corrupted manifest: {job_id}/{step_id}"
             raise CacheCorruptedError(msg) from exc
@@ -126,3 +122,8 @@ class StepCache:
             if checksum != output.checksum:
                 return False
         return True
+
+    @staticmethod
+    def _write_manifest(step_dir: Path, manifest_file: Path, manifest: bytes) -> None:
+        step_dir.mkdir(parents=True, exist_ok=True)
+        manifest_file.write_bytes(manifest)

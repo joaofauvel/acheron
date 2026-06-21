@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,6 +10,7 @@ from fastapi import FastAPI
 
 from acheron.shell.api.routes import capabilities, jobs, workers
 from acheron.shell.cache import PlanCache
+from acheron.shell.config import Settings, load_settings
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores import create_job_store, create_worker_store
 
@@ -37,24 +37,30 @@ def create_app(
     job_store: JobStore | None = None,
     cache: PlanCache | None = None,
     data_dir: Path | str | None = None,
+    settings: Settings | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
     ``ACHERON_DATA_DIR`` env var is consulted when ``data_dir`` is not provided.
     """
+    if settings is None:
+        settings = load_settings()
+    if data_dir is not None:
+        settings.orchestrator.data_dir = Path(data_dir)
     if registry is None:
         registry = create_worker_store()
     if job_store is None:
         job_store = create_job_store()
     if cache is None:
         if data_dir is None:
-            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
+            data_dir = settings.orchestrator.data_dir
         cache = PlanCache(data_dir)
 
     orchestrator = Orchestrator(
         registry=registry,
         cache=cache,
         job_store=job_store,
+        settings=settings,
     )
 
     app = FastAPI(

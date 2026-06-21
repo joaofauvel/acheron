@@ -29,7 +29,7 @@ from acheron.core.errors import (
     WorkerError,
 )
 from acheron.core.interfaces import Executor
-from acheron.core.models import JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStatus, PlanStep
+from acheron.core.models import JobMetrics, JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStatus, PlanStep
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 if TYPE_CHECKING:
@@ -212,6 +212,19 @@ class StreamingExecutor(Executor):
                 # expected drain (upstream finished) from premature termination.
                 if upstream_value is _END:
                     return
+
+            if await self._cache.step_has_valid_cache(plan.job_id, step.step_id):
+                outputs = await self._cache.load_outputs(plan.job_id, step.step_id)
+                result = JobResult(
+                    job_id=plan.job_id,
+                    status=JobStatus.SUCCESS,
+                    outputs=outputs,
+                    metrics=JobMetrics(duration_seconds=0.0),
+                )
+                record_cost(0.0)
+                await downstream.put(result)
+                return
+
             try:
                 result = await asyncio.wait_for(
                     self._handler(step, plan),
