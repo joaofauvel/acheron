@@ -454,3 +454,23 @@ class TestOrchestrator:
         # Clean up
         await orch.close()
         await orch.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The Orchestrator must build HealthProviders from settings.providers.* API keys."""
+    from acheron.shell.config import Settings
+    from acheron.shell.orchestrator import Orchestrator
+    from acheron.shell.cache import PlanCache
+    from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+    settings = Settings()
+    settings.providers.runpod.api_key = "rp-key"
+    orch = Orchestrator(
+        registry=InMemoryWorkerStore(),
+        cache=PlanCache(tmp_path),
+        job_store=InMemoryJobStore(),
+        settings=settings,
+    )
+    assert orch._health_monitor._providers is not None  # noqa: SLF001
+    assert orch._health_monitor._providers.get("runpod") is not None  # noqa: SLF001

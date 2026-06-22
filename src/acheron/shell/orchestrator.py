@@ -28,6 +28,7 @@ from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
+from acheron.shell.health_providers import create_health_providers
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.local_handlers import (
     LocalJobHandler,
@@ -73,9 +74,11 @@ class Orchestrator:
         self._active_jobs: set[str] = set()
         self._job_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._started = False
+        self._health_providers = create_health_providers(self._settings)
         self._health_monitor = HealthMonitor(
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),
+            providers=self._health_providers,
         )
 
     @property
