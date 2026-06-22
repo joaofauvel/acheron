@@ -55,6 +55,14 @@ class ExecutorStrategy(Enum):
     STREAMING = "streaming"
 
 
+class WorkerStatus(Enum):
+    """Health status of a registered worker."""
+
+    HEALTHY = "healthy"
+    BOOTING = "booting"
+    OFFLINE = "offline"
+
+
 @dataclass(frozen=True)
 class WorkerCapabilities:
     """Describes a worker's supported types, languages, and formats."""

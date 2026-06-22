@@ -13,6 +13,7 @@ from acheron.core.models import (
     PlanStep,
     StepStatus,
     WorkerCapabilities,
+    WorkerStatus,
     WorkerType,
 )
 
@@ -53,6 +54,17 @@ class TestEnums:
         ],
     )
     def test_step_status_values(self, member: StepStatus, value: str) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (WorkerStatus.HEALTHY, "healthy"),
+            (WorkerStatus.BOOTING, "booting"),
+            (WorkerStatus.OFFLINE, "offline"),
+        ],
+    )
+    def test_worker_status_values(self, member: WorkerStatus, value: str) -> None:
         assert member.value == value
 
 

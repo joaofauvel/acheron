@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from acheron.core.models import WorkerStatus
+
 if TYPE_CHECKING:
     from acheron.core.models import JsonValue, WorkerCapabilities
 
@@ -25,3 +27,5 @@ class RegisteredWorker:
     consecutive_failures: int = 0
     last_health_check: float | None = None
     metadata: dict[str, JsonValue] = field(default_factory=dict)
+    last_error: str | None = None
+    status: WorkerStatus = WorkerStatus.HEALTHY
