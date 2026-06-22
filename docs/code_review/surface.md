@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: 63faed4
 last_staleness_scan:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 ---
 
 # Surface
 
 ## DX — Developer experience
 
-**Grade:** A
+**Grade:** B
 
-DX-001 is verified (auto-generated dev certs via certs-init compose service at c8879ec). All Justfile recipes are documented; `just validate` runs the full gate. No new DX findings.
+DX-001 is verified. All Justfile recipes are documented; `just validate` runs the full gate. One new medium DX finding: DX-002 — the README Quick Start's first-run example uses `acheron submit`, which is not a real subcommand; the canonical onboarding path fails.
 
 ### DX-001 — Quick Start omits `just certs` — fresh clone breaks `docker compose up`
 
@@ -44,6 +44,35 @@ related: []
 **Recommendation.** Add `just certs` to the Quick Start, or auto-generate certs on first `docker compose up` via a one-shot service.
 
 **Verification.** Fresh clone → run the updated Quick Start verbatim → `docker compose ps` shows all services healthy.
+
+### DX-002 — README Quick Start command `acheron submit` no longer exists; the canonical first-run example fails
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: README.md
+    lines: 16
+  - path: README.md
+    lines: 169-184
+  - path: src/acheron/cli.py
+    lines: 138-150
+related: [DOC-003]
+```
+
+**Issue.** The README Quick Start (README.md:16) walks the user through a first submission with a command that does not exist. The CLI exposes `submit` only via `submit-job` (cli.py:138-150), but the README shows `acheron submit` — a typo or stale alias. Running the Quick Start verbatim produces a "no such command" error.
+
+**Why it matters.** The Quick Start is the primary onboarding path. A first-run user who copies the documented command gets a confusing error, and the surrounding context does not suggest the correct subcommand name. The fix is trivial but the docs are the entry point.
+
+**Recommendation.** Replace `acheron submit` with the real subcommand in README.md:16. Verify all other CLI invocations in README.md against `cli.py` to surface any other drift.
+
+**Verification.** `grep -n '^\s*acheron' README.md` and verify each command against `python -m acheron.cli --help` output.
 
 ## PKG — Packaging
 
@@ -81,9 +110,9 @@ related: []
 
 ## DOC — Documentation
 
-**Grade:** A
+**Grade:** B
 
-DOC-001 is now verified at 92ed9da, which removed the "now async def" phase reference and the internal function-name reference in the cert-generation comment. DOC-002 remains verified. No open findings.
+DOC-001 and DOC-002 remain verified. One new medium DOC finding: DOC-003 — configuration docs drift across README, `.env.example`, and an undocumented dashboard env var (`ACHERON_TRUST_REVERSE_PROXY`).
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -138,3 +167,36 @@ related: []
 **Recommendation.** Drop `BatchAsync, and` from README.md:67 so the line reads `Sequential, Async, and Streaming execution strategies (Streaming is the default)`.
 
 **Verification.** `grep -rn 'BatchAsync\|batch_async' README.md Justfile src/ tests/ dashboard/ stubs/ proto/ scripts/` returns zero hits in user-facing paths; `just validate` passes.
+
+### DOC-003 — Configuration docs drift across README, .env.example, and an undocumented dashboard env var
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: .env.example
+    lines: 6
+  - path: README.md
+    lines: 136-148
+  - path: dashboard/app.py
+    lines: 58
+  - path: src/acheron/shell/api/deps.py
+    lines: 22-50
+  - path: src/acheron/shell/orchestrator.py
+    lines: 173-192
+related: [DX-002]
+```
+
+**Issue.** The Layer 10 registration-token affordances shipped across three places that drifted: (1) `.env.example:6` documents an old `ACHERON_REGISTRATION_TOKEN` line that pre-dates the auto-generation feature; (2) README.md:136-148 still tells the user to set `ACHERON_REGISTRATION_TOKEN` manually; (3) `dashboard/app.py:58` reads `ACHERON_TRUST_REVERSE_PROXY` (verified in the new forward-auth test at ba0227b) but the variable is not documented in README or `.env.example`. The `ACHERON_OPEN_REGISTRATION` env var is documented in `acheron.yaml.example` and the README but is read directly in `deps.py:33` outside the new `Settings` loader (see CFG-003).
+
+**Why it matters.** Configuration docs are the contract between operators and the orchestrator. Drift here means: a user who follows the docs will set a manually-typed token (now unnecessary) and not set the dashboard env var (now required for reverse-proxy auth), and a user who follows the docs to enable open registration will set the right env var but the orchestrator will read it the wrong way.
+
+**Recommendation.** Update `.env.example` to remove the manual `ACHERON_REGISTRATION_TOKEN` line (or mark it as legacy/explicit-override) and add `ACHERON_TRUST_REVERSE_PROXY` with a one-line comment. Update README.md:136-148 to describe the auto-generated token and the dashboard proxy env var. Align the `ACHERON_OPEN_REGISTRATION` documentation with the loader (CFG-003).
+
+**Verification.** `grep -rn 'ACHERON_' README.md .env.example acheron.yaml.example` matches every env var that is actually read by `src/`. New `ACHERON_*` env vars introduced in this diff appear in the docs; removed env vars do not.

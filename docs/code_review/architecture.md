@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: 63faed4
 last_staleness_scan:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 ---
 
 # Architecture
 
 ## ARCH — Architecture
 
-**Grade:** A
+**Grade:** B
 
-ARCH-005, ARCH-006, and ARCH-007 are now verified at the commits that renamed the private import, moved data-dir verification to `start()`, and refactored the streaming executor cost side-channel. One new low finding: ARCH-008 — the default `Orchestrator` constructor still derives `StepCache` from `PlanCache.data_dir`, preserving the coupling ARCH-006 only partially removed. ARCH-001 through ARCH-004 remain immutable.
+Layer 11 added the `HealthProvider` ABC and the `HealthProviders` container in `shell/health_providers.py`. The new code drifted from the project's "interfaces live in `core/interfaces.py`" convention (ARCH-009, medium) and added a wrapper class with no behavior beyond `dict.get` (ARCH-010, low). The constructor coupling that ARCH-008 flagged persists into the new diff (constructor now mutates `Settings.orchestrator.data_dir` in-place at orchestrator.py:65). Five new ARCH/CFG findings; ARCH-001 through ARCH-007 remain immutable.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -293,19 +293,172 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 47-51
-related: [ARCH-006]
+    lines: 50-82
+related: [ARCH-006, CFG-004]
 ```
 
-**Issue.** The ARCH-006 fix moved the writable-data-dir probe into `start()`, but the default constructor path still builds `StepCache(cache.data_dir)` when no `step_cache` is injected. The `cache` parameter is therefore still required only to derive the default step cache, preserving the coupling between `Orchestrator` construction and `PlanCache`'s internal `data_dir` shape.
+**Issue.** The ARCH-006 fix moved the writable-data-dir probe into `start()`, but the constructor path still builds `StepCache(self._settings.orchestrator.data_dir)` (orchestrator.py:68) and, when no `settings` is injected, mutates `self._settings.orchestrator.data_dir = cache.data_dir` (orchestrator.py:65) to align the two. The `cache` parameter is still required, and the in-place mutation of the settings object conflates the YAML/algorithm-input shape with the runtime cache. `create_app` (app.py:46-49) performs the same mutation: `if data_dir is not None: settings.orchestrator.data_dir = Path(data_dir)`.
 
-**Why it matters.** The default path keeps the injection seam optional in name only. Callers that do not need a `PlanCache` (e.g., capability aggregation or tests that never call `start()`) must still supply one, and future refactors of `PlanCache` will still ripple into `Orchestrator`.
+**Why it matters.** Settings is the only place the YAML/env contract is encoded, and mutating it post-load means downstream code (the `verify_registration_token` dep, the auto-token logic in `start()`, the health provider wiring) sees a value that no longer matches the user's config. Two call sites own the same field with overlapping logic; the precedence between `settings.data_dir`, the constructed-`cache` default, and an explicit `data_dir=` arg in `create_app` is implicit.
 
-**Recommendation.** Make `step_cache` a required keyword argument and remove the `cache: PlanCache` parameter from `Orchestrator`, or keep both parameters but stop deriving the default from `cache.data_dir`. Prefer the required-parameter option because it makes the dependency explicit and matches ARCH-003's intent.
+**Recommendation.** Make the effective `data_dir` a single value computed at construction. In `create_app`, compute `effective_data_dir = Path(data_dir) if data_dir is not None else settings.orchestrator.data_dir`, then build `PlanCache(effective_data_dir)` and pass `data_dir=effective_data_dir` into the `Settings(...)` factory. In `Orchestrator.__init__`, drop the `if settings is None: self._settings.orchestrator.data_dir = cache.data_dir` mutation; instead require `settings` to be passed and trust it, or compute a default `Settings` with the right `data_dir` before assignment.
 
-**Verification.** `just test`; assert that `Orchestrator(...)` can be constructed with only a `registry` and `StepCache` and no `PlanCache`; `just lint-strict`.
+**Verification.** `just test`; assert that `Orchestrator(registry, PlanCache('/foo'), settings=Settings(orchestrator=OrchestratorSettings(data_dir=Path('/bar'))))` does not mutate `settings` (i.e. `settings.orchestrator.data_dir == Path('/bar')` after construction). `grep -n 'settings.orchestrator.data_dir =' src/ | grep -v 'load_settings'` returns no assignment sites.
+
+### ARCH-009 — HealthProvider ABC lives in shell/health_providers.py instead of core/interfaces.py
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health_providers.py
+    lines: 16-22
+  - path: src/acheron/core/interfaces.py
+    lines: 14-39
+related: []
+```
+
+**Issue.** The new `HealthProvider` ABC (health_providers.py:16-22) is the project's third domain interface alongside `Worker` and `Executor` (core/interfaces.py:14-39). The project's convention (per the orientation brief) is "interfaces live in `core/interfaces.py`; consumers depend on them directly." The concrete impls (`RunPodHealthProvider`, `HuggingFaceHealthProvider`) belong in `shell/`, but the ABC itself describes a stable domain contract (query a platform API to map an endpoint id to a `WorkerStatus`) and should sit alongside the other domain interfaces.
+
+**Why it matters.** Keeping the ABC in `shell/` couples every consumer (tests, future providers, potential non-shell callers) to a shell concern (httpx imports) and locks the file behind a non-interface module. Adding a third provider will compound the import churn. The second deviation from the convention would make the rule unenforceable.
+
+**Recommendation.** Move `class HealthProvider(ABC)` and its `check_status` abstractmethod from `shell/health_providers.py:16-22` to `core/interfaces.py` alongside `Worker` and `Executor`. Keep `RunPodHealthProvider`, `HuggingFaceHealthProvider`, `HealthProviders`, and `create_health_providers` in `shell/health_providers.py`. Update the `TYPE_CHECKING` import in `shell/health.py:21` to point at the relocated ABC. Do not move `WorkerStatus` (a core enum, already in `core/models.py`).
+
+**Verification.** `git grep -n 'class HealthProvider' src/` returns exactly one match in `src/acheron/core/interfaces.py`. `just lint-strict` and `just type-check` pass; `just test` runs the health provider tests against the relocated ABC.
+
+### ARCH-010 — HealthProviders container is a no-behavior wrapper over `dict[str, HealthProvider]`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health_providers.py
+    lines: 97-114
+  - path: src/acheron/shell/health.py
+    lines: 85-137
+  - path: src/acheron/shell/orchestrator.py
+    lines: 77-82
+related: []
+```
+
+**Issue.** `HealthProviders` (health_providers.py:97-105) has a single `get(name) -> HealthProvider | None` method that returns `self._providers.get(name)`. There is no extra behavior, no validation, no event hooks, and no async surface. The class exists only to give the dependency an explicit name. The `HealthMonitor` field is typed `providers: HealthProviders | None` instead of `providers: Mapping[str, HealthProvider] | None`, which weakens the test seam — a `dict` literal works fine, but the type forces a wrapper allocation.
+
+**Why it matters.** Per AGENTS.md, abstractions without behavior are the same shape as config knobs without control: YAGNI overhead that the greenfield project explicitly avoids. Future contributors will look for hidden behavior in `HealthProviders` and find none, which raises the cost of every later change.
+
+**Recommendation.** Delete the `HealthProviders` class and have `create_health_providers` return `dict[str, HealthProvider]` directly. Change `HealthMonitor.__init__` to take `providers: Mapping[str, HealthProvider] | None` and look up via `self._providers.get(provider_name)`. Update the orchestrator call site (orchestrator.py:77-82) to pass the dict literal.
+
+**Verification.** `git grep -n 'class HealthProviders' src/` returns no matches. `just lint-strict`, `just type-check`, `just test` pass. The provider tests still construct a `Mapping[str, HealthProvider]` literal for injection.
+
+## CFG — Configuration
+
+**Grade:** B
+
+CFG-001 and CFG-002 remain verified. Three new CFG findings from the Layer 10/11 config rework: CFG-003 (a new env var read outside the loader, breaking the new settings system), CFG-004 (in-place mutation of `Settings.orchestrator.data_dir` from two call sites), CFG-005 (silent substitution of unset env vars — cross-listed with CORR-010 because the same line in `config.py` is the root cause).
+
+### CFG-003 — `ACHERON_OPEN_REGISTRATION` read directly in deps.py, bypassing the new settings loader
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/deps.py
+    lines: 33
+  - path: src/acheron/shell/config.py
+    lines: 111-130
+related: []
+```
+
+**Issue.** The new `Settings`/`load_settings` system (config.py:111-130) introduces pydantic-settings with `env_prefix='ACHERON_'` and `env_nested_delimiter='__'`, plus a custom `_EnvAliasSettingsSource` that maps `ACHERON_DATA_DIR` and `ACHERON_REGISTRATION_TOKEN` onto their nested keys. `ACHERON_OPEN_REGISTRATION` (a new env var documented in README.md and acheron.yaml.example) is read directly in `verify_registration_token` via `os.environ.get('ACHERON_OPEN_REGISTRATION') == '1'` (deps.py:33) — outside the loader. Other env-var reads (`ACHERON_URL`, `ACHERON_TLS_*`, `ACHERON_STORE_BACKEND`, `REDIS_URL`) are also outside the loader, but they predate this diff; `ACHERON_OPEN_REGISTRATION` is new and joins the sprawl pattern that the same diff is trying to fix for other vars.
+
+**Why it matters.** The deps function is the only place in the codebase that knows about `ACHERON_OPEN_REGISTRATION`. A future YAML or env-var rename, a test that wants to toggle the flag, or a new route that should also respect open-registration will reach for `os.environ.get` again, perpetuating the sprawl. The same flag cannot be set via `acheron.yaml` (no `OrchestratorSettings.open_registration` field exists), so users who migrate to file-based config lose the toggle.
+
+**Recommendation.** Add `open_registration: bool = False` to `OrchestratorSettings` in config.py and extend the settings source to read `ACHERON_OPEN_REGISTRATION` into that field. Change deps.py:33 to read `orch.settings.orchestrator.open_registration` and drop the `os.environ.get` call. Document the field in acheron.yaml.example under `orchestrator:` (next to `registration_token`).
+
+**Verification.** `just type-check`; a unit test asserting that `Settings(ACHERON_OPEN_REGISTRATION='1').orchestrator.open_registration is True` and the default is `False`; `grep -rn 'ACHERON_OPEN_REGISTRATION' src/` returns only the loader site, the example YAML, and the README.
+
+### CFG-004 — Orchestrator mutates `Settings.orchestrator.data_dir` in-place from two call sites
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 63-68
+  - path: src/acheron/shell/api/app.py
+    lines: 46-49
+related: [ARCH-008]
+```
+
+**Issue.** AGENTS.md requires a strict YAML-vs-core dataclass split: YAML shapes are user-authored, core dataclasses are algorithm inputs. The new `Settings` model (config.py) is the YAML/algorithm-input shape. `Orchestrator.__init__` (orchestrator.py:63-68) does:
+
+```
+self._settings = settings or load_settings()
+if settings is None:
+    self._settings.orchestrator.data_dir = cache.data_dir
+```
+
+`create_app` (app.py:46-49) performs the same mutation: `if data_dir is not None: settings.orchestrator.data_dir = Path(data_dir)`. Two call sites own the same field with overlapping logic; the precedence between `settings.data_dir`, the constructed-`cache` default, and an explicit `data_dir=` arg in `create_app` is implicit.
+
+**Why it matters.** Settings is the only place the YAML/env contract is encoded, and mutating it post-load means downstream code (the `verify_registration_token` dep, the auto-token logic in `start()`, the health provider wiring) sees a value that no longer matches the user's config. If `create_app` later reads `settings.orchestrator.data_dir` to log the configured path, the log will lie about where state actually goes. The pattern is a latent split-brain: `app.py` and `Orchestrator.__init__` both know how to derive the effective `data_dir` and both reach into the same field.
+
+**Recommendation.** Make the effective `data_dir` a single value computed at construction. Compute `effective_data_dir = Path(data_dir) if data_dir is not None else settings.orchestrator.data_dir`, build `PlanCache(effective_data_dir)`, pass `data_dir=effective_data_dir` into a fresh `Settings(...)`, and pass both into `Orchestrator`. In `Orchestrator.__init__`, drop the in-place mutation; trust the `settings` argument (or compute a default `Settings` with the right `data_dir` before assignment).
+
+**Verification.** `just type-check`; a test that constructs `Orchestrator(registry, PlanCache('/foo'), settings=Settings(orchestrator=OrchestratorSettings(data_dir=Path('/bar'))))` asserts `orch.settings.orchestrator.data_dir == Path('/bar')` (no in-place rewrite). `grep -n 'settings.orchestrator.data_dir =' src/ | grep -v 'load_settings'` returns no assignment sites.
+
+### CFG-005 — `${VAR}` env-var expansion silently substitutes unset env vars as empty strings, disabling providers
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/config.py
+    lines: 15-26
+  - path: acheron.yaml.example
+    lines: 47-52
+  - path: src/acheron/shell/health_providers.py
+    lines: 110-114
+related: [CORR-010, CORR-011]
+```
+
+**Issue.** `_expand_env_vars` (config.py:15-26) does `_ENV_VAR_PATTERN.sub(lambda m: os.environ.get(m.group(1), ''), value)`. An unset env var becomes the empty string. The example YAML uses this for `api_key: "${RUNPOD_API_KEY}"` and `api_key: "${HF_API_KEY}"` (acheron.yaml.example:47-52). `create_health_providers` (health_providers.py:110-114) checks `if settings.providers.<name>.api_key:`, so an empty string is falsy and the provider is silently dropped. AGENTS.md flags this pattern explicitly: "silent/unexpected behavior is worse than no control at all."
+
+**Why it matters.** A user who follows the example YAML and forgets to set `RUNPOD_API_KEY` gets a working orchestrator that just never RunPod-checks anything. There is no `ValidationError`, no log entry, and no CLI message — the provider name 'runpod' never appears in startup logs. The auto-generated registration token path already demonstrates the project's preference for failing loud (raise on bad data dir, log warnings on token-file errors). The env-var expansion inverts that contract for secrets.
+
+**Recommendation.** Make the expansion distinguish "referenced but missing" from "no reference". Either raise a `ConfigError` (or log a WARNING) at load time for each referenced-but-unset var, naming both the YAML key path and the missing env var; or keep the empty-string fallback but log a WARNING at load time for each miss. Either way, the `create_health_providers` factory should not silently filter on falsy `api_key`: change it to `if settings.providers.<name>.api_key is not None` and let the empty-string case blow up where it should.
+
+**Verification.** Load a YAML with `api_key: "${RUNPOD_API_KEY}"` against an empty environment and assert a clear error (or WARNING log entry) naming `RUNPOD_API_KEY`. `grep -n 'os.environ.get(m.group' src/acheron/shell/config.py` shows the loader no longer silently defaults to `''`.

@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: 63faed4
 last_staleness_scan:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 ---
 
 # Correctness
 
 ## CORR — Correctness
 
-**Grade:** A
+**Grade:** B
 
-CORR-006 and CORR-007 are now verified at the commits that removed the dead queue check and documented the linear-only constraint. One new medium finding: CORR-009 — the step handler caches `registry.list_all()` per plan and reuses `Worker` instances per worker_id, which can dispatch to stale worker state if registrations change. All other stories remain verified.
+Layer 11 added the `${VAR}` env-var expansion in `shell/config.py` and the BOOTING-aware path in `health._handle_failure`. Three new medium/low CORR findings: CORR-010 (silent empty substitution for unset env vars), CORR-011 (regex only matches uppercase), CORR-012 (BOOTING status is not bounded by duration, so a misconfigured or stale provider can keep workers stuck in BOOTING forever). CORR-009 (cached worker list / instance reuse) is re-resolved at the same line range; the story remains valid and the diff did not change the relevant block. All other stories remain verified.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -236,8 +236,8 @@ severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/step_handler.py
@@ -252,6 +252,83 @@ related: []
 **Recommendation.** Scope worker-instance reuse to a single plan: clear `_worker_instances` whenever `plan.plan_id` changes, or create instances per step if cross-plan reuse is not required. If cross-plan reuse is intentional, add registry-version-based invalidation so the cache is refreshed whenever the registry changes.
 
 **Verification.** Add a test that registers worker 'w1' at endpoint A, executes a step, then re-registers 'w1' at endpoint B and executes a step for a new plan. Assert that the handler uses the current registry entry and that removing 'w1' causes a `WorkerError` rather than dispatching to a stale instance.
+
+### CORR-010 — `${VAR}` env-var expansion silently substitutes missing variables with empty string
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/config.py
+    lines: 15-26
+  - path: src/acheron/shell/health_providers.py
+    lines: 110-114
+related: [CFG-005, SEC-010]
+```
+
+**Issue.** `_expand_env_vars` (config.py:15-26) does `os.environ.get(m.group(1), "")` to resolve `${VAR}` references. An unset env var is silently replaced with the empty string rather than raising. For example, `api_key: ${HF_API_KEY}` with `HF_API_KEY` unset becomes `api_key: ""` and is accepted as a valid string. `create_health_providers` (health_providers.py:110-114) then checks `if settings.providers.<name>.api_key:`, so the empty string is falsy and the provider is silently dropped.
+
+**Why it matters.** A user who follows the example YAML and forgets to set `HF_API_KEY` gets a working orchestrator that just never HuggingFace-checks anything. There is no `ValidationError`, no log line, and no startup message — the provider name 'huggingface' never appears in startup logs. The user sees a 401 from the platform API or a worker stuck in OFFLINE, not a config error pointing to the missing variable.
+
+**Recommendation.** Raise a `ConfigError` (or log a WARNING) at load time when a referenced env var is unset. The same path is used for the auto-generated registration token and any user-authored secret; the contract should be: a `${VAR}` reference in YAML requires the env var to be set.
+
+**Verification.** Load a YAML with `api_key: "${MISSING_KEY}"` against an empty environment and assert a clear error or WARNING log entry naming the missing variable.
+
+### CORR-011 — Env-var expansion pattern only matches uppercase variable names
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/config.py
+    lines: 15
+related: [CORR-010, CFG-005]
+```
+
+**Issue.** `_ENV_VAR_PATTERN` is `r"\$\{([A-Z0-9_]+)\}"` — uppercase letters, digits, underscores only. A YAML entry like `path: ${home_dir}` (lowercase) is silently left unchanged as the literal string `"${home_dir}"`, which then fails downstream type validation (e.g. pydantic rejecting a non-Path string for a Path field).
+
+**Why it matters.** Users with lowercase or mixed-case env var names will see their config values left as literal `${...}` strings, leading to confusing downstream errors at startup or first use. The behavior is undocumented and the failure is silent.
+
+**Recommendation.** Expand the pattern to `[A-Za-z_][A-Za-z0-9_]*` (POSIX env var names allow lowercase and must start with a letter or underscore), or document the uppercase-only constraint in the YAML config docs.
+
+**Verification.** Set a lowercase env var and reference it in YAML; assert the expansion works as expected (or that the constraint is documented).
+
+### CORR-012 — Health monitor trusts provider BOOTING status without bounding duration
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 133-152
+related: [OBS-005]
+```
+
+**Issue.** `_handle_failure` (health.py:133-152) sets the worker to `BOOTING` and returns early when the platform provider reports `BOOTING`, without calling `record_health_failure` and without incrementing `consecutive_failures`. If a provider is misconfigured, stale, or buggy and returns `BOOTING` for a worker that is actually permanently offline, the worker stays in `BOOTING` indefinitely and never reaches the `max_failures` cleanup path.
+
+**Why it matters.** A misconfigured or stale provider (wrong API key, endpoint permanently deleted, or a provider bug) would cause workers to accumulate in `BOOTING` state, never being cleaned up. Users would see workers as "booting" forever in the dashboard, and the system would accumulate dead worker registrations.
+
+**Recommendation.** Track BOOTING duration (e.g. via a `booting_since` timestamp on `RegisteredWorker`) and treat workers stuck in BOOTING beyond a configurable timeout (e.g. 10 minutes) as OFFLINE. Alternatively, increment `consecutive_failures` for BOOTING workers but with a separate, higher threshold than the 3-failure rule for OFFLINE workers.
+
+**Verification.** Mock a provider that always returns BOOTING for a worker. Run multiple health check cycles. Assert the worker is eventually removed (or that BOOTING duration is bounded by a timeout).
 
 ## ML — ML correctness
 

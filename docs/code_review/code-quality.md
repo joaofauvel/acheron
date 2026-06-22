@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: 63faed4
 last_staleness_scan:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 ---
 
 # Code quality
 
 ## MAINT — Maintainability
 
-**Grade:** A
+**Grade:** B
 
-MAINT-003 and MAINT-004 are now verified at 92ed9da and 640bb03 respectively. MAINT-002 remains open. One new low finding: MAINT-005 — `Orchestrator._execute` duplicates the same `PlanResult` constructor in its adjacent exception handlers.
+MAINT-003 and MAINT-004 remain verified. MAINT-002 and MAINT-005 are re-resolved at slightly shifted line numbers. Three new MAINT findings from Layer 11: MAINT-006 (the registration-token block in `Orchestrator.start()` is inlined; also logs the token in plaintext at INFO level — see SEC-008 for the security side), MAINT-007 (RunPod + HuggingFace providers duplicate the HTTP fetch envelope), MAINT-008 (`HealthMonitor._handle_failure` reassigns its `error` parameter).
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -61,11 +61,11 @@ effort: M
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
-  date: 2026-06-20
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 30-270
+    lines: 30-280
   - path: src/acheron/shell/cache.py
     lines: 28-112
 related: [DATA-002]
@@ -143,12 +143,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 216-238
+    lines: 319-344
 related: [OBS-004]
 ```
 
@@ -160,11 +160,88 @@ related: [OBS-004]
 
 **Verification.** `just test`; `just type-check`. Both except blocks should reduce to a single helper call.
 
+### MAINT-006 — Orchestrator.start() inlines 17-line registration-token block; logs the token in plaintext
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 177-194
+related: [SEC-008, MAINT-007]
+```
+
+**Issue.** `Orchestrator.start()` (orchestrator.py:177-194) embeds a 17-line block that loads or generates the registration token, reads/writes a side file at `<data_dir>/.registration_token`, and logs the result. The block interleaves two concerns — orchestrator lifecycle wiring and credentials management — and `start()` is now 34 lines where a 5-line declarative method that calls a helper would be clearer. The block is also the largest single responsibility creep inside `start()` since the `HealthProviders` wiring at lines 77-82. Separately, the log message at orchestrator.py:192 emits the freshly generated token at INFO level — see SEC-008 for the security side.
+
+**Why it matters.** Inline startup concerns make `start()` harder to test (does too much to factor out) and harder to read; the token block is unrelated to the other startup steps (verify_data_dir_writable, connect stores, register local workers, start health monitor). Mixed responsibilities in a single method is a maintainability hotspot.
+
+**Recommendation.** Extract the token block to a private coroutine `_load_or_create_registration_token() -> None` that mutates `self._settings.orchestrator.registration_token`. Replace the inline block with a single call. In the helper, log only that a token was generated or loaded — do NOT log the token value itself.
+
+**Verification.** `just test`, `just type-check`. `Orchestrator.start()` should be 5-7 lines of declarative wiring; a test asserting an existing token file is not overwritten and a missing file yields a fresh token; INFO logs do not contain the token.
+
+### MAINT-007 — RunPodHealthProvider and HuggingFaceHealthProvider duplicate the HTTP fetch envelope
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health_providers.py
+    lines: 39-53
+  - path: src/acheron/shell/health_providers.py
+    lines: 70-94
+related: [MAINT-006]
+```
+
+**Issue.** `RunPodHealthProvider.check_status` (health_providers.py:39-53) and `HuggingFaceHealthProvider.check_status` (health_providers.py:70-94) share an identical 8-line fetch envelope: `try` → `async with httpx.AsyncClient() as client: resp = await client.get(url, headers=headers, timeout=10.0)` → `except (httpx.HTTPError, OSError)` → return `WorkerStatus.OFFLINE` → status code check. The two methods only diverge in URL construction and how they map the response body to BOOTING/OFFLINE. Adding a third provider (SageMaker, Vast.ai) requires re-typing the same fetch envelope.
+
+**Why it matters.** Bundle-level MAINT: 2 sites of ~10 lines of duplicated platform-agnostic HTTP plumbing. The `HealthProvider` ABC is the right abstraction for the diverging response mapping; the fetch envelope is a separate, common concern.
+
+**Recommendation.** Extract a private helper `async def _fetch_provider_response(path: str, headers: dict[str, str]) -> httpx.Response | None` that handles the `AsyncClient` lifecycle, timeout, and error handling; each provider delegates. The providers retain only URL construction and body interpretation.
+
+**Verification.** `just test`, `just type-check`. Adding a third provider should require zero new fetch boilerplate.
+
+### MAINT-008 — HealthMonitor._handle_failure reassigns its `error` parameter inside the try/except
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 133-152
+related: [EXC-003]
+```
+
+**Issue.** `_handle_failure(self, worker: RegisteredWorker, error: str)` accepts the probe error message as a parameter, but inside the provider try/except it reassigns `error = f"{error}; provider {provider_name} error: {exc}"` (health.py:144). The parameter is therefore both an input and a locally-mutated accumulator; the chained error message is only valid after the reassignment, and a reader tracing data flow has to check both the parameter declaration and the assignment to know what `error` is at the call sites (146, 149).
+
+**Why it matters.** Reassigning a function parameter to a new value is a naming/clarity smell per the lens. The construct is also the kind of thing basedpyright/pylint PAL would flag under stricter checks.
+
+**Recommendation.** Introduce a local `chained_error = error` and build the chained message after the except block; pass `chained_error` to `set_worker_status`. The mutation disappears and the parameter is read-only.
+
+**Verification.** `just test`, `just type-check`; add a test that exercises a provider raising — the worker should be marked OFFLINE with the chained error string and the parameter should remain unchanged at function return.
+
 ## EXC — Exception discipline
 
-**Grade:** A
+**Grade:** B
 
-EXC-001 (medium) remains open: `tenacity` is still unused and transient network calls have no retry. EXC-002 is now verified at a5b1ff0, which narrowed `except Exception` to specific types in chunking.py and cache.py.
+EXC-001 (medium) remains open: `tenacity` is still unused and transient network calls have no retry. EXC-002 is verified. One new low finding: EXC-003 — `HealthMonitor._handle_failure` wraps the platform provider call in a bare `except Exception` with `# noqa: BLE001`; the recovery path belongs inside the provider contract.
 
 ### EXC-001 — tenacity dependency is unused; WorkerTimeoutError/PlanValidationError are never raised; transient network calls have no retry
 
@@ -175,15 +252,15 @@ effort: M
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
-  date: 2026-06-20
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: pyproject.toml
-    lines: 20
+    lines: 22
   - path: src/acheron/core/errors.py
     lines: 16-29
   - path: src/acheron/shell/executors/streaming.py
-    lines: 220-223
+    lines: 233-235
   - path: src/acheron/shell/transports/grpc.py
     lines: 64-72
   - path: src/acheron/shell/transports/http.py
@@ -237,11 +314,40 @@ related: []
 
 **Verification.** `just test`, `just type-check`. Confirm a missing-punkt scenario still raises ChunkingError and a malformed manifest still raises CacheCorruptedError.
 
+### EXC-003 — HealthMonitor._handle_failure catches bare `Exception` from the platform provider; recovery should live inside the provider contract
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 139-145
+  - path: src/acheron/shell/health_providers.py
+    lines: 39-53
+  - path: src/acheron/shell/health_providers.py
+    lines: 70-94
+related: [MAINT-008, OBS-005]
+```
+
+**Issue.** The platform-provider call inside `_handle_failure` (health.py:139-145) wraps `await provider.check_status(endpoint_id)` in `except Exception as exc:  # noqa: BLE001`. The recovery logs a warning, forces `platform_status = WorkerStatus.OFFLINE`, and chains the error. The broad catch masks programming errors (`TypeError`, `AttributeError`) inside a provider as 'provider transient error'. The `HealthProvider` ABC docstring already promises 'returns OFFLINE on platform error' but the contract is not enforced by the type or by an internal try/except in either implementation.
+
+**Why it matters.** Pattern-level EXC: a third provider that adds a different exception class (e.g. an SDK raising `boto3.ClientError`) would be caught here, hiding transient and permanent failures behind the same log line. A fourth provider that raises `AttributeError` on a payload shape change would be reported as 'provider transient error' rather than a programming bug. The existing `_check_http_health` and `_check_grpc_health` in `health.py:44-65` already swallow narrower `(httpx.HTTPError, OSError)` correctly — apply the same pattern to the providers.
+
+**Recommendation.** Move the swallow into each provider's `check_status`: `RunPodHealthProvider` and `HuggingFaceHealthProvider` catch `(httpx.HTTPError, OSError, ValueError, KeyError)` and return `WorkerStatus.OFFLINE`. `HealthMonitor._handle_failure` then trusts the contract and removes its try/except.
+
+**Verification.** `just test`, `just type-check`. Drop the noqa and the try/except in `_handle_failure`; providers gain the swallow and the `HealthProvider` ABC contract is enforced by the implementation.
+
 ## TYPE — Type safety
 
-**Grade:** A
+**Grade:** B
 
-TYPE-002 remains verified (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the `AcheronClient` `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue is resolved.
+TYPE-002 remains verified (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the `AcheronClient` `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue is resolved. Two new low/medium TYPE findings: TYPE-003 (8 `# type: ignore[misc]` markers in `redis.py` without per-site justification), TYPE-004 (`WorkerResponse.status` is stringly-typed despite a `WorkerStatus` enum existing at `core/models.py`).
 
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 
@@ -251,12 +357,12 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/api_client.py
-    lines: 41-110
+    lines: 41-128
   - path: src/acheron/cli.py
     lines: 169-255
 related: [ARCH-004]
@@ -305,3 +411,71 @@ related: [CORR-001]
 **Recommendation.** Introduce a `PlanStatus` enum for `PlanResult.status` and `TrackedJob.status`; replace all string-literal assignments with enum members. Align the 'completed'/'success' vocabularies.
 
 **Verification.** `just type-check` (mypy flags string assignments to enum fields), `just lint-strict`. grep for `status\s*=\s*["']` returns zero hits in src.
+
+### TYPE-003 — redis.py accumulates 8 `# type: ignore[misc]` markers on `await self._redis.<method>()` calls
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 293
+  - path: src/acheron/shell/stores/redis.py
+    lines: 324
+  - path: src/acheron/shell/stores/redis.py
+    lines: 331
+  - path: src/acheron/shell/stores/redis.py
+    lines: 358
+  - path: src/acheron/shell/stores/redis.py
+    lines: 359
+  - path: src/acheron/shell/stores/redis.py
+    lines: 385
+  - path: src/acheron/shell/stores/redis.py
+    lines: 402
+  - path: src/acheron/shell/stores/redis.py
+    lines: 424
+related: []
+```
+
+**Issue.** `redis.py:3-5` documents that `redis.asyncio` stubs type methods as `Awaitable[T] | T` and that the `T` branch is unreachable in async call sites. Despite the file-level justification, every `await self._redis.<method>()` call site carries a `# type: ignore[misc]` marker (8 sites: `ping` x2 at 293/402, `hgetall` at 324, `smembers` x2 at 331/424, `hincrby` at 358, `hset` at 359, `hset-with-mapping` at 385). The markers do not have per-site justification comments, and the rationale depends on a single header paragraph that could be deleted in a future refactor pass. The new `set_worker_status` method (lines 375-388) added another `hset(mapping=...)` call site at line 385, growing the list. A future `redis-py` version that fixes the stubs would leave the markers as dead annotations.
+
+**Why it matters.** Pattern-level TYPE: each marker is a future-typing-debt accumulator per the rubric. AGENTS.md says "Avoid linter and type ignores in general without a very good reason that should be explicitly explained to the user" — the explanation exists at the file level but the per-site obligation is not met.
+
+**Recommendation.** Either (a) add a one-line `# noqa: misc: redis.asyncio stubs Awaitable[T]|T; see file header` per site to make each marker self-documenting, or (b) centralize the redis access in a thin `RedisAwaitable` wrapper class with a single `# type: ignore[misc]` and a docstring. Option (b) collapses 8 markers to 1 and the next provider change touches one place.
+
+**Verification.** `just type-check`, `just test`. The count of `# type: ignore[misc]` markers should drop to 0 (option b) or to 8 with consistent per-site comments (option a).
+
+### TYPE-004 — WorkerResponse.status is stringly-typed despite a WorkerStatus enum existing at core/models.py
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/schemas.py
+    lines: 67-76
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 51
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 68
+related: []
+```
+
+**Issue.** The new `WorkerStatus` enum is defined at `core/models.py:58-63` and used everywhere in `shell/` (registry, health, stores, health_providers). The API response schema `WorkerResponse.status` is typed `str = "healthy"` (schemas.py:75), and `routes/workers.py:51,68` call sites do `WorkerStatus.HEALTHY.value` to populate the schema. AGENTS.md says "avoid string-based dispatch" and "make illegal states unrepresentable" — the response schema is the exact anti-pattern. A typo in a test fixture like `status='healty'` would compile and pass pydantic validation; the `WorkerStatus` enum would reject it.
+
+**Why it matters.** The internal API is fully enum-typed; the public API is the only stringly-typed surface. This is exactly the boundary the project wants typed. Low — no current bug, but a lost typo-check at the API boundary.
+
+**Recommendation.** Change `WorkerResponse.status: WorkerStatus = WorkerStatus.HEALTHY` and let pydantic serialize the enum to a JSON string automatically. Update `routes/workers.py:51,68` to use `WorkerStatus.HEALTHY` and `w.status` directly (no `.value`).
+
+**Verification.** `just test`, `just type-check`. Confirm a malformed `status='healty'` is now rejected by pydantic, and the response JSON still serializes to `"status": "healthy"`.

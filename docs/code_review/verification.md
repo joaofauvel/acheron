@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: 63faed4
 last_staleness_scan:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 ---
 
 # Verification
 
 ## TEST — Test discipline
 
-**Grade:** A
+**Grade:** B
 
-TEST-002 (misleading Redis test name) remains open. TEST-003 is now verified at be7b3ab, which replaced the tautological assertion with a concrete check. TEST-001 and TEST-004 remain verified.
+TEST-002 (misleading Redis test name) remains open. TEST-001, TEST-003, TEST-004 remain verified. Three new low/medium TEST findings from Layer 11: TEST-005 (`_metadata_str` helper in `health.py` has no direct tests), TEST-006 (HuggingFaceHealthProvider's `str` and `else` branches are untested), TEST-007 (HealthMonitor `_handle_failure` BOOTING→OFFLINE and OFFLINE→HEALTHY transitions are not covered).
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -49,12 +49,12 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: tests/integration/test_worker_integration.py
-    lines: 165-184
+    lines: 218-237
 related: []
 ```
 
@@ -124,11 +124,88 @@ related: []
 
 **Verification.** Run `just test tests/shell/api/` with both `ACHERON_STORE_BACKEND` unset and `ACHERON_STORE_BACKEND=redis REDIS_URL=redis://127.0.0.1:1` exported. Both should pass.
 
+### TEST-005 — `_metadata_str` helper in health.py has no direct unit tests
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 38-41
+related: []
+```
+
+**Issue.** `_metadata_str(worker, key)` has a defensive `isinstance(value, str) else ''` branch (health.py:40-41). The function is exercised transitively by `TestHealthMonitorProviderIntegration` when the metadata dict contains a real string, but no test asserts the type-coercion behavior: passing `metadata={'health_provider': None}` or `{'health_provider': 123}` should return `''` rather than raising or returning the raw value. The helper is small, but it's the single chokepoint the health monitor relies on for reading platform identifiers, and a future refactor that drops the `isinstance` guard would silently pass a non-string to `HealthProviders.get()` and `provider.check_status()`.
+
+**Why it matters.** The branch is the only thing that prevents malformed worker capabilities metadata from crashing the orchestrator at health-check time. A regression here would surface as a `TypeError` from inside the health monitor's failure-handling path, far from the actual cause.
+
+**Recommendation.** Add a small test in `tests/shell/test_health_monitor.py` (or a dedicated `test_metadata_str.py`) that calls `_metadata_str` directly with a `RegisteredWorker` whose `capabilities.metadata` has (a) missing key, (b) `None`, (c) `int`, (d) valid `str`; assert `''`/`''`/`''`/value respectively.
+
+**Verification.** Run `just test tests/shell/test_health_monitor.py`; the new tests should pass without exercising any provider I/O.
+
+### TEST-006 — HuggingFaceHealthProvider.check_status has untested `str` and `else` branches
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health_providers.py
+    lines: 78-92
+related: []
+```
+
+**Issue.** `HuggingFaceHealthProvider.check_status` (health_providers.py:78-92) has three parsing branches for the response shape: `dict` (`state = status.get('state', '')`), `str` (`state = status_raw`), and `else` (`state = ''`). `tests/shell/test_health_providers.py` only exercises the `dict` branch (5 tests covering initializing/starting/running/paused/failed). The `str` and `else` branches — including the implicit `state == ''` offline fallback — are not tested.
+
+**Why it matters.** The `str` branch is the only defensive handling for an alternative API shape; the `else` branch is the offline fallback. Together they cover all non-dict response shapes. Low-severity because the default behavior is OFFLINE (safe), but the path is undocumented at the test level.
+
+**Recommendation.** Add three tests in `TestHuggingFaceHealthProvider`: (1) `status: 'running'` returns BOOTING, (2) `status: 'paused'` returns OFFLINE, (3) `status: {'state': ''}` returns OFFLINE. All use `respx.mock`.
+
+**Verification.** Run `just test tests/shell/test_health_providers.py`; the new tests should pass against the respx-mocked endpoint.
+
+### TEST-007 — HealthMonitor._handle_failure BOOTING→OFFLINE and OFFLINE→HEALTHY transitions are not covered
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 127-152
+  - path: tests/shell/test_health_monitor.py
+    lines: 205-300
+related: [CORR-012]
+```
+
+**Issue.** `TestHealthMonitorProviderIntegration` covers 5 of the 6 meaningful transitions through `_handle_failure` (health.py:127-152): healthy+BOOTING-provider→BOOTING, healthy+OFFLINE-provider→OFFLINE, healthy+no-provider→OFFLINE, healthy→HEALTHY, healthy+raising-provider→OFFLINE. The two missing transitions are: (1) a worker that's already BOOTING and gets another failure with the provider now returning OFFLINE — should transition to OFFLINE and increment `consecutive_failures`; (2) a worker that's OFFLINE and gets a success probe — should reset to HEALTHY and clear `last_error`.
+
+**Why it matters.** The BOOTING→OFFLINE transition is the production hot path: a cold-starting RunPod/HF endpoint that times out before finishing its cold start. Without a test, a future refactor of the early-return at `health.py:139-140` (`if platform_status == WorkerStatus.BOOTING: ...; return`) would silently leave BOOTING workers stuck in BOOTING state with no failure counter. The OFFLINE→HEALTHY transition is also relevant because the 'success reset' logic was changed in this delta to also clear `status` and `last_error`.
+
+**Recommendation.** Add two tests in `TestHealthMonitorProviderIntegration`: (1) `test_booting_to_offline_transition` — pre-set status BOOTING, mock provider returns OFFLINE on next probe, assert status becomes OFFLINE and `consecutive_failures == 1`; (2) `test_offline_to_healthy_recovery` — pre-set status OFFLINE via `set_worker_status`, mock `health_check` returns `HealthProbeResult(healthy=True)`, assert status becomes HEALTHY and `last_error is None`. Both tests already use `_poll_for` so they fit the existing pattern.
+
+**Verification.** Run `just test tests/shell/test_health_monitor.py`; the new tests should pass under the existing `_poll_for` deadline.
+
 ## REPRO — Reproducibility
 
 **Grade:** A
 
-REPRO-001 remains open. REPRO-002 is now verified at be7b3ab, which replaced fixed `asyncio.sleep` windows with deadline-based polling in the health monitor tests.
+REPRO-001 remains open (no fix in this delta; `last_verified_at.commit: pending` could not be resolved). REPRO-002 remains verified.
 
 ### REPRO-001 — Redis list_all() returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend
 
@@ -139,15 +216,15 @@ effort: M
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
-  date: 2026-06-20
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 306-315
+    lines: 329-338
   - path: src/acheron/shell/step_handler.py
-    lines: 86-121
+    lines: 86-128
   - path: tests/integration/test_worker_integration.py
-    lines: 222-238
+    lines: 280-294
 related: []
 ```
 
@@ -189,7 +266,7 @@ related: [PERF-001]
 
 **Grade:** A
 
-All four DATA stories are now verified. DATA-004 (previously split from DATA-003) covers the worker+capabilities metadata round-trip gap. DATA-003's original concern (PlanStep.batch and non-empty metadata untested) is fully resolved: PlanStep.batch was removed in e0da69f, and metadata round-trip is tested in a21fda7.
+DATA-001, DATA-002, DATA-003, DATA-004 are all verified. One new medium DATA finding: DATA-005 — `RedisWorkerStore._deserialize_worker` invalid status field has no corruption test (symmetric gap to DATA-002).
 
 ### DATA-001 — API pydantic schemas accept arbitrary extra fields, silently dropping client typos
 
@@ -294,3 +371,30 @@ related: ['DATA-003']
 **Recommendation.** Add a test that calls store.register with non-empty metadata and capabilities.metadata, and asserts both round-trip correctly.
 
 **Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py`; the TestMetadataRoundTrip class covers worker metadata, capabilities metadata, and empty-metadata-defaults.
+
+### DATA-005 — RedisWorkerStore._deserialize_worker invalid status field has no corruption test
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 91-108
+  - path: tests/shell/stores/test_redis_worker_store.py
+    lines: 100-116
+related: [DATA-002]
+```
+
+**Issue.** `_deserialize_worker` (redis.py:91-108) now parses the persisted `'status'` field and raises `CacheCorruptedError` on `WorkerStatus(status_str)` failure (lines 101-104). This is the symmetric contract test to the existing `test_corrupt_worker_metadata_raises_cache_corrupted` (test_redis_worker_store.py:100-116), which only covers corrupt `metadata_json`. No test writes a worker blob with `status='unknown_state'` (or any non-`WorkerStatus` string) and asserts the deserializer raises `CacheCorruptedError` with a message that includes the invalid status.
+
+**Why it matters.** If a future code change renames or removes a `WorkerStatus` enum value, existing Redis blobs written under the old name would silently round-trip as `CacheCorruptedError` without the new test catching the regression. The corrupt-blob contract test family is the safety net for schema drift on persisted worker state.
+
+**Recommendation.** Add `test_corrupt_worker_status_raises_cache_corrupted` in `TestCorruption`, parallel to the existing metadata test. Use `aioredis.hset` to inject a worker blob with `status='garbage'`, call `store.get('w-bad')`, assert `CacheCorruptedError` with a message containing 'invalid status'.
+
+**Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py`; the new test should pass without requiring any new fixtures.

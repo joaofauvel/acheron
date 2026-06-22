@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: be7b3ab
+last_updated_commit: 63faed4
 last_staleness_scan:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 ---
 
 # Operations
 
 ## PERF — Performance
 
-**Grade:** A
+**Grade:** B
 
-PERF-001 remains verified. PERF-002 and PERF-003 are now verified at c8066e7, which caches `registry.list_all()` per plan_id and reuses `Worker` instances per worker_id in the dispatch hot path.
+PERF-001, PERF-002, PERF-003 remain verified. Two new medium PERF findings from Layer 11: PERF-004 (post-probe bookkeeping in `_check_all` is serial even though the probes are concurrent), PERF-005 (provider status checks in `_handle_failure` are serial and can starve the health interval).
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
@@ -99,11 +99,61 @@ related: []
 
 **Verification.** Instrument channel/client construction; assert one Channel/AsyncClient per distinct worker endpoint across a multi-step plan rather than one per step.
 
+### PERF-004 — HealthMonitor._check_all processes worker results sequentially with W Redis round-trips
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 113-131
+related: [PERF-001]
+```
+
+**Issue.** After the concurrent probe `asyncio.gather` (health.py:118-121), `_check_all` iterates `for worker, result in zip(...)` and awaits each `record_health_success` (health.py:129) or `_handle_failure` (health.py:131) one at a time. For the Redis backend each call is 1-2 round-trips; with W workers that's W sequential awaits. PERF-001 made the probes concurrent but left the post-probe bookkeeping serial, so the overall sweep time on Redis is now dominated by W * (Redis RTT) + failure-handling latency.
+
+**Why it matters.** Sweep latency is now W * ~2ms for a 10-worker fleet on a 1ms-RTT Redis. The health-monitor interval is 30s; if bookkeeping overruns the interval, the next sweep is delayed (the existing `await asyncio.sleep(self._interval)` happens after the loop returns), creating observable drift. More importantly, the inter-request serial pattern prevents the monitor from absorbing fleet growth: doubling the worker count doubles the sweep time even though the probe cost was constant.
+
+**Recommendation.** Wrap the per-worker result handling in `asyncio.gather(*(self._handle_result(worker, result) for worker, result in zip(workers, results, strict=True)), return_exceptions=True)`. Hoist the `record_health_success` / `set_worker_status` / `record_health_failure` triad into a single helper so it can be `gather`-ed. The provider-check inside `_handle_failure` is already a single await, so no other change is needed for the gather to parallelize.
+
+**Verification.** Instrument `_check_all` with a wall-clock timer. With 20 fake workers and a fake Redis that adds 2ms per call, assert the post-probe phase completes in <5ms (parallel) rather than >40ms (serial). Add a test that mocks 20 workers, intercepts `record_health_success`, and asserts the calls overlap (e.g. via call timestamps).
+
+### PERF-005 — Provider status checks in _handle_failure run sequentially and can starve the health interval
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 133-149
+related: [PERF-004]
+```
+
+**Issue.** `_handle_failure` (health.py:133-149) awaits `provider.check_status(endpoint_id)` synchronously for each failing worker. `RunPodHealthProvider.check_status` and `HuggingFaceHealthProvider.check_status` (health_providers.py:39-94) each have a 10s httpx timeout. The caller iterates failures one at a time inside `_check_all` (health.py:130-131). With N concurrent failures that all have a provider configured, the failure-handling phase can take N * 10s — already exceeding the 30s default interval at N=4, and there is no back-pressure to drop provider calls when the budget is consumed.
+
+**Why it matters.** A platform-side outage (e.g. all RunPod workers go down at once) causes `_check_all` to block for tens of seconds, slipping the next interval and delaying detection of *new* health transitions for the *other* workers. This is the same class of regression PERF-001 fixed for HTTP probes: a slow dependent on a small number of unhealthy workers serializes the whole sweep. The new layer added by Layer 11 re-introduces the failure-mode in a different subsystem.
+
+**Recommendation.** Either (a) `asyncio.gather` the `provider.check_status` calls across the failure batch, applying a per-batch budget (e.g. 5s overall) and defaulting to OFFLINE on timeout; or (b) use a shorter per-call timeout (3-5s) and an overall `asyncio.wait_for` ceiling; or (c) skip the provider check entirely once a worker is already known-OFFLINE in the local store to avoid redundant remote calls. Combine with PERF-004 to also parallelize the surrounding `record_health_success`/`record_health_failure` pipeline calls.
+
+**Verification.** Register 5 workers all pointing at a fake provider endpoint that sleeps 10s before responding. Measure the time `_check_all` spends in failure handling: must be <5s (gathered) rather than >50s (serial). Add a regression test using a fake provider with controllable latency.
+
 ## OBS — Observability
 
-**Grade:** A
+**Grade:** B
 
-OBS-001 (shutdown drain) and OBS-003 (structured logging) remain open. OBS-002 is now verified at be7b3ab, which logs dashboard-orchestrator connection errors. OBS-004 is now verified at 92ed9da, which persists a minimal `PlanResult` with error detail on execution failure.
+OBS-001 (shutdown drain) and OBS-003 (structured logging) remain open. OBS-002 and OBS-004 remain verified. One new medium OBS finding: OBS-005 — health providers swallow `(httpx.HTTPError, OSError)` exceptions silently with no diagnostic log, masking configuration mistakes like an unset `${HF_API_KEY}`.
 
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
@@ -113,20 +163,20 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 133-141
+    lines: 202-210
   - path: src/acheron/shell/orchestrator.py
-    lines: 185-186
+    lines: 253-255
   - path: src/acheron/shell/orchestrator.py
-    lines: 190-238
+    lines: 259-347
 related: [OBS-004]
 ```
 
-**Issue.** `Orchestrator.shutdown()` (orchestrator.py:133-141) stops only the health monitor; it never cancels or awaits the `_execute` tasks tracked in `self._tasks` (populated at submit_job:185-186). The FastAPI lifespan (api/app.py:30-32) then calls `close()` which tears down the Redis pool. When the loop tears down, in-flight `_execute` tasks are cancelled mid-run; `CancelledError` is a `BaseException` so the `except AcheronError`/`except Exception` guards at lines 216,233 don't catch it, and the final `await self._job_store.put(tracked)` at line 238 sits outside any `finally`, so it is skipped. The job is left persisted with status="running" and never updated.
+**Issue.** `Orchestrator.shutdown()` stops only the health monitor; it never cancels or awaits the `_execute` tasks tracked in `self._tasks` (populated at `submit_job`). The FastAPI lifespan then calls `close()` which tears down the Redis pool. When the loop tears down, in-flight `_execute` tasks are cancelled mid-run; `CancelledError` is a `BaseException` so the `except AcheronError`/`except Exception` guards at the end of `_execute` don't catch it, and the final `await self._job_store.put(tracked)` sits outside any `finally`, so it is skipped. The job is left persisted with `status="running"` and never updated.
 
 **Why it matters.** After any orchestrator restart, previously in-flight jobs are permanently stuck at "running" in the job store with nothing executing them; operators and the dashboard cannot distinguish truly-running from orphaned jobs. Medium severity: silent persisted-state corruption that misleads observability and can block cleanup/retry logic.
 
@@ -168,22 +218,22 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 160-168
+    lines: 230-237
   - path: src/acheron/shell/health.py
-    lines: 89-112
+    lines: 113-152
   - path: src/acheron/shell/step_handler.py
     lines: 123
   - path: dashboard/app.py
-    lines: 36
+    lines: 27
 related: []
 ```
 
-**Issue.** All logging uses free-form `%s` format strings (e.g. orchestrator.py:166 "Submitting job %s: %s → %s (%s, %s)"). There is no structured/JSON logging and no correlation token beyond job_id appearing inside message text. In a distributed system with concurrent jobs, workers, and health checks, correlating a failure across orchestrator→transport→worker requires grepping free-text rather than filtering on fields.
+**Issue.** All logging uses free-form `%s` format strings (e.g. `orchestrator.py:230-237`). There is no structured/JSON logging and no correlation token beyond job_id appearing inside message text. The Layer 11 diff adds more free-form `logger.warning`/`logger.info` calls in `health.py` and `orchestrator.py`, not structured. In a distributed system with concurrent jobs, workers, and health checks, correlating a failure across orchestrator→transport→worker requires grepping free-text rather than filtering on fields.
 
 **Why it matters.** Free-form logs are harder to query and aggregate in prod log systems and lack stable field names for job_id/worker_id/step_id/trace_id, weakening cross-component traceability. Low severity: a consistency/observability gap, not a functional failure.
 
@@ -217,11 +267,38 @@ related: [CORR-004, OBS-001]
 
 **Verification.** Trigger a worker failure that propagates out of `executor.run()`; `GET /jobs/{id}` and assert `errors` is non-empty and names the failure.
 
+### OBS-005 — Health providers swallow `(httpx.HTTPError, OSError)` silently with no diagnostic log
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/health_providers.py
+    lines: 49-50
+  - path: src/acheron/shell/health_providers.py
+    lines: 80-81
+related: [CORR-010, EXC-003]
+```
+
+**Issue.** Both `RunPodHealthProvider.check_status` (health_providers.py:49-50) and `HuggingFaceHealthProvider.check_status` (health_providers.py:80-81) catch `(httpx.HTTPError, OSError)` and silently return `WorkerStatus.OFFLINE`. The blanket `except` erases the distinction between (a) provider API key is invalid/wrong (401/403), (b) provider is rate-limiting (429), (c) network is down, (d) endpoint_id does not exist (404), and (e) provider service is degraded (5xx). The caller in `health._handle_failure` does log a warning when the provider itself raises (health.py:142), but the providers' `except` block short-circuits before that path is reached, so the user has no log evidence of the actual failure mode.
+
+**Why it matters.** When all HF workers are reported BOOTING (false positive) or OFFLINE (false negative) the operator cannot diagnose whether the orchestrator is misconfigured (wrong API key) or the platform is the problem. The fallback to OFFLINE on auth failure is especially bad: a typo'd `${HF_API_KEY}` will silently mark every HF-endpoint worker as OFFLINE on every health cycle, with no log line pointing at the cause. This compounds the `${VAR}` silent-fail in `config._expand_env_vars` (config.py:18-26) — if the env var is unset, the provider is not even instantiated, also with no warning.
+
+**Recommendation.** In each provider's `except (httpx.HTTPError, OSError) as exc:` block, emit a structured warning: `logger.warning("%s health check for %s failed: %s", self.__class__.__name__, endpoint_id, exc)` before returning OFFLINE. Differentiate 401/403 from 5xx via the response status code (the `resp` object is in scope before the `return` in the 4xx/5xx branch on health_providers.py:53 / 82-83). Also log a warning at `create_health_providers` (health_providers.py:108-114) when an expected `api_key` is empty after env-var expansion.
+
+**Verification.** Configure `providers.huggingface.api_key: "${HF_API_KEY}"` and leave the env var unset: orchestrator startup should log a warning naming the missing provider. Set a deliberately wrong `HF_API_KEY` and force a worker to enter the failure path: assert the log line includes the HTTP 401/403 status and the provider name.
+
 ## SEC — Security
 
-**Grade:** A
+**Grade:** C
 
-SEC-001 through SEC-004 are now verified. SEC-005 (unauthenticated routes, low) remains open. One new low finding: SEC-006 — the OBS-004 fix persists raw `str(exc)` from unexpected exceptions in API responses, potentially exposing internal paths or worker endpoints. No secrets are logged; Jinja2 autoescape is on; Redis uses `json.loads` (not pickle); path traversal is not exploitable.
+SEC-001 through SEC-004 remain verified. SEC-005, SEC-006, SEC-007 remain open. **One new critical finding: SEC-008 — the auto-generated registration token is logged in plaintext at startup, partially undoing the SEC-002 mitigation.** One new high finding: SEC-009 — the registration token file is written without an explicit `chmod 0o600` (the same anti-pattern that SEC-001 flagged for CA private keys). One new low finding: SEC-010 — the new `last_error` field on `/workers` is exposed via the unauthenticated endpoint and embeds internal exception detail.
 
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
@@ -364,13 +441,13 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: 63faed4
+  date: 2026-06-21
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 226-238
-related: [OBS-004]
+    lines: 319-345
+related: [OBS-004, SEC-010]
 ```
 
 **Issue.** The OBS-004 fix persists raw `str(exc)` from the top-level `except Exception` handler directly into `tracked.result.errors`. Unexpected exceptions may contain worker endpoints, file paths, library internals, or other implementation details that are now returned by `GET /jobs/{id}`.
@@ -389,7 +466,7 @@ severity: high
 effort: M
 reviewed_at: d9dc740
 last_verified_at:
-  commit: d9dc740
+  commit: 63faed4
   date: 2026-06-21
 fixed_in: []
 files:
@@ -405,4 +482,81 @@ related: []
 **Recommendation.** Validate that `source_path` resolves to a path within a designated safe directory (e.g. using `Path.resolve()`), or implement strict sandboxing.
 
 **Verification.** Submit an audio job with a path pointing to a sensitive file outside the workspace and verify it is rejected.
+
+### SEC-008 — Auto-generated registration token is logged in plaintext at startup
+
+```yaml
+status: open
+severity: critical
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 192
+related: [SEC-002, MAINT-006]
+```
+
+**Issue.** `Orchestrator.start()` generates a 32-char token via `secrets.token_hex(16)` (orchestrator.py:188) and immediately emits it to the logger at INFO level: `logger.info("Generated and persisted registration token: %s", token)` (orchestrator.py:192). Any operator, log shipper, or downstream aggregation system (Datadog, Loki, journald, etc.) that ingests orchestrator logs now holds a valid bearer token for the worker-registration route. Because the verification path in `verify_registration_token` (deps.py:48) accepts any client that presents this token, an attacker with log access can register an arbitrary `endpoint` and receive job payloads (EPUB chapters, audio, intermediate artifacts) — the same exposure profile that SEC-002 mitigates is now undermined by the auto-generation feature designed to replace the default token.
+
+**Why it matters.** The token is the sole authentication on `POST /workers` and gates who can advertise themselves as a worker. Logging it converts a well-scoped secret into a globally-readable one. A single log dump, a misconfigured log retention policy, or a leaked log-storage credential is sufficient to register a malicious worker and exfiltrate job data. The fix to SEC-002 (fail-closed on missing token) is partially undone because prod deployments that relied on the auto-generated token now leak it on every restart.
+
+**Recommendation.** Remove the token value from the log message: `logger.info("Generated and persisted registration token to %s", token_file)`. If a human needs to copy the token for worker setup, log a one-time hint such as `logger.info("Generated registration token; see %s", token_file)` and rely on the persisted file (which is also the documented retrieval path). Also confirm the token file mode is 0600 (see SEC-009).
+
+**Verification.** Start a fresh orchestrator with `ACHERON_DATA_DIR=$(mktemp -d)`, grep the resulting log for the generated token — it must not appear. Add a test that boots an orchestrator in a tmp dir and asserts the INFO log line does not contain the token. Additionally assert `stat -c '%a' $DATA_DIR/.registration_token` returns 600.
+
+### SEC-009 — Registration token file created with process umask (potentially world-readable)
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 178-194
+related: [SEC-001, SEC-008]
+```
+
+**Issue.** `Orchestrator.start()` writes the generated (or re-loaded) registration token via `token_file.write_text(token, encoding="utf-8")` (orchestrator.py:191) without setting a restrictive mode. The token file is then re-loaded from disk on every subsequent start (orchestrator.py:179-185) and grants bearer access to the worker-registration route. On a default umask of 022 the file is created world-readable (0o644); even on a typical 002 umask the file is group-readable. This is the same anti-pattern that SEC-001 flagged for CA private keys and is explicitly contradicted by the `OSError` write test fixture used in `tests/shell/test_orchestrator.py:419-439`, which never asserts file mode.
+
+**Why it matters.** Token reads are a one-time, local-credential path: any local user (or any process running as a different user) on the orchestrator host can register workers. In container deployments with shared PID namespaces, or in CI/dev environments where the data dir is bind-mounted, the blast radius extends beyond a single user. This complements SEC-008: even if the log exposure is fixed, the on-disk file is still a high-value secret without explicit protection.
+
+**Recommendation.** After `token_file.write_text(...)`, call `os.chmod(token_file, 0o600)` (or open the file with `opener` set to enforce mode 0o600 atomically). Apply the same fix to the persist path on line 191 and to any future re-write path. Update the orchestrator tests to assert `token_file.stat().st_mode & 0o777 == 0o600`.
+
+**Verification.** Run the orchestrator with a fresh data dir and assert `stat -c '%a' $DATA_DIR/.registration_token` returns 600. Add a regression test in `tests/shell/test_orchestrator.py::test_orchestrator_generates_and_persists_registration_token` that introspects the file mode and fails on 0o644 / 0o640.
+
+### SEC-010 — Worker `last_error` exposed via unauthenticated /workers endpoint (info disclosure)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 63faed4
+last_verified_at:
+  commit: 63faed4
+  date: 2026-06-21
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 65-71
+  - path: src/acheron/shell/health.py
+    lines: 44-64
+related: [SEC-005, SEC-006, OBS-005]
+```
+
+**Issue.** `/workers` (workers.py:56) has no auth dependency and now serializes the new `last_error` field (workers.py:69) populated from `f"{type(exc).__name__}: {exc}"` (health.py:52, 64) and `f"{error}; provider {provider_name} error: {exc}"` (health.py:144). The exception payload commonly embeds the target URL and underlying socket details — e.g. `httpx.ConnectError: All connection attempts failed: 10.0.5.7:8443`, gRPC `AioRpcError` with target host, or DNS resolution errors. These are returned verbatim to anyone who can reach the API. The companion `/partials/workers` dashboard route re-emits the same field via the `<pre>{{ w.last_error }}</pre>` element in `dashboard/templates/partials/workers.html`.
+
+**Why it matters.** Builds on the SEC-005 unauthenticated-routes posture: an attacker with network reach can now enumerate the orchestrator's internal worker topology (internal IPs, ports, DNS names, transport details) by repeatedly failing the workers and reading the structured error blobs. The dashboard surface is autoescaped (Jinja2 default), so this is pure info disclosure rather than XSS. Combined with SEC-006's `str(exc)` in `PlanResult.errors`, the system now has two unauthenticated endpoints that surface internal exception detail.
+
+**Recommendation.** Either (a) categorize `last_error` into a small set of public-safe buckets (`http_5xx`, `connection_refused`, `timeout`, `auth_failed`, `provider_offline`) before persisting, keeping the raw `str(exc)` only in `logger.exception(...)`; or (b) gate the `/workers` list and `/partials/workers` endpoints behind the same `RegistrationTokenDep` (or a new optional auth) so the field is only available to operators. Document the public-safe shape in `WorkerResponse` if you take (a).
+
+**Verification.** Register a worker with `endpoint=http://10.0.5.7:8443`, force a failure, then `curl /workers | jq '.workers[].last_error'` and confirm no IP, port, or DNS detail appears. If a sanitized form is chosen, assert the value matches one of the documented buckets.
 
