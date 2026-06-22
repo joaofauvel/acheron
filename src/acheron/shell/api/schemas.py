@@ -72,6 +72,8 @@ class WorkerResponse(BaseModel):
     transport: str
     worker_type: str
     consecutive_failures: int
+    status: str = "healthy"
+    last_error: str | None = None
 
 
 class WorkerListResponse(BaseModel):

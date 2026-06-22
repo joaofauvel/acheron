@@ -57,6 +57,22 @@ class TestWorkerRoutes:
         assert response.status_code == 200
         assert len(response.json()["workers"]) == initial_count + 1
 
+    @pytest.mark.asyncio
+    async def test_list_workers_includes_status_and_last_error(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/workers")
+        assert response.status_code == 200
+        for w in response.json()["workers"]:
+            assert "status" in w
+            assert "last_error" in w
+
+    @pytest.mark.asyncio
+    async def test_registered_worker_defaults_to_healthy(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post("/workers", json=_WORKER_PAYLOAD)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["last_error"] is None
+
 
 class TestRegistrationSecurity:
     @pytest.mark.asyncio

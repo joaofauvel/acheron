@@ -48,6 +48,8 @@ async def register_worker(
         transport=body.transport,
         worker_type=body.capabilities.worker_type,
         consecutive_failures=0,
+        status="healthy",
+        last_error=None,
     )
 
 
@@ -63,6 +65,8 @@ async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
                 transport=w.transport,
                 worker_type=w.capabilities.worker_type.value,
                 consecutive_failures=w.consecutive_failures,
+                status=w.status.value,
+                last_error=w.last_error,
             )
             for w in workers
         ]
