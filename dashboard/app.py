@@ -63,4 +63,15 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
         data = await _fetch("/jobs")
         return _TEMPLATES.TemplateResponse(request, "partials/cost.html", context={"jobs": data.get("jobs", [])})
 
+    @app.get("/partials/status", response_class=HTMLResponse)
+    async def status_partial(request: Request) -> HTMLResponse:  # noqa: ARG001
+        """Proxy the orchestrator's status partial; show Disconnected on failure."""
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{orchestrator_url}/partials/status", timeout=5.0)
+                resp.raise_for_status()
+                return HTMLResponse(resp.text)
+        except (httpx.HTTPError, OSError):
+            return HTMLResponse('<span class="dot dot-red"></span> Disconnected')
+
     return app

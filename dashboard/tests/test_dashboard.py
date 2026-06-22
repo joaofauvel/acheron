@@ -71,7 +71,15 @@ class TestIndexPage:
     @pytest.mark.asyncio
     async def test_index_includes_htmx(self, client):
         resp = await client.get("/")
+        assert resp.status_code == 200
         assert "htmx" in resp.text.lower()
+
+    @pytest.mark.asyncio
+    async def test_index_contains_status_indicator(self, client):
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        assert 'id="status"' in resp.text
+        assert "/partials/status" in resp.text
 
 
 class TestJobsPartial:
@@ -206,3 +214,25 @@ class TestErrorHandling:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "No workers" in resp.text
+
+
+class TestStatusPartial:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_status_connected_when_orchestrator_up(self, client):
+        respx.get(f"{_ORCH_URL}/partials/status").mock(
+            return_value=httpx.Response(200, text='<span class="dot dot-green"></span> Connected')
+        )
+        resp = await client.get("/partials/status")
+        assert resp.status_code == 200
+        assert "Connected" in resp.text
+        assert "dot-green" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_status_disconnected_when_orchestrator_down(self, client):
+        respx.get(f"{_ORCH_URL}/partials/status").mock(side_effect=httpx.ConnectError("refused"))
+        resp = await client.get("/partials/status")
+        assert resp.status_code == 200
+        assert "Disconnected" in resp.text
+        assert "dot-red" in resp.text

@@ -23,7 +23,7 @@
   </style>
 </head>
 <body>
-  <h1>Acheron</h1>
+  <h1>Acheron <span id="status" hx-get="/partials/status" hx-trigger="load, every 2s" hx-swap="innerHTML" style="font-size:1rem"><span style="color:#8b949e">…</span></span></h1>
   {% if user %}<p style="color:#8b949e">Signed in as {{ user }}</p>{% endif %}
 
   <div class="section" id="jobs">
