@@ -135,6 +135,12 @@ type = "forbidden"
 source_modules = ["acheron.core"]
 forbidden_modules = ["acheron.shell"]
 
+[[tool.importlinter.contracts]]
+name = "worker-sdk-no-shell"
+type = "forbidden"
+source_modules = ["acheron.worker_sdk"]
+forbidden_modules = ["acheron.shell"]
+
 [dependency-groups]
 dev = [
     "basedpyright~=1.39",
