@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import redis.asyncio
 
-from acheron.core.models import AudioRequest, EpubRequest
+from acheron.core.models import AudioRequest, EpubRequest, WorkerStatus
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
@@ -83,6 +83,8 @@ def _worker_fields(
         "last_health_check": str(time.time()),
         "capabilities_json": _serialize_capabilities(capabilities),
         "metadata_json": json.dumps(metadata, sort_keys=True),
+        "status": WorkerStatus.HEALTHY.value,
+        "last_error": "",
     }
 
 
@@ -96,6 +98,13 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
     except json.JSONDecodeError as exc:
         msg = f"Worker {worker_id} metadata is not valid JSON: {exc}"
         raise CacheCorruptedError(msg) from exc
+    status_str = fields.get("status") or WorkerStatus.HEALTHY.value
+    try:
+        status = WorkerStatus(status_str)
+    except ValueError as exc:
+        msg = f"Worker {worker_id} has invalid status: {status_str}"
+        raise CacheCorruptedError(msg) from exc
+    last_error = fields.get("last_error") or None
     return RegisteredWorker(
         worker_id=worker_id,
         endpoint=fields["endpoint"],
@@ -104,6 +113,8 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
         consecutive_failures=int(fields.get("consecutive_failures", "0")),
         last_health_check=float(last_hc) if last_hc else None,
         metadata=metadata,
+        status=status,
+        last_error=last_error,
     )
 
 
@@ -352,12 +363,29 @@ class RedisWorkerStore(WorkerStore):
         return False
 
     async def record_health_success(self, worker_id: str) -> None:
-        """Record a successful health check, resetting the failure counter."""
+        """Record a successful health check, resetting status and clearing last_error."""
         key = _WORKER_KEY.format(worker_id=worker_id)
         async with self._redis.pipeline(transaction=True) as pipe:
             pipe.hset(key, "consecutive_failures", "0")
             pipe.hset(key, "last_health_check", str(time.time()))
+            pipe.hset(key, "status", WorkerStatus.HEALTHY.value)
+            pipe.hset(key, "last_error", "")
             await pipe.execute()
+
+    async def set_worker_status(
+        self,
+        worker_id: str,
+        status: WorkerStatus,
+        last_error: str | None,
+    ) -> None:
+        """Update the worker's status and last_error without touching the failure counter."""
+        key = _WORKER_KEY.format(worker_id=worker_id)
+        if not await self._redis.exists(key):  # type: ignore[misc]
+            return
+        await self._redis.hset(  # type: ignore[misc]
+            key,
+            mapping={"status": status.value, "last_error": last_error or ""},
+        )
 
 
 class RedisJobStore(JobStore):

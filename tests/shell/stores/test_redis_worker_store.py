@@ -8,7 +8,7 @@ import redis
 import redis.asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
+from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.stores.redis import RedisWorkerStore
 
 
@@ -198,3 +198,36 @@ class TestCloseRobustness:
         await s.connect()
         await s.close()
         await s.close()
+
+
+class TestStatusAndErrorRoundTrip:
+    @pytest.mark.asyncio
+    async def test_set_worker_status_round_trips(self, store: RedisWorkerStore) -> None:
+        await store.register("w-1", "http://a", "http", _tts_caps())
+        await store.set_worker_status("w-1", WorkerStatus.BOOTING, "cold start")
+        w = await store.get("w-1")
+        assert w is not None
+        assert w.status == WorkerStatus.BOOTING
+        assert w.last_error == "cold start"
+
+    @pytest.mark.asyncio
+    async def test_set_worker_status_nonexistent_is_noop(self, store: RedisWorkerStore) -> None:
+        await store.set_worker_status("nope", WorkerStatus.OFFLINE, "err")
+
+    @pytest.mark.asyncio
+    async def test_record_health_success_resets_status_and_error(self, store: RedisWorkerStore) -> None:
+        await store.register("w-1", "http://a", "http", _tts_caps())
+        await store.set_worker_status("w-1", WorkerStatus.OFFLINE, "boom")
+        await store.record_health_success("w-1")
+        w = await store.get("w-1")
+        assert w is not None
+        assert w.status == WorkerStatus.HEALTHY
+        assert w.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_new_worker_defaults_to_healthy(self, store: RedisWorkerStore) -> None:
+        await store.register("w-1", "http://a", "http", _tts_caps())
+        w = await store.get("w-1")
+        assert w is not None
+        assert w.status == WorkerStatus.HEALTHY
+        assert w.last_error is None
