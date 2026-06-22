@@ -31,9 +31,23 @@ workers:
   packaging:
     # Target audio bitrate for output packaged audiobooks (e.g., m4b)
     bitrate: "128k"
-    
+
     # Audio codec used by FFmpeg to package files
     codec: "aac"
-    
+
     # Maximum size in bytes of the WAV fmt chunk header to process (to prevent OOM/DoS)
     max_fmt_chunk_length: 65536
+
+# Platform provider credentials for decoupled health checks.
+# API keys can be set here or via environment variables using ${VAR} expansion.
+# Workers reference a provider by name via the `health_provider` key in their
+# capabilities metadata, and a platform-specific `health_endpoint_id`.
+providers:
+  runpod:
+    # RunPod API key (https://www.runpod.io/get-started/api-keys).
+    # Used to query serverless endpoint status when a worker's HTTP probe fails.
+    api_key: "${RUNPOD_API_KEY}"
+  huggingface:
+    # Hugging Face token (https://huggingface.co/settings/tokens).
+    # Used to query Inference Endpoint status when a worker's HTTP probe fails.
+    api_key: "${HF_API_KEY}"
