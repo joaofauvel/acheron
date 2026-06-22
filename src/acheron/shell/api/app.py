@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from acheron.shell.api.routes import capabilities, jobs, workers
+from acheron.shell.api.routes import capabilities, jobs, partials, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.orchestrator import Orchestrator
@@ -73,6 +73,7 @@ def create_app(
     app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
     app.include_router(workers.router, prefix="/workers", tags=["workers"])
     app.include_router(capabilities.router, tags=["capabilities"])
+    app.include_router(partials.router, tags=["partials"])
 
     @app.get("/health")
     async def health() -> dict[str, str]:
