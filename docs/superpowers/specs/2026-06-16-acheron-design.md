@@ -106,6 +106,13 @@ class JobMetrics:
     tokens_in: int | None
     tokens_out: int | None
     cost_estimate: float | None
+    cost_basis: CostBasis | None       # MEASURED | CACHED | STATIC | UNKNOWN (since Layer 8a)
+
+class CostBasis(Enum):
+    MEASURED = "measured"   # fresh provider rate multiplied by actual gpu_seconds
+    CACHED   = "cached"     # serving last-known rate; provider API currently unavailable
+    STATIC   = "static"     # configured $/hr (no API call) or ZeroPrice (operator opted out)
+    UNKNOWN  = "unknown"    # never refreshed or cache expired and refresh failed — cost is None
 
 class Worker(ABC):
     @abstractmethod
@@ -156,11 +163,15 @@ class StreamingWorker(Worker):
 
 ### Transport Implementations
 
-- **HttpWorker** — wraps a FastAPI/REST endpoint (RunPod, HuggingFace Inference Endpoints)
-- **GrpcWorker** — wraps a gRPC bidirectional streaming service (Layer 6). Enables real-time PCM streaming from GPU workers, bypassing disk I/O and base64 encoding overhead. Internal to the worker — orchestrator interface unchanged.
+- **HttpWorker** — wraps a FastAPI/REST endpoint (RunPod, HuggingFace Inference Endpoints). Response dispatch is data-driven via `Content-Type`: `multipart/mixed` (the layered default, since [Layer 8a](./2026-06-22-layer8a-tts-worker-design.md)) is parsed into `OutputFile`s materialized into the orchestrator's `ACHERON_DATA_DIR`; `application/json` is the legacy path that round-trips `JobResult` with pre-materialized `OutputFile.path` strings and is preserved for the HTTP stubs.
+- **GrpcWorker** — wraps a gRPC bidirectional streaming service (Layer 6). `OutputChunk` carries an `oneof payload` of either legacy `pcm_data` (raw PCM, for low-latency live-streaming variants) or `Artifact` parts (structured output, since [Layer 8a](./2026-06-22-layer8a-tts-worker-design.md)). The orchestrator-side `GrpcWorker` consumes `Artifact` parts via the shared `_materialize_artifact` / `_build_result` helpers (in `shell/transports/_multipart.py`), identical to the HTTP multipart path; legacy `pcm_data` mode is preserved for the live-stream use case. Internal to the worker — orchestrator interface unchanged.
 - **LocalWorker** — calls a Python function directly (CPU steps: extraction, chunking, packaging). The orchestrator auto-registers built-in local workers for `EXTRACTION`, `CHUNKING`, and `PACKAGING` if no external worker of that type is registered, so the default stack can run end-to-end without any extraction/chunking/packaging workers deployed.
 
 Workers register their transport endpoint. The orchestrator dispatches via the abstract interface. gRPC workers register without a URL scheme (`host:port`), since `grpc.insecure_channel` rejects `http://host:port` as a malformed hostname.
+
+### Output contract (since Layer 8a)
+
+Workers return artifacts as bytes — never as filesystem paths into the orchestrator's volume. The orchestrator materializes received bytes into `ACHERON_DATA_DIR/{job_id}/{step_id}/{filename}` and computes `size_bytes` + SHA-256 `checksum` itself, so a worker need not share a filesystem with the orchestrator. This makes physically-separated workers (RunPod serverless, Hugging Face Inference Endpoints, dedicated remote hosts) first-class. A legacy JSON-`path` path remains for the HTTP stubs, but new workers built on the [`acheron.worker_sdk`](./2026-06-22-layer8a-tts-worker-design.md) blueprint use the `multipart/mixed` response shape.
 
 ### Worker Registry
 
@@ -459,8 +470,9 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 ## Cost Containment
 
 - **RunPod idle shutdown**: If queue empty for 300s, orchestrator calls RunPod API to terminate pod.
-- **Per-job cost tracking**: Each `JobResult` includes `JobMetrics` with `cost_estimate`. Orchestrator aggregates per-job and per-worker.
-- **Cost sources**: RunPod ($/hr × GPU seconds), OpenRouter (tokens × price/token), local workers ($0).
+- **Per-job cost tracking**: Each `JobResult` includes `JobMetrics` with `cost_estimate` and `cost_basis` (since [Layer 8a](./2026-06-22-layer8a-tts-worker-design.md)). Orchestrator aggregates per-job and per-worker. `cost_estimate is None` (basis `UNKNOWN`) means the worker could not price the step — it is skipped from `PlanResult.total_cost`, never silently coerced to `$0.00`.
+- **Cost sources**: RunPod serverless ($/hr fetched from the RunPod GraphQL `gpuTypes.lowestPrice.uninterruptablePrice`, multiplied by actual GPU-seconds — fault-tolerant fallback to cached/unknown), OpenRouter (tokens × price/token), local workers (`ZeroPrice`, basis `STATIC`). Worker-side pricing is best-effort: a transient API outage at startup does not block worker registration; mid-flight outages report `None`; `PlanResult.total_cost_basis` is the least-confident basis across steps.
+- **Dashboard rendering**: the `Cost` table visualizes `cost_basis` as a colored badge (`Measured` green / `Cached` amber / `Unknown` gray / `Static` neutral) with a short, plain-English note in an adjacent column so operators can tell "real numbers from the provider" apart from "we gave up."
 
 ## Docker Deployment
 
@@ -501,16 +513,18 @@ A representative service:
 
 ### GPU Worker (Decoupled & Plug-and-play) — Layer 8
 
-Workers are completely decoupled, model-specific containers built with PyTorch and CUDA. They have no dependence on orchestrator libraries or configuration, communicating solely via the standardized REST/gRPC interfaces.
+Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation); each gets its own spec → plan → implementation cycle. See [Layer 8a TTS design](./2026-06-22-layer8a-tts-worker-design.md) and the [implementation roadmap](./2026-06-16-implementation-roadmap.md).
 
-* **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B for text synthesis. Min 8GB VRAM.
-* **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM.
-* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 55 languages. Min ~16GB VRAM. Used when `source_language != target_language`; skipped otherwise.
+Workers are completely decoupled, model-specific containers built with PyTorch and CUDA. They depend on the [`acheron.worker_sdk`](./2026-06-22-layer8a-tts-worker-design.md) blueprint subpackage of the orchestrator's `acheron` wheel — which imports only `acheron.core` types and never `acheron.shell`. They communicate with the orchestrator solely through the standardized REST/gRPC interfaces and never touch the orchestrator's I/O code.
+
+* **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B-CustomVoice for text synthesis via 9 built-in premium speakers. Min 24GB VRAM. Layer 8a (in progress).
+* **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM. Layer 8b (planned).
+* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 55 languages. Min ~16GB VRAM. Used when `source_language != target_language`; skipped otherwise. Layer 8c (planned). Supersedes the stub spec at [2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md).
 
 **Deployment & API:**
-* Deployed as serverless functions (RunPod Serverless, Hugging Face Inference Endpoints) or standalone cloud instances.
-* Exposed endpoints: `/health` (health probe), `/capabilities` (supported target/source languages), and `/execute` (job execution).
-* On container boot, they register their endpoint URL and capabilities with the orchestrator (`POST /workers`).
+* Workers ship one deployment mode each — the blueprint is one mode per worker. v1 (qwen3tts) ships RunPod Serverless only; a local-GPU `Qwen3TTSLocalHandler` would be a separate future worker package, not a runtime flag.
+* RunPod Serverless workers are published to GHCR by CI on tag and `main`. The deployer pulls the image into a RunPod template, configures the endpoint (GPU list, idle timeout, network volume for cached HF weights), and runs a generic `acheron-worker-sdk-edge` container alongside the orchestrator that registers with the orchestrator and forwards `/execute` calls to the RunPod endpoint via `runpod.Endpoint(id).run(...).output(timeout=N)`.
+* Exposed endpoints: `/health` (health probe), `/capabilities` (supported target/source languages), and `/execute` (job execution, multipart/mixed response). On container boot (the edge container), workers self-register their endpoint URL and capabilities with the orchestrator (`POST /workers`), tagging `capabilities.metadata["health_provider"] = "runpod"` and `capabilities.metadata["health_endpoint_id"] = <endpoint id>` so the existing `RunPodHealthProvider` cold-start detection (Layer 11) handles Booting/Offline state transitions.
 
 ## Dashboard
 
@@ -554,7 +568,6 @@ acheron status
 
 # Job commands Click group:
 acheron job submit book.epub --src en --dest es
-acheron job submit podcast.mp3 --src en --dest es --asr whisper-v3
 acheron job submit book.epub --src en --dest es --executor streaming
 
 acheron job status job-xyz
@@ -578,12 +591,17 @@ acheron capabilities --dest es
 
 ### Deferred Commands
 
-These commands require API endpoints that don't exist yet:
+These commands require API endpoints or worker-targeting plumbing that don't exist yet:
 
 ```bash
 acheron job cancel job-xyz               # cancel a running job
 acheron job package job-xyz --output ./  # package completed job to M4B (manual run)
+acheron job submit podcast.mp3 --src en --dest es --asr whisper-v3   # pick a specific ASR worker
+acheron job submit book.epub  --src en --dest es --tts  qwen3tts-1   # pick a specific TTS worker
+acheron job submit book.epub  --src en --dest es --translation openrouter  # pick a translation worker
 ```
+
+The `asr_model` field on `AudioRequest` / `SubmitJobRequest` is wired into the transcribe step's payload today, but `step_handler._language_matches` selects workers purely by `WorkerType` + language pair (first-registered-wins) — the field is a no-op. Per-step worker targeting (`asr_model`, `tts_model`, `translation_model` hints on the plan request, validated by the planner against the registry) is deferred to a separate sub-project. With one RunPod worker per `WorkerType` per deployment, language-match selection suffices in v1.
 
 ## Translation Engine
 
@@ -609,10 +627,12 @@ System: Eres un traductor profesional literario. Traduce el siguiente texto en {
 - httpx (worker communication)
 - click (CLI framework)
 
-**TTS Worker (Layer 8):**
+**TTS Worker (Layer 8a — `acheron.worker_sdk` blueprint + `qwen3tts` worker):**
 - PyTorch + CUDA
-- HuggingFace Transformers
-- Qwen3-TTS-12Hz-1.7B
+- `qwen-tts` (HuggingFace Transformers + the official Qwen3-TTS package)
+- Qwen3-TTS-12Hz-1.7B-CustomVoice (9 built-in speakers; voice cloning via Base deferred to a separate sub-project)
+- Deployment mode: RunPod Serverless (24GB GPU list: L4 / A5000 / RTX 3090)
+- Output: `multipart/mixed` with `BytesArtifact` per chapter WAV
 
 **ASR Worker (Layer 8):**
 - PyTorch + CUDA
