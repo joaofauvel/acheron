@@ -13,8 +13,9 @@ import pytest
 import pytest_asyncio
 from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
-from acheron.core.models import WorkerCapabilities, WorkerType
-from acheron.shell.health import HealthMonitor, _default_health_check
+from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
+from acheron.shell.health import HealthMonitor, HealthProbeResult, _default_health_check
+from acheron.shell.health_providers import HealthProvider, HealthProviders
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
@@ -73,7 +74,7 @@ class TestHealthMonitor:
     async def test_records_success_for_healthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://worker", "http", _tts_caps())
-        health_check = AsyncMock(return_value=True)
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=True))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
         await _poll_for(lambda: health_check.called)
@@ -87,7 +88,7 @@ class TestHealthMonitor:
     async def test_records_failure_for_unhealthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://worker", "http", _tts_caps())
-        health_check = AsyncMock(return_value=False)
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="down"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
 
@@ -104,7 +105,7 @@ class TestHealthMonitor:
     async def test_removes_worker_after_max_failures(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://worker", "http", _tts_caps())
-        health_check = AsyncMock(return_value=False)
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="down"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
         await monitor.start()
 
@@ -134,18 +135,18 @@ class TestDefaultHealthCheck:
     async def test_grpc_worker_uses_grpc_health_check(self, grpc_health_server: str) -> None:
         """gRPC workers are probed via gRPC Health.Check, not HTTP GET /health."""
         result = await _default_health_check(grpc_health_server, "grpc")
-        assert result is True
+        assert result.healthy is True
 
     @pytest.mark.asyncio
     async def test_grpc_unhealthy_worker_returns_false(self) -> None:
         result = await _default_health_check("localhost:1", "grpc")
-        assert result is False
+        assert result.healthy is False
 
     @pytest.mark.asyncio
     async def test_grpc_does_not_attempt_http(self, grpc_health_server: str) -> None:
         """A gRPC endpoint with no HTTP listener must not be probed via HTTP."""
         result = await _default_health_check(grpc_health_server, "grpc")
-        assert result is True
+        assert result.healthy is True
 
 
 class TestHealthMonitorTransportAware:
@@ -165,3 +166,105 @@ class TestHealthMonitorTransportAware:
         w = await reg.get("tts-grpc")
         assert w is not None
         assert w.consecutive_failures == 0
+
+
+def _tts_caps_with_provider(provider: str, endpoint_id: str) -> WorkerCapabilities:
+    return WorkerCapabilities(
+        worker_type=WorkerType.TTS,
+        supported_languages_in=frozenset({"es"}),
+        supported_languages_out=frozenset({"es"}),
+        supported_formats_in=frozenset({"text"}),
+        supported_formats_out=frozenset({"wav"}),
+        max_payload_bytes=None,
+        batch_capable=True,
+        model_source=None,
+        metadata={"health_provider": provider, "health_endpoint_id": endpoint_id},
+    )
+
+
+class _FakeProvider(HealthProvider):
+    """Fake HealthProvider returning a configured status."""
+
+    def __init__(self, status: WorkerStatus) -> None:
+        self._status = status
+        self.called_with: str | None = None
+
+    async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        self.called_with = endpoint_id
+        return self._status
+
+
+class TestHealthMonitorProviderIntegration:
+    @pytest.mark.asyncio
+    async def test_booting_worker_not_removed(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        fake = _FakeProvider(WorkerStatus.BOOTING)
+        providers = HealthProviders({"runpod": fake})
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
+        await monitor.start()
+
+        async def _booting() -> bool:
+            w = await reg.get("w1")
+            return w is not None and w.status == WorkerStatus.BOOTING
+
+        await _poll_for(_booting)
+        await monitor.stop()
+        w = await reg.get("w1")
+        assert w is not None
+        assert w.status == WorkerStatus.BOOTING
+        assert w.consecutive_failures == 0
+        assert "conn refused" in (w.last_error or "")
+        assert fake.called_with == "ep-1"
+
+    @pytest.mark.asyncio
+    async def test_offline_provider_increments_failures(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        fake = _FakeProvider(WorkerStatus.OFFLINE)
+        providers = HealthProviders({"runpod": fake})
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="down"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
+        await monitor.start()
+
+        async def _removed() -> bool:
+            return await reg.get("w1") is None
+
+        await _poll_for(_removed)
+        await monitor.stop()
+        assert await reg.get("w1") is None
+
+    @pytest.mark.asyncio
+    async def test_no_provider_falls_back_to_offline(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps())
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="down"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
+        await monitor.start()
+
+        async def _offline() -> bool:
+            w = await reg.get("w1")
+            return w is not None and w.status == WorkerStatus.OFFLINE
+
+        await _poll_for(_offline)
+        await monitor.stop()
+        w = await reg.get("w1")
+        assert w is not None
+        assert w.status == WorkerStatus.OFFLINE
+
+    @pytest.mark.asyncio
+    async def test_success_resets_to_healthy(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://up", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        await reg.set_worker_status("w1", WorkerStatus.BOOTING, "cold")
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=True))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
+        await monitor.start()
+
+        async def _healthy() -> bool:
+            w = await reg.get("w1")
+            return w is not None and w.status == WorkerStatus.HEALTHY and w.last_error is None
+
+        await _poll_for(_healthy)
+        await monitor.stop()
