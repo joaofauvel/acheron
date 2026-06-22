@@ -365,6 +365,10 @@ Workers self-register via `POST /workers` on the orchestrator API. The registry 
 
 **Registration security:** Shared secret model. The orchestrator uses the `registration_token` configuration value (set via `acheron.yaml` or overridden via `ACHERON_REGISTRATION_TOKEN` environment variable). `POST /workers` requires `Authorization: Bearer <token>` header. Missing or invalid token → 401. If the token is unset, the orchestrator automatically generates a random secure registration token and persists it to `{data_dir}/.registration_token` at startup. To run with open registration, the user must explicitly opt in by setting `ACHERON_OPEN_REGISTRATION=1`.
 
+**Platform health checks (Layer 11):** When the orchestrator's HTTP/gRPC probe fails, the `HealthMonitor` consults a `HealthProvider` plugin (configured in `acheron.yaml` under `providers:`) named by the worker's `capabilities.metadata["health_provider"]`. The provider queries the platform API (RunPod Serverless endpoints, Hugging Face Inference Endpoints) using `capabilities.metadata["health_endpoint_id"]` and returns a `WorkerStatus` (`HEALTHY` | `BOOTING` | `OFFLINE`). Booting workers are not removed from the registry; offline workers follow the existing 3-strike removal. The worker's `status` and `last_error` are persisted by the store and surfaced on the `/workers` API response.
+
+**Backend status partial:** The orchestrator serves `GET /partials/status` (an HTML snippet) that the dashboard proxies to render a green "Connected" / red "Disconnected" indicator next to the heading.
+
 **Health monitoring:** A `HealthMonitor` background task polls all registered workers every 30s, dispatching by transport:
 - HTTP workers: `GET {endpoint}/health`
 - gRPC workers: gRPC `Health.Check` (requires the worker to register a `HealthServicer` returning `SERVING`)

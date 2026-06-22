@@ -72,3 +72,14 @@ To handle cold-start booting on platforms like RunPod Serverless or Hugging Face
 * For `Booting` or `Offline` workers, a "View Error" button will toggle a clean inline card or modal showing the `last_error` string populated from the health monitor (see `last_error` field, §2).
 * The `/workers` API response must include both `status` and `last_error` fields.
 * No placeholder stubs for job submission or capabilities will be added.
+
+## 4. Finalized Design Decisions (Implementation)
+
+- **Scope split:** Sections 2 and 3 (health checks + dashboard) are implemented first. Section 1 (decoupled worker packaging + CI/CD) is deferred to a separate plan — it requires Docker/CUDA build context and GPU worker skeletons to validate.
+- **`/partials/status` proxy:** The orchestrator owns the status partial logic (`GET /partials/status` → green "Connected" HTML). The dashboard proxies it via its own same-origin `/partials/status` route, returning red "Disconnected" HTML when the orchestrator is unreachable. This keeps the logic in the orchestrator (per spec) while working in the compose setup where the browser cannot resolve the orchestrator's internal hostname.
+- **`health_endpoint_id` is provider-specific:** RunPod → serverless endpoint id (`GET /endpoints/{id}`); HuggingFace → `namespace/name` (`GET /v2/endpoints/{namespace}/{name}`).
+- **RunPod mapping:** endpoint exists → `BOOTING` (cold start); 404/error → `OFFLINE`.
+- **HuggingFace mapping:** `status.state` in `{pending, initializing, starting, running}` → `BOOTING`; `{paused, failed}` or 404/error → `OFFLINE`.
+- **Booting workers are not removed** — the failure counter is not incremented while a platform reports booting. A boot timeout is a future extension.
+- **`${VAR}` env-var expansion** is applied to all `acheron.yaml` string values (not just provider keys) by the YAML settings source.
+- **`HealthProbeResult`** (healthy + error) replaces the prior `bool` return from `HealthCheckFn` so `last_error` captures the actual probe failure reason.

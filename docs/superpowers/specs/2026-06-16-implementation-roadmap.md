@@ -180,7 +180,7 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 | 9b-ii | done | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
 | 9a | done | Streaming pipeline executor (`StreamingExecutor` is the new default; `PipelineError`; per-step timeout; per-stage queue with sentinel drain) |
 | 10 | done | Built-in local workers (Extraction, Chunking, Packaging), settings via `acheron.yaml`, API/CLI resume |
-| 11 | planned | Decoupled platform health checks (RunPod/HF), CI/CD publish to GHCR, dashboard error & status updates |
+| 11 | partial | Decoupled health checks (RunPod/HF), dashboard error & status updates. Worker packaging + CI/CD deferred to a separate plan. |
 
 
 ## Layer 7 — Decomposition
@@ -251,8 +251,7 @@ Implement real built-in workers, yaml-based configuration settings, and executio
 
 Implement decoupled provider health checks, modular container image compilation, and dashboard updates. See [Layer 11 design spec](./2026-06-20-deployment-and-dashboard-design.md).
 
-- **Decoupled health checks**: Abstract `HealthProvider` class configuration mapping platform-specific endpoints (RunPod/HF) using API keys defined in `acheron.yaml`.
-- **Modular Workers**: Define isolated worker packages and custom Dockerfiles (e.g. `workers/qwen3tts/`, `workers/whisperv3large/`) without orchestrator dependencies.
-- **CI/CD Build**: Configure GitHub Action workflow to build separate packages and publish to GHCR.
-- **Dashboard Updates**: Integrate backend status endpoint (green/red dot) and log viewer modal for worker errors.
+- **Decoupled health checks**: Abstract `HealthProvider` class configuration mapping platform-specific endpoints (RunPod/HF) using API keys defined in `acheron.yaml`. ✅
+- **Dashboard Updates**: Backend status endpoint (green/red dot) and worker status badges + error viewer. ✅
+- **Modular Workers + CI/CD**: Isolated worker packages and GHCR publish workflow. Deferred to a separate plan (requires Docker/CUDA build context).
 
