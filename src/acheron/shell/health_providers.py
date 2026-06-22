@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import httpx
 
 from acheron.core.models import WorkerStatus
+
+if TYPE_CHECKING:
+    from acheron.shell.config import Settings
 
 
 class HealthProvider(ABC):
@@ -86,3 +90,24 @@ class HuggingFaceHealthProvider(HealthProvider):
         if state in self._BOOTING_STATES:
             return WorkerStatus.BOOTING
         return WorkerStatus.OFFLINE
+
+
+class HealthProviders:
+    """Container mapping provider names to HealthProvider instances."""
+
+    def __init__(self, providers: dict[str, HealthProvider]) -> None:
+        self._providers = providers
+
+    def get(self, name: str) -> HealthProvider | None:
+        """Return the provider for ``name`` or None if not configured."""
+        return self._providers.get(name)
+
+
+def create_health_providers(settings: Settings) -> HealthProviders:
+    """Build a HealthProviders container from provider API keys in settings."""
+    providers: dict[str, HealthProvider] = {}
+    if settings.providers.runpod.api_key:
+        providers["runpod"] = RunPodHealthProvider(settings.providers.runpod.api_key)
+    if settings.providers.huggingface.api_key:
+        providers["huggingface"] = HuggingFaceHealthProvider(settings.providers.huggingface.api_key)
+    return HealthProviders(providers)

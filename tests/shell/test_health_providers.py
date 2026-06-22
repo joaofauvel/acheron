@@ -124,3 +124,54 @@ class TestHuggingFaceHealthProvider:
         provider = HuggingFaceHealthProvider(api_key="hf-key")
         await provider.check_status("my-ns/ep-1")
         assert route.calls.last.request.headers["authorization"] == "Bearer hf-key"
+
+
+class TestHealthProvidersContainer:
+    def test_get_returns_provider_by_name(self) -> None:
+        from acheron.shell.health_providers import HealthProviders
+
+        providers = HealthProviders({"runpod": RunPodHealthProvider(api_key="k")})
+        assert isinstance(providers.get("runpod"), RunPodHealthProvider)
+
+    def test_get_unknown_returns_none(self) -> None:
+        from acheron.shell.health_providers import HealthProviders
+
+        providers = HealthProviders({})
+        assert providers.get("runpod") is None
+
+
+class TestCreateHealthProviders:
+    def test_creates_runpod_when_api_key_set(self) -> None:
+        from acheron.shell.config import Settings
+        from acheron.shell.health_providers import create_health_providers
+
+        settings = Settings()
+        settings.providers.runpod.api_key = "rp-key"
+        providers = create_health_providers(settings)
+        assert isinstance(providers.get("runpod"), RunPodHealthProvider)
+
+    def test_creates_huggingface_when_api_key_set(self) -> None:
+        from acheron.shell.config import Settings
+        from acheron.shell.health_providers import create_health_providers
+
+        settings = Settings()
+        settings.providers.huggingface.api_key = "hf-key"
+        providers = create_health_providers(settings)
+        assert isinstance(providers.get("huggingface"), HuggingFaceHealthProvider)
+
+    def test_empty_when_no_api_keys(self) -> None:
+        from acheron.shell.config import Settings
+        from acheron.shell.health_providers import create_health_providers
+
+        providers = create_health_providers(Settings())
+        assert providers.get("runpod") is None
+        assert providers.get("huggingface") is None
+
+    def test_empty_string_api_key_creates_nothing(self) -> None:
+        from acheron.shell.config import Settings
+        from acheron.shell.health_providers import create_health_providers
+
+        settings = Settings()
+        settings.providers.runpod.api_key = ""
+        providers = create_health_providers(settings)
+        assert providers.get("runpod") is None
