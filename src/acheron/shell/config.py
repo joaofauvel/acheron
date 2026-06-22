@@ -3,6 +3,7 @@
 import logging
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -10,6 +11,19 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
+
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
+
+
+def _expand_env_vars(value: Any) -> Any:  # noqa: ANN401
+    """Recursively expand ${VAR} references in string values from os.environ."""
+    if isinstance(value, str):
+        return _ENV_VAR_PATTERN.sub(lambda m: os.environ.get(m.group(1), ""), value)
+    if isinstance(value, dict):
+        return {k: _expand_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env_vars(v) for v in value]
+    return value
 
 
 class OrchestratorSettings(BaseModel):
@@ -41,6 +55,25 @@ class WorkerSettings(BaseModel):
     packaging: PackagingSettings = Field(default_factory=PackagingSettings)
 
 
+class RunPodProviderSettings(BaseModel):
+    """RunPod API credentials for platform health checks."""
+
+    api_key: str | None = None
+
+
+class HuggingFaceProviderSettings(BaseModel):
+    """Hugging Face API credentials for platform health checks."""
+
+    api_key: str | None = None
+
+
+class ProvidersSettings(BaseModel):
+    """Platform provider credentials for decoupled health checks."""
+
+    runpod: RunPodProviderSettings = Field(default_factory=RunPodProviderSettings)
+    huggingface: HuggingFaceProviderSettings = Field(default_factory=HuggingFaceProviderSettings)
+
+
 class _YamlConfigSettingsSource(PydanticBaseSettingsSource):
     """Loads settings from acheron.yaml with search path precedence."""
 
@@ -66,7 +99,8 @@ class _YamlConfigSettingsSource(PydanticBaseSettingsSource):
                 continue
             try:
                 with path.open("r", encoding="utf-8") as f:
-                    return yaml.safe_load(f) or {}
+                    raw = yaml.safe_load(f) or {}
+                    return _expand_env_vars(raw)
             except yaml.YAMLError:
                 _logger.warning("Failed to parse YAML config at %s; ignoring", path)
             except OSError:
@@ -103,6 +137,7 @@ class Settings(BaseSettings):
 
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     workers: WorkerSettings = Field(default_factory=WorkerSettings)
+    providers: ProvidersSettings = Field(default_factory=ProvidersSettings)
 
     @classmethod
     def settings_customise_sources(

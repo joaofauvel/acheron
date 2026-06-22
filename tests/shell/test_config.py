@@ -88,3 +88,39 @@ def test_load_settings_default_search_path_yml(tmp_path: Path, monkeypatch: pyte
 
     settings = load_settings()
     assert settings.orchestrator.data_dir == Path("/tmp/yml_default_dir")
+
+
+def test_providers_default_empty() -> None:
+    settings = Settings()
+    assert settings.providers.runpod.api_key is None
+    assert settings.providers.huggingface.api_key is None
+
+
+def test_providers_from_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    yaml_content = """
+providers:
+  runpod:
+    api_key: "rp-secret"
+  huggingface:
+    api_key: "hf-secret"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.providers.runpod.api_key == "rp-secret"
+    assert settings.providers.huggingface.api_key == "hf-secret"
+
+
+def test_yaml_env_var_expansion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUNPOD_API_KEY", "expanded-rp-key")
+    yaml_content = """
+providers:
+  runpod:
+    api_key: "${RUNPOD_API_KEY}"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.providers.runpod.api_key == "expanded-rp-key"
