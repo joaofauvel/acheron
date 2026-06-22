@@ -124,3 +124,32 @@ providers:
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
     assert settings.providers.runpod.api_key == "expanded-rp-key"
+
+
+def test_yaml_env_var_unset_expands_to_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unset ${VAR} must expand to empty string (falsy → provider not created)."""
+    monkeypatch.delenv("RUNPOD_API_KEY", raising=False)
+    yaml_content = """
+providers:
+  runpod:
+    api_key: "${RUNPOD_API_KEY}"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.providers.runpod.api_key == ""
+
+
+def test_yaml_env_var_expansion_nested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """${VAR} references must be expanded inside nested dicts and lists."""
+    monkeypatch.setenv("MY_VAR", "hello")
+    yaml_content = """
+orchestrator:
+  registration_token: "${MY_VAR}-suffix"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.orchestrator.registration_token == "hello-suffix"

@@ -37,6 +37,7 @@ class RunPodHealthProvider(HealthProvider):
         self._api_key = api_key
 
     async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        """Map endpoint existence to BOOTING (cold start) or OFFLINE."""
         headers = {"Authorization": f"Bearer {self._api_key}"}
         try:
             async with httpx.AsyncClient() as client:
@@ -45,9 +46,9 @@ class RunPodHealthProvider(HealthProvider):
                     headers=headers,
                     timeout=10.0,
                 )
-        except (httpx.HTTPError, OSError):
+        except httpx.HTTPError, OSError:
             return WorkerStatus.OFFLINE
-        if resp.status_code == 200:
+        if resp.status_code == httpx.codes.OK:
             return WorkerStatus.BOOTING
         return WorkerStatus.OFFLINE
 
@@ -67,6 +68,7 @@ class HuggingFaceHealthProvider(HealthProvider):
         self._api_key = api_key
 
     async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        """Map ``status.state`` to BOOTING (initializing/starting/running) or OFFLINE."""
         headers = {"Authorization": f"Bearer {self._api_key}"}
         try:
             async with httpx.AsyncClient() as client:
@@ -75,9 +77,9 @@ class HuggingFaceHealthProvider(HealthProvider):
                     headers=headers,
                     timeout=10.0,
                 )
-        except (httpx.HTTPError, OSError):
+        except httpx.HTTPError, OSError:
             return WorkerStatus.OFFLINE
-        if resp.status_code != 200:
+        if resp.status_code != httpx.codes.OK:
             return WorkerStatus.OFFLINE
         data = resp.json()
         status_raw = data.get("status")

@@ -380,7 +380,7 @@ class RedisWorkerStore(WorkerStore):
     ) -> None:
         """Update the worker's status and last_error without touching the failure counter."""
         key = _WORKER_KEY.format(worker_id=worker_id)
-        if not await self._redis.exists(key):  # type: ignore[misc]
+        if not await self._redis.exists(key):
             return
         await self._redis.hset(  # type: ignore[misc]
             key,

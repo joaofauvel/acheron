@@ -215,6 +215,23 @@ class TestErrorHandling:
         assert resp.status_code == 200
         assert "No workers" in resp.text
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_jobs_partial_returns_empty_on_oserror(self, client):
+        """An OSError (e.g. DNS failure) must also fall through to the empty state."""
+        respx.get(f"{_ORCH_URL}/jobs").mock(side_effect=OSError("name resolution failed"))
+        resp = await client.get("/partials/jobs")
+        assert resp.status_code == 200
+        assert "No jobs" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_status_partial_disconnected_on_oserror(self, client):
+        respx.get(f"{_ORCH_URL}/partials/status").mock(side_effect=OSError("network down"))
+        resp = await client.get("/partials/status")
+        assert resp.status_code == 200
+        assert "Disconnected" in resp.text
+
 
 class TestStatusPartial:
     @respx.mock

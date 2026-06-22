@@ -194,6 +194,14 @@ class _FakeProvider(HealthProvider):
         return self._status
 
 
+class _RaisingProvider(HealthProvider):
+    """Fake HealthProvider that always raises."""
+
+    async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        msg = "upstream broken"
+        raise RuntimeError(msg)
+
+
 class TestHealthMonitorProviderIntegration:
     @pytest.mark.asyncio
     async def test_booting_worker_not_removed(self) -> None:
@@ -267,4 +275,26 @@ class TestHealthMonitorProviderIntegration:
             return w is not None and w.status == WorkerStatus.HEALTHY and w.last_error is None
 
         await _poll_for(_healthy)
+        await monitor.stop()
+
+    @pytest.mark.asyncio
+    async def test_provider_raises_treated_as_offline(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = HealthProviders({"runpod": _RaisingProvider()})
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
+        await monitor.start()
+
+        async def _offline_with_error() -> bool:
+            w = await reg.get("w1")
+            return (
+                w is not None
+                and w.status == WorkerStatus.OFFLINE
+                and w.consecutive_failures == 1
+                and "conn refused" in (w.last_error or "")
+                and "upstream broken" in (w.last_error or "")
+            )
+
+        await _poll_for(_offline_with_error)
         await monitor.stop()

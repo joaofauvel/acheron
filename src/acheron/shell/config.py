@@ -2,9 +2,9 @@
 
 import logging
 import os
-from pathlib import Path
 import re
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -100,7 +100,7 @@ class _YamlConfigSettingsSource(PydanticBaseSettingsSource):
             try:
                 with path.open("r", encoding="utf-8") as f:
                     raw = yaml.safe_load(f) or {}
-                    return _expand_env_vars(raw)
+                    return cast("dict[str, Any]", _expand_env_vars(raw))
             except yaml.YAMLError:
                 _logger.warning("Failed to parse YAML config at %s; ignoring", path)
             except OSError:

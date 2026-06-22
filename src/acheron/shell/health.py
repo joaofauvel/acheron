@@ -57,7 +57,7 @@ async def _check_grpc_health(endpoint: str) -> HealthProbeResult:
         async with grpc_channel(endpoint) as channel:
             stub = health_pb2_grpc.HealthStub(channel)
             resp = await stub.Check(health_pb2.HealthCheckRequest())
-            if resp.status == health_pb2.HealthCheckResponse.SERVING:  # type: ignore[no-any-return]
+            if resp.status == health_pb2.HealthCheckResponse.SERVING:
                 return HealthProbeResult(healthy=True)
             return HealthProbeResult(healthy=False, error=f"gRPC status {resp.status}")
     except (grpc.aio.AioRpcError, OSError) as exc:
@@ -122,11 +122,13 @@ class HealthMonitor:
         for worker, result in zip(workers, results, strict=True):
             if isinstance(result, BaseException):
                 logger.warning("Health check for %s raised: %s", worker.worker_id, result)
-                result = HealthProbeResult(healthy=False, error=f"{type(result).__name__}: {result}")
-            if result.healthy:
+                outcome = HealthProbeResult(healthy=False, error=f"{type(result).__name__}: {result}")
+            else:
+                outcome = result
+            if outcome.healthy:
                 await self._registry.record_health_success(worker.worker_id)
             else:
-                await self._handle_failure(worker, result.error or "health check failed")
+                await self._handle_failure(worker, outcome.error or "health check failed")
 
     async def _handle_failure(self, worker: RegisteredWorker, error: str) -> None:
         """On probe failure, consult the platform provider then update status."""

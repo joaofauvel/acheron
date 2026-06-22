@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import (
     WorkerListResponse,
@@ -48,7 +48,7 @@ async def register_worker(
         transport=body.transport,
         worker_type=body.capabilities.worker_type,
         consecutive_failures=0,
-        status="healthy",
+        status=WorkerStatus.HEALTHY.value,
         last_error=None,
     )
 
