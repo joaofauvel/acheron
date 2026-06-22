@@ -29,6 +29,7 @@ dashboard = ["jinja2~=3.1"]
 
 [project.scripts]
 acheron = "acheron.cli:main"
+acheron-worker-edge = "acheron.worker_sdk.cli:main"
 
 [build-system]
 requires = ["hatchling"]
