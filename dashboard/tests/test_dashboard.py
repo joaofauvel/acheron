@@ -187,7 +187,9 @@ class TestCostPartial:
 
 class TestForwardAuth:
     @pytest.mark.asyncio
-    async def test_reads_forwarded_user_header(self, client):
+    async def test_reads_forwarded_user_header(self, client, monkeypatch: pytest.MonkeyPatch):
+        """When reverse proxy trust is enabled, the X-Forwarded-User header is rendered."""
+        monkeypatch.setenv("ACHERON_TRUST_REVERSE_PROXY", "1")
         resp = await client.get("/", headers={"X-Forwarded-User": "admin"})
         assert resp.status_code == 200
         assert "admin" in resp.text
