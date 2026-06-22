@@ -1,7 +1,7 @@
 {% if workers %}
 <table>
   <thead>
-    <tr><th>Worker ID</th><th>Type</th><th>Endpoint</th><th>Transport</th><th>Health</th><th>Failures</th></tr>
+    <tr><th>Worker ID</th><th>Type</th><th>Endpoint</th><th>Transport</th><th>Status</th><th>Failures</th><th>Error</th></tr>
   </thead>
   <tbody>
     {% for w in workers %}
@@ -10,8 +10,13 @@
       <td>{{ w.worker_type }}</td>
       <td>{{ w.endpoint }}</td>
       <td>{{ w.transport }}</td>
-      <td><span class="dot {{ 'dot-green' if w.consecutive_failures == 0 else 'dot-red' }}"></span></td>
+      <td><span class="badge badge-{{ w.status }}">{{ w.status }}</span></td>
       <td>{{ w.consecutive_failures }}</td>
+      <td>
+        {% if w.last_error %}
+        <details><summary style="color:#f85149;cursor:pointer">View Error</summary><pre style="color:#8b949e;white-space:pre-wrap;margin:0.5rem 0 0">{{ w.last_error }}</pre></details>
+        {% else %}-{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>

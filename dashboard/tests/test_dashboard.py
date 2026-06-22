@@ -236,3 +236,83 @@ class TestStatusPartial:
         assert resp.status_code == 200
         assert "Disconnected" in resp.text
         assert "dot-red" in resp.text
+
+
+class TestWorkersPartialStatus:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_healthy_worker_shows_healthy_badge(self, client):
+        respx.get(f"{_ORCH_URL}/workers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workers": [
+                        {
+                            "worker_id": "tts-1",
+                            "worker_type": "tts",
+                            "endpoint": "http://tts:8000",
+                            "transport": "http",
+                            "consecutive_failures": 0,
+                            "status": "healthy",
+                            "last_error": None,
+                        },
+                    ]
+                },
+            )
+        )
+        resp = await client.get("/partials/workers")
+        assert resp.status_code == 200
+        assert "badge-healthy" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_booting_worker_shows_booting_badge_and_error(self, client):
+        respx.get(f"{_ORCH_URL}/workers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workers": [
+                        {
+                            "worker_id": "tts-2",
+                            "worker_type": "tts",
+                            "endpoint": "http://tts:8000",
+                            "transport": "http",
+                            "consecutive_failures": 0,
+                            "status": "booting",
+                            "last_error": "cold start: connection refused",
+                        },
+                    ]
+                },
+            )
+        )
+        resp = await client.get("/partials/workers")
+        assert resp.status_code == 200
+        assert "badge-booting" in resp.text
+        assert "View Error" in resp.text
+        assert "cold start: connection refused" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_offline_worker_shows_offline_badge(self, client):
+        respx.get(f"{_ORCH_URL}/workers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workers": [
+                        {
+                            "worker_id": "tts-3",
+                            "worker_type": "tts",
+                            "endpoint": "http://tts:8000",
+                            "transport": "http",
+                            "consecutive_failures": 2,
+                            "status": "offline",
+                            "last_error": "HTTP 503",
+                        },
+                    ]
+                },
+            )
+        )
+        resp = await client.get("/partials/workers")
+        assert resp.status_code == 200
+        assert "badge-offline" in resp.text
+        assert "View Error" in resp.text
