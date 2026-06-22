@@ -8,6 +8,7 @@ imported lazily by the modules that need them so unit tests of pure types
 
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.settings import WorkerSettings
 
 __all__ = [
     "Artifact",
@@ -15,4 +16,5 @@ __all__ = [
     "FileArtifact",
     "StreamArtifact",
     "WorkerHandler",
+    "WorkerSettings",
 ]
