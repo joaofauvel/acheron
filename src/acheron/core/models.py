@@ -63,6 +63,15 @@ class WorkerStatus(Enum):
     OFFLINE = "offline"
 
 
+class CostBasis(Enum):
+    """Confidence level for a per-job cost estimate (since Layer 8a)."""
+
+    MEASURED = "measured"
+    CACHED = "cached"
+    STATIC = "static"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class WorkerCapabilities:
     """Describes a worker's supported types, languages, and formats."""
@@ -109,6 +118,7 @@ class JobMetrics:
     tokens_in: int | None = None
     tokens_out: int | None = None
     cost_estimate: float | None = None
+    cost_basis: CostBasis | None = None
 
 
 @dataclass(frozen=True)

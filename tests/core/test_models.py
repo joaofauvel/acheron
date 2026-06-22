@@ -246,3 +246,48 @@ class TestPlanResult:
             total_duration_seconds=120.0,
         )
         assert result.status == PlanStatus.COMPLETED
+
+
+from pydantic import TypeAdapter
+
+from acheron.core.models import CostBasis
+
+
+class TestCostBasis:
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (CostBasis.MEASURED, "measured"),
+            (CostBasis.CACHED, "cached"),
+            (CostBasis.STATIC, "static"),
+            (CostBasis.UNKNOWN, "unknown"),
+        ],
+    )
+    def test_cost_basis_values(self, member: CostBasis, value: str) -> None:
+        assert member.value == value
+
+
+class TestJobMetricsCostBasis:
+    _adapter = TypeAdapter(JobMetrics)
+
+    def test_default_cost_basis_is_none(self) -> None:
+        m = JobMetrics(duration_seconds=1.0)
+        assert m.cost_basis is None
+
+    def test_explicit_cost_basis_round_trip(self) -> None:
+        m = JobMetrics(
+            duration_seconds=2.0,
+            gpu_seconds=1.5,
+            cost_estimate=0.042,
+            cost_basis=CostBasis.MEASURED,
+        )
+        dumped = self._adapter.dump_python(m)
+        assert dumped["cost_basis"] == CostBasis.MEASURED
+        round_trip = self._adapter.validate_python(dumped)
+        assert round_trip.cost_basis == CostBasis.MEASURED
+
+    def test_none_cost_basis_round_trip(self) -> None:
+        m = JobMetrics(duration_seconds=2.0)
+        dumped = self._adapter.dump_python(m)
+        round_trip = self._adapter.validate_python(dumped)
+        assert round_trip.cost_basis is None
