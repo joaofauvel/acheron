@@ -8,8 +8,11 @@ the returned :class:`PriceEstimate`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+import time
+from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
+
+import httpx
 
 from acheron.core.models import CostBasis
 
@@ -73,3 +76,108 @@ def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
     if estimate.reason == "runpod:cached":
         return CostBasis.CACHED
     return CostBasis.STATIC
+
+
+@dataclass
+class RunPodPrice:
+    """Pulls $/hr from RunPod GraphQL using the endpoint's configured GPU.
+
+    RunPod is the single source of truth for the GPU type — the worker does
+    not configure ``gpu_type``. ``_refresh_rate()`` makes two GraphQL calls:
+    (1) read the endpoint's ``gpuIds`` via ``myself { endpoints { id gpuIds } }``,
+    (2) resolve ``uninterruptablePrice`` via ``gpuTypes(input: {id: $gpu_id})``.
+    Changing the GPU on the RunPod endpoint takes effect on the next
+    cache refresh (``cache_ttl_s``).
+    """
+
+    api_key: str
+    endpoint_id: str
+    secure_cloud: bool = False
+    cache_ttl_s: float = 3600.0
+
+    _rate: float | None = field(default=None, init=False)
+    _rate_fetched_at: float = field(default=0.0, init=False)
+
+    async def refresh(self) -> bool:
+        """Force-refresh the rate from RunPod GraphQL.
+
+        ``True`` on success, ``False`` on any failure (caller should treat
+        as non-fatal — the cache will be served under CACHED basis).
+        """
+        async with httpx.AsyncClient() as client:
+            return await self._refresh_rate(client)
+
+    async def _refresh_rate(self, client: httpx.AsyncClient) -> bool:
+        """Hit the GraphQL endpoint; populate ``_rate``. Return False on any failure."""
+        try:
+            gpu_id = await self._fetch_gpu_id(client)
+            if gpu_id is None:
+                return False
+            rate = await self._fetch_uninterruptable_price(client, gpu_id)
+            if rate is None:
+                return False
+        except (httpx.HTTPError, OSError, KeyError, ValueError, TypeError):
+            return False
+        self._rate = rate
+        self._rate_fetched_at = time.monotonic()
+        return True
+
+    async def _fetch_gpu_id(self, client: httpx.AsyncClient) -> str | None:
+        query = "query { myself { endpoints { id gpuIds } } }"
+        resp = await self._post_graphql(client, query)
+        endpoints = resp["data"]["myself"]["endpoints"]
+        for ep in endpoints:
+            if ep["id"] == self.endpoint_id:
+                return str(ep["gpuIds"])
+        return None
+
+    async def _fetch_uninterruptable_price(
+        self, client: httpx.AsyncClient, gpu_id: str
+    ) -> float | None:
+        query = (
+            "query($id: String!, $secure: Boolean!) {"
+            "  gpuTypes(input: {id: $id}) {"
+            "    lowestPrice(input: {gpuCount: 1, secureCloud: $secure}) "
+            "{ uninterruptablePrice }"
+            "  }"
+            "}"
+        )
+        resp = await self._post_graphql(
+            client,
+            query,
+            variables={"id": gpu_id, "secure": self.secure_cloud},
+        )
+        return float(resp["data"]["gpuTypes"][0]["lowestPrice"]["uninterruptablePrice"])
+
+    async def _post_graphql(
+        self,
+        client: httpx.AsyncClient,
+        query: str,
+        variables: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resp = await client.post(
+            "https://api.runpod.io/graphql",
+            params={"api_key": self.api_key},
+            json={"query": query, "variables": variables or {}},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        body: dict[str, Any] = resp.json()
+        return body
+
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        now = time.monotonic()
+        stale = self._rate is None or (now - self._rate_fetched_at) > self.cache_ttl_s
+        refreshed: bool | None = None
+        if stale:
+            async with httpx.AsyncClient() as client:
+                refreshed = await self._refresh_rate(client)
+        if self._rate is None:
+            return PriceEstimate(
+                cost=None,
+                reason=f"runpod pricing unavailable for endpoint {self.endpoint_id}",
+            )
+        cost = round(gpu_seconds * self._rate / 3600.0, 6)
+        if refreshed is False:
+            return PriceEstimate(cost=cost, reason="runpod:cached")
+        return PriceEstimate(cost=cost, reason="runpod:measured")
