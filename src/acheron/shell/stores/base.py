@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
+    from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
 
@@ -64,7 +64,21 @@ class WorkerStore(ABC):
 
     @abstractmethod
     async def record_health_success(self, worker_id: str) -> None:
-        """Record a successful health check, resetting the failure counter."""
+        """Record a successful health check.
+
+        Resets the failure counter to 0, sets status to HEALTHY, and clears
+        last_error.
+        """
+        ...
+
+    @abstractmethod
+    async def set_worker_status(
+        self,
+        worker_id: str,
+        status: WorkerStatus,
+        last_error: str | None,
+    ) -> None:
+        """Update the worker's status and last_error without touching the failure counter."""
         ...
 
     @abstractmethod

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from acheron.core.models import WorkerStatus
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
@@ -78,11 +79,25 @@ class InMemoryWorkerStore(WorkerStore):
         return False
 
     async def record_health_success(self, worker_id: str) -> None:
-        """Record a successful health check, resetting the failure counter."""
+        """Record a successful health check, resetting the failure counter and status."""
         worker = self._workers.get(worker_id)
         if worker is not None:
             worker.consecutive_failures = 0
             worker.last_health_check = time.time()
+            worker.status = WorkerStatus.HEALTHY
+            worker.last_error = None
+
+    async def set_worker_status(
+        self,
+        worker_id: str,
+        status: WorkerStatus,
+        last_error: str | None,
+    ) -> None:
+        """Update the worker's status and last_error."""
+        worker = self._workers.get(worker_id)
+        if worker is not None:
+            worker.status = status
+            worker.last_error = last_error
 
     async def close(self) -> None:
         """No-op for the in-memory store."""

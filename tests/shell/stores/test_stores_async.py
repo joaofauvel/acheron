@@ -50,6 +50,7 @@ class TestWorkerStoreABCCoroutineContract:
             "find_by_language",
             "record_health_failure",
             "record_health_success",
+            "set_worker_status",
             "close",
         ],
     )

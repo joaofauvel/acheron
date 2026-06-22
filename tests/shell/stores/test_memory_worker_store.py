@@ -2,7 +2,7 @@
 
 import pytest
 
-from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 
@@ -155,3 +155,40 @@ class TestHealthTracking:
     async def test_health_success_nonexistent(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.record_health_success("nope")
+
+
+class TestWorkerStatusTracking:
+    @pytest.mark.asyncio
+    async def test_set_worker_status_updates_fields(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w-1", "http://a", "http", _tts_caps())
+        await reg.set_worker_status("w-1", WorkerStatus.BOOTING, "cold start")
+        w = await reg.get("w-1")
+        assert w is not None
+        assert w.status == WorkerStatus.BOOTING
+        assert w.last_error == "cold start"
+
+    @pytest.mark.asyncio
+    async def test_set_worker_status_nonexistent_is_noop(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.set_worker_status("nope", WorkerStatus.OFFLINE, "err")
+
+    @pytest.mark.asyncio
+    async def test_record_health_success_resets_status_and_error(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w-1", "http://a", "http", _tts_caps())
+        await reg.set_worker_status("w-1", WorkerStatus.OFFLINE, "boom")
+        await reg.record_health_success("w-1")
+        w = await reg.get("w-1")
+        assert w is not None
+        assert w.status == WorkerStatus.HEALTHY
+        assert w.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_new_worker_defaults_to_healthy(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w-1", "http://a", "http", _tts_caps())
+        w = await reg.get("w-1")
+        assert w is not None
+        assert w.status == WorkerStatus.HEALTHY
+        assert w.last_error is None
