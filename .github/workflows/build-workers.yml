@@ -45,6 +45,36 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  build-granite-speech:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.14' }
+      - name: Install uv
+        run: pip install uv
+      - name: Build acheron wheel
+        run: uv build --package acheron --out-dir dist
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: workers/granite_speech/Dockerfile.runpod
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/acheron-granite-speech-runpod:latest
+            ghcr.io/${{ github.repository }}/acheron-granite-speech-runpod:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   build-edge:
     runs-on: ubuntu-latest
     permissions:
