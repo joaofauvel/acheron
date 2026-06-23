@@ -1,0 +1,35 @@
+# Qwen3-TTS worker — image default config.
+# Sensitive fields (RUNPOD_API_KEY, RUNPOD_ENDPOINT_ID, REGISTRATION_TOKEN)
+# are env-only — rejected when present here. Override per-deploy by mounting
+# a qwen3tts.worker.yaml override or by setting ACHERON_WORKER_* env vars.
+
+worker_id: "qwen3tts-1"
+orchestrator_url: "http://orchestrator:8000"
+listen_port: 8001
+execution_timeout_s: 1800
+
+# Pricing — RunPod GraphQL API is the default. The GPU type is NOT a config
+# field: RunPodPrice reads the endpoint's gpuIds via the RunPod GraphQL API.
+# Changing the GPU on the RunPod endpoint takes effect on the next
+# price_cache_ttl_s refresh; no image rebuild required.
+price_source: runpod
+secure_cloud: false
+# price_cache_ttl_s: 3600.0
+
+# Single-speaker v1 — one speaker per job (consistent across all chunks).
+# The planner never emits a 'speaker' in the plan payload; this worker picks it.
+default_speaker: "Ryan"
+per_language_defaults:
+  en: "Ryan"
+  zh: "Vivian"
+  ja: "Ono_Anna"
+  ko: "Sohee"
+
+# Output transport — multipart default
+output_mode: multipart
+
+# Handler — used by the generic acheron-worker-edge CLI to import the handler
+# class when running the edge container alongside the orchestrator. The
+# runpod_entrypoint.py in the RunPod runtime image uses the import directly.
+handler: "workers.qwen3tts.handler:Qwen3TTSRunpodHandler"
+model_id: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
