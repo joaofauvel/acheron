@@ -18,12 +18,8 @@ class TestRunPodPrice:
         routes = respx.post("https://api.runpod.io/graphql")
         routes.mock(
             side_effect=[
-                _graphql_response(
-                    {"myself": {"endpoints": [{"id": "eid", "gpuIds": "NVIDIA GeForce RTX 3090"}]}}
-                ),
-                _graphql_response(
-                    {"gpuTypes": [{"lowestPrice": {"uninterruptablePrice": 0.69}}]}
-                ),
+                _graphql_response({"myself": {"endpoints": [{"id": "eid", "gpuIds": "NVIDIA GeForce RTX 3090"}]}}),
+                _graphql_response({"gpuTypes": [{"lowestPrice": {"uninterruptablePrice": 0.69}}]}),
             ]
         )
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False, cache_ttl_s=3600.0)
@@ -38,12 +34,8 @@ class TestRunPodPrice:
         routes = respx.post("https://api.runpod.io/graphql")
         routes.mock(
             side_effect=[
-                _graphql_response(
-                    {"myself": {"endpoints": [{"id": "eid", "gpuIds": "NVIDIA GeForce RTX 3090"}]}}
-                ),
-                _graphql_response(
-                    {"gpuTypes": [{"lowestPrice": {"uninterruptablePrice": 0.69}}]}
-                ),
+                _graphql_response({"myself": {"endpoints": [{"id": "eid", "gpuIds": "NVIDIA GeForce RTX 3090"}]}}),
+                _graphql_response({"gpuTypes": [{"lowestPrice": {"uninterruptablePrice": 0.69}}]}),
                 httpx.ConnectError("boom"),
                 httpx.ConnectError("boom"),
             ]
@@ -73,7 +65,7 @@ class TestRunPodPrice:
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False)
         try:
             est = await price.estimate(gpu_seconds=3600.0)
-        except Exception:
+        except httpx.HTTPError:
             pytest.fail("RunPodPrice.estimate must not raise on API failure")
         assert est.cost is None
 
@@ -85,9 +77,7 @@ class TestRunPodPrice:
         ``cost=None`` with the "unavailable" reason.
         """
         respx.post("https://api.runpod.io/graphql").mock(
-            return_value=_graphql_response(
-                {"myself": {"endpoints": [{"id": "other-endpoint", "gpuIds": "X"}]}}
-            )
+            return_value=_graphql_response({"myself": {"endpoints": [{"id": "other-endpoint", "gpuIds": "X"}]}})
         )
         price = RunPodPrice(api_key="k", endpoint_id="missing", secure_cloud=False)
         est = await price.estimate(gpu_seconds=10.0)
@@ -115,9 +105,7 @@ class TestRunPodPrice:
         """
         respx.post("https://api.runpod.io/graphql").mock(
             side_effect=[
-                _graphql_response(
-                    {"myself": {"endpoints": [{"id": "eid", "gpuIds": "X"}]}}
-                ),
+                _graphql_response({"myself": {"endpoints": [{"id": "eid", "gpuIds": "X"}]}}),
                 _graphql_response({"gpuTypes": []}),
             ]
         )

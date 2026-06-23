@@ -12,6 +12,7 @@ silently land in committed ``worker.yaml`` overrides or image layers.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -22,11 +23,13 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-_ENV_ONLY_FIELDS: frozenset[str] = frozenset({
-    "registration_token",
-    "runpod_api_key",
-    "runpod_endpoint_id",
-})
+_ENV_ONLY_FIELDS: frozenset[str] = frozenset(
+    {
+        "registration_token",
+        "runpod_api_key",
+        "runpod_endpoint_id",
+    }
+)
 
 
 class WorkerSettings(BaseSettings):
@@ -39,7 +42,7 @@ class WorkerSettings(BaseSettings):
     runpod_api_key: str | None = None
     runpod_endpoint_id: str | None = None
 
-    listen_host: str = "0.0.0.0"
+    listen_host: str = "0.0.0.0"  # noqa: S104 (the edge container is a network service)
     listen_port: int = 8001
 
     execution_timeout_s: float = 1800.0
@@ -66,7 +69,7 @@ class WorkerSettings(BaseSettings):
     @classmethod
     def settings_customise_sources(
         cls,
-        settings_cls: type[BaseSettings],
+        settings_cls: type[BaseSettings],  # noqa: ARG003
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
         dotenv_settings: PydanticBaseSettingsSource,
@@ -84,7 +87,7 @@ class WorkerSettings(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_env_only_fields(cls, data: Any) -> Any:
+    def _reject_env_only_fields(cls, data: Any) -> Any:  # noqa: ANN401
         """Reject env-only fields when supplied via constructor / YAML.
 
         Runs after pydantic-settings has merged the env overlay with the
@@ -99,8 +102,6 @@ class WorkerSettings(BaseSettings):
             if data[field_name] is None:
                 continue
             env_var = f"ACHERON_WORKER__{field_name.upper()}"
-            import os
-
             if env_var not in os.environ:
                 msg = (
                     f"Field {field_name!r} is env-only and cannot be set via "
@@ -118,4 +119,3 @@ class WorkerSettings(BaseSettings):
             msg = "dollars_per_hour is required when price_source == 'static'"
             raise ValueError(msg)
         return self
-

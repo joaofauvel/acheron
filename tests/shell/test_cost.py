@@ -18,7 +18,7 @@ def test_single_measured() -> None:
 
 def test_least_confident_wins() -> None:
     """MEASURED + UNKNOWN → UNKNOWN (operator can't trust the total)."""
-    bases = [
+    bases: list[JobMetrics | None] = [
         JobMetrics(duration_seconds=1.0, cost_basis=CostBasis.MEASURED),
         JobMetrics(duration_seconds=1.0, cost_basis=CostBasis.CACHED),
         JobMetrics(duration_seconds=1.0, cost_basis=CostBasis.STATIC),
@@ -29,7 +29,7 @@ def test_least_confident_wins() -> None:
 
 def test_skips_none_metrics() -> None:
     """A None entry (skipped step) is ignored — only real metrics contribute."""
-    bases = [
+    bases: list[JobMetrics | None] = [
         None,
         JobMetrics(duration_seconds=1.0, cost_basis=CostBasis.MEASURED),
         None,
@@ -39,7 +39,7 @@ def test_skips_none_metrics() -> None:
 
 def test_skips_metrics_without_basis() -> None:
     """A metric with cost_basis=None (no price source wired) is ignored."""
-    bases = [
+    bases: list[JobMetrics | None] = [
         JobMetrics(duration_seconds=1.0, cost_basis=None),
         JobMetrics(duration_seconds=1.0, cost_basis=CostBasis.STATIC),
     ]

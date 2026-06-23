@@ -16,7 +16,6 @@ class TestMaterializeArtifact:
             data=data,
             filename="ch1_0000.wav",
             content_type="audio/wav",
-            metadata={"sequence_id": 0},
             dest_dir=tmp_path,
         )
         assert isinstance(out, OutputFile)
@@ -35,7 +34,6 @@ class TestMaterializeArtifact:
             data=b"x",
             filename="f.txt",
             content_type="text/plain",
-            metadata={},
             dest_dir=dest,
         )
         assert Path(out.path).exists()
@@ -48,14 +46,12 @@ class TestBuildResult:
             data=b"a",
             filename="a.wav",
             content_type="audio/wav",
-            metadata={},
             dest_dir=tmp_path,
         )
         art2 = await _materialize_artifact(
             data=b"b",
             filename="b.wav",
             content_type="audio/wav",
-            metadata={},
             dest_dir=tmp_path,
         )
         metrics = JobMetrics(

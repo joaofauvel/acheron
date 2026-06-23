@@ -38,9 +38,7 @@ class TestToCostBasis:
             (None, "anything goes when cost is None", "unknown"),
         ],
     )
-    def test_known_reasons_map_to_wire_value(
-        self, cost: float | None, reason: str | None, expected: str
-    ) -> None:
+    def test_known_reasons_map_to_wire_value(self, cost: float | None, reason: str | None, expected: str) -> None:
         assert to_cost_basis(PriceEstimate(cost=cost, reason=reason)).value == expected
 
     def test_raises_on_unknown_reason(self) -> None:

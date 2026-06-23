@@ -49,9 +49,7 @@ class TestRegisterWithOrchestrator:
     @pytest.mark.asyncio
     async def test_retries_until_orchestrator_ready(self) -> None:
         route = respx.post("http://orch:8000/workers")
-        route.mock(
-            side_effect=[httpx.ConnectError("refused"), httpx.Response(201, json={})]
-        )
+        route.mock(side_effect=[httpx.ConnectError("refused"), httpx.Response(201, json={})])
         async with httpx.AsyncClient() as client:
             await register_with_orchestrator(
                 client=client,
@@ -85,9 +83,7 @@ class TestRegisterWithOrchestrator:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_exponential_backoff_grows_then_caps(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_exponential_backoff_grows_then_caps(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Sleep duration grows by powers of two up to the 30s cap."""
         delays: list[float] = []
 

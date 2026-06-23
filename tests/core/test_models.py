@@ -250,11 +250,6 @@ class TestPlanResult:
         assert result.status == PlanStatus.COMPLETED
 
 
-from pydantic import TypeAdapter
-
-from acheron.core.models import CostBasis
-
-
 class TestCostBasis:
     @pytest.mark.parametrize(
         ("member", "value"),

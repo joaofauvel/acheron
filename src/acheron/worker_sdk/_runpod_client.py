@@ -15,15 +15,19 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 import runpod  # type: ignore[import-untyped]
 
 from acheron.core.errors import WorkerError
 
 
+class _Run(Protocol):
+    def output(self, timeout: float | None = None) -> object: ...
+
+
 class _Endpoint(Protocol):
-    def run(self, input: dict[str, Any]) -> Any: ...  # noqa: A002
+    def run(self, payload: dict[str, object]) -> _Run: ...
 
 
 def _open_endpoint(endpoint_id: str, *, api_key: str) -> _Endpoint:
@@ -35,7 +39,7 @@ def _open_endpoint(endpoint_id: str, *, api_key: str) -> _Endpoint:
 class RunPodJobResult:
     """Decoded response from a finished RunPod job."""
 
-    artifacts: list[dict[str, Any]]
+    artifacts: list[dict[str, object]]
     gpu_seconds: float
 
 
@@ -46,37 +50,28 @@ class RunPodClient:
     each ``/execute`` request received from the orchestrator.
     """
 
-    def __init__(
-        self, *, api_key: str, endpoint_id: str, execution_timeout_s: float
-    ) -> None:
+    def __init__(self, *, api_key: str, endpoint_id: str, execution_timeout_s: float) -> None:
         self._api_key = api_key
         self._endpoint_id = endpoint_id
         self._execution_timeout_s = execution_timeout_s
 
-    async def run(self, input: dict[str, Any]) -> RunPodJobResult:
-        endpoint = await asyncio.to_thread(
-            _open_endpoint, self._endpoint_id, api_key=self._api_key
-        )
+    async def run(self, payload: dict[str, object]) -> RunPodJobResult:
+        endpoint = await asyncio.to_thread(_open_endpoint, self._endpoint_id, api_key=self._api_key)
         start = time.monotonic()
-        request = await asyncio.to_thread(endpoint.run, input)
+        request = await asyncio.to_thread(endpoint.run, payload)
         try:
             output = await asyncio.wait_for(
                 asyncio.to_thread(request.output, timeout=self._execution_timeout_s),
                 timeout=self._execution_timeout_s,
             )
         except TimeoutError as exc:
-            msg = (
-                f"RunPod job timed out after {self._execution_timeout_s}s "
-                f"(endpoint={self._endpoint_id})"
-            )
+            msg = f"RunPod job timed out after {self._execution_timeout_s}s (endpoint={self._endpoint_id})"
             raise TimeoutError(msg) from exc
 
         gpu_seconds = time.monotonic() - start
         output_dict = output if isinstance(output, dict) else {"artifacts": output}
         artifacts = output_dict.get("artifacts", [])
         if not isinstance(artifacts, list):
-            msg = (
-                f"RunPod output.artifacts must be a list, got {type(artifacts).__name__}"
-            )
+            msg = f"RunPod output.artifacts must be a list, got {type(artifacts).__name__}"
             raise WorkerError(msg)
         return RunPodJobResult(artifacts=artifacts, gpu_seconds=gpu_seconds)

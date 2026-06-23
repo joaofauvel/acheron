@@ -108,17 +108,15 @@ class GrpcWorker(Worker):
         duration: float,
     ) -> JobResult:
         plan_job_id = "-".join(job_id.split("-")[:-1]) if "-" in job_id else job_id
-        step_id = job_id.split("-")[-1] if "-" in job_id else "execute"
+        step_id = job_id.rsplit("-", maxsplit=1)[-1] if "-" in job_id else "execute"
         dest_dir = self._data_dir / plan_job_id / step_id
 
         outputs: list[OutputFile] = []
         for art in artifacts:
-            metadata = {k: v for k, v in art.metadata.items()}
             out = await _materialize_artifact(
                 data=art.data,
                 filename=art.filename,
                 content_type=art.content_type,
-                metadata=metadata,
                 dest_dir=dest_dir,
             )
             outputs.append(out)

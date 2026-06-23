@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import httpx
 
@@ -29,22 +29,28 @@ class PriceEstimate:
     reason: str | None = None
 
 
-@runtime_checkable
 class PriceSource(Protocol):
     """Provider-agnostic price source."""
 
-    async def estimate(self, gpu_seconds: float) -> PriceEstimate: ...
-    async def refresh(self) -> bool: ...
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        """Return a price estimate for ``gpu_seconds`` of GPU time."""
+        ...
+
+    async def refresh(self) -> bool:
+        """Force-refresh cached rates; return False on any failure (non-fatal)."""
+        ...
 
 
 @dataclass(frozen=True)
 class ZeroPrice:
     """Stubs/local — no cost tracking. Reports $0 with STATIC basis."""
 
-    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:  # noqa: ARG002
+        """Return a fixed $0 estimate (GPU is local; not metered)."""
         return PriceEstimate(cost=0.0, reason="zero (stub/local)")
 
     async def refresh(self) -> bool:
+        """No-op; returns True so callers can treat this as always-warm."""
         return True
 
 
@@ -55,19 +61,23 @@ class StaticPrice:
     dollars_per_hour: float
 
     async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        """Compute ``gpu_seconds * $/hr / 3600`` and return with STATIC reason."""
         cost = round(gpu_seconds * self.dollars_per_hour / 3600.0, 6)
         return PriceEstimate(cost=cost, reason="static config")
 
     async def refresh(self) -> bool:
+        """No-op; static rates don't need refreshing."""
         return True
 
 
-_KNOWN_REASONS: frozenset[str] = frozenset({
-    "runpod:measured",
-    "runpod:cached",
-    "static config",
-    "zero (stub/local)",
-})
+_KNOWN_REASONS: frozenset[str] = frozenset(
+    {
+        "runpod:measured",
+        "runpod:cached",
+        "static config",
+        "zero (stub/local)",
+    }
+)
 
 
 def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
@@ -130,7 +140,7 @@ class RunPodPrice:
             rate = await self._fetch_uninterruptable_price(client, gpu_id)
             if rate is None:
                 return False
-        except (httpx.HTTPError, OSError, KeyError, ValueError, TypeError):
+        except httpx.HTTPError, OSError, KeyError, ValueError, TypeError:
             return False
         self._rate = rate
         self._rate_fetched_at = time.monotonic()
@@ -147,9 +157,7 @@ class RunPodPrice:
                 return str(ep["gpuIds"])
         return None
 
-    async def _fetch_uninterruptable_price(
-        self, client: httpx.AsyncClient, gpu_id: str
-    ) -> float | None:
+    async def _fetch_uninterruptable_price(self, client: httpx.AsyncClient, gpu_id: str) -> float | None:
         query = (
             "query($id: String!, $secure: Boolean!) {"
             "  gpuTypes(input: {id: $id}) {"
@@ -166,9 +174,7 @@ class RunPodPrice:
         gpu_types = resp["data"].get("gpuTypes") or []
         if not gpu_types:
             return None
-        return float(
-            gpu_types[0]["lowestPrice"]["uninterruptablePrice"]
-        )
+        return float(gpu_types[0]["lowestPrice"]["uninterruptablePrice"])
 
     async def _post_graphql(
         self,
@@ -187,6 +193,7 @@ class RunPodPrice:
         return body
 
     async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        """Compute cost; refresh the cached rate if stale or unset."""
         now = time.monotonic()
         stale = self._rate is None or (now - self._rate_fetched_at) > self.cache_ttl_s
         refreshed: bool | None = None

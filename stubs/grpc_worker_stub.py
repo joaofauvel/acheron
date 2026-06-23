@@ -31,9 +31,9 @@ class _SynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
         self,
         request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
         context: grpc.aio.ServicerContext,  # type: ignore[type-arg]
-    ) -> AsyncIterator[synthesis_pb2.AudioChunk]:  # type: ignore[name-defined]
+    ) -> AsyncIterator[synthesis_pb2.OutputChunk]:  # type: ignore[name-defined]
         for _ in range(3):
-            yield synthesis_pb2.AudioChunk(  # type: ignore[attr-defined]
+            yield synthesis_pb2.OutputChunk(  # type: ignore[attr-defined]
                 pcm_data=_SILENT_PCM,
                 sample_rate=22050,
                 channels=1,

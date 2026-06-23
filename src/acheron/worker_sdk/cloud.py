@@ -10,12 +10,15 @@ future sub-project) a local edge runtime.
 from __future__ import annotations
 
 import base64
-from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from acheron.core.models import Job, WorkerType
-from acheron.worker_sdk.artifacts import Artifact
-from acheron.worker_sdk.handler import WorkerHandler
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from acheron.worker_sdk.artifacts import Artifact
+    from acheron.worker_sdk.handler import WorkerHandler
 
 
 def make_runpod_handler(
@@ -37,11 +40,7 @@ def _deserialise_job(input_payload: dict[str, Any]) -> Job:
         job_type=WorkerType(input_payload["job_type"]),
         payload=cast("dict[str, Any]", input_payload.get("payload", {})),
         chapter_id=input_payload.get("chapter_id", ""),
-        sequence_ids=(
-            tuple(input_payload["sequence_ids"])
-            if input_payload.get("sequence_ids")
-            else None
-        ),
+        sequence_ids=(tuple(input_payload["sequence_ids"]) if input_payload.get("sequence_ids") else None),
     )
 
 

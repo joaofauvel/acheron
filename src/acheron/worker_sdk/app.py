@@ -29,13 +29,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _build_price_source(settings: "WorkerSettings") -> PriceSource:
+def _build_price_source(settings: WorkerSettings) -> PriceSource:
     match settings.price_source:
         case "runpod":
             if not settings.runpod_api_key or not settings.runpod_endpoint_id:
                 logger.warning(
-                    "price_source=runpod but RUNPOD_API_KEY/RUNPOD_ENDPOINT_ID "
-                    "not set; prices will be unknown"
+                    "price_source=runpod but RUNPOD_API_KEY/RUNPOD_ENDPOINT_ID not set; prices will be unknown"
                 )
                 return ZeroPrice()
             return RunPodPrice(
@@ -46,24 +45,19 @@ def _build_price_source(settings: "WorkerSettings") -> PriceSource:
             )
         case "static":
             if settings.dollars_per_hour is None:
-                logger.warning(
-                    "price_source=static but dollars_per_hour not set; "
-                    "falling back to ZeroPrice"
-                )
+                logger.warning("price_source=static but dollars_per_hour not set; falling back to ZeroPrice")
                 return ZeroPrice()
             return StaticPrice(dollars_per_hour=settings.dollars_per_hour)
         case _:
             return ZeroPrice()
 
 
-def _endpoint_url(settings: "WorkerSettings") -> str:
+def _endpoint_url(settings: WorkerSettings) -> str:
     """The URL the orchestrator will use to reach this edge container."""
     return f"http://{os.environ.get('WORKER_HOST', 'localhost')}:{settings.listen_port}"
 
 
-def _registration_caps(
-    caps: WorkerCapabilities, settings: "WorkerSettings"
-) -> WorkerCapabilities:
+def _registration_caps(caps: WorkerCapabilities, settings: WorkerSettings) -> WorkerCapabilities:
     """Augment ``caps.metadata`` with provider-specific health hints.
 
     The orchestrator's ``RunPodHealthProvider`` (Layer 11) reads
@@ -92,8 +86,8 @@ def _registration_caps(
 
 def create_worker_app(
     *,
-    handler: "WorkerHandler",
-    settings: "WorkerSettings",
+    handler: WorkerHandler,
+    settings: WorkerSettings,
     disable_registration: bool = False,
 ) -> FastAPI:
     """Build the edge FastAPI app wired with registration + price refresh."""
@@ -143,4 +137,3 @@ def create_worker_app(
         if path in inner_paths:
             app.routes.append(route)
     return app
-

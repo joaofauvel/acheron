@@ -37,7 +37,7 @@ class _Stub(WorkerHandler):
 
 
 @pytest.fixture
-def app_handler() -> tuple["FastAPI", "_Stub"]:
+def app_handler() -> tuple[FastAPI, _Stub]:
     h = _Stub()
     app = EdgeApp(handler=h, capabilities=h.capabilities()).app
     return app, h
@@ -45,7 +45,7 @@ def app_handler() -> tuple["FastAPI", "_Stub"]:
 
 class TestEdgeRoutes:
     @pytest.mark.asyncio
-    async def test_health_returns_ok(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
+    async def test_health_returns_ok(self, app_handler: tuple[FastAPI, _Stub]) -> None:
         app, _ = app_handler
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -54,7 +54,7 @@ class TestEdgeRoutes:
         assert r.json() == {"status": "ok"}
 
     @pytest.mark.asyncio
-    async def test_capabilities_returns_shape(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
+    async def test_capabilities_returns_shape(self, app_handler: tuple[FastAPI, _Stub]) -> None:
         app, _ = app_handler
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -66,7 +66,7 @@ class TestEdgeRoutes:
         assert body["supported_formats_out"] == ["wav"]
 
     @pytest.mark.asyncio
-    async def test_execute_returns_multipart(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
+    async def test_execute_returns_multipart(self, app_handler: tuple[FastAPI, _Stub]) -> None:
         app, h = app_handler
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -87,7 +87,7 @@ class TestEdgeRoutes:
     @pytest.mark.asyncio
     async def test_execute_on_handler_error_returns_jobresult_json(
         self,
-        app_handler: tuple["FastAPI", "_Stub"],
+        app_handler: tuple[FastAPI, _Stub],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """On handler error, the body is a ``JobResult`` JSON (status=failed,
@@ -116,7 +116,7 @@ class TestEdgeRoutes:
         assert body["metrics"]["cost_basis"] is None
 
     @pytest.mark.asyncio
-    async def test_execute_metrics_part_emits_null_cost_basis(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
+    async def test_execute_metrics_part_emits_null_cost_basis(self, app_handler: tuple[FastAPI, _Stub]) -> None:
         """When no price source is wired, the metrics part emits ``"cost_basis": null``
         (not the string ``"unknown"``) — the latter would conflate "no estimate"
         with "the API was down", breaking the dashboard's cost-confidence render.
@@ -139,7 +139,7 @@ class TestEdgeRoutes:
         # Pull the last part (application/json metrics) out of the multipart body.
         body = r.content
         boundary = r.headers["content-type"].split("boundary=")[-1]
-        parts = body.split(f"--{boundary}".encode("utf-8"))
+        parts = body.split(f"--{boundary}".encode())
         json_part = next(p for p in parts if b"application/json" in p)
         # The JSON payload begins after the headers (blank line) and ends before \r\n.
         json_bytes = json_part.split(b"\r\n\r\n", 1)[1].rsplit(b"\r\n", 1)[0]

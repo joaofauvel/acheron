@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from acheron.core.models import Job, WorkerCapabilities
-
     from acheron.worker_sdk.artifacts import Artifact
 
 
@@ -29,6 +28,8 @@ class WorkerHandler(ABC):
 
     async def startup(self) -> None:
         """Optional hook: load model onto GPU, warm caches. Default: no-op."""
+        return
 
     async def shutdown(self) -> None:
         """Optional hook: free GPU memory. Default: no-op."""
+        return

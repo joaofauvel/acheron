@@ -54,9 +54,7 @@ class TestCreateWorkerApp:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_registration_payload_includes_runpod_health_metadata(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_registration_payload_includes_runpod_health_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Edge container advertises its RunPod endpoint to the orchestrator's
         RunPodHealthProvider via ``metadata.health_provider`` /
         ``metadata.health_endpoint_id`` (Layer 11 cold-start detection).
@@ -69,15 +67,7 @@ class TestCreateWorkerApp:
             side_effect=[
                 httpx.Response(
                     200,
-                    json={
-                        "data": {
-                            "myself": {
-                                "endpoints": [
-                                    {"id": "eid123", "gpuIds": "NVIDIA GeForce RTX 3090"}
-                                ]
-                            }
-                        }
-                    },
+                    json={"data": {"myself": {"endpoints": [{"id": "eid123", "gpuIds": "NVIDIA GeForce RTX 3090"}]}}},
                 ),
                 httpx.Response(
                     200,
@@ -85,9 +75,7 @@ class TestCreateWorkerApp:
                 ),
             ]
         )
-        route = respx.post("http://orch:8000/workers").mock(
-            return_value=httpx.Response(201, json={})
-        )
+        route = respx.post("http://orch:8000/workers").mock(return_value=httpx.Response(201, json={}))
         h = _Stub()
         s = _settings()
         app = create_worker_app(handler=h, settings=s)

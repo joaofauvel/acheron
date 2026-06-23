@@ -43,6 +43,7 @@ def _import_handler(import_path: str) -> type[Any]:
 
 
 def main() -> None:
+    """Load the worker handler, build the edge FastAPI app, and serve uvicorn."""
     parser = argparse.ArgumentParser(description="acheron-worker-edge image entrypoint")
     parser.add_argument("--handler", required=True, help="Dotted path pkg.mod:ClassName")
     parser.add_argument("--config", default=None, help="Path to worker YAML (overrides discovery)")

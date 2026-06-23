@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
 
+from pydantic import TypeAdapter
+
 type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 
 
@@ -128,8 +130,6 @@ class JobMetrics:
         treats it like a pydantic model on the wire.  ``TypeAdapter.dump_json``
         gives us a single source of truth without converting the in-memory type.
         """
-        from pydantic import TypeAdapter
-
         return TypeAdapter(JobMetrics).dump_json(self)
 
 
@@ -150,8 +150,6 @@ class JobResult:
         contract uses pydantic's ``TypeAdapter`` to round-trip the JSON.
         Returns ``bytes`` to match pydantic v2's signature.
         """
-        from pydantic import TypeAdapter
-
         return TypeAdapter(JobResult).dump_json(self)
 
 

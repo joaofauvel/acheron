@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 _MAX_BACKOFF_S = 30.0
 
 
-async def register_with_orchestrator(
+async def register_with_orchestrator(  # noqa: PLR0913
     *,
     client: httpx.AsyncClient,
     orchestrator_url: str,
@@ -41,6 +41,9 @@ async def register_with_orchestrator(
     Sleeps ``retry_delay * 2**attempt`` (capped at ``_MAX_BACKOFF_S``) between
     attempts; raises :class:`httpx.ConnectError` after ``retries`` consecutive
     failures so the edge container fails fast instead of looping forever.
+
+    The wide kwargs surface is intentional — this is the public SDK entry
+    point; callers compose each field from a ``WorkerSettings`` instance.
     """
     headers: dict[str, str] = {}
     if token:

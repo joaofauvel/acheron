@@ -7,14 +7,14 @@ naturally produces — no forced buffering.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable  # noqa: TC003
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING, Protocol
 
-if TYPE_CHECKING:
-    from typing import ReadOnly
+import aiofiles
 
+if TYPE_CHECKING:
     from acheron.core.models import JsonValue
 
 
@@ -22,12 +22,12 @@ class Artifact(Protocol):
     """Transport-neutral output produced by `WorkerHandler.handle()`."""
 
     @property
-    def filename(self) -> str: ...
+    def filename(self) -> str: ...  # noqa: D102
     @property
-    def content_type(self) -> str: ...
+    def content_type(self) -> str: ...  # noqa: D102
     @property
-    def metadata(self) -> dict[str, JsonValue]: ...
-    def stream(self) -> AsyncIterator[bytes]: ...
+    def metadata(self) -> dict[str, JsonValue]: ...  # noqa: D102
+    def stream(self) -> AsyncIterator[bytes]: ...  # noqa: D102
 
 
 @dataclass(frozen=True)
@@ -37,9 +37,10 @@ class BytesArtifact:
     filename: str
     content_type: str
     data: bytes
-    metadata: dict[str, "JsonValue"] = field(default_factory=dict)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
 
     async def stream(self) -> AsyncIterator[bytes]:
+        """Yield the in-memory bytes as a single chunk."""
         yield self.data
 
 
@@ -50,9 +51,10 @@ class StreamArtifact:
     filename: str
     content_type: str
     producer: Callable[[], AsyncIterator[bytes]]
-    metadata: dict[str, "JsonValue"] = field(default_factory=dict)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
 
     async def stream(self) -> AsyncIterator[bytes]:
+        """Yield chunks produced by ``self.producer()``."""
         async for chunk in self.producer():
             yield chunk
 
@@ -64,11 +66,10 @@ class FileArtifact:
     filename: str
     content_type: str
     path: Path
-    metadata: dict[str, "JsonValue"] = field(default_factory=dict)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
 
     async def stream(self) -> AsyncIterator[bytes]:
-        import aiofiles
-
+        """Yield the file's contents in 64 KiB chunks."""
         async with aiofiles.open(self.path, "rb") as f:
             while True:
                 chunk = await f.read(64 * 1024)

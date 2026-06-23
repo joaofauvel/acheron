@@ -15,7 +15,6 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -27,15 +26,16 @@ from acheron.core.models import (
     JobMetrics,
     JobResult,
     JobStatus,
-    OutputFile,
     WorkerCapabilities,
     WorkerType,
 )
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
-from acheron.worker_sdk.schemas import ExecuteRequest
+from acheron.worker_sdk.schemas import ExecuteRequest  # noqa: TC001  (FastAPI needs the type at request time)
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from acheron.worker_sdk.handler import WorkerHandler
 
 logger = logging.getLogger(__name__)
@@ -101,18 +101,14 @@ async def _build_multipart_response(
             f'Content-Disposition: attachment; filename="{a.filename}"\r\n'
             f"Content-Type: {a.content_type}\r\n"
             f"X-Acheron-Metadata: {_encode_metadata(a.metadata)}\r\n\r\n"
-        ).encode("utf-8")
+        ).encode()
         body_data = b""
         async for chunk in a.stream():
             body_data += chunk
         parts.append(header + body_data + b"\r\n")
     metrics_json = metrics.model_dump_json()
-    parts.append(
-        f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode("utf-8")
-        + metrics_json
-        + b"\r\n"
-    )
-    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    parts.append(f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode() + metrics_json + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
     body = b"".join(parts)
     return Response(
         content=body,
@@ -126,7 +122,7 @@ class EdgeApp:
     def __init__(
         self,
         *,
-        handler: "WorkerHandler",
+        handler: WorkerHandler,
         capabilities: WorkerCapabilities,
         price_source: PriceSource | None = None,
     ) -> None:
@@ -163,7 +159,7 @@ class EdgeApp:
         start = time.monotonic()
         try:
             artifacts: list[Artifact] = await self.handler.handle(job)
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             duration = time.monotonic() - start
             logger.exception("Handler failed for job %s", job.job_id)
             # Return a ``JobResult``-shaped body so the orchestrator's

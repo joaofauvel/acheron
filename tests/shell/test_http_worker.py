@@ -1,11 +1,15 @@
 """Tests for the HttpWorker transport."""
 
+import hashlib
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
 
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
+    CostBasis,
     Job,
     JobStatus,
     WorkerType,
@@ -107,12 +111,6 @@ class TestHttpWorkerExecute:
             await worker.execute(job)
 
 
-import hashlib
-from pathlib import Path  # noqa: E402
-
-from acheron.core.models import CostBasis  # noqa: E402
-
-
 # A multipart/mixed response body the SDK edge would emit. Built statically
 # so the test doesn't need the SDK to be importable.
 _BOUNDARY = "acheron-test"
@@ -120,15 +118,17 @@ _BOUNDARY = "acheron-test"
 
 def _multipart_body(audio: bytes, metrics: bytes) -> bytes:
     audio_part = (
-        f"--{_BOUNDARY}\r\n"
-        f'Content-Disposition: attachment; filename="ch1_0000.wav"\r\n'
-        f"Content-Type: audio/wav\r\n"
-        f'X-Acheron-Metadata: {{"sequence_id":0}}\r\n\r\n'
-    ).encode("utf-8") + audio + b"\r\n"
-    metrics_part = (
-        f"--{_BOUNDARY}\r\nContent-Type: application/json\r\n\r\n"
-    ).encode("utf-8") + metrics + b"\r\n"
-    closing = f"--{_BOUNDARY}--\r\n".encode("utf-8")
+        (
+            f"--{_BOUNDARY}\r\n"
+            f'Content-Disposition: attachment; filename="ch1_0000.wav"\r\n'
+            f"Content-Type: audio/wav\r\n"
+            f'X-Acheron-Metadata: {{"sequence_id":0}}\r\n\r\n'
+        ).encode()
+        + audio
+        + b"\r\n"
+    )
+    metrics_part = (f"--{_BOUNDARY}\r\nContent-Type: application/json\r\n\r\n").encode() + metrics + b"\r\n"
+    closing = f"--{_BOUNDARY}--\r\n".encode()
     return audio_part + metrics_part + closing
 
 

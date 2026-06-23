@@ -27,9 +27,7 @@ class TestExecuteRequest:
         assert body.sequence_ids == [0, 1]
 
     def test_sequence_ids_optional(self) -> None:
-        body = ExecuteRequest.model_validate(
-            {"job_id": "j-1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"}
-        )
+        body = ExecuteRequest.model_validate({"job_id": "j-1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"})
         assert body.sequence_ids is None
 
     def test_extra_fields_rejected(self) -> None:

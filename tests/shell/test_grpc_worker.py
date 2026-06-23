@@ -36,7 +36,7 @@ class _FakeSynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
     def Synthesize(  # noqa: N802
         self,
         request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
-        context: grpc.aio.ServicerContext,  # type: ignore[type-arg]
+        context: grpc.aio.ServicerContext,
     ) -> Any:
         if self._fail:
             context.set_code(grpc.StatusCode.UNAVAILABLE)
@@ -62,7 +62,7 @@ class _ArtifactServicer(synthesis_pb2_grpc.SynthesisServicer):
     def Synthesize(  # noqa: N802
         self,
         request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
-        context: grpc.aio.ServicerContext,  # type: ignore[type-arg]
+        context: grpc.aio.ServicerContext,
     ) -> Any:
         for art in self._artifacts:
             yield synthesis_pb2.OutputChunk(artifact=art)  # type: ignore[attr-defined]
@@ -75,7 +75,7 @@ async def grpc_server() -> AsyncIterator[tuple[str, _FakeSynthesisServicer]]:
     server = grpc.aio.server()
     synthesis_pb2_grpc.add_SynthesisServicer_to_server(servicer, server)  # type: ignore[no-untyped-call]
     health_servicer = health.HealthServicer()
-    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)  # type: ignore[attr-defined]
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     port = server.add_insecure_port("localhost:0")
     await server.start()
@@ -166,7 +166,7 @@ class TestGrpcWorkerExecuteArtifact:
         server = grpc.aio.server()
         synthesis_pb2_grpc.add_SynthesisServicer_to_server(servicer, server)  # type: ignore[no-untyped-call]
         health_servicer = health.HealthServicer()
-        health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)  # type: ignore[attr-defined]
+        health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
         health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
         port = server.add_insecure_port("localhost:0")
         await server.start()

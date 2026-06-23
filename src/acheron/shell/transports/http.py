@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from email.message import Message
@@ -95,8 +94,7 @@ class HttpWorker(Worker):
         # Strip any trailing params / quotes.
         boundary = boundary_part.split(";", 1)[0].strip().strip('"')
         full_body = (
-            f"Content-Type: multipart/mixed; boundary={boundary}\r\n"
-            "MIME-Version: 1.0\r\n\r\n"
+            f"Content-Type: multipart/mixed; boundary={boundary}\r\nMIME-Version: 1.0\r\n\r\n"
         ).encode() + resp.content
         # Use email.parser to split the multipart body.
         parser = BytesParser(policy=default_policy)
@@ -108,7 +106,7 @@ class HttpWorker(Worker):
         # The job_id embeds plan_id:plan_job_id-step_id; the step_id suffix is the dir.
         # Keep parity with the stub convention /data/jobs/<plan_job_id>/<step_id>/.
         plan_job_id = "-".join(job_id.split("-")[:-1]) if "-" in job_id else job_id
-        step_id = job_id.split("-")[-1] if "-" in job_id else "execute"
+        step_id = job_id.rsplit("-", maxsplit=1)[-1] if "-" in job_id else "execute"
         dest_dir = self._data_dir / plan_job_id / step_id
 
         outputs: list[OutputFile] = []
@@ -123,23 +121,17 @@ class HttpWorker(Worker):
             part_ctype = part.get_content_type()
             if part_ctype == "application/json":
                 raw = part.get_payload(decode=True)
-                metrics = _metrics_adapter.validate_json(
-                    raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-                )
+                metrics = _metrics_adapter.validate_json(raw if isinstance(raw, bytes) else str(raw).encode("utf-8"))
                 continue
             # Binary artifact part.
             filename = part.get_filename() or "artifact.bin"
             raw = part.get_payload(decode=True)
             data = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-            metadata_raw = part.get("X-Acheron-Metadata")
-            metadata: dict[str, Any] = {}
-            if metadata_raw:
-                metadata = json.loads(metadata_raw)
+            _ = part.get("X-Acheron-Metadata")
             out = await _materialize_artifact(
                 data=data,
                 filename=filename,
                 content_type=part_ctype,
-                metadata=metadata,
                 dest_dir=dest_dir,
             )
             outputs.append(out)
@@ -150,7 +142,7 @@ class HttpWorker(Worker):
     async def health(self) -> bool:  # noqa: D102
         try:
             resp = await self._request("GET", "/health")
-        except (WorkerError, WorkerUnavailableError):
+        except WorkerError, WorkerUnavailableError:
             return False
         else:
             return resp.status_code == httpx.codes.OK

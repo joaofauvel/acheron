@@ -7,10 +7,14 @@ so a worker needs no shared filesystem with the orchestrator.
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
+
+import aiofiles
 
 from acheron.core.models import JobMetrics, JobResult, JobStatus, OutputFile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 async def _materialize_artifact(
@@ -18,7 +22,6 @@ async def _materialize_artifact(
     data: bytes,
     filename: str,
     content_type: str,
-    metadata: dict[str, Any],
     dest_dir: Path,
 ) -> OutputFile:
     """Write ``bytes`` to ``dest_dir/filename`` and return an ``OutputFile``.
@@ -26,9 +29,7 @@ async def _materialize_artifact(
     ``checksum`` (SHA-256) and ``size_bytes`` are computed locally on the
     orchestrator side so the worker doesn't need to be trusted on them.
     """
-    import aiofiles
-
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
     out_path = dest_dir / filename
     async with aiofiles.open(out_path, "wb") as f:
         await f.write(data)

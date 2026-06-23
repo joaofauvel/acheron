@@ -1,6 +1,5 @@
 """Tests for the Artifact composition primitives."""
 
-import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -14,7 +13,7 @@ from acheron.worker_sdk.artifacts import (
 
 
 async def _collect(artifact: object) -> bytes:
-    stream = getattr(artifact, "stream")
+    stream = artifact.stream  # type: ignore[attr-defined]
     return b"".join([chunk async for chunk in stream()])
 
 

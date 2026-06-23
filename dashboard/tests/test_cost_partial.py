@@ -6,7 +6,6 @@ import httpx
 import pytest
 import respx
 
-
 _ORCH_URL = "http://orchestrator:8000"
 
 
