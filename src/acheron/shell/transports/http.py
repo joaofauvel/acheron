@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 from email.message import Message
@@ -13,7 +15,7 @@ from typing import Any
 import httpx
 from pydantic import TypeAdapter
 
-from acheron.core.errors import WorkerError, WorkerUnavailableError
+from acheron.core.errors import CacheMissError, WorkerError, WorkerUnavailableError
 from acheron.core.interfaces import Worker
 from acheron.core.models import (
     Job,
@@ -21,6 +23,7 @@ from acheron.core.models import (
     JobResult,
     OutputFile,
     WorkerCapabilities,
+    WorkerType,
 )
 from acheron.shell.cache import StepCache
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
@@ -82,11 +85,62 @@ class HttpWorker(Worker):
         return _caps_adapter.validate_json(resp.content)
 
     async def execute(self, job: Job) -> JobResult:  # noqa: D102
+        if job.job_type == WorkerType.ASR:
+            return await self._execute_asr_multipart(job)
+        # Existing JSON / multipart-mixed response path (unchanged).
         resp = await self._request("POST", "/execute", json=_job_to_dict(job))
         ctype = resp.headers.get("content-type", "")
         if ctype.startswith("multipart/mixed"):
             return await self._parse_multipart(resp, job.job_id)
         # Legacy JSON path — backward-compatible with existing HTTP stubs.
+        return _result_adapter.validate_json(resp.content)
+
+    async def _execute_asr_multipart(self, job: Job) -> JobResult:
+        """Read the upstream extract step's audio file and POST multipart to the worker.
+
+        The orchestrator's ``StepCache`` holds the manifest of the previous
+        step's outputs; the audio file is at the path recorded in the manifest.
+        We POST ``multipart/form-data`` with one ``application/json`` part (the
+        ``ExecuteRequest`` envelope) + one binary part (the audio). The
+        worker's response is ``multipart/mixed`` and is parsed the same way
+        as the TTS path.
+        """
+        plan_job_id = job.job_id.rsplit("-", 1)[0]
+        try:
+            extract_outputs = await self._step_cache.load_outputs(plan_job_id, "extract")
+        except CacheMissError as exc:
+            msg = f"ASR step {job.job_id}: no extract step output for {plan_job_id}"
+            raise WorkerError(msg) from exc
+        audio_out = next(
+            (o for o in extract_outputs if o.content_type.startswith("audio/")),
+            None,
+        )
+        if audio_out is None:
+            msg = f"ASR step {job.job_id}: no audio file in extract output"
+            raise WorkerError(msg)
+        audio_path = Path(audio_out.path)
+        if not await asyncio.to_thread(audio_path.exists):
+            msg = f"ASR step {job.job_id}: audio file missing: {audio_path}"
+            raise WorkerError(msg)
+
+        form = {
+            "request": (None, json.dumps(_job_to_dict(job)).encode("utf-8"), "application/json"),
+            "audio": (
+                audio_path.name,
+                await asyncio.to_thread(audio_path.read_bytes),
+                audio_out.content_type,
+            ),
+        }
+        url = f"{self._base_url}/execute"
+        if self._client is not None:
+            resp = await self._client.post(url, files=form)
+        else:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(url, files=form)
+        resp.raise_for_status()
+        ctype = resp.headers.get("content-type", "")
+        if ctype.startswith("multipart/mixed"):
+            return await self._parse_multipart(resp, job.job_id)
         return _result_adapter.validate_json(resp.content)
 
     async def _parse_multipart(self, resp: httpx.Response, job_id: str) -> JobResult:
