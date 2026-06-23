@@ -565,8 +565,8 @@ from acheron.worker_sdk.settings import WorkerSettings
 
 class TestDefaults:
     def test_minimal_settings_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "qwen3tts-1")
-        monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://orch:8000")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "qwen3tts-1")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://orch:8000")
         s = WorkerSettings()
         assert s.worker_id == "qwen3tts-1"
         assert s.orchestrator_url == "http://orch:8000"
@@ -577,8 +577,8 @@ class TestDefaults:
         assert s.default_speaker == "Ryan"
 
     def test_per_language_defaults_empty_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "w")
-        monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
         s = WorkerSettings()
         assert s.per_language_defaults == {}
 
@@ -597,10 +597,10 @@ class TestEnvOnlyFields:
             )
 
     def test_env_only_field_accepted_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "w")
-        monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://o:8000")
-        monkeypatch.setenv("ACHERON_WORKER_RUNPOD_API_KEY", "rk_abc")
-        monkeypatch.setenv("ACHERON_WORKER_RUNPOD_ENDPOINT_ID", "i02xupws")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "rk_abc")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "i02xupws")
         s = WorkerSettings()
         assert s.runpod_api_key == "rk_abc"
         assert s.runpod_endpoint_id == "i02xupws"
@@ -608,9 +608,9 @@ class TestEnvOnlyFields:
 
 class TestValidation:
     def test_volume_mode_requires_output_volume_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "w")
-        monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://o:8000")
-        monkeypatch.setenv("ACHERON_WORKER_OUTPUT_MODE", "volume")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__OUTPUT_MODE", "volume")
         with pytest.raises(pydantic.ValidationError, match="output_volume_dir"):
             WorkerSettings()
 
@@ -619,7 +619,7 @@ class TestValidation:
             WorkerSettings()  # type: ignore[call-arg]
 
     def test_orchestrator_url_required(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
         with pytest.raises(pydantic.ValidationError, match="orchestrator_url"):
             WorkerSettings()
 ```
@@ -909,8 +909,8 @@ class TestDiscoveryOrder:
         assert s.worker_id == "fromfile"
 
     def test_env_only_fallback(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "envonly")
-        monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "envonly")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("WORKER_CONFIG", raising=False)
         monkeypatch.delenv("WORKER_NAME", raising=False)
@@ -925,7 +925,7 @@ class TestEnvOverrideWins:
             "worker_id: fromfile\norchestrator_url: http://o:8000\ndefault_speaker: Vivian\n"
         )
         monkeypatch.setenv("WORKER_CONFIG", str(yaml_path))
-        monkeypatch.setenv("ACHERON_WORKER_DEFAULT_SPEAKER", "Ryan")
+        monkeypatch.setenv("ACHERON_WORKER__DEFAULT_SPEAKER", "Ryan")
         s = load_settings()
         assert s.default_speaker == "Ryan"  # env wins
 
@@ -2905,7 +2905,7 @@ def main() -> None:
     app = create_worker_app(handler=handler, settings=settings)
 
     logging.basicConfig(
-        level=os.environ.get("ACHERON_WORKER_LOG_LEVEL", "INFO"),
+        level=os.environ.get("ACHERON_WORKER__LOG_LEVEL", "INFO"),
         stream=sys.stdout,
     )
     uvicorn.run(app, host=settings.listen_host, port=settings.listen_port)

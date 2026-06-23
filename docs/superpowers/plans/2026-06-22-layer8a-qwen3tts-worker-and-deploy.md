@@ -717,16 +717,16 @@ template to `:<sha>` for reproducibility.
 
 | Variable | Required? | Description |
 |----------|-----------|-------------|
-| `ACHERON_WORKER_WORKER_ID` | yes (or via worker.yaml) | Worker ID used at registration. Default in worker.yaml: `qwen3tts-1`. |
-| `ACHERON_WORKER_ORCHESTRATOR_URL` | yes | Orchestrator base URL. |
-| `ACHERON_WORKER_REGISTRATION_TOKEN` | env-only | Bearer token used for `POST /workers`. |
-| `ACHERON_WORKER_RUNPOD_API_KEY` | env-only | RunPod API key (used by the edge forwarder and by the RunPod price source). |
-| `ACHERON_WORKER_RUNPOD_ENDPOINT_ID` | env-only | The RunPod serverless endpoint ID created in step 3 above. |
-| `ACHERON_WORKER_EXECUTION_TIMEOUT_S` | optional | Per-job timeout (default 1800s). |
-| `ACHERON_WORKER_PRICE_SOURCE` | optional | `runpod` (default) | `static` | `zero`. |
-| `ACHERON_WORKER_SECURE_CLOUD` | optional | Quote secure-cloud vs community-cloud RunPod rate (default `false`). |
-| `ACHERON_WORKER_DEFAULT_SPEAKER` | optional | Speaker used when job payload doesn't set one (default `Ryan`). |
-| `ACHERON_WORKER_LISTEN_PORT` | optional | Edge container listen port (default 8001). |
+| `ACHERON_WORKER__WORKER_ID` | yes (or via worker.yaml) | Worker ID used at registration. Default in worker.yaml: `qwen3tts-1`. |
+| `ACHERON_WORKER__ORCHESTRATOR_URL` | yes | Orchestrator base URL. |
+| `ACHERON_WORKER__REGISTRATION_TOKEN` | env-only | Bearer token used for `POST /workers`. |
+| `ACHERON_WORKER__RUNPOD_API_KEY` | env-only | RunPod API key (used by the edge forwarder and by the RunPod price source). |
+| `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | env-only | The RunPod serverless endpoint ID created in step 3 above. |
+| `ACHERON_WORKER__EXECUTION_TIMEOUT_S` | optional | Per-job timeout (default 1800s). |
+| `ACHERON_WORKER__PRICE_SOURCE` | optional | `runpod` (default) | `static` | `zero`. |
+| `ACHERON_WORKER__SECURE_CLOUD` | optional | Quote secure-cloud vs community-cloud RunPod rate (default `false`). |
+| `ACHERON_WORKER__DEFAULT_SPEAKER` | optional | Speaker used when job payload doesn't set one (default `Ryan`). |
+| `ACHERON_WORKER__LISTEN_PORT` | optional | Edge container listen port (default 8001). |
 
 ## Switching GPU types
 
@@ -932,9 +932,9 @@ The command `acheron-worker-edge` resolves to the console script installed by th
 ```bash
 uv build --package acheron --out-dir dist
 docker build -f Dockerfile.edge -t acheron-worker-edge:dev .
-docker run --rm -e ACHERON_WORKER_ORCHESTRATOR_URL=http://localhost:9999 \
-                -e ACHERON_WORKER_WORKER_ID=qwen3tts-edge \
-                -e ACHERON_WORKER_PRICE_SOURCE=zero \
+docker run --rm -e ACHERON_WORKER__ORCHESTRATOR_URL=http://localhost:9999 \
+                -e ACHERON_WORKER__WORKER_ID=qwen3tts-edge \
+                -e ACHERON_WORKER__PRICE_SOURCE=zero \
     acheron-worker-edge:dev --help
 ```
 Expected: `--help` prints and exits, showing the `--handler` flag.
@@ -966,14 +966,14 @@ Add to `docker-compose.yml` (under `services:`, after `translation-stub:` or at 
       - "8004:8001"
     environment:
       WORKER_NAME: qwen3tts
-      ACHERON_WORKER_ORCHESTRATOR_URL: https://orchestrator:8000
-      ACHERON_WORKER_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-      ACHERON_WORKER_RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
-      ACHERON_WORKER_RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID:-}
-      ACHERON_WORKER_PRICE_SOURCE: ${QWEN3TTS_PRICE_SOURCE:-runpod}
-      ACHERON_WORKER_SECURE_CLOUD: "false"
-      ACHERON_WORKER_DEFAULT_SPEAKER: "Ryan"
-      ACHERON_WORKER_LISTEN_PORT: "8001"
+      ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
+      ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID:-}
+      ACHERON_WORKER__PRICE_SOURCE: ${QWEN3TTS_PRICE_SOURCE:-runpod}
+      ACHERON_WORKER__SECURE_CLOUD: "false"
+      ACHERON_WORKER__DEFAULT_SPEAKER: "Ryan"
+      ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
       - ./certs:/certs:ro
@@ -1003,9 +1003,9 @@ Expected: exit 0 for both. The second command should print the rendered `qwen3tt
 
 ```bash
 docker build -f Dockerfile.edge -t acheron-worker-edge:dev .
-docker run --rm -e ACHERON_WORKER_ORCHESTRATOR_URL=http://localhost:9999 \
-                -e ACHERON_WORKER_WORKER_ID=qwen3tts-edge \
-                -e ACHERON_WORKER_PRICE_SOURCE=zero \
+docker run --rm -e ACHERON_WORKER__ORCHESTRATOR_URL=http://localhost:9999 \
+                -e ACHERON_WORKER__WORKER_ID=qwen3tts-edge \
+                -e ACHERON_WORKER__PRICE_SOURCE=zero \
     acheron-worker-edge:dev
 ```
 Expected: the container boots, tries to register with `localhost:9999` (which isn't there → retries with backoff), exits on Ctrl-C. Confirm the FastAPI lifespan ran startup (no exception in logs about missing model — because `price_source=zero` doesn't refresh RunPod).
@@ -1317,7 +1317,7 @@ dollars_per_hour: 0.69
 output_mode: multipart
 ```
 
-**RunPod-mock stub body** (used by `tts_runpod_stub/main.py` and `translation_runpod_stub/main.py`). The mock RunPod server runs on `127.0.0.1:8999`; the SDK's `_runpod_client` honors the `ACHERON_WORKER_RUNPOD_BASE_URL` env hook in tests. For the stub compose service, the mock starts in-process on the same container:
+**RunPod-mock stub body** (used by `tts_runpod_stub/main.py` and `translation_runpod_stub/main.py`). The mock RunPod server runs on `127.0.0.1:8999`; the SDK's `_runpod_client` honors the `ACHERON_WORKER__RUNPOD_BASE_URL` env hook in tests. For the stub compose service, the mock starts in-process on the same container:
 
 `stubs/tts_runpod_stub/main.py`:
 ```python
@@ -1339,7 +1339,7 @@ def main() -> None:
         port=8999,
         artifacts_response={"artifacts": [{"filename": "out.wav", "data": "AAEC"}]},
     )
-    os.environ.setdefault("ACHERON_WORKER_RUNPOD_BASE_URL", "http://127.0.0.1:8999")
+    os.environ.setdefault("ACHERON_WORKER__RUNPOD_BASE_URL", "http://127.0.0.1:8999")
     settings = load_settings()
     handler = StubTTSHandler(settings)
     app = create_worker_app(handler=handler, settings=settings)
@@ -1407,7 +1407,7 @@ from stubs._sdk_base.mock_runpod import start_mock_runpod_in_thread
 
 
 def main() -> None:
-    os.environ.setdefault("ACHERON_WORKER_RUNPOD_BASE_URL", "http://127.0.0.1:8999")
+    os.environ.setdefault("ACHERON_WORKER__RUNPOD_BASE_URL", "http://127.0.0.1:8999")
     # Start the mock RunPod endpoint once before the edge registers.
     start_mock_runpod_in_thread(
         port=8999,
@@ -1423,14 +1423,14 @@ if __name__ == "__main__":
     main()
 ```
 
-Note: the SDK's `_runpod_client` honors `ACHERON_WORKER_RUNPOD_BASE_URL` when set (test hook). If the SDK doesn't yet expose that, add a small `RUNPOD_BASE_URL` reading on `_runpod_client._open_endpoint`:
+Note: the SDK's `_runpod_client` honors `ACHERON_WORKER__RUNPOD_BASE_URL` when set (test hook). If the SDK doesn't yet expose that, add a small `RUNPOD_BASE_URL` reading on `_runpod_client._open_endpoint`:
 
 ```python
 def _open_endpoint(endpoint_id: str, *, api_key: str) -> _Endpoint:
     import runpod
 
     runpod.api_key = api_key
-    base_url = os.environ.get("ACHERON_WORKER_RUNPOD_BASE_URL")
+    base_url = os.environ.get("ACHERON_WORKER__RUNPOD_BASE_URL")
     if base_url:
         # Point the SDK at the mock — depends on runpod API; in practice we
         # monkeypatch via the test harness. The stub's lazily-imported variant
@@ -1474,9 +1474,9 @@ from stubs._sdk_base import StubTTSHandler, StubASRHandler, StubTranslationHandl
 )
 @pytest.mark.asyncio
 async def test_stub_health(handler_cls, worker_id, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", worker_id)
-    monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://orch:8000")
-    monkeypatch.setenv("ACHERON_WORKER_PRICE_SOURCE", "zero")
+    monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", worker_id)
+    monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://orch:8000")
+    monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "zero")
     settings = WorkerSettings()
     h = handler_cls(settings)
     from acheron.worker_sdk.app import create_worker_app
@@ -1493,9 +1493,9 @@ Also test that each stub's `/execute` returns multipart:
 ```python
 @pytest.mark.asyncio
 async def test_tts_stub_execute_returns_multipart(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "tts-local-stub")
-    monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://orch:8000")
-    monkeypatch.setenv("ACHERON_WORKER_PRICE_SOURCE", "zero")
+    monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "tts-local-stub")
+    monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://orch:8000")
+    monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "zero")
     from acheron.worker_sdk.app import create_worker_app
 
     settings = WorkerSettings()
@@ -1544,11 +1544,11 @@ Replace each `tts-stub`, `asr-stub`, `translation-stub`, `tts-grpc-stub` service
     ports: ["8001:8001"]
     environment: &stub_env
       WORKER_NAME: tts-local-stub
-      ACHERON_WORKER_ORCHESTRATOR_URL: https://orchestrator:8000
-      ACHERON_WORKER_WORKER_ID: tts-local-stub
-      ACHERON_WORKER_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-      ACHERON_WORKER_PRICE_SOURCE: zero
-      ACHERON_WORKER_LISTEN_PORT: "8001"
+      ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__WORKER_ID: tts-local-stub
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_WORKER__PRICE_SOURCE: zero
+      ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
       - ./certs:/certs:ro
@@ -1572,10 +1572,10 @@ Then the remaining six stub services, each using YAML merge keys against the anc
     environment:
       <<: *stub_env
       WORKER_NAME: tts-volume-stub
-      ACHERON_WORKER_WORKER_ID: tts-volume-stub
-      ACHERON_WORKER_LISTEN_PORT: "8002"
-      ACHERON_WORKER_OUTPUT_MODE: volume
-      ACHERON_WORKER_OUTPUT_VOLUME_DIR: /data
+      ACHERON_WORKER__WORKER_ID: tts-volume-stub
+      ACHERON_WORKER__LISTEN_PORT: "8002"
+      ACHERON_WORKER__OUTPUT_MODE: volume
+      ACHERON_WORKER__OUTPUT_VOLUME_DIR: /data
     volumes:
       - ./certs:/certs:ro
       - acheron-data:/data
@@ -1591,10 +1591,10 @@ Then the remaining six stub services, each using YAML merge keys against the anc
     environment:
       <<: *stub_env
       WORKER_NAME: tts-runpod-stub
-      ACHERON_WORKER_WORKER_ID: tts-runpod-stub
-      ACHERON_WORKER_LISTEN_PORT: "8003"
-      ACHERON_WORKER_PRICE_SOURCE: static
-      ACHERON_WORKER_DOLLARS_PER_HOUR: "0.69"
+      ACHERON_WORKER__WORKER_ID: tts-runpod-stub
+      ACHERON_WORKER__LISTEN_PORT: "8003"
+      ACHERON_WORKER__PRICE_SOURCE: static
+      ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
     volumes: [ "./certs:/certs:ro" ]
     command: ["python", "-m", "stubs.tts_runpod_stub.main"]
     healthcheck:
@@ -1608,8 +1608,8 @@ Then the remaining six stub services, each using YAML merge keys against the anc
     environment:
       <<: *stub_env
       WORKER_NAME: tts-grpc-stub
-      ACHERON_WORKER_WORKER_ID: tts-grpc-stub
-      ACHERON_WORKER_LISTEN_PORT: "9002"
+      ACHERON_WORKER__WORKER_ID: tts-grpc-stub
+      ACHERON_WORKER__LISTEN_PORT: "9002"
     volumes: [ "./certs:/certs:ro" ]
     command: ["python", "-m", "stubs.tts_grpc_stub.main"]
     healthcheck:
@@ -1623,8 +1623,8 @@ Then the remaining six stub services, each using YAML merge keys against the anc
     environment:
       <<: *stub_env
       WORKER_NAME: asr-local-stub
-      ACHERON_WORKER_WORKER_ID: asr-local-stub
-      ACHERON_WORKER_LISTEN_PORT: "8004"
+      ACHERON_WORKER__WORKER_ID: asr-local-stub
+      ACHERON_WORKER__LISTEN_PORT: "8004"
     volumes: [ "./certs:/certs:ro" ]
     command: ["python", "-m", "stubs.asr_local_stub.main"]
     healthcheck:
@@ -1638,8 +1638,8 @@ Then the remaining six stub services, each using YAML merge keys against the anc
     environment:
       <<: *stub_env
       WORKER_NAME: translation-local-stub
-      ACHERON_WORKER_WORKER_ID: translation-local-stub
-      ACHERON_WORKER_LISTEN_PORT: "8005"
+      ACHERON_WORKER__WORKER_ID: translation-local-stub
+      ACHERON_WORKER__LISTEN_PORT: "8005"
     volumes: [ "./certs:/certs:ro" ]
     command: ["python", "-m", "stubs.translation_local_stub.main"]
     healthcheck:
@@ -1653,10 +1653,10 @@ Then the remaining six stub services, each using YAML merge keys against the anc
     environment:
       <<: *stub_env
       WORKER_NAME: translation-runpod-stub
-      ACHERON_WORKER_WORKER_ID: translation-runpod-stub
-      ACHERON_WORKER_LISTEN_PORT: "8006"
-      ACHERON_WORKER_PRICE_SOURCE: static
-      ACHERON_WORKER_DOLLARS_PER_HOUR: "0.69"
+      ACHERON_WORKER__WORKER_ID: translation-runpod-stub
+      ACHERON_WORKER__LISTEN_PORT: "8006"
+      ACHERON_WORKER__PRICE_SOURCE: static
+      ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
     volumes: [ "./certs:/certs:ro" ]
     command: ["python", "-m", "stubs.translation_runpod_stub.main"]
     healthcheck:

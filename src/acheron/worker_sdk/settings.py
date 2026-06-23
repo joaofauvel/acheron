@@ -1,7 +1,9 @@
 """Configuration for Acheron worker containers.
 
-Env vars use the ``ACHERON_WORKER_`` prefix to avoid collision with the
-orchestrator's own env namespace (``ACHERON_REGISTRATION_TOKEN`` etc.).
+Env vars use the ``ACHERON_WORKER__`` prefix (``__`` after the prefix,
+matching the project's ``ACHERON_<SECTION>__<FIELD>`` convention from
+``acheron.yaml.example``). This avoids collision with the orchestrator's
+own env namespace (``ACHERON_REGISTRATION_TOKEN`` etc.).
 
 Secrets (``registration_token``, ``runpod_api_key``, ``runpod_endpoint_id``)
 are env-only — rejected when passed to the constructor so they cannot
@@ -57,7 +59,7 @@ class WorkerSettings(BaseSettings):
     model_id: str | None = None
 
     model_config = SettingsConfigDict(
-        env_prefix="ACHERON_WORKER_",
+        env_prefix="ACHERON_WORKER__",
         extra="forbid",
     )
 
@@ -96,7 +98,7 @@ class WorkerSettings(BaseSettings):
         for field_name in _ENV_ONLY_FIELDS & data.keys():
             if data[field_name] is None:
                 continue
-            env_var = f"ACHERON_WORKER_{field_name.upper()}"
+            env_var = f"ACHERON_WORKER__{field_name.upper()}"
             import os
 
             if env_var not in os.environ:

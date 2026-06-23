@@ -61,9 +61,9 @@ class TestCreateWorkerApp:
         RunPodHealthProvider via ``metadata.health_provider`` /
         ``metadata.health_endpoint_id`` (Layer 11 cold-start detection).
         """
-        monkeypatch.setenv("ACHERON_WORKER_PRICE_SOURCE", "runpod")
-        monkeypatch.setenv("ACHERON_WORKER_RUNPOD_API_KEY", "rk_abc")
-        monkeypatch.setenv("ACHERON_WORKER_RUNPOD_ENDPOINT_ID", "eid123")
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "rk_abc")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "eid123")
         # Mock both RunPod GraphQL calls triggered by the lifespan's price refresh.
         respx.post("https://api.runpod.io/graphql").mock(
             side_effect=[

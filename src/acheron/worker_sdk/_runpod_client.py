@@ -5,6 +5,9 @@ Job into RunPod's ``/run`` input, submits via the ``runpod`` Python SDK,
 polls until COMPLETED/FAILED, and decodes the artifacts. ``gpu_seconds``
 is the wall-time of the call — a fair proxy for billing when the serverless
 endpoint schedules single-GPU pods per job.
+
+The runpod SDK is a pinned main dep (``runpod~=1.9``, ``cryptography<47``),
+so the import is at module load — no need for lazy resolution.
 """
 
 from __future__ import annotations
@@ -14,6 +17,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import runpod  # type: ignore[import-untyped]
+
 from acheron.core.errors import WorkerError
 
 
@@ -22,8 +27,6 @@ class _Endpoint(Protocol):
 
 
 def _open_endpoint(endpoint_id: str, *, api_key: str) -> _Endpoint:
-    import runpod  # type: ignore[import-untyped]  # lazy; only the edge image needs it.
-
     runpod.api_key = api_key
     return runpod.Endpoint(endpoint_id)  # type: ignore[no-any-return]
 

@@ -42,8 +42,8 @@ class TestDiscoveryOrder:
         assert s.worker_id == "fromfile"
 
     def test_env_only_fallback(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        monkeypatch.setenv("ACHERON_WORKER_WORKER_ID", "envonly")
-        monkeypatch.setenv("ACHERON_WORKER_ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "envonly")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("WORKER_CONFIG", raising=False)
         monkeypatch.delenv("WORKER_NAME", raising=False)
@@ -60,7 +60,7 @@ class TestEnvOverrideWins:
             "worker_id: fromfile\norchestrator_url: http://o:8000\ndefault_speaker: Vivian\n"
         )
         monkeypatch.setenv("WORKER_CONFIG", str(yaml_path))
-        monkeypatch.setenv("ACHERON_WORKER_DEFAULT_SPEAKER", "Ryan")
+        monkeypatch.setenv("ACHERON_WORKER__DEFAULT_SPEAKER", "Ryan")
         s = load_settings()
         assert s.default_speaker == "Ryan"
 

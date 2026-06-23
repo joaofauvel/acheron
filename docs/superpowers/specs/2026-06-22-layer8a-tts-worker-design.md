@@ -216,8 +216,10 @@ The committed `workers/qwen3tts/worker.yaml` is the **image default**. A deploye
 
 ```python
 class WorkerSettings(BaseSettings):
-    # env_prefix = "ACHERON_WORKER_" — env vars are ACHERON_WORKER_<FIELD_UPPER>,
-    # e.g. ACHERON_WORKER_RUNPOD_API_KEY. Avoids collision with the orchestrator's
+    # env_prefix = "ACHERON_WORKER__" — env vars are ACHERON_WORKER__<FIELD_UPPER>,
+    # e.g. ACHERON_WORKER__RUNPOD_API_KEY. The double underscore after the prefix
+    # matches the project's ACHERON_<SECTION>__<FIELD> convention
+    # (see acheron.yaml.example:10). Avoids collision with the orchestrator's
     # own ACHERON_REGISTRATION_TOKEN / ACHERON_DATA_DIR env namespace.
     worker_id: str
     orchestrator_url: str
@@ -752,8 +754,8 @@ Documented in `workers/qwen3tts/README.md`. The deployer **never builds the work
        WORKER_NAME: qwen3tts
        ACHERON_ORCHESTRATOR_URL: http://orchestrator:8000
        ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
-       ACHERON_WORKER_RUNPOD_API_KEY: ${RUNPOD_API_KEY}
-       ACHERON_WORKER_RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID}
+        ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY}
+        ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID}
      volumes:
        - ./deploy-overrides/qwen3tts.worker.yaml:/app/qwen3tts.worker.yaml:ro
    ```
@@ -885,10 +887,10 @@ jobs:
 - `Justfile` — `build-worker <name>` target wrapping local `docker build`.
 - `tests/__init__.py` paths adjusted for the new worker / SDK layouts per AGENTS.md mirror rule.
 
-### `runpod` Python SDK packaging (deviation from initial plan)
-- **Not** declared in the top-level `pyproject.toml` `dependencies`: the SDK pins `cryptography<47` (latest 1.9.x) which is incompatible with the dev group's `cryptography~=49.0` — `uv` resolution fails when both are required. Imported lazily inside `acheron.worker_sdk._runpod_client._open_endpoint` so unit tests mock via `monkeypatch.setattr` without the SDK installed.
-- Installed in Plan 3's published worker image via the Dockerfile's `uv pip install runpod` step.
-- Production orchestrator image that hosts the `acheron-worker-edge` container installs the SDK in the same way (it does not need to share the dev group's `cryptography` constraint).
+### `runpod` Python SDK packaging
+- Declared in the top-level `pyproject.toml` `dependencies` as `runpod~=1.9` (transitively pins `cryptography<47`). The main `cryptography` pin is `~=46.0` (the highest 46.x line) — matches the dev group's `~=46.0` so `uv` resolution succeeds.
+- Imported at module top in `acheron.worker_sdk._runpod_client`; no lazy wrapper.
+- Unit tests monkey-patch `_open_endpoint` via `monkeypatch.setattr` so the SDK is never invoked.
 
 ## References
 
