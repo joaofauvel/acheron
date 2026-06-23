@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable  # noqa: TC003
 from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import aiofiles
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from acheron.core.models import JsonValue
 
 
+@runtime_checkable
 class Input(Protocol):
     """Transport-neutral input handed to WorkerHandler.handle() alongside the Job."""
 

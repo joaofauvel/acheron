@@ -96,6 +96,26 @@ async def test_asr_stub_execute_returns_text_artifact() -> None:
 
 
 @pytest.mark.asyncio
+async def test_asr_stub_capabilities_match_real_worker() -> None:
+    """The ASR stub's capability set is the planner's contract: 6 ASR
+    languages (en/es/fr/de/ja/pt), mp3+wav in, text out, non-batched.
+    Locks the regression risk for the 8b granite-speech contract."""
+    settings = _settings("asr-local-stub")
+    h = StubASRHandler(settings)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        r = await client.get("/capabilities")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["worker_type"] == "asr"
+    assert set(body["supported_languages_in"]) == {"en", "es", "fr", "de", "ja", "pt"}
+    assert set(body["supported_languages_out"]) == {"en", "es", "fr", "de", "ja", "pt"}
+    assert set(body["supported_formats_in"]) == {"mp3", "wav"}
+    assert set(body["supported_formats_out"]) == {"text"}
+    assert body["batch_capable"] is False
+
+
+@pytest.mark.asyncio
 async def test_translation_stub_execute_returns_text() -> None:
     settings = _settings("translation-local-stub")
     h = StubTranslationHandler(settings)

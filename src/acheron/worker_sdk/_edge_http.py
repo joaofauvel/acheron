@@ -166,9 +166,30 @@ class EdgeApp:
 
     async def _run_execute_multipart(self, request: Request) -> Response:
         """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
+        try:
+            job, input_obj = await self._parse_multipart_request(request)
+        except WorkerError as exc:
+            # Mirror _dispatch's error contract: return a JobResult-shaped body
+            # so the orchestrator's TypeAdapter(JobResult).validate_json parser
+            # sees a valid failure record rather than an opaque 5xx.
+            result = JobResult(
+                job_id="<unknown>",
+                status=JobStatus.FAILED,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.0, cost_basis=None),
+                error=str(exc),
+            )
+            return JSONResponse(
+                status_code=500,
+                content=_jobresult_to_json(result),
+            )
+        return await self._dispatch(job, input_obj)
+
+    async def _parse_multipart_request(self, request: Request) -> tuple[Job, Input | None]:
+        """Parse the multipart body into a Job + optional Input. Raises WorkerError on malformed input."""
         ctype = request.headers.get("content-type", "")
         if "boundary=" not in ctype:
-            msg = f"Multipart body from {request.client} missing boundary"
+            msg = "Multipart body is missing boundary"
             raise WorkerError(msg)
         boundary = ctype.split("boundary=", 1)[1].split(";", 1)[0].strip().strip('"')
         body = await request.body()
@@ -177,7 +198,7 @@ class EdgeApp:
         ).encode() + body
         message = BytesParser(policy=default_policy).parsebytes(full_body)
         if not message.is_multipart():
-            msg = f"Multipart body from {request.client} was not multipart"
+            msg = "Multipart body was not multipart"
             raise WorkerError(msg)
 
         envelope_json: bytes | None = None
@@ -193,7 +214,7 @@ class EdgeApp:
                 audio_part = part
 
         if envelope_json is None:
-            msg = f"Multipart body from {request.client} has no application/json part"
+            msg = "Multipart body has no application/json part"
             raise WorkerError(msg)
         body_req = ExecuteRequest.model_validate(json.loads(envelope_json))
 
@@ -207,8 +228,7 @@ class EdgeApp:
                 data=audio_bytes,
                 metadata={},
             )
-
-        return await self._dispatch(job, input_obj)
+        return job, input_obj
 
     async def _run_execute(self, body: ExecuteRequest) -> Response:
         job = _job_from_request(body)

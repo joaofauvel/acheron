@@ -103,6 +103,8 @@ class TestMultipartRequest:
         # Handler should have received the audio bytes.
         assert handler.received == [b"\xff\xfb\x90\x00mock-audio"]
         assert handler.received_content_type == ["audio/mpeg"]
+        # Response is a valid multipart/mixed body with a trailing application/json metrics part.
+        assert "multipart/mixed" in resp.headers["content-type"]
 
     @pytest.mark.asyncio
     async def test_multipart_request_without_audio_still_works(self, app_and_handler: Any) -> None:
@@ -125,3 +127,36 @@ class TestMultipartRequest:
             )
         assert resp.status_code == 200
         assert handler.received == []
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_missing_json_part_raises(self, app_and_handler: Any) -> None:
+        """Multipart with only an audio part (no ``application/json`` part)
+        → 500 with a JobResult whose error mentions the missing JSON part."""
+        app, _ = app_and_handler
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                files={"audio": ("podcast.mp3", b"\xff\xfb\x90\x00", "audio/mpeg")},
+            )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert "no application/json part" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_missing_boundary_raises(self, app_and_handler: Any) -> None:
+        """A multipart Content-Type without a ``boundary=`` parameter → 500
+        with a JobResult whose error mentions the missing boundary."""
+        app, _ = app_and_handler
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                content=b"--notused\r\n",
+                headers={"content-type": "multipart/form-data"},
+            )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert "missing boundary" in body["error"]

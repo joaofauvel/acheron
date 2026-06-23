@@ -98,3 +98,49 @@ class TestMakeRunpodHandlerAudioForward:
         }
         await wrapped(runpod_job)
         assert handler.received_input is None
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_str_data_field(self) -> None:
+        """The cloud-side decoder must raise WorkerError on malformed input_audio
+        rather than silently coerce (matches _deserialise_runpod_artifacts)."""
+        from acheron.core.errors import WorkerError
+
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        runpod_job = {
+            "input": {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {},
+                "chapter_id": "ch1",
+                "input_audio": {
+                    "content_type": "audio/wav",
+                    "data": 42,  # wrong type
+                    "metadata": {},
+                },
+            }
+        }
+        with pytest.raises(WorkerError, match=r"input_audio\.data must be a str"):
+            await wrapped(runpod_job)
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_dict_metadata_field(self) -> None:
+        from acheron.core.errors import WorkerError
+
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        runpod_job = {
+            "input": {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {},
+                "chapter_id": "ch1",
+                "input_audio": {
+                    "content_type": "audio/wav",
+                    "data": "AAAAAA==",
+                    "metadata": ["not", "a", "dict"],  # wrong type
+                },
+            }
+        }
+        with pytest.raises(WorkerError, match=r"input_audio\.metadata must be a dict"):
+            await wrapped(runpod_job)

@@ -44,11 +44,17 @@ def make_runpod_handler(
         audio_payload = runpod_job["input"].get("input_audio")
         if audio_payload is not None:
             data_b64 = audio_payload.get("data", "")
-            body = base64.b64decode(data_b64) if isinstance(data_b64, str) else b""
+            if not isinstance(data_b64, str):
+                msg = "RunPod input_audio.data must be a str (base64-encoded bytes)"
+                raise WorkerError(msg)
+            metadata_raw = audio_payload.get("metadata", {})
+            if not isinstance(metadata_raw, dict):
+                msg = "RunPod input_audio.metadata must be a dict"
+                raise WorkerError(msg)
             input_obj = BytesInput(
                 content_type=str(audio_payload.get("content_type", "audio/wav")),
-                data=body,
-                metadata=dict(audio_payload.get("metadata", {})),
+                data=base64.b64decode(data_b64),
+                metadata=dict(metadata_raw),
             )
             artifacts = await handler.handle(job, input_obj)
         else:
