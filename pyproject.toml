@@ -84,6 +84,8 @@ combine-as-imports = true
 "stubs/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC003", "ANN", "ARG001", "ARG002", "FBT"]
 "workers/qwen3tts/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
 "workers/_shared/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
+"workers/granite_speech/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
+"workers/granite_speech/**" = ["PLC0415"]
 "src/acheron/proto/**" = ["I", "E", "F", "W", "D", "ANN", "N"]
 "src/acheron/core/interfaces.py" = ["TC001"]
 
