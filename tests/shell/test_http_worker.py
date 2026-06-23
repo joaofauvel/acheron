@@ -198,3 +198,38 @@ class TestHttpWorkerExecuteMultipart:
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
         assert result.outputs[0].filename == "x.wav"
+
+
+class TestHttpWorkerStepCache:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_step_cache_default_constructs_from_data_dir(self, tmp_path: Path) -> None:
+        """When step_cache is not provided, the worker constructs a default
+        StepCache from data_dir (backward compat with pre-8b callers)."""
+        from acheron.shell.cache import StepCache
+
+        respx.post(f"{_BASE_URL}/execute").mock(
+            return_value=httpx.Response(
+                200,
+                json={"job_id": "j-1", "status": "success", "outputs": [], "metrics": {}, "error": None},
+            )
+        )
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
+        assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
+        assert worker._step_cache.data_dir == tmp_path  # noqa: SLF001
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_explicit_step_cache_is_used(self, tmp_path: Path) -> None:
+        from acheron.shell.cache import StepCache
+
+        cache = StepCache(tmp_path / "other")
+        respx.post(f"{_BASE_URL}/execute").mock(
+            return_value=httpx.Response(
+                200,
+                json={"job_id": "j-1", "status": "success", "outputs": [], "metrics": {}, "error": None},
+            )
+        )
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
+        assert worker._step_cache is cache  # noqa: SLF001
+        assert worker._step_cache.data_dir == tmp_path / "other"  # noqa: SLF001

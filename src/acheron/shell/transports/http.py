@@ -22,6 +22,7 @@ from acheron.core.models import (
     OutputFile,
     WorkerCapabilities,
 )
+from acheron.shell.cache import StepCache
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
@@ -47,12 +48,14 @@ class HttpWorker(Worker):
         client: httpx.AsyncClient | None = None,
         *,
         data_dir: Path | str | None = None,
+        step_cache: StepCache | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._client = client
         if data_dir is None:
             data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
         self._data_dir = Path(data_dir)
+        self._step_cache = step_cache if step_cache is not None else StepCache(self._data_dir)
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:  # noqa: ANN401
         """Make an HTTP request, raising WorkerError on failure."""
