@@ -1,7 +1,7 @@
 """Tests for the make_runpod_handler cloud adapter and RunPodForwarderHandler."""
 
 import base64
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -11,7 +11,7 @@ from acheron.worker_sdk._runpod_client import RunPodJobResult
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.cloud import RunPodForwarderHandler, make_runpod_handler
 from acheron.worker_sdk.handler import WorkerHandler
-from acheron.worker_sdk.inputs import Input
+from acheron.worker_sdk.inputs import BytesInput, Input
 from acheron.worker_sdk.settings import WorkerSettings
 
 
@@ -174,3 +174,22 @@ class TestRunPodForwarderHandler:
         job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
         with pytest.raises(WorkerError, match="missing required str fields"):
             await h.handle(job)
+
+    @pytest.mark.asyncio
+    async def test_handle_passes_input_to_runpod_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When /execute is called with an Input, the forwarder base64-encodes
+        it into the RunPod /run payload (covers ASR's audio path)."""
+        fake = _FakeRunPodClient(RunPodJobResult(artifacts=[], gpu_seconds=0.0))
+        monkeypatch.setattr("acheron.worker_sdk.cloud.RunPodClient", lambda **_: fake)
+        h = RunPodForwarderHandler(_forwarder_settings(monkeypatch))
+        await h.startup()
+        job = Job(job_id="j-1", job_type=WorkerType.ASR, payload={}, chapter_id="ch1")
+        inp = BytesInput(content_type="audio/wav", data=b"RIFFDATA")
+        await h.handle(job, inp)
+        sent = fake.calls[0]
+        sent_input = cast("dict[str, Any]", sent["input"])
+        assert "input_audio" in sent_input
+        sent_audio = cast("dict[str, Any]", sent_input["input_audio"])
+        decoded = base64.b64decode(sent_audio["data"])
+        assert decoded == b"RIFFDATA"
+        assert sent_audio["content_type"] == "audio/wav"
