@@ -56,7 +56,7 @@ class StubTTSHandler(WorkerHandler):
     async def shutdown(self) -> None:
         return None
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         chunks = job.payload.get("chunks", [])
         if not isinstance(chunks, list) or not chunks:
             return [
@@ -88,8 +88,8 @@ class StubASRHandler(WorkerHandler):
     def capabilities(self) -> WorkerCapabilities:
         return WorkerCapabilities(
             worker_type=WorkerType.ASR,
-            supported_languages_in=frozenset({"en", "es", "fr", "de"}),
-            supported_languages_out=frozenset({"en", "es", "fr", "de"}),
+            supported_languages_in=frozenset({"en", "es", "fr", "de", "ja", "pt"}),
+            supported_languages_out=frozenset({"en", "es", "fr", "de", "ja", "pt"}),
             supported_formats_in=frozenset({"mp3", "wav"}),
             supported_formats_out=frozenset({"text"}),
             max_payload_bytes=None,
@@ -104,7 +104,7 @@ class StubASRHandler(WorkerHandler):
     async def shutdown(self) -> None:
         return None
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         # `input` is accepted and ignored — the stub proves the multipart
         # contract end-to-end without GPU.
         text = "mock transcription"
@@ -143,7 +143,7 @@ class StubTranslationHandler(WorkerHandler):
     async def shutdown(self) -> None:
         return None
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         chunks = job.payload.get("chunks", [])
         translated: list[str] = []
         if isinstance(chunks, list):

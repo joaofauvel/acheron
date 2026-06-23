@@ -20,9 +20,9 @@ from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from acheron.worker_sdk.inputs import Input
 
 if TYPE_CHECKING:
+    from acheron.worker_sdk.inputs import Input
     from acheron.worker_sdk.settings import WorkerSettings
 
 _LANG_MAP = {
@@ -145,7 +145,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
 
             torch.cuda.empty_cache()
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002, ARG002
         """Run batched custom-voice inference for all chunks in the job."""
         if self._model is None:
             msg = "Qwen3-TTS model not loaded (startup() not run)"

@@ -32,7 +32,7 @@ class _Stub(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         self.last_input = dict(job.payload)
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 

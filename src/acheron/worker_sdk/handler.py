@@ -24,7 +24,7 @@ class WorkerHandler(ABC):
         """Return the worker's static description. No I/O — sync."""
 
     @abstractmethod
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         """Run inference for `job`, consuming `input` if the step is audio-in.
 
         The ``input`` parameter is the new 8b addition; default ``None``

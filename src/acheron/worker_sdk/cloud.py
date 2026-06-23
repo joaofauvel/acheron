@@ -24,12 +24,12 @@ from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult
 from acheron.worker_sdk.artifacts import BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from acheron.worker_sdk.inputs import Input
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from acheron.worker_sdk.artifacts import Artifact
+    from acheron.worker_sdk.inputs import Input
     from acheron.worker_sdk.settings import WorkerSettings
 
 
@@ -66,7 +66,7 @@ async def _serialise(artifact: Artifact) -> dict[str, Any]:
     }
 
 
-async def _serialise_job_for_runpod(job: Job, input: Input | None = None) -> dict[str, Any]:
+async def _serialise_job_for_runpod(job: Job, input: Input | None = None) -> dict[str, Any]:  # noqa: A002
     """Serialise a Job + optional Input into the RunPod /run input shape.
 
     The ``input_audio`` field is the base64-encoded body of an ``Input`` (8b);
@@ -180,7 +180,7 @@ class RunPodForwarderHandler(WorkerHandler):
         """Drop the client; RunPod SDK has no explicit close."""
         self._client = None
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         """Forward the job (and optional audio input) to RunPod and decode artifacts."""
         if self._client is None:
             msg = "RunPodClient not initialised (startup() not run)"

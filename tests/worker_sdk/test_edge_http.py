@@ -32,7 +32,7 @@ class _Stub(WorkerHandler):
             model_source="huggingface:test",
         )
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         self.calls += 1
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 

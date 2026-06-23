@@ -15,10 +15,10 @@ from acheron.worker_sdk.inputs import BytesInput, Input
 class _DummyHandler(WorkerHandler):
     """Concrete handler that accepts both call styles."""
 
-    def capabilities(self) -> Any:  # noqa: ANN401, D102
+    def capabilities(self) -> Any:
         return None
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         return [
             BytesArtifact(
                 filename="dummy.txt",
