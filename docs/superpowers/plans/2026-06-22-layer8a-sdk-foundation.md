@@ -22,7 +22,7 @@
 | `tests/core/test_models.py` | Cover `CostBasis` + `cost_basis` round-trip via `TypeAdapter(JobMetrics)`. |
 | `src/acheron/worker_sdk/handler.py` | `WorkerHandler` ABC + `startup`/`shutdown` lifecycle hooks. |
 | `src/acheron/worker_sdk/artifacts.py` | `Artifact` Protocol + `BytesArtifact` / `StreamArtifact` / `FileArtifact`. |
-| `src/acheron/worker_sdk/settings.py` | `WorkerSettings(BaseSettings)` with `env_prefix="ACHERON_WORKER_"` and `_ENV_ONLY_FIELDS`. |
+| `src/acheron/worker_sdk/settings.py` | `WorkerSettings(BaseSettings)` with `env_prefix="ACHERON_WORKER__"` and `_ENV_ONLY_FIELDS`. |
 | `src/acheron/worker_sdk/config_loader.py` | YAML discovery (`WORKER_CONFIG` → `<name>.worker.yaml` → `worker.yaml` → env-only) + secrets rejection. |
 | `src/acheron/worker_sdk/pricing.py` | `PriceSource` Protocol + `ZeroPrice` / `StaticPrice` / `RunPodPrice`; `PriceEstimate`; `to_cost_basis()` helper. |
 | `src/acheron/worker_sdk/registration.py` | `register_with_orchestrator()` client with backoff retry. |
@@ -184,9 +184,10 @@ Create `src/acheron/worker_sdk/__init__.py`:
 """Acheron worker SDK — the blueprint for Layer 8 real GPU workers.
 
 Public surface re-exports are filled in by later tasks as modules land.
-Importing this package must not require runpod/torch/etc. — those deps are
-imported lazily by the modules that need them so unit tests of pure types
-(handler, artifacts, settings) work without GPU SDKs installed.
+Importing this package must not require runpod/torch/etc. — the runpod
+import lives in `_runpod_client` (not in the public re-export surface),
+so unit tests of pure types (handler, artifacts, settings) work without
+GPU SDKs installed.
 """
 ```
 
@@ -663,7 +664,7 @@ class _WorkerSettingsBase(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="ACHERON_WORKER_",
+        env_prefix="ACHERON_WORKER__",
         case_sensitive=True,
         extra="ignore",
     )
@@ -704,7 +705,7 @@ class WorkerSettings(_WorkerSettingsBase):
     model_id: str | None = None
 
     model_config = SettingsConfigDict(
-        env_prefix="ACHERON_WORKER_",
+        env_prefix="ACHERON_WORKER__",
         case_sensitive=True,
         extra="forbid",
     )
@@ -794,7 +795,7 @@ class WorkerSettings(BaseSettings):
     model_id: str | None = None
 
     model_config = SettingsConfigDict(
-        env_prefix="ACHERON_WORKER_",
+        env_prefix="ACHERON_WORKER__",
         case_sensitive=True,
         extra="forbid",
     )
@@ -1944,7 +1945,7 @@ git commit -m "feat(worker_sdk): add make_runpod_handler cloud adapter"
 - Create: `src/acheron/worker_sdk/_runpod_client.py`
 - Create: `tests/worker_sdk/test_runpod_client.py`
 
-**Note:** the real `runpod` SDK is imported lazily inside `_submit_and_await` so unit tests can mock it via `monkeypatch.setattr` without the SDK installed. Add `runpod` to dependencies only in this task — update `pyproject.toml`:
+**Note:** the real `runpod` SDK is imported at module top; unit tests mock `_open_endpoint` via `monkeypatch.setattr` so the SDK is never invoked. Add `runpod` to dependencies only in this task — update `pyproject.toml`:
 
 ```diff
  dependencies = [
@@ -2099,8 +2100,6 @@ class _Endpoint(Protocol):
 
 
 def _open_endpoint(endpoint_id: str, *, api_key: str) -> _Endpoint:
-    import runpod  # imported lazily — only the edge image needs it.
-
     runpod.api_key = api_key  # type: ignore[attr-defined]
     return runpod.Endpoint(endpoint_id)  # type: ignore[no-any-return]
 

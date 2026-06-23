@@ -752,8 +752,8 @@ Documented in `workers/qwen3tts/README.md`. The deployer **never builds the work
      image: ghcr.io/<repo>/acheron-worker-edge:latest
      environment:
        WORKER_NAME: qwen3tts
-       ACHERON_ORCHESTRATOR_URL: http://orchestrator:8000
-       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
+        ACHERON_ORCHESTRATOR_URL: http://orchestrator:8000
+        ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
         ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY}
         ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID}
      volumes:

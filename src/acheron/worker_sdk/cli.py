@@ -62,7 +62,7 @@ def main() -> None:
     app = create_worker_app(handler=handler, settings=settings)
 
     logging.basicConfig(
-        level=os.environ.get("ACHERON_WORKER_LOG_LEVEL", "INFO"),
+        level=os.environ.get("ACHERON_WORKER__LOG_LEVEL", "INFO"),
         stream=sys.stdout,
     )
     uvicorn.run(app, host=settings.listen_host, port=settings.listen_port)
