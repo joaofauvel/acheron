@@ -892,6 +892,17 @@ jobs:
 - Imported at module top in `acheron.worker_sdk._runpod_client`; no lazy wrapper.
 - Unit tests monkey-patch `_open_endpoint` via `monkeypatch.setattr` so the SDK is never invoked.
 
+## Plan 2 — Orchestrator Transports (deviations from the plan body)
+
+- **Cost aggregation moved into the sequential executor** rather than `orchestrator.py`'s PlanResult construction. The sequential executor already accumulates per-step `JobMetrics` for `total_cost`; the per-step `cost_basis` is collected in the same pass and `PlanResult.total_cost_basis = aggregate_cost_basis(per_step_metrics)` is set in one place. The orchestrator's failure-path `PlanResult(...)` constructions (no steps ran) leave `total_cost_basis=None`, which is the desired default.
+- **`aggregate_cost_basis` uses `max(...)` on the confidence order**, not `min`. The confidence map is `{MEASURED: 0, CACHED: 1, STATIC: 2, UNKNOWN: 3}`; least-confident has the highest number.
+- **Multipart metadata is dropped at the orchestrator boundary.** The shared `_materialize_artifact` helper does not accept a `metadata` parameter — `OutputFile` has no `metadata` field. The `X-Acheron-Metadata` HTTP header and the gRPC `Artifact.metadata` map are parsed but not propagated; consistent across both transports.
+- **`PriceSource` Protocol is NOT `@runtime_checkable`.** No caller used `isinstance(x, PriceSource)`, and removing the decorator lets basedpyright do structural-subtyping checks for `ZeroPrice` / `StaticPrice` / `RunPodPrice`. The dataclass implementations still satisfy the protocol.
+- **`HttpWorker` / `GrpcWorker` accept a `data_dir` constructor kwarg** that defaults to `ACHERON_DATA_DIR` env var (fallback `/data/jobs`). Both transports' `_parse_multipart` / `_assemble_artifacts` derive `dest_dir = data_dir / <plan_job_id> / <step_id>` from the `Job.job_id`.
+- **`stubs/grpc_worker_stub.py` updated to emit `OutputChunk` (not `AudioChunk`)** — the proto extension renamed the message in Task 4. Tests follow.
+- **Dashboard cost partial: `not basis or basis == "unknown"`** for the cost cell. A missing `total_cost_basis` (older orchestrator) renders the dash glyph (`—`) rather than `$0.00`. This is the same visual treatment as the explicit `"unknown"` basis.
+- **`ExecuteRequest` schema is a runtime import in `_edge_http.py`** even though TC001 wants it in `TYPE_CHECKING` — FastAPI inspects the route signature at request time to know how to parse the body. Noqa on the import.
+
 ## References
 
 - [Acheron design spec](./2026-06-16-acheron-design.md) — extended by this spec.
