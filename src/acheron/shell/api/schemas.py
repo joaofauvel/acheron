@@ -32,6 +32,7 @@ class JobResponse(BaseModel):
     total_steps: int = 0
     total_cost: float = 0.0
     total_duration_seconds: float = 0.0
+    total_cost_basis: str | None = None
     errors: list[str] = []
 
 

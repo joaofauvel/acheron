@@ -4,12 +4,14 @@ import time
 
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
+    JobMetrics,
     JobStatus,
     OutputFile,
     Plan,
     PlanResult,
     PlanStatus,
 )
+from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 
@@ -28,12 +30,14 @@ class SequentialExecutor(Executor):
         total_cost = 0.0
         failed_steps: set[str] = set()
         errors: list[str] = []
+        per_step_metrics: list[JobMetrics | None] = []
 
         for step in topological_order(plan.steps):
             if any(dep in failed_steps for dep in step.depends_on):
                 failed_steps.add(step.step_id)
                 failed += 1
                 errors.append(f"{step.step_id}: skipped (dependency failed)")
+                per_step_metrics.append(None)
                 continue
 
             try:
@@ -42,6 +46,7 @@ class SequentialExecutor(Executor):
                 failed += 1
                 failed_steps.add(step.step_id)
                 errors.append(f"{step.step_id}: {type(exc).__name__}: {exc}")
+                per_step_metrics.append(None)
                 continue
 
             if result.status == JobStatus.SUCCESS:
@@ -52,6 +57,7 @@ class SequentialExecutor(Executor):
                 failed_steps.add(step.step_id)
                 errors.append(f"{step.step_id}: {result.error or 'unknown error'}")
             total_cost += result.metrics.cost_estimate or 0.0
+            per_step_metrics.append(result.metrics)
 
         duration = time.monotonic() - start
         status = PlanStatus.COMPLETED if failed == 0 else PlanStatus.FAILED if completed == 0 else PlanStatus.PARTIAL
@@ -65,4 +71,5 @@ class SequentialExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
             errors=tuple(errors),
+            total_cost_basis=aggregate_cost_basis(per_step_metrics),
         )
