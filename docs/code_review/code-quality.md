@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 63faed4
+last_updated_commit: dbec2be
 last_staleness_scan:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 ---
 
 # Code quality
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-MAINT-003 and MAINT-004 remain verified. MAINT-002 and MAINT-005 are re-resolved at slightly shifted line numbers. Three new MAINT findings from Layer 11: MAINT-006 (the registration-token block in `Orchestrator.start()` is inlined; also logs the token in plaintext at INFO level — see SEC-008 for the security side), MAINT-007 (RunPod + HuggingFace providers duplicate the HTTP fetch envelope), MAINT-008 (`HealthMonitor._handle_failure` reassigns its `error` parameter).
+MAINT-001, MAINT-003, MAINT-004 remain verified. MAINT-002, MAINT-005, MAINT-006, MAINT-007, MAINT-008 re-resolved (lines mostly unchanged since 63faed4). Six new MAINT findings: MAINT-009 (low) — Python 2-style `except A, B:` syntax at 7 sites across 6 files; MAINT-010 (low) — `create_worker_app` has a duplicate docstring; MAINT-011 (medium) — `create_worker_app` builds an `EdgeApp` only to copy its routes via path-string matching; MAINT-012 (low) — `_registration_caps` manually re-lists every `WorkerCapabilities` field instead of `dataclasses.replace`; MAINT-013 (low) — `_caps_to_response` (edge) and `_caps_to_dict` (registration) duplicate the same `WorkerCapabilities` → dict serialisation; MAINT-014 (low) — stub handlers redundantly override the ABC's default no-op `startup`/`shutdown` methods.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -23,8 +23,8 @@ severity: high
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
@@ -60,18 +60,18 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 30-280
+    lines: 30-282
   - path: src/acheron/shell/cache.py
-    lines: 28-112
+    lines: 27-128
 related: [DATA-002]
 ```
 
-**Issue.** redis.py hand-rolls ~150 lines of JSON serialization for TrackedJob/Plan/PlanStep/PlanResult/WorkerCapabilities (`_serialize_job`, `_deserialize_job`, `_serialize_capabilities`, `_deserialize_capabilities`, `_deserialize_worker` — redis.py:30-270) via json.dumps/loads with field-by-field reconstruction and a manual `source_type` match dispatch. cache.py serializes the same Plan/OutputFile models via pydantic `TypeAdapter` (cache.py:44,59,85,107 — `_plan_adapter.dump_json`/`validate_json`). Adding a field to PlanStep/Plan/PlanResult requires editing the redis ser site and the deser site separately, while cache.py adapts automatically. The manual deser re-derives `source_type` via a match on AudioRequest/EpubRequest, duplicating planner logic rather than persisting it. The fundamental duplication remains — redis.py is still the largest file in the shell package.
+**Issue.** redis.py hand-rolls ~150 lines of JSON serialization for TrackedJob/Plan/PlanStep/PlanResult/WorkerCapabilities (`_serialize_job`, `_deserialize_job`, `_serialize_capabilities`, `_deserialize_capabilities`, `_deserialize_worker` — redis.py:30-282) via json.dumps/loads with field-by-field reconstruction and a manual `source_type` match dispatch. cache.py serializes the same Plan/OutputFile models via pydantic `TypeAdapter` (cache.py:44,59,85,107 — `_plan_adapter.dump_json`/`validate_json`). Adding a field to PlanStep/Plan/PlanResult requires editing the redis ser site and the deser site separately, while cache.py adapts automatically. The manual deser re-derives `source_type` via a match on AudioRequest/EpubRequest, duplicating planner logic rather than persisting it. The new `CostBasis` field added in this delta required touching both the manual ser site (line 179) and deser site (line 272), reinforcing the drift story. The fundamental duplication remains — redis.py is still the largest file in the shell package.
 
 **Why it matters.** Two divergent serialization paths for the same domain models is a fragility hotspot: field additions silently desync between the Redis and disk-cache backends, and a round-trip mismatch would surface only at runtime. Medium — no current bug, but a clear maintainability and drift risk in the largest file.
 
@@ -87,8 +87,8 @@ severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 92ed9da
 files:
@@ -115,8 +115,8 @@ severity: low
 effort: S
 reviewed_at: d0b739b
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 640bb03
 files:
@@ -143,8 +143,8 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -168,8 +168,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -193,8 +193,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
@@ -220,8 +220,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -237,11 +237,179 @@ related: [EXC-003]
 
 **Verification.** `just test`, `just type-check`; add a test that exercises a provider raising — the worker should be marked OFFLINE with the chained error string and the parameter should remain unchanged at function return.
 
+### MAINT-009 — Python 2-style `except A, B:` syntax used at 7 sites across 6 files
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/health_providers.py
+    lines: 49
+  - path: src/acheron/shell/health_providers.py
+    lines: 80
+  - path: src/acheron/shell/transports/http.py
+    lines: 145
+  - path: src/acheron/shell/local_handlers.py
+    lines: 296
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 155
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 143
+  - path: src/acheron/shell/cache.py
+    lines: 115
+related: []
+```
+
+**Issue.** The repo uses the deprecated Python 2 except form `except A, B:` (which Python 3 parses as a tuple `except (A, B):` — *not* `except A as B:`). The 7 sites are: `health_providers.py:49,80` (`httpx.HTTPError, OSError`), `transports/http.py:145` (`WorkerError, WorkerUnavailableError`), `local_handlers.py:296` (`CacheMissError, CacheCorruptedError, OSError`), `executors/streaming.py:155` (`CacheMissError, CacheCorruptedError`), `worker_sdk/pricing.py:143` (`httpx.HTTPError, OSError, KeyError, ValueError, TypeError`), `cache.py:115` (`CacheMissError, CacheCorruptedError, OSError`). The site at `pricing.py:143` is a particularly broad basket — `(httpx.HTTPError, OSError, KeyError, ValueError, TypeError)` is essentially `except Exception` with a hand-picked name. Reader confusion risk: a developer familiar with Python 2 reads `except X, Y:` as `except X as Y:` and looks for the bound name `Y`.
+
+**Why it matters.** Violates the greenfield-clarity rubric — six of the seven sites would trip any pyupgrade-aware linter (the project enables `select = ["ALL"]` in pyproject.toml but doesn't enable B034/pyupgrade rules that catch this). Pattern-level: a reader tracing data flow may misread a comma in an except clause as a name binding. A future `redis-py` stub fix or pyupgrade rule bump would force a sweep; better to do it now in 1-line edits per site.
+
+**Recommendation.** Per site: replace `except A, B:` with `except (A, B):`. Bundle all 7 sites in one commit. For the `pricing.py:143` broad basket, narrow to the actual failure modes (`httpx.HTTPError, OSError` for the HTTP call; `KeyError, ValueError, TypeError` for the JSON-shape-guard, in a separate `try` inside the GraphQL handler).
+
+**Verification.** `grep -rn 'except [A-Z][A-Za-z0-9_.]*, [A-Z]' src/` returns zero hits; `uv run ruff check --select B034,UP024 src/` shows no findings; `just lint-strict`, `just test`.
+
+### MAINT-010 — `create_worker_app` has a duplicate docstring — the second is a no-op string literal that survived the rewrite
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 93-98
+related: [MAINT-011, EXC-004]
+```
+
+**Issue.** `create_worker_app` declares a Google-style docstring (lines 93-97) explaining `disable_registration`, then immediately repeats the same opening line as a bare string literal on line 98: `    """Build the edge FastAPI app wired with registration + price refresh."""`. Python parses the second literal as an expression statement that evaluates-and-discards the string, so it has no functional effect — it is pure dead code that misleads readers (looks like a real docstring at a glance). Likely a paste-merge artefact from the R2 review that added the `disable_registration` block.
+
+**Why it matters.** The duplicate is exactly the kind of stale doc drift the project's review rubric catches (cf. AGENTS.md "do not add unnecessary and/or coupled comments ... that make changes hard to maintain and generate staleness"). Future maintainers will assume the lower literal is the canonical contract.
+
+**Recommendation.** Delete line 98. `ruff format` will not auto-fix this; manual edit only.
+
+**Verification.** `just lint-strict` (no rule catches it); `grep -n '"""' src/acheron/worker_sdk/app.py` shows exactly two `def` docstrings and no orphan literal; `just test`.
+
+### MAINT-011 — `create_worker_app` builds an `EdgeApp` only to copy its routes onto the outer app via path-string matching; the inner `EdgeApp` is dead code
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 135-143
+related: [CORR-015, ARCH-012, MAINT-010]
+```
+
+**Issue.** The outer `lifespan` (lines 115-133) is the only one that runs; the inner `EdgeApp` built at line 101 is discarded, and its `app.routes` is harvested by the loop at lines 139-143: `for route in inner.app.routes: path = getattr(route, 'path', None); if path in inner_paths: app.routes.append(route)`. This (a) bypasses FastAPI's `APIRouter.include_router` / `app.mount` machinery, (b) hard-codes the path set `{'/health', '/capabilities', '/execute'}` so adding a 4th inner route silently breaks the outer app (no error, just a missing endpoint), and (c) directly mutates the outer `app.routes` list which FastAPI doesn't guarantee as a stable contract. The comment on lines 136-138 admits the inner `lifespan` is dead code that the outer one supersedes — that admission should drive the refactor, not stay as a warning.
+
+**Why it matters.** The construction pattern is fragile: a `Route` subclass without a `path` attribute would be silently dropped (`getattr(route, 'path', None)` returns `None`, not an error), and adding a path to the inner app is now a two-place edit (inner `EdgeApp` route table + the `inner_paths` set in `app.py`). The inner `EdgeApp` is also a public class — callers might use it directly and find that its lifespan is overridden by `create_worker_app`, which is surprising.
+
+**Recommendation.** Refactor `EdgeApp` to expose its route registration as a public method (e.g. `EdgeApp.routes() -> list[APIRouter]`) and have `create_worker_app` mount it via `app.include_router`. Drop the `inner_paths` set and the `app.routes.append` mutation. The inner `EdgeApp` can keep its own lifespan as a no-op, or be split into a routes-only class and a lifespan-only class so neither is dead.
+
+**Verification.** `just test`; new test that a 4th route added to `EdgeApp` is reachable via the outer app without editing `app.py`; `just type-check` (the `getattr` path-string dance disappears).
+
+### MAINT-012 — `_registration_caps` manually re-lists every `WorkerCapabilities` field to swap in enriched metadata; should use `dataclasses.replace`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 60-84
+related: [MAINT-013]
+```
+
+**Issue.** `_registration_caps` (lines 60-84) returns a new `WorkerCapabilities` with the same 9 fields as `caps`, differing only in `metadata` (now `enriched`). The function literally retypes every field by name. `WorkerCapabilities` is a `@dataclass(frozen=True)` (models.py:77-89) so `dataclasses.replace(caps, metadata=enriched)` produces the same result in 2 lines.
+
+**Why it matters.** Adding a new field to `WorkerCapabilities` (e.g. a new capability knob) requires editing this function *and* every other call site that constructs `WorkerCapabilities` by-name. Pattern-level: this is the second of three `WorkerCapabilities` copy patterns (the third is `_caps_to_dict` in registration.py:78). The drift surface is the same as MAINT-002 in spirit.
+
+**Recommendation.** Replace lines 71-84 with `return dataclasses.replace(caps, metadata=enriched)`. Drop the parameter `caps.metadata`; the function is now a 2-liner that can be inlined into `create_worker_app` if desired.
+
+**Verification.** `just test`; `dataclasses.replace(caps, metadata=enriched) == WorkerCapabilities(...)` for the existing 3 cases; `just type-check`.
+
+### MAINT-013 — `_caps_to_response` (edge) and `_caps_to_dict` (registration) duplicate the same `WorkerCapabilities` → dict serialisation
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 44-55
+  - path: src/acheron/worker_sdk/registration.py
+    lines: 78-91
+related: [MAINT-012]
+```
+
+**Issue.** Two functions produce the same `{worker_type, supported_languages_in, supported_languages_out, supported_formats_in, supported_formats_out, max_payload_bytes, batch_capable, model_source, metadata}` dict from a `WorkerCapabilities` value. The only difference is the return-type annotation: `_caps_to_response` → `dict[str, Any]`, `_caps_to_dict` → `dict[str, object]`. Both use `sorted(frozenset)` for the language/format fields and `dict(metadata)` for the metadata.
+
+**Why it matters.** The orchestrator's `POST /workers` request schema (`WorkerCapabilitiesRequest` in `shell/api/schemas.py:45-56`) is the consumer of `_caps_to_dict`; the SDK's `GET /capabilities` response uses `_caps_to_response`. Adding a field to `WorkerCapabilities` (cf. MAINT-012) now requires editing two serialisers in lockstep — the third copy of the same shape. A `WorkerCapabilities.model_dump()` (pydantic) or a single `_caps_to_dict` imported by both call sites removes the duplication.
+
+**Recommendation.** Promote `_caps_to_dict` (registration.py) to the canonical form (it has the better `dict[str, object]` annotation) and import it from `_edge_http.py`. Drop `_caps_to_response`. If pydantic interop is desired, derive both from a single `pydantic.TypeAdapter(WorkerCapabilities).dump_python` call site.
+
+**Verification.** `just test`; `WorkerCapabilities` round-trip parity for both endpoints; `grep -rn 'sorted(caps.supported_languages_in' src/` returns zero hits.
+
+### MAINT-014 — Stub handlers redundantly override the ABC's default no-op `startup`/`shutdown` methods
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: stubs/_sdk_base/__init__.py
+    lines: 52-56
+  - path: stubs/_sdk_base/__init__.py
+    lines: 100-104
+  - path: stubs/_sdk_base/__init__.py
+    lines: 138-141
+related: []
+```
+
+**Issue.** `WorkerHandler` (`worker_sdk/handler.py:29-35`) declares `startup` and `shutdown` as no-op ABC defaults (`async def ... -> None: return`). The three stub classes (`StubTTSHandler`, `StubASRHandler`, `StubTranslationHandler`) override both methods with bodies that are literal `return None`. 6 redundant methods × 2 lines each = 12 lines of pure no-op code that, on a greenfield project, will inevitably drift from the ABC's signature (e.g. if the ABC adds an `await self._x()` to the default, the stubs will silently skip it).
+
+**Why it matters.** Per the rubric, "do not add unnecessary and/or coupled comments ... that make changes hard to maintain and generate staleness." Methods are the comment-equivalent here. The override is also confusing to new readers: is there a hidden reason `StubTTSHandler.startup` does something different from the ABC's default? (There isn't — both are `return None`.)
+
+**Recommendation.** Delete all 6 overrides. The `WorkerHandler` defaults take over automatically.
+
+**Verification.** `grep -n 'async def startup\|async def shutdown' stubs/` returns zero hits; `just test` still passes (no behavioural change); `just type-check`.
+
 ## EXC — Exception discipline
 
-**Grade:** B
+**Grade:** A
 
-EXC-001 (medium) remains open: `tenacity` is still unused and transient network calls have no retry. EXC-002 is verified. One new low finding: EXC-003 — `HealthMonitor._handle_failure` wraps the platform provider call in a bare `except Exception` with `# noqa: BLE001`; the recovery path belongs inside the provider contract.
+EXC-001 (medium) remains open and re-resolved: `tenacity` is still unused, but new error paths exist in `_runpod_client.py:84-86` (bare `TimeoutError` re-raise where `WorkerTimeoutError` is the project's chosen type). EXC-002 is verified. EXC-003 (low) re-resolved. One new EXC finding: EXC-004 (medium) — `create_worker_app` lifespan catches bare `BaseException` for the eager price refresh, swallowing `KeyboardInterrupt`/`SystemExit`/`CancelledError`.
 
 ### EXC-001 — tenacity dependency is unused; WorkerTimeoutError/PlanValidationError are never raised; transient network calls have no retry
 
@@ -251,24 +419,24 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: pyproject.toml
-    lines: 22
+    lines: 23
   - path: src/acheron/core/errors.py
     lines: 16-29
   - path: src/acheron/shell/executors/streaming.py
-    lines: 233-235
+    lines: 246-248
   - path: src/acheron/shell/transports/grpc.py
-    lines: 64-72
+    lines: 90-95
   - path: src/acheron/shell/transports/http.py
-    lines: 39-52
-related: []
+    lines: 57-75
+related: [CORR-014]
 ```
 
-**Issue.** `tenacity~=9.1` is a production dependency (pyproject.toml:20) with zero imports across src/ and tests/. No network call is retried: GrpcWorker.execute (a streaming RPC, grpc.py:67-75) and HttpWorker._request (http.py:44-59) raise on the first transient failure; Redis store ops have no retry. `WorkerTimeoutError` (errors.py:28) is defined and exported but never raised — streaming.py:213 catches `TimeoutError` and raises plain `WorkerError`, discarding the more specific type. `PlanValidationError` (errors.py:16) is likewise defined/exported but never raised.
+**Issue.** `tenacity~=9.1` is a production dependency (pyproject.toml:20) with zero imports across src/ and tests/. No network call is retried: GrpcWorker.execute (a streaming RPC, grpc.py:67-75) and HttpWorker._request (http.py:44-59) raise on the first transient failure; Redis store ops have no retry. `WorkerTimeoutError` (errors.py:28) is defined and exported but never raised — streaming.py:213 catches `TimeoutError` and raises plain `WorkerError`, discarding the more specific type. `PlanValidationError` (errors.py:16) is likewise defined/exported but never raised. New error path: `_runpod_client.py:84-86` raises bare `TimeoutError` from inside a worker (could/should be `WorkerTimeoutError`).
 
 **Why it matters.** A dead dependency and dead exception types are misleading surface area. Remote worker and Redis calls are exactly where transient failures occur; the absence of retries means a single transient network blip fails a whole step/job. The timeout-specific exception exists but is not used, so callers cannot distinguish a timeout from other worker errors. Medium — no current data loss, but fragile in normal operation and contradicts the declared dependency.
 
@@ -284,8 +452,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - a5b1ff0
 files:
@@ -322,8 +490,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -343,11 +511,36 @@ related: [MAINT-008, OBS-005]
 
 **Verification.** `just test`, `just type-check`. Drop the noqa and the try/except in `_handle_failure`; providers gain the swallow and the `HealthProvider` ABC contract is enforced by the implementation.
 
+### EXC-004 — `create_worker_app` lifespan catches bare `BaseException` for the eager price refresh; swallows `KeyboardInterrupt`/`SystemExit`/`CancelledError`
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 120-126
+related: [OBS-008, MAINT-010]
+```
+
+**Issue.** The price refresh at startup is wrapped in `try: ... except BaseException:  # noqa: BLE001: logger.warning(...)`. The intent (per the inline comment "fault-tolerant, never blocks") is to allow a transient pricing API failure to not block container startup. But `BaseException` is broader than what the comment justifies — it also catches `KeyboardInterrupt` (Ctrl-C during startup), `SystemExit` (an operator's `docker stop`), and `asyncio.CancelledError` (the FastAPI lifespan being cancelled by uvicorn). All three should propagate to the operator; swallowing them turns a clean shutdown into a hanging container. The `app.py:122` `# noqa: BLE001` only suppresses the *lint* complaint; it doesn't argue the *correctness* of catching `BaseException`.
+
+**Why it matters.** A worker container that swallows `KeyboardInterrupt` during the first 1-2 seconds of boot (the price-refresh window) leaves the operator's Ctrl-C without effect. The recovery branch logs at WARNING then proceeds to `await _register()` and then `yield` — the lifespan is fine, but a Ctrl-C'd deployer wonders why the container takes 30s to die. Pattern-level: the same anti-pattern as EXC-003 (`# noqa: BLE001` at the boundary instead of inside the provider).
+
+**Recommendation.** Narrow to `except Exception:  # noqa: BLE001` (the comment can stay; `Exception` covers `httpx.HTTPError`, `OSError`, `KeyError`, `ValueError`, `TypeError` — the actual failure modes of a GraphQL price query). `BaseException` subclasses that should propagate (`KeyboardInterrupt`, `SystemExit`, `CancelledError`) will then do so. If the project wants to be extra strict, list the concrete types: `except (httpx.HTTPError, OSError, KeyError, ValueError, TypeError):`.
+
+**Verification.** `just test`; a new test that injects a price source whose `refresh()` raises `KeyboardInterrupt` (or `asyncio.CancelledError`) and asserts the exception propagates out of the lifespan, not into the WARNING log.
+
 ## TYPE — Type safety
 
-**Grade:** B
+**Grade:** A
 
-TYPE-002 remains verified (PlanStatus enum at ad78be4). TYPE-001 (medium) persists for the `AcheronClient` `dict[str, Any]` return type consumed via magic-string keys in the CLI; the metadata contract sub-issue is resolved. Two new low/medium TYPE findings: TYPE-003 (8 `# type: ignore[misc]` markers in `redis.py` without per-site justification), TYPE-004 (`WorkerResponse.status` is stringly-typed despite a `WorkerStatus` enum existing at `core/models.py`).
+TYPE-002 remains verified. TYPE-001, TYPE-003, TYPE-004 re-resolved (most line numbers shifted +3 due to the new `_runpod_client`-related additions in surrounding files). Four new TYPE findings: TYPE-005 (low) — `JobResponse.status` and `JobResponse.total_cost_basis` are stringly-typed despite enums existing; TYPE-006 (low) — `grpc.py` accumulates 5 new `# type: ignore` markers for the proto Artifact oneof; TYPE-007 (low) — `RunPodForwarderHandler.__init__` uses `# type: ignore[call-arg]` where a constructor Protocol is the right typing; TYPE-008 (low) — `WorkerSDK` has 14+ `Any`/`dict[str, Any]` annotations in 5 files.
 
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 
@@ -357,18 +550,18 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/api_client.py
     lines: 41-128
   - path: src/acheron/cli.py
-    lines: 169-255
+    lines: 165-292
 related: [ARCH-004]
 ```
 
-**Issue.** Every `AcheronClient` method returns `dict[str, Any]` or `list[dict[str, Any]]` (api_client.py:35,51,58,65,76). The CLI then indexes these with magic strings — `result['job_id']`, `j['status']`, `j['worker_id']`, `p['workers']`, `result['errors']` (cli.py:169-236); any key typo is a runtime KeyError. Typed pydantic response schemas (JobResponse, WorkerResponse, LanguagePair) already exist in schemas.py but are not used on the client side. The metadata contract sub-issue is resolved: `RegisteredWorker.metadata` (registry.py:27), `WorkerStore.register` metadata (stores/base.py:30), and schemas.py:55 are now all `dict[str, JsonValue]`, matching `WorkerCapabilities.metadata`.
+**Issue.** Every `AcheronClient` method returns `dict[str, Any]` or `list[dict[str, Any]]` (api_client.py:35,51,58,65,76). The CLI then indexes these with magic strings — `result['job_id']`, `j['status']`, `j['worker_id']`, `p['workers']`, `result['errors']` (cli.py:169-236); any key typo is a runtime KeyError. Typed pydantic response schemas (JobResponse, WorkerResponse, CapabilitiesResponse) already exist in schemas.py but are not used on the client side. The metadata contract sub-issue is resolved: `RegisteredWorker.metadata` (registry.py:27), `WorkerStore.register` metadata (stores/base.py:30), and schemas.py:55 are now all `dict[str, JsonValue]`, matching `WorkerCapabilities.metadata`.
 
 **Why it matters.** AGENTS.md explicitly says avoid `Any` and avoid "Mapping[str, Any] as documentation-via-runtime-error contract." The CLI's untyped consumption of the API is exactly that pattern. Medium — works today but defeats the type checker on a public boundary.
 
@@ -384,8 +577,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - ad78be49740dd3d5094ba30a376593c1e2e499cb
 files:
@@ -420,30 +613,30 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 293
+    lines: 296
   - path: src/acheron/shell/stores/redis.py
-    lines: 324
+    lines: 327
   - path: src/acheron/shell/stores/redis.py
-    lines: 331
+    lines: 334
   - path: src/acheron/shell/stores/redis.py
-    lines: 358
+    lines: 361
   - path: src/acheron/shell/stores/redis.py
-    lines: 359
+    lines: 362
   - path: src/acheron/shell/stores/redis.py
-    lines: 385
+    lines: 388
   - path: src/acheron/shell/stores/redis.py
-    lines: 402
+    lines: 405
   - path: src/acheron/shell/stores/redis.py
-    lines: 424
+    lines: 427
 related: []
 ```
 
-**Issue.** `redis.py:3-5` documents that `redis.asyncio` stubs type methods as `Awaitable[T] | T` and that the `T` branch is unreachable in async call sites. Despite the file-level justification, every `await self._redis.<method>()` call site carries a `# type: ignore[misc]` marker (8 sites: `ping` x2 at 293/402, `hgetall` at 324, `smembers` x2 at 331/424, `hincrby` at 358, `hset` at 359, `hset-with-mapping` at 385). The markers do not have per-site justification comments, and the rationale depends on a single header paragraph that could be deleted in a future refactor pass. The new `set_worker_status` method (lines 375-388) added another `hset(mapping=...)` call site at line 385, growing the list. A future `redis-py` version that fixes the stubs would leave the markers as dead annotations.
+**Issue.** `redis.py:3-5` documents that `redis.asyncio` stubs type methods as `Awaitable[T] | T` and that the `T` branch is unreachable in async call sites. Despite the file-level justification, every `await self._redis.<method>()` call site carries a `# type: ignore[misc]` marker (8 sites: `ping` x2 at 296/402, `hgetall` at 327, `smembers` x2 at 331/424, `hincrby` at 361, `hset` at 362, `hset-with-mapping` at 388). The markers do not have per-site justification comments, and the rationale depends on a single header paragraph that could be deleted in a future refactor pass. The new `set_worker_status` method (lines 375-388) added another `hset(mapping=...)` call site at line 388, growing the list. A future `redis-py` version that fixes the stubs would leave the markers as dead annotations.
 
 **Why it matters.** Pattern-level TYPE: each marker is a future-typing-debt accumulator per the rubric. AGENTS.md says "Avoid linter and type ignores in general without a very good reason that should be explicitly explained to the user" — the explanation exists at the file level but the per-site obligation is not met.
 
@@ -459,17 +652,17 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 67-76
+    lines: 68-77
   - path: src/acheron/shell/api/routes/workers.py
     lines: 51
   - path: src/acheron/shell/api/routes/workers.py
     lines: 68
-related: []
+related: [TYPE-005]
 ```
 
 **Issue.** The new `WorkerStatus` enum is defined at `core/models.py:58-63` and used everywhere in `shell/` (registry, health, stores, health_providers). The API response schema `WorkerResponse.status` is typed `str = "healthy"` (schemas.py:75), and `routes/workers.py:51,68` call sites do `WorkerStatus.HEALTHY.value` to populate the schema. AGENTS.md says "avoid string-based dispatch" and "make illegal states unrepresentable" — the response schema is the exact anti-pattern. A typo in a test fixture like `status='healty'` would compile and pass pydantic validation; the `WorkerStatus` enum would reject it.
@@ -479,3 +672,125 @@ related: []
 **Recommendation.** Change `WorkerResponse.status: WorkerStatus = WorkerStatus.HEALTHY` and let pydantic serialize the enum to a JSON string automatically. Update `routes/workers.py:51,68` to use `WorkerStatus.HEALTHY` and `w.status` directly (no `.value`).
 
 **Verification.** `just test`, `just type-check`. Confirm a malformed `status='healty'` is now rejected by pydantic, and the response JSON still serializes to `"status": "healthy"`.
+
+### TYPE-005 — `JobResponse.status` and `JobResponse.total_cost_basis` are stringly-typed despite `PlanStatus` and `CostBasis` enums existing at `core/models.py`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/schemas.py
+    lines: 29
+  - path: src/acheron/shell/api/schemas.py
+    lines: 35
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 90
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 96
+related: [TYPE-004]
+```
+
+**Issue.** Direct parallel to TYPE-004 (now fixed for `WorkerResponse`). `JobResponse.status: str` (schemas.py:29) and `JobResponse.total_cost_basis: str | None = None` (schemas.py:35, added in this diff at 63faed4..HEAD) are typed as raw strings even though `PlanStatus` (models.py:42-49) and `CostBasis` (models.py:68-74) enums exist and are the only values ever passed in. The call sites at `routes/jobs.py:90,96` do `tracked.status.value` and `result.total_cost_basis.value`. A test fixture typo like `status='complted'` is accepted by pydantic at request time but rejected by `PlanStatus` at construction. The new `total_cost_basis` field (added in 63faed4..HEAD) is the most recent instance of the same anti-pattern.
+
+**Why it matters.** The internal API is fully enum-typed post-TYPE-002; the public API is now the only stringly-typed surface. Three enums (`WorkerStatus`, `PlanStatus`, `CostBasis`) all leak `.value` strings across the wire for the same reason.
+
+**Recommendation.** Change `JobResponse.status: PlanStatus = PlanStatus.PENDING` and `JobResponse.total_cost_basis: CostBasis | None = None`. Update `routes/jobs.py:90,96` to drop `.value`. Pydantic serialises the enum to its JSON string automatically. One mechanical edit unblocks a class of typo bugs.
+
+**Verification.** `just test`, `just type-check`; a malformed `status='complted'` request body is now rejected at the request schema (the pydantic `extra='forbid'` already applies to requests — the change is to make the response type also strict). Confirm response JSON still serialises to `"status": "completed"`.
+
+### TYPE-006 — `grpc.py` accumulates 5 `# type: ignore[...]` markers for the new proto Artifact oneof
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 49
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 72
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 80
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 107
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 152
+related: []
+```
+
+**Issue.** The grpc transport grew 5 new `# type: ignore[...]` markers as part of the proto Artifact oneof change: line 49 `no-untyped-call` (SynthesisStub constructor — proto stubs are untyped), line 72 `attr-defined` (SynthesisRequest — same), line 80 `name-defined` (`list[synthesis_pb2.Artifact]` — proto-generated names are not picked up by mypy), line 107 `name-defined` (function arg), line 152 `no-any-return` (response.status — the HealthCheckResponse.SERVING is an Any-typed enum value). None of the markers have a per-site comment explaining the suppression; the file-level mypy override `[tool.mypy.overrides] module = ["acheron.proto.*"] ignore_errors = true` (pyproject.toml:107-109) is the closest thing to a justification, but it only silences *errors*, not the markers' future-typing-debt role. The `name-defined` markers (lines 80, 107) are the new addition — they appear because `synthesis_pb2.Artifact` isn't in the mypy module's namespace despite being generated.
+
+**Why it matters.** Pattern-level TYPE: 5 markers in a 152-line file, with no single root-cause comment. The `# type: ignore[attr-defined]` and `# type: ignore[name-defined]` are arguably the same root cause (mypy can't see proto-generated classes), but they get suppressed as if they were different. A future regen of the proto stubs (or a mypy version bump) may resolve some but not all, leaving 3 dead markers. Pattern is similar to TYPE-003 in redis.py.
+
+**Recommendation.** Two options: (a) add one `TypeAlias` line at the top of grpc.py — `_Artifact = synthesis_pb2.Artifact  # type: ignore[attr-defined]` — that imports the name once and lets the rest of the file drop the `synthesis_pb2.Artifact` annotation; (b) widen the mypy override to cover the entire grpc transport (less surgical). Option (a) collapses 2 of the 5 markers. The other 3 (`no-untyped-call`, `attr-defined` on SynthesisRequest, `no-any-return` on response.status) are genuine proto-stub gaps and should keep their markers with one-line comments.
+
+**Verification.** `just type-check`; the count of `# type: ignore` in grpc.py drops from 5 to 3, all with one-line justifications.
+
+### TYPE-007 — `RunPodForwarderHandler.__init__` calls `phantom_handler(settings)` under `# type: ignore[call-arg]`
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 132-139
+related: []
+```
+
+**Issue.** `RunPodForwarderHandler.__init__` accepts `phantom_handler: type[WorkerHandler] | None` and, if non-None, calls `phantom_handler(settings)`. The call is annotated `phantom_handler(settings)  # type: ignore[call-arg]`. The comment (lines 134-136) explains: *"The phantom's __init__ is not part of the WorkerHandler Protocol (each handler defines its own constructor); we type-ignore the call site rather than widening the Protocol signature."* This is the *right* call, but the rightness is locked inside a comment, not a type — the next `cloud.py` reader has to re-derive it. The `WorkerHandler` Protocol (handler.py:13-19) and ABC (handler.py:13-35) both omit `__init__`, so a `type[WorkerHandler]` constraint carries no constructor shape. A `type[WorkerHandler]`-typed parameter that must be `Callable[[WorkerSettings], WorkerHandler]` is an interesting TypeScript-style "duck-type the constructor" — but the actual type is the more honest `Callable[[WorkerSettings], WorkerHandler]`.
+
+**Why it matters.** A reader who sees `phantom_handler: type[WorkerHandler]` will reasonably wonder *what* the constructor signature is. The `# type: ignore[call-arg]` is a real signal that the annotation lies. Per AGENTS.md, "prefer ... use typing in your favor to avoid seas of complex branching that are brittle and hard to maintain." The right typing here is the constructor-protocol.
+
+**Recommendation.** Introduce a `class WorkerHandlerFactory(Protocol): def __call__(self, settings: WorkerSettings) -> WorkerHandler: ...` (or `type WorkerHandlerFactory = Callable[[WorkerSettings], WorkerHandler]`) and type the field/parameter as `WorkerHandlerFactory | None`. Drop the `# type: ignore[call-arg]`. The call site `phantom_handler(settings)` then type-checks because the factory's protocol says exactly that.
+
+**Verification.** `just type-check` (the `# type: ignore[call-arg]` disappears); `just test`; new test that an invalid factory (e.g. `lambda _: ...`) is rejected by mypy.
+
+### TYPE-008 — WorkerSDK has 14+ `Any`/`dict[str, Any]` annotations in 5 files
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 20,37,40,48,52,58,68
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 19,44,68,72,79,148
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 13,183,184,192
+  - path: src/acheron/worker_sdk/cli.py
+    lines: 20,30,38,62,63
+  - path: src/acheron/worker_sdk/app.py
+    lines: 32-52
+related: []
+```
+
+**Issue.** The new worker_sdk is the largest `Any` consumer in src/. Each `dict[str, Any]` annotation is a wire shape (RunPod job input, multipart metadata, GraphQL response, settings dict). The project already has `JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]` at `core/models.py:8` and uses it for `WorkerCapabilities.metadata` everywhere. The SDK's wire-side dicts could reuse the same alias. `_runpod_client._post_graphql` (pricing.py:179-193) returns `dict[str, Any]` for the GraphQL body, but every field it then accesses (`data.myself.endpoints`, `gpuTypes[0].lowestPrice.uninterruptablePrice`) is stringly-keyed — a pydantic `GraphQLResponse` model would convert these to typed access.
+
+**Why it matters.** AGENTS.md explicitly bans `Any`: *"Avoid Any and don't let Mapping[str, Any] become a documentation-via-runtime-error contract."* The SDK is the new public surface — it sets the typing tone for the next dozen worker packages. Bundle: each is a 1-line edit; together they make the SDK `Any`-free and let mypy catch shape errors at construction (e.g. `_runpod_client.run` accepts a `dict[str, object]` which is even broader than `Any` for keys, but the inner access doesn't constrain values at all).
+
+**Recommendation.** Three bundles, one per file. (1) `cloud.py` + `_edge_http.py` + `app.py`: replace `dict[str, Any]` with `dict[str, JsonValue]` for the wire-side payloads (RunPod input, multipart metadata header, settings dict). The `_rp_handler` shape in cloud.py:37,40 stays `Callable[..., Awaitable[dict[str, Any]]]` because the runpod SDK uses raw dicts internally. (2) `pricing.py`: introduce a pydantic `GraphQLGpuTypesResponse` for the GPU price query; the `_post_graphql` helper returns `dict[str, Any]` as an internal type only. (3) `cli.py`: `type[Any]` for the imported handler class is fine (intentional, since the import path is configurable) — keep that one. Audit result: roughly 6 `Any` annotations remain after the cleanup (all justified, all in `Any`-typed dispatch sites).
+
+**Verification.** `grep -rn 'dict\[str, Any\]\|: Any' src/acheron/worker_sdk/` drops from 14+ to ~6 justified sites; `just type-check`; `just test`.

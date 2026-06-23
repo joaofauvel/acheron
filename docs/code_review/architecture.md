@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 63faed4
+last_updated_commit: dbec2be
 last_staleness_scan:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 ---
 
 # Architecture
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-Layer 11 added the `HealthProvider` ABC and the `HealthProviders` container in `shell/health_providers.py`. The new code drifted from the project's "interfaces live in `core/interfaces.py`" convention (ARCH-009, medium) and added a wrapper class with no behavior beyond `dict.get` (ARCH-010, low). The constructor coupling that ARCH-008 flagged persists into the new diff (constructor now mutates `Settings.orchestrator.data_dir` in-place at orchestrator.py:65). Five new ARCH/CFG findings; ARCH-001 through ARCH-007 remain immutable.
+Layer 8a added the `worker_sdk` subpackage and the `workers/qwen3tts/` RunPod worker, plus a transport `_multipart` refactor. The hexagonal layering is clean (no `core/` → `shell/`, `worker_sdk` → `shell/`, or `workers/` → `shell/` imports), but the new code surfaced three new ARCH findings and one transport-DRY finding. ARCH-008 re-resolved (lines shifted by the new constructor). All other stories remain verified at dbec2be.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -23,8 +23,8 @@ severity: high
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
@@ -54,8 +54,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["b47c6a881a18f859b981f67d04aebc65c209fddc"]
 files:
   - path: src/acheron/shell/api/app.py
@@ -81,8 +81,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["990b51f64ce8df8c288559bfa6f90548589d8afc"]
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -110,8 +110,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: fb69e0e
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["fb69e0e"]
 files:
   - path: src/acheron/shell/registry.py
@@ -133,74 +133,6 @@ related: [TYPE-001]
 
 **Verification.** `just type-check` and `just type-check-pyright` to confirm the stricter type propagates; `just test`; grep to confirm no caller passes a non-JsonValue metadata dict.
 
-## CFG — Configuration
-
-**Grade:** A
-
-CFG-001 remains verified. CFG-002 is now verified at be7b3ab, which extracted `SUPPORTED_LANGUAGES` into `core/models.py` and `resolve_ca_path()` into `tls.py`, eliminating the duplicated knowledge.
-
-### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
-
-```yaml
-status: verified
-severity: medium
-effort: S
-reviewed_at: 23c29e1
-last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
-fixed_in:
-  - f5ce538072b568c9ef47ce53f2ef5e2f3d262ceb
-files:
-  - path: src/acheron/shell/stores/__init__.py
-    lines: 39-53
-  - path: src/acheron/shell/stores/__init__.py
-    lines: 39-53
-related: [ARCH-002]
-```
-
-**Issue.** `create_worker_store()` (17-37) and `create_job_store()` (39-53) each independently read `ACHERON_STORE_BACKEND` and `REDIS_URL` and run an identical `match backend: case 'memory': ... case 'redis': ...` ladder. The only difference is which concrete class is instantiated. Adding a new backend (e.g. sqlite) requires editing both functions in lockstep, and the two reads of `ACHERON_STORE_BACKEND` can diverge if the env var is mutated between the two calls (an unlikely but representable race). The `REDIS_URL` default `redis://localhost:6379` is also duplicated on lines 33 and 50.
-
-**Why it matters.** Two functions that must stay in sync is a classic DRY/maintainability hazard; a contributor adding a backend who updates only one function silently produces a split-brain configuration. Medium because the blast radius of a missed update is a silent state-location mismatch.
-
-**Recommendation.** Unify into a single `create_stores() -> tuple[WorkerStore, JobStore]` (or a `_select_backend()` helper returning both classes) that reads `ACHERON_STORE_BACKEND` and `REDIS_URL` once and constructs both stores from the same selection. Keep the individual factories as thin wrappers if external callers need them, but route them through the unified selector.
-
-**Verification.** `just test` (existing `test_worker_integration.py:163` covers the redis/memory switch); add a test asserting both stores share the same backend for a given `ACHERON_STORE_BACKEND`; `just lint-strict`.
-
-### CFG-002 — Duplicated knowledge: TLS CA env-read logic and hardcoded language set repeated across modules
-
-```yaml
-status: verified
-severity: low
-effort: S
-reviewed_at: 23c29e1
-last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
-fixed_in:
-  - be7b3ab
-files:
-  - path: src/acheron/shell/tls.py
-    lines: 74
-  - path: src/acheron/cli.py
-    lines: 46
-  - path: src/acheron/core/models.py
-    lines: 20
-  - path: src/acheron/shell/local_handlers.py
-    lines: 24-25
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 39-40
-related: [SEC-003]
-```
-
-**Issue.** Two small but distinct duplications recur: (1) The `ACHERON_TLS_CA_FILE or SSL_CERT_FILE` trust-store resolution is implemented in `tls.py:74` (`grpc_channel_credentials`) and re-implemented verbatim in `cli.py:46` (`_resolve_trust_store`). Both read the same two env vars with the same precedence; the addition of `_allow_insecure()` and WARNING logs did not resolve the duplication — both sites independently resolve the CA. (2) The hardcoded language set `{"en", "es", "fr", "de"}` moved from `orchestrator.py` to `local_handlers.py:24-25` during the ARCH-003 extraction, but is still duplicated with `GrpcWorker.capabilities` (grpc.py:39-40).
-
-**Why it matters.** Each duplication is small, but together they are the kind of recurring duplicated knowledge that drifts silently: a contributor adds a language to one site and ships a worker that advertises a different language set than the orchestrator's built-ins. Low because the duplication is localized and easy to spot, but it is a latent drift hazard.
-
-**Recommendation.** Extract the trust-store resolution into a single helper (e.g. `tls.resolve_ca_path() -> str | None`) and call it from both `tls.py` and `cli.py`. Extract the supported-languages set into a shared constant in `core/models.py` (or a `core/constants.py`) and import it in both `local_handlers.py` and `grpc.py`. Prefer making the gRPC worker's languages configurable via `WorkerCapabilities` rather than hardcoded.
-
-**Verification.** `just test`; `just lint-strict`; grep to confirm only one site defines the language set and one site defines the CA resolution order.
-
 ### ARCH-005 — _BUILT_IN_LOCAL_HANDLERS is a module-private name imported cross-module from local_handlers.py
 
 ```yaml
@@ -209,8 +141,8 @@ severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 92ed9da
 files:
@@ -237,8 +169,8 @@ severity: low
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 92ed9da
 files:
@@ -265,8 +197,8 @@ severity: low
 effort: S
 reviewed_at: d0b739b
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 640bb03
 files:
@@ -293,12 +225,14 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 50-82
+    lines: 53-82
+  - path: src/acheron/shell/api/app.py
+    lines: 46-49
 related: [ARCH-006, CFG-004]
 ```
 
@@ -318,8 +252,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
@@ -345,8 +279,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
@@ -366,11 +300,156 @@ related: []
 
 **Verification.** `git grep -n 'class HealthProviders' src/` returns no matches. `just lint-strict`, `just type-check`, `just test` pass. The provider tests still construct a `Mapping[str, HealthProvider]` literal for injection.
 
+### ARCH-011 — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/__init__.py
+    lines: 1-12
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 24
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 21
+related: [CORR-016]
+```
+
+**Issue.** The module docstring states "intentionally GPU-SDK free at import time: importing acheron.worker_sdk does not transitively load runpod (that import lives in `_runpod_client`, which is not part of the public re-exports)." The statement is false. The public re-exports at `__init__.py:10-12` include `from acheron.worker_sdk.cloud import RunPodForwarderHandler, make_runpod_handler` and `cloud.py:24` does `from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult` and `_runpod_client.py:21` does `import runpod` at module top. Any test or downstream consumer that imports `acheron.worker_sdk` (e.g. to use `WorkerHandler`, `Artifact`, `WorkerSettings`, `create_worker_app`) transitively loads the runpod SDK — the dependency the docstring claims is opt-in.
+
+**Why it matters.** Per AGENTS.md, silent/unexpected behavior is worse than no control at all. A contributor who reads the docstring and writes `import acheron.worker_sdk` in a CPU-only test fixture (e.g. an executor unit test that uses a WorkerHandler fake) will get a hard dep on the runpod SDK, and CI will fail in environments where runpod is not installed. The architectural claim is verifiable against the public API surface and the docstring lies about it.
+
+**Recommendation.** Make the public re-exports in `__init__.py` GPU-SDK-free: replace the unconditional `from acheron.worker_sdk.cloud import ...` with a lazy `__getattr__` (PEP 562) that imports cloud only on first attribute access. Alternatively, drop the two `cloud.*` symbols from `__all__` and require callers to do `from acheron.worker_sdk.cloud import RunPodForwarderHandler` explicitly. Either way, fix the docstring so the import-time claim matches the public surface.
+
+**Verification.** `python -c 'import acheron.worker_sdk'` followed by `python -c 'import sys; assert "runpod" not in sys.modules; import acheron.worker_sdk'`. A test asserting `import acheron.worker_sdk; import sys; assert "runpod" not in sys.modules` (with the test using only `WorkerHandler`/`Artifact`/`WorkerSettings`/`create_worker_app` from the SDK) reproduces the current bug. just test + just lint-strict.
+
+### ARCH-012 — `create_worker_app` cherry-picks routes from `EdgeApp.app.routes` via a hardcoded `inner_paths` set
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 87-144
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 119-155
+related: [CORR-015, MAINT-011]
+```
+
+**Issue.** `create_worker_app` (app.py:87-144) constructs an `EdgeApp` (line 101) to get a route source, then builds a *separate* `FastAPI` app (line 135) with its own lifespan, and copies the inner app's routes into the outer app via a hardcoded set: `inner_paths = {"/health", "/capabilities", "/execute"}` (line 139) plus a path-attribute loop (lines 140-143). The inner `EdgeApp.app` instance is otherwise discarded — the docstring on line 137-138 explicitly says "the inner `EdgeApp` is built only as a route source — its lifespan is dead code that this outer `lifespan` supersedes." The construction-then-cherry-pick pattern is structural: if `EdgeApp` adds a route (e.g. `/metrics`, `/readyz`), `create_worker_app` silently drops it; if `EdgeApp` renames a route, the hardcoded set carries a dead entry.
+
+**Why it matters.** The pattern is brittle: two FastAPI app instances with one lifespan, and a string-typed route filter that the type system cannot keep in sync with the inner app's route table. A future maintainer adding a route to `EdgeApp` will not realise the `create_worker_app` surface is narrower, and a route-rename will silently fail at request time. The duplicated docstring on lines 93-97 and 98 (`"""Build the edge FastAPI app wired with registration + price refresh."""` twice) is a tell that the body has accreted without consolidation.
+
+**Recommendation.** Refactor `create_worker_app` to delegate route construction to a single `EdgeApp` (or equivalent) and have it expose the price-refresh + registration wiring as hooks/middleware. The simplest path: add a `lifespan=` parameter or a `register_health_check=` hook to `EdgeApp`, build the lifespan inline in `EdgeApp.__init__` accepting a registration hook, and have `create_worker_app` return `EdgeApp.app` directly. Drop the `inner_paths` filter and the dead lifespan in `EdgeApp`.
+
+**Verification.** just test (the existing tests for /health, /capabilities, /execute on the edge app continue to pass); add a test that registers a new `EdgeApp` route (e.g. a stub `/metrics`) and asserts `create_worker_app` exposes it; just lint-strict; just type-check. The duplicate docstring on app.py:98 should also be removed as part of the refactor.
+
+### ARCH-013 — `transports/grpc.py` and `transports/http.py` both duplicate the `data_dir` env-var fallback to `ACHERON_DATA_DIR`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 42-53
+  - path: src/acheron/shell/transports/http.py
+    lines: 44-55
+related: [CFG-006]
+```
+
+**Issue.** Both transports now accept a `data_dir: Path | str | None = None` constructor arg and, when None, default it from `os.environ.get('ACHERON_DATA_DIR', '/data/jobs')` (grpc.py:52, http.py:54). The new `src/acheron/shell/transports/_multipart.py` correctly extracted the shared artifact-materialization logic, but the `data_dir` env-var fallback is duplicated verbatim. The hardcoded default path `/data/jobs` and the env-var name now live in two files in lockstep — adding a new transport (e.g. an S3-backed worker) would require a third copy of the same three lines.
+
+**Why it matters.** Same DRY hazard as the original CFG-001 finding for `create_worker_store` / `create_job_store`: two functions must stay in sync. A contributor who adds a new default path or renames the env var must update both transports. The transports are also the wrong layer to read env vars — the orchestrator owns the data_dir configuration, and the transports should accept it as an explicit dependency from the orchestrator's Settings. AGENTS.md's "strict domain separation" rule argues for moving the env-var read to the settings loader (see CFG-006) and making `data_dir` a required transport constructor arg.
+
+**Recommendation.** Either (a) make `data_dir` a required positional arg on both transports and have the orchestrator pass `settings.orchestrator.data_dir`; or (b) move the env-var fallback to a single helper (e.g. `transports._paths.default_data_dir() -> Path`) and call it from both. Option (a) is the smaller change and the cleaner separation.
+
+**Verification.** just test; grep -n 'ACHERON_DATA_DIR' src/acheron/shell/transports/ to confirm only one site reads the env var; just lint-strict; just type-check.
+
 ## CFG — Configuration
 
 **Grade:** B
 
-CFG-001 and CFG-002 remain verified. Three new CFG findings from the Layer 10/11 config rework: CFG-003 (a new env var read outside the loader, breaking the new settings system), CFG-004 (in-place mutation of `Settings.orchestrator.data_dir` from two call sites), CFG-005 (silent substitution of unset env vars — cross-listed with CORR-010 because the same line in `config.py` is the root cause).
+CFG-001, CFG-002 remain verified. CFG-003, CFG-004, CFG-005 remain open and re-resolved at slightly shifted line numbers. Two new CFG findings: CFG-006 (medium) — five more env-var reads outside the settings loaders in the new transport and worker_sdk code, on top of the four sites already flagged; CFG-007 (medium) — `WorkerSettings.model_id` and `WorkerSettings.output_mode` are config knobs that don't actually control anything.
+
+### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
+
+```yaml
+status: verified
+severity: medium
+effort: S
+reviewed_at: 23c29e1
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in:
+  - f5ce538072b568c9ef47ce53f2ef5e2f3d262ceb
+files:
+  - path: src/acheron/shell/stores/__init__.py
+    lines: 39-53
+  - path: src/acheron/shell/stores/__init__.py
+    lines: 39-53
+related: [ARCH-002]
+```
+
+**Issue.** `create_worker_store()` (17-37) and `create_job_store()` (39-53) each independently read `ACHERON_STORE_BACKEND` and `REDIS_URL` and run an identical `match backend: case 'memory': ... case 'redis': ...` ladder. The only difference is which concrete class is instantiated. Adding a new backend (e.g. sqlite) requires editing both functions in lockstep, and the two reads of `ACHERON_STORE_BACKEND` can diverge if the env var is mutated between the two calls (an unlikely but representable race). The `REDIS_URL` default `redis://localhost:6379` is also duplicated on lines 33 and 50.
+
+**Why it matters.** Two functions that must stay in sync is a classic DRY/maintainability hazard; a contributor adding a backend who updates only one function silently produces a split-brain configuration. Medium because the blast radius of a missed update is a silent state-location mismatch.
+
+**Recommendation.** Unify into a single `create_stores() -> tuple[WorkerStore, JobStore]` (or a `_select_backend()` helper returning both classes) that reads `ACHERON_STORE_BACKEND` and `REDIS_URL` once and constructs both stores from the same selection. Keep the individual factories as thin wrappers if external callers need them, but route them through the unified selector.
+
+**Verification.** `just test` (existing `test_worker_integration.py:163` covers the redis/memory switch); add a test asserting both stores share the same backend for a given `ACHERON_STORE_BACKEND`; `just lint-strict`.
+
+### CFG-002 — Duplicated knowledge: TLS CA env-read logic and hardcoded language set repeated across modules
+
+```yaml
+status: verified
+severity: low
+effort: S
+reviewed_at: 23c29e1
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in:
+  - be7b3ab
+files:
+  - path: src/acheron/shell/tls.py
+    lines: 74
+  - path: src/acheron/cli.py
+    lines: 46
+  - path: src/acheron/core/models.py
+    lines: 20
+  - path: src/acheron/shell/local_handlers.py
+    lines: 24-25
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 39-40
+related: [SEC-003]
+```
+
+**Issue.** Two small but distinct duplications recur: (1) The `ACHERON_TLS_CA_FILE or SSL_CERT_FILE` trust-store resolution is implemented in `tls.py:74` (`grpc_channel_credentials`) and re-implemented verbatim in `cli.py:46` (`_resolve_trust_store`). Both read the same two env vars with the same precedence; the addition of `_allow_insecure()` and WARNING logs did not resolve the duplication — both sites independently resolve the CA. (2) The hardcoded language set `{"en", "es", "fr", "de"}` moved from `orchestrator.py` to `local_handlers.py:24-25` during the ARCH-003 extraction, but is still duplicated with `GrpcWorker.capabilities` (grpc.py:39-40).
+
+**Why it matters.** Each duplication is small, but together they are the kind of recurring duplicated knowledge that drifts silently: a contributor adds a language to one site and ships a worker that advertises a different language set than the orchestrator's built-ins. Low because the duplication is localized and easy to spot, but it is a latent drift hazard.
+
+**Recommendation.** Extract the trust-store resolution into a single helper (e.g. `tls.resolve_ca_path() -> str | None`) and call it from both `tls.py` and `cli.py`. Extract the supported-languages set into a shared constant in `core/models.py` (or a `core/constants.py`) and import it in both `local_handlers.py` and `grpc.py`. Prefer making the gRPC worker's languages configurable via `WorkerCapabilities` rather than hardcoded.
+
+**Verification.** `just test`; `just lint-strict`; grep to confirm only one site defines the language set and one site defines the CA resolution order.
 
 ### CFG-003 — `ACHERON_OPEN_REGISTRATION` read directly in deps.py, bypassing the new settings loader
 
@@ -380,15 +459,15 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/api/deps.py
     lines: 33
   - path: src/acheron/shell/config.py
     lines: 111-130
-related: []
+related: [CFG-006]
 ```
 
 **Issue.** The new `Settings`/`load_settings` system (config.py:111-130) introduces pydantic-settings with `env_prefix='ACHERON_'` and `env_nested_delimiter='__'`, plus a custom `_EnvAliasSettingsSource` that maps `ACHERON_DATA_DIR` and `ACHERON_REGISTRATION_TOKEN` onto their nested keys. `ACHERON_OPEN_REGISTRATION` (a new env var documented in README.md and acheron.yaml.example) is read directly in `verify_registration_token` via `os.environ.get('ACHERON_OPEN_REGISTRATION') == '1'` (deps.py:33) — outside the loader. Other env-var reads (`ACHERON_URL`, `ACHERON_TLS_*`, `ACHERON_STORE_BACKEND`, `REDIS_URL`) are also outside the loader, but they predate this diff; `ACHERON_OPEN_REGISTRATION` is new and joins the sprawl pattern that the same diff is trying to fix for other vars.
@@ -407,15 +486,15 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 63-68
   - path: src/acheron/shell/api/app.py
     lines: 46-49
-related: [ARCH-008]
+related: [ARCH-008, CFG-006]
 ```
 
 **Issue.** AGENTS.md requires a strict YAML-vs-core dataclass split: YAML shapes are user-authored, core dataclasses are algorithm inputs. The new `Settings` model (config.py) is the YAML/algorithm-input shape. `Orchestrator.__init__` (orchestrator.py:63-68) does:
@@ -442,17 +521,17 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/config.py
     lines: 15-26
   - path: acheron.yaml.example
-    lines: 47-52
+    lines: 47-53
   - path: src/acheron/shell/health_providers.py
-    lines: 110-114
-related: [CORR-010, CORR-011]
+    lines: 108-114
+related: [CORR-010, CORR-011, CFG-006]
 ```
 
 **Issue.** `_expand_env_vars` (config.py:15-26) does `_ENV_VAR_PATTERN.sub(lambda m: os.environ.get(m.group(1), ''), value)`. An unset env var becomes the empty string. The example YAML uses this for `api_key: "${RUNPOD_API_KEY}"` and `api_key: "${HF_API_KEY}"` (acheron.yaml.example:47-52). `create_health_providers` (health_providers.py:110-114) checks `if settings.providers.<name>.api_key:`, so an empty string is falsy and the provider is silently dropped. AGENTS.md flags this pattern explicitly: "silent/unexpected behavior is worse than no control at all."
@@ -462,3 +541,69 @@ related: [CORR-010, CORR-011]
 **Recommendation.** Make the expansion distinguish "referenced but missing" from "no reference". Either raise a `ConfigError` (or log a WARNING) at load time for each referenced-but-unset var, naming both the YAML key path and the missing env var; or keep the empty-string fallback but log a WARNING at load time for each miss. Either way, the `create_health_providers` factory should not silently filter on falsy `api_key`: change it to `if settings.providers.<name>.api_key is not None` and let the empty-string case blow up where it should.
 
 **Verification.** Load a YAML with `api_key: "${RUNPOD_API_KEY}"` against an empty environment and assert a clear error (or WARNING log entry) naming `RUNPOD_API_KEY`. `grep -n 'os.environ.get(m.group' src/acheron/shell/config.py` shows the loader no longer silently defaults to `''`.
+
+### CFG-006 — Env vars read outside the project's settings loaders — 5 new sites in transports and worker_sdk
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/grpc.py
+    lines: 52
+  - path: src/acheron/shell/transports/http.py
+    lines: 54
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 45-51
+  - path: src/acheron/worker_sdk/app.py
+    lines: 57
+  - path: src/acheron/worker_sdk/cli.py
+    lines: 72
+related: [CFG-003, CFG-004, CFG-005, ARCH-013]
+```
+
+**Issue.** Five env-var reads sit outside the project's settings loaders, perpetuating the sprawl pattern that CFG-003, CFG-004, and CFG-005 already flag. (1) `grpc.py:52` reads `ACHERON_DATA_DIR` (the same env var the new `Settings` loader maps to `orchestrator.data_dir` via `_EnvAliasSettingsSource`). (2) `http.py:54` reads the same env var. (3) `_runpod_client.py:45` reads `ACHERON_WORKER__RUNPOD_BASE_URL` — the `WorkerSettings` env prefix is `ACHERON_WORKER__` and `extra="forbid"` means the field is invisible to `WorkerSettings`, so the SDK reaches around its own settings system. (4) `app.py:57` reads `WORKER_HOST` outside any settings namespace. (5) `cli.py:72` reads `ACHERON_WORKER__LOG_LEVEL` outside `WorkerSettings` (`extra=forbid` again). The same antipattern recurs in both the orchestrator and the worker_sdk: env vars read in the deep implementation, with no single source of truth for what is configurable and how.
+
+**Why it matters.** Each site individually looks like a one-line convenience, but the cumulative effect is that the `Settings` model in `config.py` and the `WorkerSettings` model in `worker_sdk/settings.py` are not the authoritative config schema — they are partial overlays over a sprawl of `os.environ.get` calls. A future operator who sets `ACHERON_DATA_DIR` from the loader will be surprised when the gRPC transport also reads it. AGENTS.md flags this: "silent/unexpected behavior is worse than no control at all." A test that toggles `ACHERON_DATA_DIR` for the orchestrator will not affect the transport's effective data dir (or vice versa).
+
+**Recommendation.** Add the missing fields to the appropriate settings model: `orchestrator.data_dir` already exists — change the transports to require `data_dir` (see ARCH-013) and let the orchestrator pass it. Add `worker_sdk_base_url: str | None = None` (or similar) to `WorkerSettings` for the runpod test seam, and set `extra="ignore"` instead of `extra="forbid"` for fields that must remain env-only. Add `worker_host: str | None = None` and `log_level: str = "INFO"` to `WorkerSettings` and remove the direct env reads. Then a single `Settings(...)` / `WorkerSettings(...)` call yields the full configuration surface.
+
+**Verification.** `just type-check` (the stricter types propagate); `just test`; `grep -n 'os.environ.get' src/acheron/` confirms only the settings loaders read env vars. A test asserting `Settings(ACHERON_DATA_DIR='/foo')` and `WorkerSettings(..., ACHERON_WORKER__LOG_LEVEL='DEBUG')` produce the expected `data_dir` and `log_level` from a single call site.
+
+### CFG-007 — `WorkerSettings.model_id` and `WorkerSettings.output_mode` are config knobs that don't actually control anything
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 50-51, 62-63
+  - path: workers/qwen3tts/worker.yaml
+    lines: 35
+  - path: workers/qwen3tts/worker.edge.yaml
+    lines: 17
+  - path: src/acheron/worker_sdk/cli.py
+    lines: 30-75
+  - path: workers/qwen3tts/handler.py
+    lines: 52
+related: []
+```
+
+**Issue.** Two new `WorkerSettings` fields are configured but never consumed. (1) `model_id: str | None = None` (settings.py:62) is set in both `workers/qwen3tts/worker.yaml:35` and `workers/qwen3tts/worker.edge.yaml:17`, but `grep -rn '\.model_id' src/ workers/` returns zero matches — no code path reads it. The qwen3tts handler hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` (handler.py:52) and uses that constant directly in `capabilities()` and `startup()`. (2) `output_mode: Literal["multipart", "volume"] = "multipart"` (settings.py:50) is validated in the `_validate_composite` after-validator (settings.py:116-117) to require `output_volume_dir` when `output_mode == "volume"`, but no code consumes the field: `_edge_http.py` always emits `multipart/mixed` (lines 96-117), and `cli.py` does not branch on `output_mode` either. The edge-side `worker.edge.yaml:24-25` even says "Edge transport is always HTTP multipart; the edge never writes to a shared volume." AGENTS.md explicitly calls this out: "config knobs that don't actually control anything" and "silent/unexpected behavior is worse than no control at all."
+
+**Why it matters.** An operator who reads `output_mode: volume` in `worker.yaml` and expects volume delivery will get multipart silently. An operator who edits `model_id` in `worker.yaml` to point at a different Qwen3-TTS revision will get the hard-coded model instead. Both knobs create a documentation-via-runtime-error contract: the YAML says one thing, the code does another. The `output_mode` validation does not even fire (the edge container is always multipart), so a misconfigured `worker.yaml` will not fail loud at boot.
+
+**Recommendation.** Either (a) implement the controls: read `settings.model_id` in the qwen3tts handler instead of the hard-coded `_MODEL_ID`, and branch the `_edge_http.py` execute() path on `settings.output_mode` (multipart for the edge, volume for the volume stub); or (b) drop the fields from `WorkerSettings` and the YAML files until the corresponding behavior is implemented. Per AGENTS.md's greenfield rule, do not keep a named knob that silently behaves like another. Option (b) is the smaller change for now.
+
+**Verification.** `just test`; `grep -rn 'model_id\|output_mode' src/ workers/` to confirm only one site defines each and one site consumes it; `just lint-strict`; `just type-check`.

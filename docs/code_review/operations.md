@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 63faed4
+last_updated_commit: dbec2be
 last_staleness_scan:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 ---
 
 # Operations
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-PERF-001, PERF-002, PERF-003 remain verified. Two new medium PERF findings from Layer 11: PERF-004 (post-probe bookkeeping in `_check_all` is serial even though the probes are concurrent), PERF-005 (provider status checks in `_handle_failure` are serial and can starve the health interval).
+PERF-001, PERF-002, PERF-003 remain verified. PERF-004, PERF-005 remain open and kept (code unchanged since 63faed4). Two new PERF findings: PERF-006 (medium) — edge `/execute` buffers entire multipart body in memory with O(n²) append for `FileArtifact` streams; PERF-007 (medium) — per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse).
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
@@ -23,8 +23,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 0818bff23e451bdf61f183079d72e546c56e09a6
 files:
@@ -49,8 +49,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - c8066e7
 files:
@@ -77,8 +77,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - c8066e7
 files:
@@ -107,8 +107,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -132,8 +132,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -149,11 +149,65 @@ related: [PERF-004]
 
 **Verification.** Register 5 workers all pointing at a fake provider endpoint that sleeps 10s before responding. Measure the time `_check_all` spends in failure handling: must be <5s (gathered) rather than >50s (serial). Add a regression test using a fake provider with controllable latency.
 
+### PERF-006 — Edge `/execute` buffers entire multipart body in memory; O(n²) append for FileArtifact streams
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 83-116
+related: [CORR-017]
+```
+
+**Issue.** `_build_multipart_response` (lines 96-112) accumulates each artifact's body with `body_data = b""; ... body_data += chunk` and then concatenates every part with `b"".join(parts)`. For `FileArtifact` (artifacts.py:71-77) the stream yields 64 KiB chunks, so a 100 MiB chapter audio produces ~1600 chunks; each `bytes += bytes` allocates a fresh bytes object, giving O(n²) total allocation (~80 GiB of transient allocation for a 100 MiB artifact). The final `b"".join(parts)` then materialises the entire response in memory regardless of artifact size. For a batch inference of N chapters through the edge, the peak memory is the full response, and the orchestrator will read the same body in `HttpWorker._parse_multipart` (transports/http.py:96-98) — so the bytes are written to and read from RAM twice per `/execute`.
+
+**Why it matters.** A 100 MiB chapter is plausible for a long-form TTS job (e.g., 90-minute audiobook chapter at 24 kHz mono PCM). The current shape will cause multi-hundred-MiB peak RSS on the edge container, which combined with the 1800 s execution timeout (settings.py:48) is a stability risk for back-to-back large jobs. Latent for the stub handlers (which emit ~10 KiB WAVs) but always present in the code path.
+
+**Recommendation.** Replace the `body_data += chunk` pattern with `chunks: list[bytes] = []; async for chunk in a.stream(): chunks.append(chunk); body_data = b"".join(chunks)` — or stream the response body directly using a FastAPI `StreamingResponse` that yields header + body chunks in order. `StreamingResponse` also lets the orchestrator parser consume parts without holding the whole body in memory.
+
+**Verification.** Add a unit test using a `StreamArtifact` whose producer yields 1000 x 1 MiB chunks; assert the peak RSS during `_build_multipart_response` stays under (total_size + 2 MiB), and that the resulting body is byte-identical to the eager form. Alternatively, mock `sys.allocated_blocks` before/after and assert allocations do not scale as O(n²).
+
+### PERF-007 — Per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 44-52
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 125-147
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 195-211
+related: []
+```
+
+**Issue.** Three hot paths construct a fresh `httpx.AsyncClient` on every call: (a) `HealthMonitor` probes go through `_check_http_health` (health.py:46) which opens a new client per worker, every 30 s; (b) `RunPodPrice.refresh` (pricing.py:131) opens a new client per refresh; (c) `RunPodPrice.estimate` (pricing.py:201) opens a new client per estimate when the cache is stale. PERF-001 fixed the probe parallelism but the per-probe client construction is still in the path. For a 20-worker fleet with a 1ms-RTT upstream, the 20 probe clients (each doing TCP+TLS+HTTP/2 setup) dominate the sweep time after the per-probe parallelism is applied.
+
+**Why it matters.** `httpx.AsyncClient` without explicit lifecycle re-uses the underlying httpcore connection pool across requests, but only WITHIN a single `AsyncClient` instance. Opening a new `AsyncClient` per call defeats keep-alive and forces fresh TCP+TLS handshakes on every request. For health probes that fire every 30s this is a constant low-grade tax; for `RunPodPrice` (called per `/execute`) it adds a full handshake to every job.
+
+**Recommendation.** In health.py, store a single `httpx.AsyncClient` on the `HealthMonitor` instance (lazy-init in `start()`, close in `stop()`). In pricing.py, construct a single `AsyncClient` in `RunPodPrice.__init__` and reuse it; close it on a shutdown hook. Alternatively, accept a `client=` parameter in the constructors (DI seam) so tests can inject fakes and production can pin lifecycle.
+
+**Verification.** Wrap the `AsyncClient` ctor in a counter; run a health sweep against 20 fake workers and a price refresh loop calling `estimate()` 20 times; assert the counter increments by 1 (one per process), not 20. Add a regression test that asserts the same client is reused across probes via a mock that records connection setup.
+
 ## OBS — Observability
 
 **Grade:** B
 
-OBS-001 (shutdown drain) and OBS-003 (structured logging) remain open. OBS-002 and OBS-004 remain verified. One new medium OBS finding: OBS-005 — health providers swallow `(httpx.HTTPError, OSError)` exceptions silently with no diagnostic log, masking configuration mistakes like an unset `${HF_API_KEY}`.
+OBS-001 (medium) and OBS-003 (low) remain open and kept (code unchanged since 63faed4). OBS-002 and OBS-004 remain verified. OBS-005 (medium) remains open. Three new OBS findings: OBS-006 (medium) — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line; OBS-007 (medium) — edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network; OBS-008 (low) — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown.
 
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
@@ -163,8 +217,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -192,8 +246,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - be7b3ab
 files:
@@ -218,8 +272,8 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -233,7 +287,7 @@ files:
 related: []
 ```
 
-**Issue.** All logging uses free-form `%s` format strings (e.g. `orchestrator.py:230-237`). There is no structured/JSON logging and no correlation token beyond job_id appearing inside message text. The Layer 11 diff adds more free-form `logger.warning`/`logger.info` calls in `health.py` and `orchestrator.py`, not structured. In a distributed system with concurrent jobs, workers, and health checks, correlating a failure across orchestrator→transport→worker requires grepping free-text rather than filtering on fields.
+**Issue.** All logging uses free-form `%s` format strings (e.g. `orchestrator.py:230-237`). There is no structured/JSON logging and no correlation token beyond job_id appearing inside message text. The Layer 11 diff adds more free-form `logger.warning`/`logger.info` calls in `health.py` and `orchestrator.py`, not structured. The new worker_sdk adds only free-form `%s` logging (registration.py:71, 74; _edge_http.py:164; app.py:36, 48, 123) — consistent with the existing convention, not an improvement. In a distributed system with concurrent jobs, workers, and health checks, correlating a failure across orchestrator→transport→worker requires grepping free-text rather than filtering on fields.
 
 **Why it matters.** Free-form logs are harder to query and aggregate in prod log systems and lack stable field names for job_id/worker_id/step_id/trace_id, weakening cross-component traceability. Low severity: a consistency/observability gap, not a functional failure.
 
@@ -249,8 +303,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 92ed9da
 files:
@@ -275,8 +329,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
@@ -294,11 +348,90 @@ related: [CORR-010, EXC-003]
 
 **Verification.** Configure `providers.huggingface.api_key: "${HF_API_KEY}"` and leave the env var unset: orchestrator startup should log a warning naming the missing provider. Set a deliberately wrong `HF_API_KEY` and force a worker to enter the failure path: assert the log line includes the HTTP 401/403 status and the provider name.
 
+### OBS-006 — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 75-93
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 131-147
+related: [CORR-014]
+```
+
+**Issue.** `RunPodClient.run` (pricing/_runpod_client.py:75-93) wraps endpoint construction in `asyncio.to_thread(_open_endpoint, ...)` with no try/except — failures (typo'd endpoint id, missing permissions, expired API key) bubble out as raw runpod SDK exceptions with no log line. `RunPodPrice._refresh_rate` (pricing.py:131-147) catches the union `(httpx.HTTPError, OSError, KeyError, ValueError, TypeError)` and returns False with no log; the same anti-pattern flagged in OBS-005 is now repeated in the new pricing module. Combined with the security impact in SEC-013 (API key as URL param), an operator seeing static $0 estimates has no log evidence to diagnose whether the rate endpoint rejected the key, rate-limited, or the GPU type simply isn't in the cache.
+
+**Why it matters.** Pricing is best-effort (`_refresh_rate` returns False → cost_basis=CACHED), but a permanently broken rate lookup silently degrades billing accuracy. The pricing module deliberately trades correctness for availability, which is fine — but the absence of a single log line on the failure means the operator never knows the cache is stale forever. Violates the same convention OBS-005 flagged in health_providers.
+
+**Recommendation.** In `RunPodPrice._refresh_rate`, log a structured warning naming the `endpoint_id`, the exception class, and the HTTP status (if applicable) before returning False. In `RunPodClient.run`, wrap the `to_thread` calls with a try/except that logs the exception context (`endpoint_id`, timeout, payload size) and re-raises as a `WorkerError` with a sanitized message — keeping the raw exception in `logger.exception(...)` only.
+
+**Verification.** Point `RunPodPrice` at a fake GraphQL endpoint returning 401 once, then 200; assert exactly one warning log line per failed refresh, naming `endpoint_id` and the HTTP status. For `RunPodClient`, mock `endpoint.run()` to raise a runpod exception; assert the exception is logged with the `endpoint_id` and is re-raised as `WorkerError`.
+
+### OBS-007 — Edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network (8004:8001)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 151-194
+  - path: docker-compose.yml
+    lines: 166-198
+related: [SEC-005, SEC-014]
+```
+
+**Issue.** The edge container's POST `/execute` handler (`_edge_http.py:151-194`) has no auth dependency — the only auth in the SDK flow is the registration token on POST `/workers`. `docker-compose.yml:170-171` maps 8004:8001, so any process on the host (or anyone able to reach the host on port 8004) can call `/execute` directly, bypassing the orchestrator's job-submission path. `/execute` accepts an arbitrary `ExecuteRequest` with any job_id and any payload, so a host-side attacker can: (a) consume the edge's RunPod credits by submitting fabricated jobs, (b) probe for the RunPod endpoint to learn the endpoint_id via the timing/exception response, (c) use the edge as a free proxy to the RunPod serverless endpoint with their own payloads. This compounds SEC-005 (orchestrator job routes are also unauthenticated).
+
+**Why it matters.** The assumption is that the edge is on a trusted internal network, but the compose file maps the port to the host, breaking that assumption. The `/execute` endpoint is the entire cost-bearing surface of the RunPod edge — a single host-level access yields a billable surface. The single-job pricing already exposes RunPod endpoint_id in the error response (see SEC-012), so an attacker who can reach `/execute` can correlate errors with endpoint_id.
+
+**Recommendation.** Either (a) require an `Authorization: Bearer <registration_token>` dependency on `/execute` that mirrors the orchestrator's `verify_registration_token`, and gate the port to `expose:` instead of `ports:` in compose so it is not host-reachable; or (b) drop the `ports:` mapping in `docker-compose.yml` and document that the edge must be on an internal-only Docker network. Apply the same check to all stub services that use `create_worker_app`.
+
+**Verification.** From the host, `curl -X POST http://localhost:8004/execute -d '{...}'` should be rejected (401/403). For (a), assert the `Authorization` header is required and that a missing header produces 401. Update compose to `expose: [8001]` and re-run the curl from the host — it should fail with a connection refused.
+
+### OBS-008 — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 115-133
+related: [EXC-004]
+```
+
+**Issue.** The outer lifespan in `create_worker_app` (app.py:115-133) wraps `await price_source.refresh()` in `except BaseException: ... logger.warning(...)`. The `# noqa: BLE001` annotation marks the broad catch, but a `BaseException` handler swallows `CancelledError`, `KeyboardInterrupt`, `SystemExit`, and `asyncio.InvalidStateError` in addition to legitimate exceptions. During container shutdown the orchestrator's signal handler cancels the lifespan task; the cancellation passes through the price refresh, hits the `BaseException` handler, and the worker logs a misleading `Price refresh raised at startup; worker will register anyway` warning. Registration then runs (the registration retry loop is not in this try block, so it is not actually affected), but the operator sees a spurious 'price refresh raised' warning on every clean shutdown. The same `BaseException`-catch pattern in `_edge_http._run_execute` (line 162) is intentional (to return a JSON failure to the orchestrator) but is also brittle — a `CancelledError` that arrives between the start time and the `except BaseException` will be converted to a 500 response instead of propagating, masking shutdown.
+
+**Why it matters.** Violates the OBS convention flagged in the existing review: broad-catch handlers produce misleading log lines. The container lifecycle is small enough that this isn't critical, but the pattern is reusable: a future /execute handler that copies this shape will inherit the same shutdown-misdiagnosing behavior.
+
+**Recommendation.** In `app.py:122`, narrow the except to `(Exception,)` (or specific exception types RunPodPrice declares). Remove the BLE001 noqa. For `_edge_http.py:162`, keep the broad catch but explicitly re-raise `asyncio.CancelledError` and `KeyboardInterrupt` to let shutdown propagate: `except (asyncio.CancelledError, KeyboardInterrupt): raise` followed by `except BaseException as exc:` for everything else.
+
+**Verification.** Send SIGTERM to the edge container while a price refresh is in flight; assert no `Price refresh raised at startup` warning is logged on a clean shutdown. Add a test that cancels the lifespan task mid-refresh and asserts the CancelledError propagates and the registration retry does not run.
+
 ## SEC — Security
 
 **Grade:** C
 
-SEC-001 through SEC-004 remain verified. SEC-005, SEC-006, SEC-007 remain open. **One new critical finding: SEC-008 — the auto-generated registration token is logged in plaintext at startup, partially undoing the SEC-002 mitigation.** One new high finding: SEC-009 — the registration token file is written without an explicit `chmod 0o600` (the same anti-pattern that SEC-001 flagged for CA private keys). One new low finding: SEC-010 — the new `last_error` field on `/workers` is exposed via the unauthenticated endpoint and embeds internal exception detail.
+SEC-001 through SEC-004 remain verified. SEC-005, SEC-006, SEC-007, SEC-008, SEC-009, SEC-010 remain open and re-confirmed (no code change since 63faed4). Five new SEC findings: SEC-011 (high) — `ACHERON_REGISTRATION_TOKEN` defaults to publicly-known `dev-registration-token` in compose and `.env.example`; SEC-012 (low) — edge `/execute` returns raw `str(exc)` in 500 body, exposing internal exception detail to the orchestrator; SEC-013 (medium) — `RunPodPrice` sends API key as URL query parameter instead of Authorization header; SEC-014 (medium) — `worker.edge.yaml` default `orchestrator_url` is HTTP, so registration token is sent in cleartext when env var is not overridden; SEC-015 (low) — all Docker images run as root with no `USER` directive.
 
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
@@ -308,8 +441,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 37245dd35f66457458e35dbb724267d3015b797c
 files:
@@ -334,8 +467,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 5821b13759c2299583a7e056aba9f96232d2e92b
 files:
@@ -360,8 +493,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 0b78d49416a703dbc6f3d5de723d3fb196b89380
 files:
@@ -388,8 +521,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - be7b3ab
 files:
@@ -414,15 +547,15 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 20-69
   - path: src/acheron/shell/api/routes/capabilities.py
     lines: 13-23
-related: []
+related: [OBS-007]
 ```
 
 **Issue.** Only the worker-registration route injects `RegistrationTokenDep` (workers.py:22). Job submission (jobs.py:21), job listing (jobs.py:66), get_job, and capabilities (capabilities.py:14) have no auth dependency at all, so any network-reachable client can submit jobs (consuming worker resources/cost) and enumerate worker endpoints. The `X-Forwarded-User` pattern in the dashboard suggests an upstream proxy is assumed to handle auth, but that assumption is undocumented.
@@ -441,13 +574,13 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 319-345
-related: [OBS-004, SEC-010]
+related: [OBS-004, SEC-010, SEC-012]
 ```
 
 **Issue.** The OBS-004 fix persists raw `str(exc)` from the top-level `except Exception` handler directly into `tracked.result.errors`. Unexpected exceptions may contain worker endpoints, file paths, library internals, or other implementation details that are now returned by `GET /jobs/{id}`.
@@ -466,8 +599,8 @@ severity: high
 effort: M
 reviewed_at: d9dc740
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/local_handlers.py
@@ -491,13 +624,13 @@ severity: critical
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 192
-related: [SEC-002, MAINT-006]
+related: [SEC-002, MAINT-006, SEC-009, SEC-011]
 ```
 
 **Issue.** `Orchestrator.start()` generates a 32-char token via `secrets.token_hex(16)` (orchestrator.py:188) and immediately emits it to the logger at INFO level: `logger.info("Generated and persisted registration token: %s", token)` (orchestrator.py:192). Any operator, log shipper, or downstream aggregation system (Datadog, Loki, journald, etc.) that ingests orchestrator logs now holds a valid bearer token for the worker-registration route. Because the verification path in `verify_registration_token` (deps.py:48) accepts any client that presents this token, an attacker with log access can register an arbitrary `endpoint` and receive job payloads (EPUB chapters, audio, intermediate artifacts) — the same exposure profile that SEC-002 mitigates is now undermined by the auto-generation feature designed to replace the default token.
@@ -516,13 +649,13 @@ severity: high
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 178-194
-related: [SEC-001, SEC-008]
+related: [SEC-001, SEC-008, SEC-011]
 ```
 
 **Issue.** `Orchestrator.start()` writes the generated (or re-loaded) registration token via `token_file.write_text(token, encoding="utf-8")` (orchestrator.py:191) without setting a restrictive mode. The token file is then re-loaded from disk on every subsequent start (orchestrator.py:179-185) and grants bearer access to the worker-registration route. On a default umask of 022 the file is created world-readable (0o644); even on a typical 002 umask the file is group-readable. This is the same anti-pattern that SEC-001 flagged for CA private keys and is explicitly contradicted by the `OSError` write test fixture used in `tests/shell/test_orchestrator.py:419-439`, which never asserts file mode.
@@ -541,8 +674,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/workers.py
@@ -560,3 +693,135 @@ related: [SEC-005, SEC-006, OBS-005]
 
 **Verification.** Register a worker with `endpoint=http://10.0.5.7:8443`, force a failure, then `curl /workers | jq '.workers[].last_error'` and confirm no IP, port, or DNS detail appears. If a sanitized form is chosen, assert the value matches one of the documented buckets.
 
+### SEC-011 — `ACHERON_REGISTRATION_TOKEN` defaults to publicly-known `dev-registration-token` in compose and `.env.example`
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: docker-compose.yml
+    lines: 35, 95, 175
+  - path: .env.example
+    lines: 7
+related: [SEC-008, SEC-009, DOC-003]
+```
+
+**Issue.** `docker-compose.yml` hardcodes `${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` for orchestrator (line 35) and the worker-side `ACHERON_WORKER__REGISTRATION_TOKEN` (line 175) — if the operator forgets to set `ACHERON_REGISTRATION_TOKEN` in their `.env` (a common mistake on first `docker compose up`), the system falls back to the literal string `dev-registration-token`, which is also in `.env.example` (line 7) and therefore a publicly known value. Any attacker who has read the `.env.example` or the compose file (both committed to the repo) can present `Authorization: Bearer dev-registration-token` to POST `/workers` and register a malicious worker endpoint that will receive every job payload. SEC-002 fixed the fail-open case where the env var is unset in the orchestrator, but the dev default slips a known token through the otherwise-closed check.
+
+**Why it matters.** The security model relies on the registration token being a secret. A documented default in a public file is functionally equivalent to no auth for the deployment footgun it causes. The default does not just bypass auth on misconfiguration; it forces every naive `cp .env.example .env` deployment to ship with a public-secret worker registration. This is the kind of pattern CVEs are filed against.
+
+**Recommendation.** Remove the `:-dev-registration-token` fallback in `docker-compose.yml` so the env var is required; make `.env.example` document the variable with a placeholder like `ACHERON_REGISTRATION_TOKEN=` (empty) and a comment instructing the operator to generate one with `openssl rand -hex 32`. Update the orchestrator's startup to fail closed if the env var is the empty string (currently it only fails closed when unset). Add a CI / startup check that refuses to boot if the token equals `dev-registration-token` or is shorter than 32 chars.
+
+**Verification.** Run `docker compose up` with no `.env` file; assert the orchestrator logs a `ACHERON_REGISTRATION_TOKEN must be set` error and exits non-zero. Run with `ACHERON_REGISTRATION_TOKEN=dev-registration-token`; assert the same refusal. Run with a freshly generated 32-char token; assert registration succeeds.
+
+### SEC-012 — Edge `/execute` returns raw `str(exc)` in 500 body, exposing internal exception detail to the orchestrator (extension of SEC-006)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 157-178
+related: [SEC-006, OBS-007]
+```
+
+**Issue.** `_run_execute` (lines 162-178) catches `BaseException` from `self.handler.handle(job)` and returns a JSON body of `JobResult(job_id=..., status=FAILED, error=str(exc), ...)`. The orchestrator's `HttpWorker._request` (transports/http.py:70-73) catches `httpx.HTTPStatusError`, embeds `exc.response.text` into a `WorkerError`, and the orchestrator's `_execute` (orchestrator.py:332-344) puts that into `PlanResult.errors`. The end-to-end effect is identical to SEC-006: internal exception detail flows through `PlanResult.errors` to any caller of `GET /jobs/{id}`. For the qwen3tts handler, `str(exc)` commonly includes PyTorch device strings (e.g. `RuntimeError: CUDA error: device-side assert triggered`), torch tensor shapes, the underlying RunPod endpoint id, or even the model path on the RunPod serverless image. The error is also stored on the worker side via the `logger.exception` call (line 164) which is good, but the response body and downstream API expose the same string.
+
+**Why it matters.** Compounds SEC-006's information disclosure. The new edge layer is the dominant execution path (RunPod + Qwen3) for prod deployments, so this is now the most likely surface to leak a stack trace. While Jinja2 autoescape prevents XSS in the dashboard, the `/partials/jobs.html` template is not in the new code path; the API response is consumed by tooling that may render it.
+
+**Recommendation.** Categorize `str(exc)` into a small set of public-safe buckets (`model_not_loaded`, `timeout`, `unsupported_language`, `invalid_input`, `internal`) before returning the 500. Keep `logger.exception(...)` for the full traceback. The categorization can be a small `_classify_error(exc: BaseException) -> str` function that matches on exception type and content.
+
+**Verification.** Force a handler failure with an exception message containing a fake internal path `/runpod-volume/models/qwen3-12hz-1.7b`; assert the 500 body's error field does NOT contain the path but DOES contain one of the documented buckets. Trigger a CUDA OOM; assert the error bucket is `internal` and not the raw PyTorch text.
+
+### SEC-013 — `RunPodPrice` sends API key as URL query parameter instead of Authorization header
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 179-193
+related: [OBS-006]
+```
+
+**Issue.** `RunPodPrice._post_graphql` (pricing.py:185-190) sends the RunPod API key as a URL query parameter: `params={'api_key': self.api_key}`. This is the only place in the codebase that uses query-string auth — the health providers (health_providers.py:41, 72) correctly use `Authorization: Bearer` headers. RunPod's own REST API accepts both, but query-string secrets are routinely logged by HTTP access log middleware, CDN edges, and proxy layers. The edge container runs alongside the orchestrator on the same Docker network, so there is no proxy in the default path; however, the worker-side `ACHERON_WORKER__RUNPOD_BASE_URL` test seam (pricing.py:185) hints that the request can be intercepted by `stubs/_sdk_base/mock_runpod.py`, and the test seam is the only thing keeping the key out of test logs. In a future refactor that puts a real proxy in front, the key lands in the proxy's access log.
+
+**Why it matters.** API keys in URL parameters are a documented security anti-pattern (OWASP API Security Top 10 — API3:2023 Broken Object Property Level Authorization, and the older CWE-598 'Use of GET Request with Sensitive Query Strings'). A leaked RunPod API key grants billing-API access to the RunPod account, which is worse than a leaked registration token (which is local to the orchestrator). The fix is two lines.
+
+**Recommendation.** Replace `params={'api_key': self.api_key}` with `headers={'Authorization': f'Bearer {self.api_key}'}`. Verify against RunPod's docs that GraphQL accepts the Bearer header (it does — RunPod uses the same auth for REST and GraphQL).
+
+**Verification.** Add a test that monkeypatches `httpx.AsyncClient.post` to capture the request; assert the params kwarg is empty AND the `Authorization` header starts with `Bearer `. Hit the real RunPod GraphQL endpoint with a known endpoint id; assert a 200 with the header-only auth shape.
+
+### SEC-014 — `worker.edge.yaml` default `orchestrator_url` is HTTP — registration token sent in cleartext when env var is not overridden
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: workers/qwen3tts/worker.edge.yaml
+    lines: 11
+  - path: src/acheron/worker_sdk/registration.py
+    lines: 48-50
+related: [OBS-007, SEC-003]
+```
+
+**Issue.** `worker.edge.yaml` (the config baked into the acheron-worker-edge image at `Dockerfile.edge:31`) sets `orchestrator_url: 'http://orchestrator:8000'`. `docker-compose.yml:174` overrides this to https in the compose-managed deployment, but a deployer that runs the edge image standalone (e.g., on a RunPod pod or a different orchestrator topology) inherits the HTTP default. `registration.py:50` puts the bearer token in the `Authorization` header, which is transmitted in cleartext over HTTP. Any on-path observer between the edge container and the orchestrator (a Docker bridge snoop, a sidecar, an L7 proxy with request logging) captures the registration token, and the attacker can then register an arbitrary worker endpoint and exfiltrate job payloads (per the SEC-008 / SEC-009 exposure). The same default also affects the `_register` flow in `app.py:103-113`.
+
+**Why it matters.** Baking an HTTP default into the image is the kind of 'works in dev, fails in prod' pattern SEC-003 documented for the orchestrator's TLS configuration. The orchestrator has a startup warning + opt-out flag (`ACHERON_ALLOW_INSECURE`) but the edge has no such guard — it will happily POST a bearer token to a plaintext URL. The same orchestrator in the default compose stack serves TLS, so the edge connects to `https://orchestrator:8000`; the plaintext default is the fallback path, which is exactly the path that needs the guard.
+
+**Recommendation.** Default `orchestrator_url` to https in `worker.edge.yaml` (mirroring the orchestrator's actual deployment). If a deployer needs HTTP for dev, they can override via env var or a custom `worker.yaml`. In `settings.py`, log a WARNING at startup if `orchestrator_url` starts with `http://` and `ACHERON_ALLOW_INSECURE_REGISTRATION=1` is not set. Apply the same check in `app.py` lifespan before calling `register_with_orchestrator`.
+
+**Verification.** Build the edge image with the default `worker.edge.yaml`, start it with no override, point it at a tcpdump-capturing orchestrator on HTTP; assert the `Authorization` header value is logged by the operator before the registration is allowed to proceed (or that the edge refuses to start with a clear error message). Override the env var to https and confirm the guard passes.
+
+### SEC-015 — All Docker images (orchestrator, dashboard, worker-stub-base, acheron-worker-edge, qwen3tts-runpod) run as root — no `USER` directive
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: Dockerfile
+    lines: 1-41
+  - path: Dockerfile.edge
+    lines: 1-37
+  - path: workers/qwen3tts/Dockerfile.runpod
+    lines: 1-51
+related: []
+```
+
+**Issue.** None of the three Dockerfiles create a non-root user or set `USER`. The orchestrator, dashboard, worker-stub-base, acheron-worker-edge, and qwen3tts-runpod images all run as uid 0 (root). This is a long-standing container-security baseline: the Docker daemon defaults to root, and the default `python:3.14-slim` / `python:3.12-slim` images include a working `root` user with no password. The orchestrator processes untrusted input (EPUBs, audio, job payloads from the API), the edge exposes a public `/execute` endpoint (per SEC-007), and the runpod image loads an arbitrary HuggingFace model checkpoint into a process running as root. Any code-execution vulnerability in the orchestrator's parser (e.g., an EPUB XML bomb, a soundfile deserialization issue) escalates to full host root because the container is already root.
+
+**Why it matters.** Defense-in-depth. Running as non-root is one of the cheapest and most-effective hardening steps; missing it from a security review is unusual. For the runpod image the model loading path adds another dimension — a malicious or compromised HF checkpoint that triggers torch.load arbitrary code execution already runs as root inside the container, with the HF cache volume mounted (`Dockerfile.runpod:48`). The same applies to the volume-mounted `certs/` in compose and the `acheron-data/` volume.
+
+**Recommendation.** Add a `RUN useradd --create-home --uid 1000 acheron` (or similar) to each stage and a `USER acheron` before the `CMD`. For stages that need to bind privileged ports (<1024), use setcap or a higher port (orchestrator already uses 8000, edge uses 8001, dashboard 8080 — all > 1024). Update healthcheck commands that run python to either run as the unprivileged user or use `gosu`. In compose, ensure bind-mounted volumes are owned by the matching uid (a `user:` directive on each service is the cleanest approach).
+
+**Verification.** Build any of the images and `docker run --rm <image> id` — must print `uid=1000(acheron)`. Add a startup test that confirms the healthcheck command (which uses urllib) still works as the unprivileged user. For the runpod image, confirm torch can still write to the model cache dir under the unprivileged user (chown the volume on first mount).

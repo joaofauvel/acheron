@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 63faed4
+last_updated_commit: dbec2be
 last_staleness_scan:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 ---
 
 # Correctness
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-Layer 11 added the `${VAR}` env-var expansion in `shell/config.py` and the BOOTING-aware path in `health._handle_failure`. Three new medium/low CORR findings: CORR-010 (silent empty substitution for unset env vars), CORR-011 (regex only matches uppercase), CORR-012 (BOOTING status is not bounded by duration, so a misconfigured or stale provider can keep workers stuck in BOOTING forever). CORR-009 (cached worker list / instance reuse) is re-resolved at the same line range; the story remains valid and the diff did not change the relevant block. All other stories remain verified.
+Layer 8a added the `worker_sdk` subpackage, the qwen3tts RunPod worker, and the transport `_multipart` refactor. Five new CORR findings: CORR-013 (medium) — `_parse_multipart` discards the per-part `X-Acheron-Metadata` header, losing per-chunk ordering info; CORR-014 (high) — `RunPodClient.run` silently treats a FAILED RunPod job as a successful empty result, propagating as a 0-artifact JobResult; CORR-015 (medium) — `create_worker_app` cherry-picks routes from `EdgeApp` via a hardcoded `inner_paths` set, silently dropping new routes; CORR-016 (low) — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time; CORR-017 (low) — `_build_multipart_response` materializes the entire artifact stream in memory, defeating the `StreamArtifact` contract. CORR-009, CORR-010, CORR-011, CORR-012 re-resolved — cited code unchanged since 63faed4. All other stories remain verified at dbec2be.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -23,8 +23,8 @@ severity: critical
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["9279c5152389a77b32280e24f94dc6e5fb6ca79f"]
 files:
   - path: src/acheron/shell/executors/streaming.py
@@ -50,8 +50,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/executors/batch_async.py
@@ -77,8 +77,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["e0da69f"]
 files:
   - path: src/acheron/shell/transports/grpc.py
@@ -106,8 +106,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["9817feaa0f5e3e209b58b12779964ab45e029e37"]
 files:
   - path: src/acheron/shell/executors/sequential.py
@@ -131,8 +131,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a1b11b2
-  date: 2026-06-19
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: ["913943031f3667a13cec2210f8085d6ea04cc316"]
 files:
   - path: src/acheron/shell/step_handler.py
@@ -156,8 +156,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 640bb03
 files:
@@ -182,8 +182,8 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 640bb03
 files:
@@ -210,8 +210,8 @@ severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - f394eec53b1916a42c808146c3868969668d0358
 files:
@@ -236,8 +236,8 @@ severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/step_handler.py
@@ -261,8 +261,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/config.py
@@ -288,8 +288,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/config.py
@@ -313,8 +313,8 @@ severity: low
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -329,6 +329,133 @@ related: [OBS-005]
 **Recommendation.** Track BOOTING duration (e.g. via a `booting_since` timestamp on `RegisteredWorker`) and treat workers stuck in BOOTING beyond a configurable timeout (e.g. 10 minutes) as OFFLINE. Alternatively, increment `consecutive_failures` for BOOTING workers but with a separate, higher threshold than the 3-failure rule for OFFLINE workers.
 
 **Verification.** Mock a provider that always returns BOOTING for a worker. Run multiple health check cycles. Assert the worker is eventually removed (or that BOOTING duration is bounded by a timeout).
+
+### CORR-013 — `_parse_multipart` discards per-part `X-Acheron-Metadata` header sent by the SDK edge
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 115-137
+related: []
+```
+
+**Issue.** `_parse_multipart` iterates the multipart parts and materializes each binary part via `_materialize_artifact`. The orchestrator's per-part header parser reads `X-Acheron-Metadata` (line 130) and immediately discards the value (`_ = part.get("X-Acheron-Metadata")`). The SDK edge (`_edge_http.py:103`) emits this header carrying per-artifact metadata (sequence_id, chapter_id, sample_rate) that downstream stages need to reconstruct chunk ordering — the orchestrator throws it away, leaving `OutputFile` with only filename/size/checksum/content_type. No other path carries the per-artifact metadata forward.
+
+**Why it matters.** The metadata header is the only way to associate an emitted `OutputFile` with its chapter and sequence position. The proto `Artifact` message carries an equivalent `metadata` field (synthesis.proto:35) but the HTTP transport's data path does not propagate it. Downstream consumers can't reconstruct the chunk ordering or chapter boundaries from the `OutputFile` list alone; per-chunk ordering is silently lost. Particularly impactful for TTS where chunks must be played in `sequence_id` order — the orchestrator's response can no longer tell the caller which WAV belongs to which sentence.
+
+**Recommendation.** Parse `X-Acheron-Metadata` (JSON, same encoder as `_edge_http._encode_metadata`) and add a `metadata: dict[str, JsonValue]` field to `OutputFile`, or attach the parsed dict to the corresponding `OutputFile` via a new field. Then propagate the field through `PlanResult.outputs` to the API/dashboard.
+
+**Verification.** Round-trip a multipart response with a part carrying `X-Acheron-Metadata: {"sequence_id": 0, "chapter_id": "ch1"}`; assert the materialized `OutputFile` exposes the parsed dict with the original keys/values.
+
+### CORR-014 — `RunPodClient.run` silently treats a FAILED RunPod job as a successful empty result
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 75-94
+related: [EXC-001]
+```
+
+**Issue.** `RunPodClient.run` does `output_dict = output if isinstance(output, dict) else {"artifacts": output}` then `output_dict.get("artifacts", [])`. It never inspects the RunPod output's `status` field. When the cloud-side handler raises (e.g., model OOM, GPU not available, dependency missing), the runpod SDK may return `{"status": "FAILED", "error": "..."}` from `request.output()`. The current code extracts an empty `artifacts` list and returns a successful `RunPodJobResult` with `gpu_seconds > 0` and zero artifacts.
+
+**Why it matters.** A failed RunPod job propagates up as a SUCCESS from the edge's `/execute` endpoint (the cost is non-zero, but the body is empty artifacts). The orchestrator's `HttpWorker` passes this through as `JobResult(outputs=())`, marking the plan stage as successful with no outputs. Downstream stages fail with empty-input errors that point to the consumer, not the actual cause. Billing shows the cost was incurred (RunPod charges for failed pods that scheduled) but the user has no actionable error message. The most common trigger — model loading failure, GPU OOM, cold-start timeout — is exactly the scenario the new RunPod forwarder is meant to surface.
+
+**Recommendation.** After the `output = await ...request.output()` call, inspect `output.get("status")` and raise `WorkerError(msg)` (or a more specific `WorkerUnavailableError` on cold-start FAILEDs) when status is not COMPLETED. Carry the RunPod error string into the raised exception message. Make the test that exercises a FAILED status mock the output dict with `{"status": "FAILED", "error": "OOM"}` and assert the `WorkerError` is raised with the message.
+
+**Verification.** Add a test using `_FakeEndpoints(output={"status": "FAILED", "error": "GPU OOM"})` and assert that `RunPodClient.run` raises `WorkerError` (or chained exception) with the error message included. Add a second test for `{"status": "CANCELLED"}` to ensure any non-COMPLETED status is rejected.
+
+### CORR-015 — `create_worker_app` cherry-picks routes from `EdgeApp` via hardcoded `inner_paths`; new routes silently dropped
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 99-143
+related: [ARCH-012, MAINT-011]
+```
+
+**Issue.** `create_worker_app` builds an `inner = EdgeApp(...)` (which constructs its own FastAPI app with routes + lifespan) then constructs an outer `app` and copies routes via a hardcoded whitelist `inner_paths = {"/health", "/capabilities", "/execute"}`. If a new route is added to `EdgeApp` (e.g., `/metrics` for Prometheus, `/ready` for k8s readiness, `/version`), the outer `create_worker_app` silently drops it — the endpoint returns 404 from uvicorn. The duplicated construction also runs `EdgeApp`'s lifespan definition (`handler.startup()` + `handler.shutdown()`) as dead code that is never executed.
+
+**Why it matters.** The hardcoded whitelist creates a hidden maintenance contract: every new route in `EdgeApp` must also be added to `create_worker_app`'s whitelist. There is no test, no warning, and no type-level guarantee that the lists stay in sync. The next developer adding a route to `EdgeApp` (e.g., a `/metrics` endpoint for Prometheus scraping) will see it work in unit tests (where the inner app is the one being tested) and break in production (where the outer app serves the actual edge container). The inner `EdgeApp` construction also wastes resources at boot (FastAPI app with its own route table + lifespan that is never run).
+
+**Recommendation.** Either: (1) drop the inner `EdgeApp` construction entirely and inline the routes in `create_worker_app`'s outer app, or (2) use FastAPI's `app.mount("", inner.app)` instead of manually copying routes. Option (1) is simpler and matches the rest of the file's pattern (one FastAPI app, one lifespan). If keeping the inner `EdgeApp` is desired for testability, mount it instead of copying routes.
+
+**Verification.** Add a new trivial route (e.g., `GET /version` returning `{"version": "0.1.0"}`) to `EdgeApp` and call `create_worker_app`; assert the route is reachable in the resulting FastAPI app's test client. This test would currently fail because `/version` is not in the hardcoded whitelist.
+
+### CORR-016 — `worker_sdk` package docstring falsely claims it is GPU-SDK-free at import time
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/__init__.py
+    lines: 5-13
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 21
+related: [ARCH-011]
+```
+
+**Issue.** The package docstring on `acheron.worker_sdk` (lines 5-13) explicitly states: "importing acheron.worker_sdk does not transitively load runpod (that import lives in `_runpod_client`, which is not part of the public re-exports). This lets tests of pure types (handler, artifacts, settings) run without the runpod SDK installed." However, the public `__init__.py` re-exports `RunPodForwarderHandler` and `make_runpod_handler` from `acheron.worker_sdk.cloud` (line 18). Importing `cloud.py` triggers `from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult` (cloud.py:22), which loads `_runpod_client.py`, which has `import runpod` at module top (line 21). So importing `acheron.worker_sdk` always loads runpod, regardless of whether the user touches the RunPod forwarder.
+
+**Why it matters.** The documented contract is silently violated. Tests for `WorkerSettings`, `BytesArtifact`, or other pure types (which don't need runpod) cannot run in environments where the runpod SDK is not installed. The contract is what enables clean module separation in CI; a docstring claiming a property that doesn't hold is a footgun for test infrastructure and dev workflows that strip heavy deps. Currently `runpod ~=1.9` is a main dep, so the symptom is latent, but if the project ever moves runpod to an optional dep, the import would break for users of the pure type system.
+
+**Recommendation.** Either: (1) update the docstring to acknowledge the real import chain (the simplest fix), or (2) move the runpod import inside the `RunPodForwarderHandler` and `make_runpod_handler` functions / methods (lazy at call time), and remove `RunPodForwarderHandler` from the public re-exports when runpod is not installed (use a `typing.TYPE_CHECKING` guard + a runtime availability check). Option (1) is consistent with the project's "do not over-engineer" rule.
+
+**Verification.** In a fresh venv without the runpod package installed, `import acheron.worker_sdk` should either succeed (matching the docstring) or fail with a clear `ImportError` naming runpod (matching reality). Either outcome is fine; the current state (succeeds only when runpod is installed, but docstring claims it should not need to) is the bug.
+
+### CORR-017 — `_build_multipart_response` materializes the entire artifact stream in memory, defeating the `StreamArtifact` design
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 97-116
+related: [PERF-006]
+```
+
+**Issue.** `_build_multipart_response` iterates each artifact with `async for chunk in a.stream(): body_data += chunk` (lines 105-107), accumulating the entire stream into a single `bytes` object before the multipart body is constructed. The `StreamArtifact` variant in `artifacts.py:57-65` is documented as for "Lazily-produced chunks — long audio, batched generation" precisely to avoid this buffering, but the encoder ignores the streaming nature and materializes the full payload in memory. The constructed `Response` then holds the full body as a single `content=body` argument (line 113), which uvicorn will hold in memory before sending.
+
+**Why it matters.** The current handlers (`StubTTSHandler`, `Qwen3TTSRunpodHandler`) emit short ~100ms silent WAVs per chunk, so the buffer is small. But the design claims to support long audio via `StreamArtifact`; the encoder silently turns that into a memory-hungry path that could OOM the edge container on a long chapter. The docstring at `artifacts.py:54-55` sets an expectation the encoder does not deliver. A user implementing a long-audio worker via `StreamArtifact` would see production failures with no warning.
+
+**Recommendation.** Build the multipart body as an async iterator and return `StreamingResponse(body_iter, media_type=...)` instead of `Response(content=full_bytes, ...)`. The body iter yields the boundary header, each chunk from `artifact.stream()`, the trailing `\r\n`, then the metrics part, then the closing boundary. This preserves the streaming contract end-to-end (handler.stream → encoder → uvicorn chunked transfer).
+
+**Verification.** Mock a `StreamArtifact` whose `stream()` yields 1000 chunks of 1MB each; assert that `_build_multipart_response` does not allocate a 1GB intermediate `bytes` object (e.g., patch the accumulator to count allocations, or assert a maximum peak buffer size).
 
 ## ML — ML correctness
 

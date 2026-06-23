@@ -1,19 +1,19 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: 63faed4
+last_updated_commit: dbec2be
 last_staleness_scan:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 ---
 
 # Verification
 
 ## TEST — Test discipline
 
-**Grade:** B
+**Grade:** A
 
-TEST-002 (misleading Redis test name) remains open. TEST-001, TEST-003, TEST-004 remain verified. Three new low/medium TEST findings from Layer 11: TEST-005 (`_metadata_str` helper in `health.py` has no direct tests), TEST-006 (HuggingFaceHealthProvider's `str` and `else` branches are untested), TEST-007 (HealthMonitor `_handle_failure` BOOTING→OFFLINE and OFFLINE→HEALTHY transitions are not covered).
+TEST-001, TEST-003, TEST-004 remain verified. TEST-002, TEST-005, TEST-006, TEST-007 kept open (code unchanged since 63faed4, gaps remain). One new TEST finding: TEST-008 (low) — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test. Layer 8a added strong 1:1 test coverage for the new `worker_sdk/` (14 test files mirror the 13 source modules) and the qwen3tts worker (`_FakeModel` pattern), but the static-fallback pricing branch and the non-RunPod passthrough metadata assertion are untested.
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -23,8 +23,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 8f29b8b0b65d1ba902a2e265ac9f25f87485c078
 files:
@@ -49,8 +49,8 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: tests/integration/test_worker_integration.py
@@ -74,8 +74,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - be7b3ab
 files:
@@ -100,8 +100,8 @@ severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - 2e0e46ddd406a91112b66247c13fab693f8b9066
 files:
@@ -132,8 +132,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -157,12 +157,12 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
-    lines: 78-92
+    lines: 86-91
 related: []
 ```
 
@@ -182,12 +182,12 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
-    lines: 127-152
+    lines: 133-152
   - path: tests/shell/test_health_monitor.py
     lines: 205-300
 related: [CORR-012]
@@ -195,17 +195,44 @@ related: [CORR-012]
 
 **Issue.** `TestHealthMonitorProviderIntegration` covers 5 of the 6 meaningful transitions through `_handle_failure` (health.py:127-152): healthy+BOOTING-provider→BOOTING, healthy+OFFLINE-provider→OFFLINE, healthy+no-provider→OFFLINE, healthy→HEALTHY, healthy+raising-provider→OFFLINE. The two missing transitions are: (1) a worker that's already BOOTING and gets another failure with the provider now returning OFFLINE — should transition to OFFLINE and increment `consecutive_failures`; (2) a worker that's OFFLINE and gets a success probe — should reset to HEALTHY and clear `last_error`.
 
-**Why it matters.** The BOOTING→OFFLINE transition is the production hot path: a cold-starting RunPod/HF endpoint that times out before finishing its cold start. Without a test, a future refactor of the early-return at `health.py:139-140` (`if platform_status == WorkerStatus.BOOTING: ...; return`) would silently leave BOOTING workers stuck in BOOTING state with no failure counter. The OFFLINE→HEALTHY transition is also relevant because the 'success reset' logic was changed in this delta to also clear `status` and `last_error`.
+**Why it matters.** The BOOTING→OFFLINE transition is the production hot path: a cold-starting RunPod/HF endpoint that times out before finishing its cold start. Without a test, a future refactor of the early-return at `health.py:139-140` (`if platform_status == WorkerStatus.BOOTING: ...; return`) would silently leave BOOTING workers stuck in BOOTING state with no failure counter. The OFFLINE→HEALTHY transition is also relevant because the 'success reset' logic was changed in this delta to also clear `status` and `last_error`. Note: the new `test_success_resets_to_healthy` partially mitigates by exercising the success-reset path (BOOTING→HEALTHY), but a literal OFFLINE+success→HEALTHY recovery is still not asserted.
 
 **Recommendation.** Add two tests in `TestHealthMonitorProviderIntegration`: (1) `test_booting_to_offline_transition` — pre-set status BOOTING, mock provider returns OFFLINE on next probe, assert status becomes OFFLINE and `consecutive_failures == 1`; (2) `test_offline_to_healthy_recovery` — pre-set status OFFLINE via `set_worker_status`, mock `health_check` returns `HealthProbeResult(healthy=True)`, assert status becomes HEALTHY and `last_error is None`. Both tests already use `_poll_for` so they fit the existing pattern.
 
 **Verification.** Run `just test tests/shell/test_health_monitor.py`; the new tests should pass under the existing `_poll_for` deadline.
 
+### TEST-008 — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 32-52, 60-84
+  - path: tests/worker_sdk/test_app.py
+    lines: 55-87
+related: []
+```
+
+**Issue.** `_build_price_source` has three branches: 'runpod' with valid keys (RunPodPrice), 'runpod' with missing keys (ZeroPrice with warning, line 35-39), 'static' with dollars_per_hour (StaticPrice), 'static' with missing dollars_per_hour (ZeroPrice with warning, line 47-50), and the default (ZeroPrice, line 51-52). `test_app.py` only exercises the 'runpod'+valid-keys path (test_registration_payload_includes_runpod_health_metadata) and 'zero' (test_factory_exposes_three_routes, test_execute_routes_through_app). The static/zero path is not directly tested. `_registration_caps` returns caps unchanged when settings.price_source != 'runpod' or no endpoint_id (line 69-70); the metadata MUST NOT contain `health_provider`/`health_endpoint_id` keys in that case — currently no test asserts that.
+
+**Why it matters.** A regression in the static-fallback warning (e.g. dropping the `logger.warning` call) or in the `_registration_caps` early-return (e.g. accidentally enriching metadata even when `price_source='static'`) would be invisible to the current test suite. The `/workers` registration payload would silently carry bogus `health_provider` keys, breaking the orchestrator's `RunPodHealthProvider` cold-start detection for workers that opted out of RunPod pricing.
+
+**Recommendation.** Add three tests in `test_app.py`: (1) `test_build_price_source_static_with_rate_returns_static_price`, asserting `StaticPrice` instance + `dollars_per_hour` round-trip; (2) `test_build_price_source_static_without_rate_falls_back_to_zero`, asserting the warning is logged; (3) `test_registration_caps_passthrough_when_not_runpod`, building a `WorkerSettings(price_source='static', ...)` and asserting the registered payload lacks `health_provider` / `health_endpoint_id` keys.
+
+**Verification.** Run `just test tests/worker_sdk/test_app.py` — new tests pass without requiring any external mocking beyond respx for the price refresh path.
+
 ## REPRO — Reproducibility
 
 **Grade:** A
 
-REPRO-001 remains open (no fix in this delta; `last_verified_at.commit: pending` could not be resolved). REPRO-002 remains verified.
+REPRO-001 remains open (no fix in this delta; cited code unchanged). REPRO-002 remains verified. One new REPRO finding: REPRO-003 (low) — `tests/worker_sdk/conftest.py` `_no_sleep` fixture masks `asyncio.sleep` timing in retry/registration tests.
 
 ### REPRO-001 — Redis list_all() returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend
 
@@ -215,12 +242,12 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 329-338
+    lines: 332-341
   - path: src/acheron/shell/step_handler.py
     lines: 86-128
   - path: tests/integration/test_worker_integration.py
@@ -244,8 +271,8 @@ severity: low
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: be7b3ab
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - be7b3ab
 files:
@@ -262,11 +289,38 @@ related: [PERF-001]
 
 **Verification.** Run `just test tests/shell/test_health_monitor.py` repeatedly (e.g. `pytest --count=20`) under load to check for flakes.
 
+### REPRO-003 — `tests/worker_sdk/conftest.py` `_no_sleep` fixture masks `asyncio.sleep` timing in retry/registration tests
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: tests/worker_sdk/conftest.py
+    lines: 8-14
+  - path: tests/worker_sdk/test_registration.py
+    lines: 84-113
+related: []
+```
+
+**Issue.** `conftest.py` auto-monkeypatches `asyncio.sleep` to a no-op (line 9-13) for all tests under `tests/worker_sdk/`. The intent is to keep retry loops fast, but the override is applied to ALL `asyncio.sleep` calls in the test process — including any backoff inside the SDK code under test. `test_exponential_backoff_grows_then_caps` (test_registration.py:84-113) records the *parameter passed to* `asyncio.sleep` via a side-effect fixture (line 88-95), but does not actually verify the sleep behavior — a regression where someone replaces `await asyncio.sleep(backoff)` with `await asyncio.sleep(0)` would be invisible (the parameter 1.0/2.0/4.0 would still be recorded).
+
+**Why it matters.** The exponential backoff is the production anti-thrash mechanism: a bug that breaks the backoff would cause the edge container to hammer the orchestrator with retries during a degraded network, defeating the purpose of `_MAX_BACKOFF_S`. The current test only verifies the parameter list, not the actual sleep duration in the wild.
+
+**Recommendation.** Either (a) move the monkeypatch to a per-test fixture scoped to only the tests that need instant sleep, leaving retry-timing tests to assert real elapsed time (e.g. with `time.monotonic()` before/after, asserting delta > backoff * 0.9); or (b) replace the conftest auto-patch with a targeted `monkeypatch.setattr(asyncio, 'sleep', _instant)` in the test that needs it. Currently the suite's REPRO-002 fix pattern (polling deadlines) is the right model.
+
+**Verification.** Run `just test tests/worker_sdk/test_registration.py` — existing tests pass either way; the fix is structural, not behavioral.
+
 ## DATA — Data quality
 
 **Grade:** A
 
-DATA-001, DATA-002, DATA-003, DATA-004 are all verified. One new medium DATA finding: DATA-005 — `RedisWorkerStore._deserialize_worker` invalid status field has no corruption test (symmetric gap to DATA-002).
+DATA-001, DATA-002, DATA-003, DATA-004 are all verified. DATA-005 remains open. Two new DATA findings: DATA-006 (medium) — `HttpWorker._parse_multipart` edge cases (no metrics part, missing boundary, non-multipart body) are not covered; DATA-007 (low) — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests.
 
 ### DATA-001 — API pydantic schemas accept arbitrary extra fields, silently dropping client typos
 
@@ -276,8 +330,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - cf3a658b518124a878021400ed3e2c1dfcfad7c4
 files:
@@ -302,8 +356,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - fd6e202ab56948407ae7a0e017da725632d0d9a2
 files:
@@ -328,8 +382,8 @@ severity: medium
 effort: S
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - a21fda749f8f278887f14770558ace3a784c1873
 files:
@@ -354,8 +408,8 @@ severity: medium
 effort: S
 reviewed_at: a1b11b2
 last_verified_at:
-  commit: d0b739b
-  date: 2026-06-20
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in:
   - a21fda749f8f278887f14770558ace3a784c1873
 files:
@@ -380,12 +434,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 63faed4
-  date: 2026-06-21
+  commit: dbec2be
+  date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 91-108
+    lines: 101-106
   - path: tests/shell/stores/test_redis_worker_store.py
     lines: 100-116
 related: [DATA-002]
@@ -398,3 +452,63 @@ related: [DATA-002]
 **Recommendation.** Add `test_corrupt_worker_status_raises_cache_corrupted` in `TestCorruption`, parallel to the existing metadata test. Use `aioredis.hset` to inject a worker blob with `status='garbage'`, call `store.get('w-bad')`, assert `CacheCorruptedError` with a message containing 'invalid status'.
 
 **Verification.** Run `just test tests/shell/stores/test_redis_worker_store.py`; the new test should pass without requiring any new fixtures.
+
+### DATA-006 — `HttpWorker._parse_multipart` edge cases (no metrics part, missing boundary, non-multipart body) are not covered
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 89-140
+  - path: tests/shell/transports/test_multipart.py
+    lines: 1-128
+  - path: tests/shell/test_http_worker.py
+    lines: 1-200
+related: [CORR-013]
+```
+
+**Issue.** `HttpWorker._parse_multipart` (http.py:89-140) has three defensive paths that no test exercises: (1) when the worker omits the trailing application/json part, the parser falls through to `metrics = JobMetrics(duration_seconds=0.0)` (line 138-139) — `test_multipart.py`'s `TestBuildResult` and `test_http_worker.py`'s `TestHttpWorkerExecuteMultipart` both build complete bodies; (2) when content-type lacks a `boundary=` parameter, `ctype.split('boundary=', 1)[1]` raises IndexError (line 93); (3) when the body is not actually multipart (e.g. content-type: multipart/mixed but body is plain text), the parser's `is_multipart()` check (line 102-104) raises WorkerError. `test_multipart.py` covers the shared `_multipart` helpers (materialize/safe_join) but not the orchestrator's parser; `test_http_worker.py` covers success + legacy JSON but not these failure paths.
+
+**Why it matters.** A misbehaving worker that returns a bare audio body with no metrics part would silently produce a `JobResult` with `metrics.cost_basis = None` and no `cost_estimate` — indistinguishable from a 'price source not wired' state, but with empty/missing cost data that the dashboard renders as 'Unknown'. A worker returning a body with `content-type: application/json` but `content-type: multipart/mixed` claiming (the worker's HTTPS proxy stripped the real content-type) would crash the orchestrator with IndexError far from the actual cause.
+
+**Recommendation.** Add three tests in `tests/shell/test_http_worker.py` `TestHttpWorkerExecuteMultipart` (or a new `TestHttpWorkerMultipartEdgeCases` class): (1) `test_no_metrics_part_yields_zero_duration` — build a multipart body with only an audio part, assert `metrics.duration_seconds == 0.0` and `metrics.cost_basis is None`; (2) `test_missing_boundary_raises_worker_error` — mock a response with `content-type: multipart/mixed` (no `boundary=`) and assert `WorkerError`; (3) `test_non_multipart_body_raises_worker_error` — mock `content-type: multipart/mixed` with `body=b'not actually multipart'` and assert `WorkerError` with 'not multipart' in the message.
+
+**Verification.** Run `just test tests/shell/test_http_worker.py`; the new tests should pass without any new fixtures (respx-mocked endpoint).
+
+### DATA-007 — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: dbec2be
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 89-93
+  - path: src/acheron/worker_sdk/artifacts.py
+    lines: 71-77
+  - path: tests/worker_sdk/test_runpod_client.py
+    lines: 1-80
+  - path: tests/worker_sdk/test_artifacts.py
+    lines: 45-52
+related: [CORR-014]
+```
+
+**Issue.** Two undertested defensive branches: (1) `_runpod_client.py:89-93` raises `WorkerError` when the RunPod response's `output.artifacts` is not a list. `test_runpod_client.py`'s `test_returns_artifacts_on_success` exercises the happy path; no test writes a non-list `artifacts` value (e.g. dict, string, None) and asserts `WorkerError` with 'must be a list' in the message. (2) `artifacts.py:71-77` — `FileArtifact.stream` reads 64 KiB chunks. `test_artifacts.py:test_stream_reads_from_disk_in_chunks` writes 200 KiB (3 reads); no test for an empty file (zero reads, yields nothing), a 1-byte file (one read < 64 KiB), or a missing/non-existent path (`aiofiles.open` raises `FileNotFoundError` — does it propagate as-is, or get swallowed?).
+
+**Why it matters.** A runpod SDK version bump that changed the output shape from list to dict would crash the edge container with an unhelpful error from deep in the SDK; the test for the type-guard would catch the regression before deploy. `FileArtifact` handling of missing paths is a security boundary — if the path is something the worker passed in via metadata, leaking the raw exception to the orchestrator could reveal filesystem layout.
+
+**Recommendation.** Add three tests: (1) `test_runpod_client.py:test_artifacts_not_list_raises_worker_error`, parametrized over `artifacts = {}`, `'a string'`, `None`, with each raising `WorkerError` match='must be a list'; (2) `test_artifacts.py:test_file_artifact_empty_file_streams_nothing` — write an empty tmp file, collect, assert `== b''`; (3) `test_artifacts.py:test_file_artifact_missing_path_raises_filenotfounderror` — assert `FileNotFoundError` propagates from `stream()` without catching.
+
+**Verification.** Run `just test tests/worker_sdk/test_runpod_client.py tests/worker_sdk/test_artifacts.py`; new tests pass without new dependencies.
