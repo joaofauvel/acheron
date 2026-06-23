@@ -1,16 +1,49 @@
 {% if jobs %}
 <table>
   <thead>
-    <tr><th>Job ID</th><th>Status</th><th>Cost</th><th>Duration</th><th>Steps</th></tr>
+    <tr>
+      <th>Job ID</th>
+      <th>Status</th>
+      <th>Cost</th>
+      <th>Duration</th>
+      <th>Steps</th>
+      <th>Cost Basis</th>
+      <th>Note</th>
+    </tr>
   </thead>
   <tbody>
     {% for j in jobs %}
+    {% set basis = j.total_cost_basis %}
+    {% set basis_class = {
+      "measured": "basis-measured",
+      "cached": "basis-cached",
+      "unknown": "basis-unknown",
+      "static": "basis-static"
+    }.get(basis, "basis-unknown") %}
+    {% set basis_label = {"measured": "Measured", "cached": "Cached",
+                          "unknown": "Unknown", "static": "Static"}.get(basis, "Unknown") %}
+    {% set basis_note = {
+      "measured": "—",
+      "cached": "RunPod pricing API unavailable; serving last-known rate",
+      "unknown": "RunPod pricing API unavailable",
+      "static": "—"
+    }.get(basis, "—") %}
     <tr>
       <td>{{ j.job_id }}</td>
       <td><span class="badge badge-{{ j.status }}">{{ j.status }}</span></td>
-      <td>{% if j.total_cost|default(0) > 0 %}${{ "%.2f"|format(j.total_cost) }}{% else %}-{% endif %}</td>
+      <td>
+        {% if not basis or basis == "unknown" %}
+          <span class="cost-unknown">—</span>
+        {% elif j.total_cost|default(0) > 0 %}
+          ${{ "%.2f"|format(j.total_cost) }}
+        {% else %}
+          <span class="cost-zero">$0.00</span>
+        {% endif %}
+      </td>
       <td>{% if j.total_duration_seconds|default(0) > 0 %}{{ "%.1f"|format(j.total_duration_seconds) }}s{% else %}-{% endif %}</td>
       <td>{{ j.completed_steps }}/{{ j.total_steps }}</td>
+      <td><span class="badge {{ basis_class }}">{{ basis_label }}</span></td>
+      <td><span class="basis-note">{{ basis_note }}</span></td>
     </tr>
     {% endfor %}
   </tbody>
