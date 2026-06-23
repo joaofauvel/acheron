@@ -11,7 +11,7 @@ import grpc
 import grpc.aio
 import pytest
 import pytest_asyncio
-from grpc_health.v1 import health, health_pb2_grpc
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
@@ -43,11 +43,29 @@ class _FakeSynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
             context.set_details("GPU down")
             return
         for chunk in self._chunks:
-            yield synthesis_pb2.AudioChunk(  # type: ignore[attr-defined]
+            yield synthesis_pb2.OutputChunk(  # type: ignore[attr-defined]
                 pcm_data=chunk,
                 sample_rate=22050,
                 channels=1,
             )
+
+
+class _ArtifactServicer(synthesis_pb2_grpc.SynthesisServicer):
+    """In-process gRPC servicer that emits Artifact-mode OutputChunks."""
+
+    def __init__(
+        self,
+        artifacts: list[synthesis_pb2.Artifact] | None = None,  # type: ignore[name-defined]
+    ) -> None:
+        self._artifacts = artifacts or []
+
+    def Synthesize(  # noqa: N802
+        self,
+        request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
+        context: grpc.aio.ServicerContext,  # type: ignore[type-arg]
+    ) -> Any:
+        for art in self._artifacts:
+            yield synthesis_pb2.OutputChunk(artifact=art)  # type: ignore[attr-defined]
 
 
 @pytest_asyncio.fixture
@@ -57,6 +75,7 @@ async def grpc_server() -> AsyncIterator[tuple[str, _FakeSynthesisServicer]]:
     server = grpc.aio.server()
     synthesis_pb2_grpc.add_SynthesisServicer_to_server(servicer, server)  # type: ignore[no-untyped-call]
     health_servicer = health.HealthServicer()
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)  # type: ignore[attr-defined]
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     port = server.add_insecure_port("localhost:0")
     await server.start()
@@ -69,7 +88,7 @@ async def grpc_worker(grpc_server: tuple[str, _FakeSynthesisServicer]) -> AsyncI
     """Create a GrpcWorker connected to the in-process server."""
     addr, _ = grpc_server
     channel = grpc.aio.insecure_channel(addr)
-    worker = GrpcWorker(channel)
+    worker = GrpcWorker(channel, data_dir=Path("/tmp/acheron-grpc-test"))
     yield worker
     await channel.close()
 
@@ -83,7 +102,7 @@ class TestGrpcWorkerHealth:
     @pytest.mark.asyncio
     async def test_health_returns_false_on_unreachable(self) -> None:
         channel = grpc.aio.insecure_channel("localhost:1")
-        worker = GrpcWorker(channel)
+        worker = GrpcWorker(channel, data_dir=Path("/tmp/acheron-grpc-test"))
         result = await worker.health()
         assert result is False
         await channel.close()
@@ -103,7 +122,7 @@ class TestGrpcWorkerExecute:
         addr, servicer = grpc_server
         servicer._chunks = [b"\x01\x02", b"\x03\x04"]  # noqa: SLF001
         channel = grpc.aio.insecure_channel(addr)
-        worker = GrpcWorker(channel)
+        worker = GrpcWorker(channel, data_dir=Path("/tmp/acheron-grpc-test"))
         job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola", "language": "es"}, chapter_id="ch1")
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
@@ -124,11 +143,49 @@ class TestGrpcWorkerExecute:
         addr, servicer = grpc_server
         servicer._fail = True  # noqa: SLF001
         channel = grpc.aio.insecure_channel(addr)
-        worker = GrpcWorker(channel)
+        worker = GrpcWorker(channel, data_dir=Path("/tmp/acheron-grpc-test"))
         job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola"}, chapter_id="ch1")
         with pytest.raises(WorkerUnavailableError, match="unavailable"):
             await worker.execute(job)
         await channel.close()
+
+
+class TestGrpcWorkerExecuteArtifact:
+    @pytest.mark.asyncio
+    async def test_assembles_artifacts(self, tmp_path: Path) -> None:
+        servicer = _ArtifactServicer(
+            artifacts=[
+                synthesis_pb2.Artifact(  # type: ignore[attr-defined]
+                    filename="ch1_0000.wav", content_type="audio/wav", data=b"\x01\x02\x03"
+                ),
+                synthesis_pb2.Artifact(  # type: ignore[attr-defined]
+                    filename="ch1_0001.wav", content_type="audio/wav", data=b"\x04\x05\x06"
+                ),
+            ]
+        )
+        server = grpc.aio.server()
+        synthesis_pb2_grpc.add_SynthesisServicer_to_server(servicer, server)  # type: ignore[no-untyped-call]
+        health_servicer = health.HealthServicer()
+        health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)  # type: ignore[attr-defined]
+        health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+        port = server.add_insecure_port("localhost:0")
+        await server.start()
+        try:
+            channel = grpc.aio.insecure_channel(f"localhost:{port}")
+            worker = GrpcWorker(channel, data_dir=tmp_path)
+            job = Job(
+                job_id="job-xyz-synthesize-ch1",
+                job_type=WorkerType.TTS,
+                payload={"text": "hi"},
+                chapter_id="ch1",
+            )
+            result = await worker.execute(job)
+            assert result.status == JobStatus.SUCCESS
+            assert len(result.outputs) == 2
+            assert result.outputs[0].filename == "ch1_0000.wav"
+            assert Path(result.outputs[0].path).read_bytes() == b"\x01\x02\x03"
+        finally:
+            await server.stop(0)
 
 
 @pytest.mark.asyncio
