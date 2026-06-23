@@ -20,6 +20,7 @@ from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from workers._shared import safe_chapter_id
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
@@ -68,10 +69,9 @@ def _chunk_text(c: dict[str, Any]) -> str:
 def _chunk_chapter_id(c: dict[str, Any]) -> str:
     r"""Read and sanitise the chapter_id field from a chunk dict.
 
-    Rejects blank, NUL-byte, ``..``, path-separator (``/`` / ``\``), and
-    absolute-path values. The orchestrator's ``_safe_join`` defends the
-    orchestrator boundary; this is defense-in-depth so the worker also
-    fails fast on malicious input.
+    Delegates to ``workers._shared.safe_chapter_id``; the defensive checks
+    against NUL bytes / path separators / ``..`` are shared with the
+    granite-speech handler.
     """
     if "chapter_id" not in c:
         msg = "chunk.chapter_id is required"
@@ -80,13 +80,7 @@ def _chunk_chapter_id(c: dict[str, Any]) -> str:
     if not isinstance(cid, str):
         msg = f"chunk.chapter_id must be a str, got {type(cid).__name__}"
         raise WorkerError(msg)
-    if not cid or "\x00" in cid or "\n" in cid or "\r" in cid or "\t" in cid:
-        msg = f"chunk.chapter_id contains illegal whitespace/NUL: {cid!r}"
-        raise WorkerError(msg)
-    if "/" in cid or "\\" in cid or cid in {".", ".."} or ".." in cid.split("/") or ".." in cid.split("\\"):
-        msg = f"chunk.chapter_id contains a path component: {cid!r}"
-        raise WorkerError(msg)
-    return cid
+    return safe_chapter_id(cid)
 
 
 class Qwen3TTSRunpodHandler(WorkerHandler):
