@@ -120,6 +120,18 @@ class JobMetrics:
     cost_estimate: float | None = None
     cost_basis: CostBasis | None = None
 
+    def model_dump_json(self) -> bytes:
+        """Pydantic-style JSON serialisation shim for the multipart metrics part.
+
+        ``JobMetrics`` is a frozen dataclass (matches the other ``@dataclass``
+        value objects in this module) but the SDK / orchestrator transport code
+        treats it like a pydantic model on the wire.  ``TypeAdapter.dump_json``
+        gives us a single source of truth without converting the in-memory type.
+        """
+        from pydantic import TypeAdapter
+
+        return TypeAdapter(JobMetrics).dump_json(self)
+
 
 @dataclass(frozen=True)
 class JobResult:
@@ -130,6 +142,17 @@ class JobResult:
     outputs: tuple[OutputFile, ...]
     metrics: JobMetrics
     error: str | None = None
+
+    def model_dump_json(self) -> bytes:
+        """Pydantic-style JSON serialisation for the error-response body.
+
+        ``JobResult`` is a frozen dataclass; the SDK / orchestrator wire
+        contract uses pydantic's ``TypeAdapter`` to round-trip the JSON.
+        Returns ``bytes`` to match pydantic v2's signature.
+        """
+        from pydantic import TypeAdapter
+
+        return TypeAdapter(JobResult).dump_json(self)
 
 
 @dataclass(frozen=True)

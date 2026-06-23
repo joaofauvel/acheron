@@ -22,10 +22,18 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 
-from acheron.core.models import Job, JobMetrics, WorkerCapabilities, WorkerType
+from acheron.core.models import (
+    Job,
+    JobMetrics,
+    JobResult,
+    JobStatus,
+    OutputFile,
+    WorkerCapabilities,
+    WorkerType,
+)
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
-from acheron.worker_sdk.schemas import ExecuteError, ExecuteRequest
+from acheron.worker_sdk.schemas import ExecuteRequest
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.handler import WorkerHandler
@@ -61,6 +69,17 @@ def _encode_metadata(metadata: dict[str, Any]) -> str:
     return json.dumps(metadata, separators=(",", ":"))
 
 
+def _jobresult_to_json(result: JobResult) -> dict[str, Any]:
+    """Serialise a :class:`JobResult` for the error-response body.
+
+    Returns a plain ``dict`` so :class:`JSONResponse` can dump it as
+    ``application/json``.  ``Tuple[OutputFile, ...]`` round-trips as a list
+    in JSON — the orchestrator's parser expects a list.
+    """
+    decoded: dict[str, Any] = json.loads(result.model_dump_json().decode("utf-8"))
+    return decoded
+
+
 async def _build_multipart_response(
     artifacts: list[Artifact],
     metrics: JobMetrics,
@@ -69,6 +88,10 @@ async def _build_multipart_response(
 
     One part per artifact with its own ``Content-Type`` + filename + metadata
     header, plus a trailing ``application/json`` part carrying ``metrics``.
+    Uses :meth:`JobMetrics.model_dump_json` so ``None`` values (e.g. an
+    unset ``cost_basis``) are emitted as JSON ``null`` rather than the
+    string ``"unknown"`` — the latter conflates "no estimate" with
+    "the API was down".
     """
     boundary = f"acheron-{uuid.uuid4().hex}"
     parts: list[bytes] = []
@@ -83,15 +106,7 @@ async def _build_multipart_response(
         async for chunk in a.stream():
             body_data += chunk
         parts.append(header + body_data + b"\r\n")
-    metrics_json = (
-        f'{{"duration_seconds":{metrics.duration_seconds}'
-        f',"gpu_seconds":{metrics.gpu_seconds!r}'
-        f',"tokens_in":{metrics.tokens_in!r}'
-        f',"tokens_out":{metrics.tokens_out!r}'
-        f',"cost_estimate":{metrics.cost_estimate!r}'
-        f',"cost_basis":"{metrics.cost_basis.value if metrics.cost_basis else "unknown"}"'
-        f"}}"
-    ).encode("utf-8")
+    metrics_json = metrics.model_dump_json()
     parts.append(
         f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode("utf-8")
         + metrics_json
@@ -148,11 +163,22 @@ class EdgeApp:
         start = time.monotonic()
         try:
             artifacts: list[Artifact] = await self.handler.handle(job)
-        except Exception as exc:
+        except BaseException as exc:  # noqa: BLE001
+            duration = time.monotonic() - start
             logger.exception("Handler failed for job %s", job.job_id)
+            # Return a ``JobResult``-shaped body so the orchestrator's
+            # ``TypeAdapter(JobResult).validate_json`` parser sees a valid
+            # failure record rather than an opaque 5xx.
+            result = JobResult(
+                job_id=job.job_id,
+                status=JobStatus.FAILED,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=duration, cost_basis=None),
+                error=str(exc),
+            )
             return JSONResponse(
                 status_code=500,
-                content=ExecuteError(status="failed", error=str(exc)).model_dump(),
+                content=_jobresult_to_json(result),
             )
         duration = time.monotonic() - start
         gpu_seconds = duration  # edge forwarder has no GPU; the handler times itself.

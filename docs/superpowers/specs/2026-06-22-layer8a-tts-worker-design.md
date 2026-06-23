@@ -161,7 +161,9 @@ Workers compose the variant their model's API naturally produces — no forced b
 
 ### `app.create_worker_app` and `cli`
 
-`create_worker_app(handler, settings) -> FastAPI` exposes `/health`, `/capabilities`, `/execute` driven by the handler. `/execute` flow: validate `Job`, `await handler.handle(job)`, emit multipart/mixed response (or JSON error). It registers with the orchestrator on lifespan startup via `register_with_orchestrator`.
+`create_worker_app(handler, settings) -> FastAPI` exposes `/health`, `/capabilities`, `/execute` driven by the handler. `/execute` flow: validate `Job`, `await handler.handle(job)`, emit multipart/mixed response (success) or a `JobResult`-shaped JSON body with `status=FAILED` and `error=<message>` (handler exception). The error body must be parseable by the orchestrator's `TypeAdapter(JobResult).validate_json` (Plan 2's `HttpWorker._parse_execute_response`); opaque 5xx with `{"status":"failed", "error": ...}` is forbidden. It registers with the orchestrator on lifespan startup via `register_with_orchestrator`.
+
+The trailing metrics JSON part of the multipart response is built via `JobMetrics.model_dump_json()` (pydantic `TypeAdapter`-driven) so `None` fields — including `cost_basis` when no price source is wired — round-trip as JSON `null` rather than the string `"unknown"`. The `"unknown"` value is reserved for the **CostBasis.UNKNOWN** wire value (RunPod API was down, tried and failed); `null` means "no estimate at all".
 
 `acheron.worker_sdk.cli` is the entrypoint module of the published `acheron-worker-edge` Docker image — it is the image's `CMD`, not a user-facing CLI. The deployer never invokes it directly; they configure the edge container via `.env` + `docker-compose.yml` (see "Deployment Flow"). It exists as a module so the same image serves TTS/ASR/translation edge containers — only the `WORKER_NAME` + `worker.yaml` + env differ per service.
 

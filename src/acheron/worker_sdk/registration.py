@@ -1,10 +1,11 @@
 """Self-registration client for the edge container.
 
 Posts ``WorkerRegistrationRequest`` to the orchestrator's ``POST /workers``
-route, with exponential backoff until the orchestrator is reachable. Tags
-the worker's capabilities metadata with ``health_provider`` and
-``health_endpoint_id`` for the existing RunPodHealthProvider cold-start
-detection plumbing (Layer 11).
+route, with exponential backoff until the orchestrator is reachable. The
+caller enriches ``capabilities.metadata`` with ``health_provider`` /
+``health_endpoint_id`` (see :func:`acheron.worker_sdk.app._registration_caps`)
+so the orchestrator's existing ``RunPodHealthProvider`` cold-start detection
+plumbing (Layer 11) picks the worker up unchanged.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_MAX_BACKOFF_S = 30.0
+
 
 async def register_with_orchestrator(
     *,
@@ -33,7 +36,12 @@ async def register_with_orchestrator(
     retries: int = 30,
     retry_delay: float = 2.0,
 ) -> None:
-    """Register the worker, retrying until the orchestrator is reachable."""
+    """Register the worker with exponential backoff on failure.
+
+    Sleeps ``retry_delay * 2**attempt`` (capped at ``_MAX_BACKOFF_S``) between
+    attempts; raises :class:`httpx.ConnectError` after ``retries`` consecutive
+    failures so the edge container fails fast instead of looping forever.
+    """
     headers: dict[str, str] = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -56,8 +64,9 @@ async def register_with_orchestrator(
             if attempt >= retries:
                 msg = f"Could not register worker {worker_id} after {retries} attempts"
                 raise httpx.ConnectError(msg) from exc
-            logger.debug("Orchestrator not ready (%s); retrying...", exc)
-            await asyncio.sleep(retry_delay)
+            backoff = min(retry_delay * 2 ** (attempt - 1), _MAX_BACKOFF_S)
+            logger.debug("Orchestrator not ready (%s); retrying in %.1fs...", exc, backoff)
+            await asyncio.sleep(backoff)
         else:
             logger.info("Registered %s with orchestrator", worker_id)
             return

@@ -85,11 +85,15 @@ class TestEdgeRoutes:
         assert b"audio" in r.content
 
     @pytest.mark.asyncio
-    async def test_execute_on_handler_error_returns_json(
+    async def test_execute_on_handler_error_returns_jobresult_json(
         self,
         app_handler: tuple["FastAPI", "_Stub"],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """On handler error, the body is a ``JobResult`` JSON (status=failed,
+        job_id echoed, error populated, no outputs) so the orchestrator's
+        :class:`TypeAdapter(JobResult).validate_json` parser succeeds.
+        """
         app, h = app_handler
 
         async def _boom(job: Job) -> list[BytesArtifact]:
@@ -104,5 +108,41 @@ class TestEdgeRoutes:
             )
         assert r.status_code == 500
         body = r.json()
+        assert body["job_id"] == "j1"
         assert body["status"] == "failed"
+        assert body["outputs"] == []
         assert "OOM" in body["error"]
+        assert body["metrics"]["duration_seconds"] >= 0.0
+        assert body["metrics"]["cost_basis"] is None
+
+    @pytest.mark.asyncio
+    async def test_execute_metrics_part_emits_null_cost_basis(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
+        """When no price source is wired, the metrics part emits ``"cost_basis": null``
+        (not the string ``"unknown"``) — the latter would conflate "no estimate"
+        with "the API was down", breaking the dashboard's cost-confidence render.
+        """
+        import json
+
+        app, _ = app_handler
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={
+                    "job_id": "j1",
+                    "job_type": "tts",
+                    "payload": {"chunks": [{"text": "hi"}]},
+                    "chapter_id": "ch1",
+                },
+            )
+        assert r.status_code == 200
+        # Pull the last part (application/json metrics) out of the multipart body.
+        body = r.content
+        boundary = r.headers["content-type"].split("boundary=")[-1]
+        parts = body.split(f"--{boundary}".encode("utf-8"))
+        json_part = next(p for p in parts if b"application/json" in p)
+        # The JSON payload begins after the headers (blank line) and ends before \r\n.
+        json_bytes = json_part.split(b"\r\n\r\n", 1)[1].rsplit(b"\r\n", 1)[0]
+        metrics = json.loads(json_bytes)
+        assert metrics["cost_basis"] is None
+        assert "unknown" not in json_bytes.decode("utf-8")

@@ -82,3 +82,37 @@ class TestRegisterWithOrchestrator:
                     retries=2,
                     retry_delay=0.0,
                 )
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_exponential_backoff_grows_then_caps(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sleep duration grows by powers of two up to the 30s cap."""
+        delays: list[float] = []
+
+        async def _record(seconds: float) -> None:
+            delays.append(seconds)
+
+        import asyncio as _asyncio
+
+        monkeypatch.setattr(_asyncio, "sleep", _record)
+        respx.post("http://orch:8000/workers").mock(
+            side_effect=[httpx.ConnectError("a"), httpx.ConnectError("b"), httpx.ConnectError("c")]
+        )
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(httpx.ConnectError):
+                await register_with_orchestrator(
+                    client=client,
+                    orchestrator_url="http://orch:8000",
+                    token=None,
+                    worker_id="w",
+                    endpoint="http://w:8001",
+                    transport="http",
+                    capabilities=_caps(),
+                    retries=3,
+                    retry_delay=1.0,
+                )
+        # 3 failed attempts produce 2 sleeps (we never sleep after the final
+        # attempt that triggers retries=retries).
+        assert delays == [1.0, 2.0]

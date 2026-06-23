@@ -62,12 +62,23 @@ class StaticPrice:
         return True
 
 
+_KNOWN_REASONS: frozenset[str] = frozenset({
+    "runpod:measured",
+    "runpod:cached",
+    "static config",
+    "zero (stub/local)",
+})
+
+
 def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
     """Map a :class:`PriceEstimate` to a wire :class:`CostBasis` value.
 
     RunPodPrice sets ``reason`` to a sentinel string that distinguishes the
     fresh-measurement case from the cached case; the worker-side mapping
-    preserves the spec's ``MEASURED`` vs ``CACHED`` distinction.
+    preserves the spec's ``MEASURED`` vs ``CACHED`` distinction. Any new
+    ``PriceSource`` must register its ``reason`` in ``_KNOWN_REASONS`` or
+    the safety net below raises — failing loud is better than silently
+    misclassifying an estimate as ``STATIC``.
     """
     if estimate.cost is None:
         return CostBasis.UNKNOWN
@@ -75,7 +86,10 @@ def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
         return CostBasis.MEASURED
     if estimate.reason == "runpod:cached":
         return CostBasis.CACHED
-    return CostBasis.STATIC
+    if estimate.reason in _KNOWN_REASONS:
+        return CostBasis.STATIC
+    msg = f"Unknown PriceEstimate.reason {estimate.reason!r}; add it to _KNOWN_REASONS"
+    raise ValueError(msg)
 
 
 @dataclass
@@ -125,7 +139,9 @@ class RunPodPrice:
     async def _fetch_gpu_id(self, client: httpx.AsyncClient) -> str | None:
         query = "query { myself { endpoints { id gpuIds } } }"
         resp = await self._post_graphql(client, query)
-        endpoints = resp["data"]["myself"]["endpoints"]
+        endpoints = resp["data"]["myself"].get("endpoints")
+        if not endpoints:
+            return None
         for ep in endpoints:
             if ep["id"] == self.endpoint_id:
                 return str(ep["gpuIds"])
@@ -147,7 +163,12 @@ class RunPodPrice:
             query,
             variables={"id": gpu_id, "secure": self.secure_cloud},
         )
-        return float(resp["data"]["gpuTypes"][0]["lowestPrice"]["uninterruptablePrice"])
+        gpu_types = resp["data"].get("gpuTypes") or []
+        if not gpu_types:
+            return None
+        return float(
+            gpu_types[0]["lowestPrice"]["uninterruptablePrice"]
+        )
 
     async def _post_graphql(
         self,
