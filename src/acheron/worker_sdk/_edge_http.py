@@ -16,11 +16,15 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from email.message import Message
+from email.parser import BytesParser
+from email.policy import default as default_policy
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+from acheron.core.errors import WorkerError
 from acheron.core.models import (
     Job,
     JobMetrics,
@@ -30,8 +34,9 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
+from acheron.worker_sdk.inputs import BytesInput, Input
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
-from acheron.worker_sdk.schemas import ExecuteRequest  # noqa: TC001  (FastAPI needs the type at request time)
+from acheron.worker_sdk.schemas import ExecuteRequest
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -149,22 +154,74 @@ class EdgeApp:
             return _caps_to_response(self.capabilities)
 
         @app.post("/execute")
-        async def execute(body: ExecuteRequest) -> Response:
+        async def execute(request: Request) -> Response:
+            """Accept either ``application/json`` (legacy / TTS) or ``multipart/form-data`` (8b ASR)."""
+            ctype = request.headers.get("content-type", "")
+            if ctype.startswith("multipart/"):
+                return await self._run_execute_multipart(request)
+            body = ExecuteRequest.model_validate(await request.json())
             return await self._run_execute(body)
 
         self.app = app
 
+    async def _run_execute_multipart(self, request: Request) -> Response:
+        """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
+        ctype = request.headers.get("content-type", "")
+        if "boundary=" not in ctype:
+            msg = f"Multipart body from {request.client} missing boundary"
+            raise WorkerError(msg)
+        boundary = ctype.split("boundary=", 1)[1].split(";", 1)[0].strip().strip('"')
+        body = await request.body()
+        full_body = (
+            f"Content-Type: {ctype.split(';', 1)[0].strip()}; boundary={boundary}\r\nMIME-Version: 1.0\r\n\r\n"
+        ).encode() + body
+        message = BytesParser(policy=default_policy).parsebytes(full_body)
+        if not message.is_multipart():
+            msg = f"Multipart body from {request.client} was not multipart"
+            raise WorkerError(msg)
+
+        envelope_json: bytes | None = None
+        audio_part: Message | None = None
+        for part in message.get_payload():
+            if not isinstance(part, Message):
+                continue
+            part_ctype = part.get_content_type()
+            if part_ctype == "application/json" and envelope_json is None:
+                raw = part.get_payload(decode=True)
+                envelope_json = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
+            elif audio_part is None:
+                audio_part = part
+
+        if envelope_json is None:
+            msg = f"Multipart body from {request.client} has no application/json part"
+            raise WorkerError(msg)
+        body_req = ExecuteRequest.model_validate(json.loads(envelope_json))
+
+        job = _job_from_request(body_req)
+        input_obj: Input | None = None
+        if audio_part is not None:
+            audio_raw = audio_part.get_payload(decode=True)
+            audio_bytes = audio_raw if isinstance(audio_raw, bytes) else str(audio_raw).encode("utf-8")
+            input_obj = BytesInput(
+                content_type=audio_part.get_content_type(),
+                data=audio_bytes,
+                metadata={},
+            )
+
+        return await self._dispatch(job, input_obj)
+
     async def _run_execute(self, body: ExecuteRequest) -> Response:
         job = _job_from_request(body)
+        return await self._dispatch(job, None)
+
+    async def _dispatch(self, job: Job, input_obj: Input | None) -> Response:
+        """Common dispatch path: invoke the handler, build metrics, return multipart response."""
         start = time.monotonic()
         try:
-            artifacts: list[Artifact] = await self.handler.handle(job)
+            artifacts: list[Artifact] = await self.handler.handle(job, input_obj)
         except BaseException as exc:
             duration = time.monotonic() - start
             logger.exception("Handler failed for job %s", job.job_id)
-            # Return a ``JobResult``-shaped body so the orchestrator's
-            # ``TypeAdapter(JobResult).validate_json`` parser sees a valid
-            # failure record rather than an opaque 5xx.
             result = JobResult(
                 job_id=job.job_id,
                 status=JobStatus.FAILED,
@@ -177,7 +234,7 @@ class EdgeApp:
                 content=_jobresult_to_json(result),
             )
         duration = time.monotonic() - start
-        gpu_seconds = duration  # edge forwarder has no GPU; the handler times itself.
+        gpu_seconds = duration
         if self.price_source is not None:
             est = await self.price_source.estimate(gpu_seconds)
             cost = est.cost

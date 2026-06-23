@@ -97,7 +97,7 @@ class TestEdgeRoutes:
         """
         app, h = app_handler
 
-        async def _boom(job: Job) -> list[BytesArtifact]:
+        async def _boom(job: Job, input: Input | None = None) -> list[BytesArtifact]:  # noqa: A002
             raise RuntimeError("OOM")
 
         monkeypatch.setattr(h, "handle", _boom)
