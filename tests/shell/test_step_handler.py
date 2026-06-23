@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from acheron.core.errors import WorkerError
@@ -16,9 +18,11 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
+from acheron.shell.cache import StepCache
 from acheron.shell.registry import RegisteredWorker
-from acheron.shell.step_handler import create_step_handler
+from acheron.shell.step_handler import create_step_handler, default_worker_factory
 from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.transports.http import HttpWorker
 from acheron.shell.transports.local import LocalWorker
 
 
@@ -262,3 +266,67 @@ class TestStepHandler:
         await handler(plan.steps[0], plan)
         await handler(plan.steps[1], plan)
         assert factory_calls == ["tts-1"]
+
+
+class TestStepCachePlumbing:
+    """``step_cache`` flows from the orchestrator through ``create_step_handler``
+    to ``default_worker_factory`` and finally to ``HttpWorker``."""
+
+    def test_default_worker_factory_threads_step_cache(self) -> None:
+        """``default_worker_factory(reg, step_cache=cache)`` constructs an
+        ``HttpWorker`` whose ``_step_cache`` is the same instance."""
+        from acheron.shell.registry import RegisteredWorker
+
+        reg = RegisteredWorker(
+            worker_id="tts-x",
+            endpoint="http://worker:8000",
+            transport="http",
+            capabilities=_tts_caps(),
+        )
+        cache = StepCache("/tmp/acheron-test-step-cache")
+        worker = default_worker_factory(reg, step_cache=cache)
+        assert isinstance(worker, HttpWorker)
+        assert worker._step_cache is cache  # noqa: SLF001
+
+    def test_default_worker_factory_default_constructs_step_cache(self, tmp_path: object) -> None:
+        """When ``step_cache`` is not provided, ``HttpWorker`` constructs its
+        own ``StepCache`` from the default data dir (backward compat)."""
+        from acheron.shell.registry import RegisteredWorker
+
+        reg = RegisteredWorker(
+            worker_id="tts-x",
+            endpoint="http://worker:8000",
+            transport="http",
+            capabilities=_tts_caps(),
+        )
+        worker = default_worker_factory(reg)
+        assert isinstance(worker, HttpWorker)
+        assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_create_step_handler_default_factory_receives_step_cache(self, tmp_path: object) -> None:
+        """The default factory inside ``create_step_handler`` receives the
+        caller's ``step_cache`` (via the closure)."""
+        from acheron.shell.step_handler import WorkerFactory
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        cache = StepCache("/tmp/acheron-test-step-cache-2")
+        captured: dict = {}
+
+        def _capture_factory(registered: RegisteredWorker) -> object:
+            worker = default_worker_factory(registered, step_cache=cache)
+            captured["worker"] = worker
+            # Replace execute with the local echo so the test doesn't hit the network.
+            worker.execute = _echo_job_result  # type: ignore[method-assign]
+            return worker
+
+        handler = create_step_handler(
+            reg,
+            worker_factory=cast("WorkerFactory", _capture_factory),
+            step_cache=cache,
+        )
+        plan = _make_plan()
+        await handler(plan.steps[0], plan)
+        assert isinstance(captured["worker"], HttpWorker)
+        assert captured["worker"]._step_cache is cache  # noqa: SLF001

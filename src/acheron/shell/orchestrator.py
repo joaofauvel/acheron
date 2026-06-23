@@ -67,7 +67,11 @@ class Orchestrator:
         self._cache = cache
         self._step_cache = step_cache if step_cache is not None else StepCache(self._settings.orchestrator.data_dir)
         self._local_handlers: dict[str, LocalJobHandler] = {}
-        self._handler = handler or create_step_handler(registry, local_handlers=self._local_handlers)
+        self._handler = handler or create_step_handler(
+            registry,
+            local_handlers=self._local_handlers,
+            step_cache=self._step_cache,
+        )
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)
         self._tasks: set[asyncio.Task[None]] = set()
