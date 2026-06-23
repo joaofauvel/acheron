@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 service Synthesis {
-  rpc Synthesize(SynthesisRequest) returns (stream AudioChunk);
+  rpc Synthesize(SynthesisRequest) returns (stream OutputChunk);
 }
 
 message SynthesisRequest {
@@ -11,8 +11,33 @@ message SynthesisRequest {
   string model = 4;
 }
 
-message AudioChunk {
-  bytes pcm_data = 1;
-  int32 sample_rate = 2;
-  int32 channels = 3;
+message OutputChunk {
+  oneof payload {
+    bytes pcm_data = 1;
+    Artifact artifact = 2;
+  }
+  int32 sample_rate = 3;
+  int32 channels = 4;
+}
+
+message Artifact {
+  string filename = 1;
+  string content_type = 2;
+  bytes data = 3;
+  map<string, string> metadata = 4;
+}
+
+message ExecuteResponse {
+  repeated Artifact artifacts = 1;
+  Metrics metrics = 2;
+  string error = 3;
+}
+
+message Metrics {
+  double duration_seconds = 1;
+  double gpu_seconds = 2;
+  int64 tokens_in = 3;
+  int64 tokens_out = 4;
+  double cost_estimate = 5;
+  string cost_basis = 6;
 }
