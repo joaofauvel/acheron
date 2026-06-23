@@ -1,6 +1,8 @@
 import pytest
+from pydantic import TypeAdapter
 
 from acheron.core.models import (
+    CostBasis,
     ExecutorStrategy,
     Job,
     JobMetrics,
@@ -291,3 +293,36 @@ class TestJobMetricsCostBasis:
         dumped = self._adapter.dump_python(m)
         round_trip = self._adapter.validate_python(dumped)
         assert round_trip.cost_basis is None
+
+
+class TestPlanResultCostBasis:
+    _adapter = TypeAdapter(PlanResult)
+
+    def test_default_total_cost_basis_is_none(self) -> None:
+        r = PlanResult(
+            plan_id="p",
+            status=PlanStatus.COMPLETED,
+            completed_steps=0,
+            total_steps=0,
+            outputs=(),
+            total_cost=0.0,
+            total_duration_seconds=0.0,
+            errors=(),
+        )
+        assert r.total_cost_basis is None
+
+    def test_explicit_total_cost_basis_round_trip(self) -> None:
+        r = PlanResult(
+            plan_id="p",
+            status=PlanStatus.COMPLETED,
+            completed_steps=1,
+            total_steps=1,
+            outputs=(),
+            total_cost=0.042,
+            total_duration_seconds=1.0,
+            errors=(),
+            total_cost_basis=CostBasis.MEASURED,
+        )
+        dumped = self._adapter.dump_python(r)
+        round_trip = self._adapter.validate_python(dumped)
+        assert round_trip.total_cost_basis == CostBasis.MEASURED

@@ -191,6 +191,7 @@ class PlanResult:
     total_cost: float
     total_duration_seconds: float
     errors: tuple[str, ...] = ()
+    total_cost_basis: CostBasis | None = None
 
 
 @dataclass(frozen=True)
