@@ -8,7 +8,7 @@ from httpx import ASGITransport
 
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.app import create_worker_app
-from acheron.worker_sdk.artifacts import BytesArtifact
+from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 from acheron.worker_sdk.settings import WorkerSettings
 
@@ -26,7 +26,7 @@ class _Stub(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job) -> list[BytesArtifact]:
+    async def handle(self, job: Job) -> list[Artifact]:
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 
 
@@ -38,7 +38,7 @@ def _settings(**overrides: Any) -> WorkerSettings:
         "price_source": "zero",
     }
     base.update(overrides)
-    return WorkerSettings(**base)  # type: ignore[arg-type]
+    return WorkerSettings(**base)
 
 
 class TestCreateWorkerApp:
@@ -46,7 +46,7 @@ class TestCreateWorkerApp:
         h = _Stub()
         s = _settings(price_source="zero")
         app = create_worker_app(handler=h, settings=s, disable_registration=True)
-        paths = {r.path for r in app.routes if hasattr(r, "path")}
+        paths = {getattr(r, "path", "") for r in app.routes}
         assert "/health" in paths
         assert "/capabilities" in paths
         assert "/execute" in paths

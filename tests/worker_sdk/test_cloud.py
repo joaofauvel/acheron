@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
-from acheron.worker_sdk.artifacts import BytesArtifact
+from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.cloud import make_runpod_handler
 from acheron.worker_sdk.handler import WorkerHandler
 
@@ -27,7 +27,7 @@ class _Stub(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job) -> list[BytesArtifact]:
+    async def handle(self, job: Job) -> list[Artifact]:
         self.last_input = dict(job.payload)
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 

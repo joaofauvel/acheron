@@ -7,15 +7,15 @@ from pathlib import Path
 import pytest
 
 from acheron.worker_sdk.artifacts import (
-    Artifact,
     BytesArtifact,
     FileArtifact,
     StreamArtifact,
 )
 
 
-async def _collect(artifact: Artifact) -> bytes:
-    return b"".join([chunk async for chunk in artifact.stream()])
+async def _collect(artifact: object) -> bytes:
+    stream = getattr(artifact, "stream")
+    return b"".join([chunk async for chunk in stream()])
 
 
 class TestBytesArtifact:

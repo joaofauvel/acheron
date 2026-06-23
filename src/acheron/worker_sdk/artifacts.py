@@ -10,20 +10,23 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from typing import ReadOnly
+
     from acheron.core.models import JsonValue
 
 
-@runtime_checkable
 class Artifact(Protocol):
     """Transport-neutral output produced by `WorkerHandler.handle()`."""
 
-    filename: str
-    content_type: str
-    metadata: dict[str, "JsonValue"]
-
+    @property
+    def filename(self) -> str: ...
+    @property
+    def content_type(self) -> str: ...
+    @property
+    def metadata(self) -> dict[str, JsonValue]: ...
     def stream(self) -> AsyncIterator[bytes]: ...
 
 

@@ -14,7 +14,11 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 _ENV_ONLY_FIELDS: frozenset[str] = frozenset({
     "registration_token",
@@ -56,6 +60,25 @@ class WorkerSettings(BaseSettings):
         env_prefix="ACHERON_WORKER_",
         extra="forbid",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Order sources so explicit env vars win over YAML/init kwargs.
+
+        Workers are configured primarily via ``worker.yaml`` (init kwargs
+        supplied by ``config_loader``); the operator can override any value
+        by exporting the corresponding ``ACHERON_WORKER_*`` env var on the
+        container — env must take precedence so the same image can be
+        retargeted at runtime without rebuilding.
+        """
+        return env_settings, init_settings, dotenv_settings, file_secret_settings
 
     @model_validator(mode="before")
     @classmethod

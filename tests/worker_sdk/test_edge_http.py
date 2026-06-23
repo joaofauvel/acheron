@@ -1,13 +1,18 @@
 """Tests for the internal edge FastAPI app."""
 
+from typing import TYPE_CHECKING
+
 import httpx
 import pytest
 from httpx import ASGITransport
 
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._edge_http import EdgeApp
-from acheron.worker_sdk.artifacts import BytesArtifact
+from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 
 class _Stub(WorkerHandler):
@@ -26,13 +31,13 @@ class _Stub(WorkerHandler):
             model_source="huggingface:test",
         )
 
-    async def handle(self, job: Job) -> list[BytesArtifact]:
+    async def handle(self, job: Job) -> list[Artifact]:
         self.calls += 1
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 
 
 @pytest.fixture
-def app_handler():
+def app_handler() -> tuple["FastAPI", "_Stub"]:
     h = _Stub()
     app = EdgeApp(handler=h, capabilities=h.capabilities()).app
     return app, h
@@ -40,7 +45,7 @@ def app_handler():
 
 class TestEdgeRoutes:
     @pytest.mark.asyncio
-    async def test_health_returns_ok(self, app_handler) -> None:
+    async def test_health_returns_ok(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
         app, _ = app_handler
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -49,7 +54,7 @@ class TestEdgeRoutes:
         assert r.json() == {"status": "ok"}
 
     @pytest.mark.asyncio
-    async def test_capabilities_returns_shape(self, app_handler) -> None:
+    async def test_capabilities_returns_shape(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
         app, _ = app_handler
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -61,7 +66,7 @@ class TestEdgeRoutes:
         assert body["supported_formats_out"] == ["wav"]
 
     @pytest.mark.asyncio
-    async def test_execute_returns_multipart(self, app_handler) -> None:
+    async def test_execute_returns_multipart(self, app_handler: tuple["FastAPI", "_Stub"]) -> None:
         app, h = app_handler
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -81,7 +86,9 @@ class TestEdgeRoutes:
 
     @pytest.mark.asyncio
     async def test_execute_on_handler_error_returns_json(
-        self, app_handler, monkeypatch: pytest.MonkeyPatch
+        self,
+        app_handler: tuple["FastAPI", "_Stub"],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         app, h = app_handler
 

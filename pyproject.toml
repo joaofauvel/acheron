@@ -106,6 +106,13 @@ ignore_missing_imports = true
 module = ["acheron.proto.*"]
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+check_untyped_defs = false
+disallow_any_generics = false
+no_implicit_reexport = false
+
 [tool.basedpyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.14"

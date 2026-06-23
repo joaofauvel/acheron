@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
-from acheron.worker_sdk.artifacts import BytesArtifact
+from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 
 
@@ -22,7 +22,7 @@ class _Echo(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job) -> list[BytesArtifact]:
+    async def handle(self, job: Job) -> list[Artifact]:
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"echo")]
 
 
