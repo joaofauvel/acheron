@@ -233,3 +233,32 @@ class TestHttpWorkerStepCache:
         worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
         assert worker._step_cache is cache  # noqa: SLF001
         assert worker._step_cache.data_dir == tmp_path / "other"  # noqa: SLF001
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_tts_path_uses_json_request(self, tmp_path: Path) -> None:
+        """TTS job (non-ASR) still uses the JSON request path — no multipart.
+
+        The new ASR branch in execute() must not affect the TTS / translation
+        / chunking / packaging path. The wire request is ``application/json``
+        and the response is the legacy ``JobResult`` JSON (or
+        ``multipart/mixed``).
+        """
+        captured: dict = {}
+
+        def _capture(request: httpx.Request) -> httpx.Response:
+            captured["content_type"] = request.headers.get("content-type", "")
+            captured["body"] = request.content
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                content=b'{"job_id": "j-1", "status": "success", "outputs": [], "metrics": {"duration_seconds": 1.0}, "error": null}',
+            )
+
+        respx.post(f"{_BASE_URL}/execute").mock(side_effect=_capture)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
+        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        result = await worker.execute(job)
+        # TTS path uses application/json, NOT multipart/form-data.
+        assert captured["content_type"].startswith("application/json")
+        assert result.status == JobStatus.SUCCESS
