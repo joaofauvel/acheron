@@ -96,7 +96,7 @@ check_untyped_defs = true
 no_implicit_reexport = true
 warn_unused_ignores = true
 explicit_package_bases = true
-mypy_path = "src:stubs"
+mypy_path = "src:stubs:workers"
 exclude = ["src/acheron/proto/"]
 
 [[tool.mypy.overrides]]
@@ -118,7 +118,7 @@ no_implicit_reexport = false
 typeCheckingMode = "standard"
 pythonVersion = "3.14"
 include = ["src", "tests"]
-extraPaths = ["src", "stubs"]
+extraPaths = ["src", "stubs", "workers"]
 exclude = [".venv", "src/acheron/proto/"]
 reportUnusedImport = false
 reportUnusedVariable = false
@@ -128,7 +128,7 @@ reportMissingImports = false
 [tool.pytest.ini_options]
 xfail_strict = true
 addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80 --dist=loadgroup -n auto"
-testpaths = ["tests", "stubs/tests", "dashboard/tests"]
+testpaths = ["tests", "stubs/tests", "dashboard/tests", "workers/qwen3tts/tests"]
 filterwarnings = [
     "ignore::DeprecationWarning:websockets.legacy",
     "ignore::DeprecationWarning:uvicorn.protocols.websockets",
@@ -137,6 +137,7 @@ filterwarnings = [
 
 [tool.importlinter]
 root_package = "acheron"
+root_packages = ["acheron", "workers"]
 
 [[tool.importlinter.contracts]]
 name = "core-shell-boundary"
@@ -148,6 +149,12 @@ forbidden_modules = ["acheron.shell"]
 name = "worker-sdk-no-shell"
 type = "forbidden"
 source_modules = ["acheron.worker_sdk"]
+forbidden_modules = ["acheron.shell"]
+
+[[tool.importlinter.contracts]]
+name = "workers-no-shell"
+type = "forbidden"
+source_modules = ["workers"]
 forbidden_modules = ["acheron.shell"]
 
 [dependency-groups]
@@ -171,3 +178,9 @@ dev = [
     "types-protobuf~=5.29",
     "types-pyyaml~=6.0",
 ]
+
+[tool.uv.workspace]
+members = ["workers/qwen3tts"]
+
+[tool.uv.sources]
+acheron = { workspace = true }
