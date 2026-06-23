@@ -1,6 +1,6 @@
 """Capability-shape tests for Qwen3TTSRunpodHandler."""
 
-from typing import Any
+from typing import Any, cast
 
 from acheron.core.models import WorkerType
 from acheron.worker_sdk.settings import WorkerSettings
@@ -44,7 +44,7 @@ def test_capabilities_metadata_lists_speakers_and_default() -> None:
 
     h = Qwen3TTSRunpodHandler(_settings(default_speaker="Ryan"))
     caps = h.capabilities()
-    speakers = caps.metadata["speakers"]
+    speakers = cast("list[str]", caps.metadata["speakers"])
     assert "Ryan" in speakers
     assert "Vivian" in speakers
     assert caps.metadata["default_speaker"] == "Ryan"
@@ -61,4 +61,4 @@ def test_handler_initial_state_model_is_none() -> None:
     from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 
     h = Qwen3TTSRunpodHandler(_settings())
-    assert h._model is None  # noqa: SLF001 - private access is fine for tests
+    assert h._model is None

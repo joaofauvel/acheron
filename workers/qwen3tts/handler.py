@@ -36,15 +36,27 @@ _LANG_MAP = {
     "es": "Spanish",
     "it": "Italian",
 }
-_ALL_SPEAKERS = frozenset({
-    "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric",
-    "Ryan", "Aiden", "Ono_Anna", "Sohee",
-})
+_ALL_SPEAKERS = frozenset(
+    {
+        "Vivian",
+        "Serena",
+        "Uncle_Fu",
+        "Dylan",
+        "Eric",
+        "Ryan",
+        "Aiden",
+        "Ono_Anna",
+        "Sohee",
+    }
+)
 _MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
 
 def _chunk_text(c: dict[str, Any]) -> str:
     """Read the text field from a chunk dict."""
+    if "text" not in c:
+        msg = "chunk.text is required"
+        raise WorkerError(msg)
     text = c["text"]
     if not isinstance(text, str):
         msg = f"chunk.text must be a str, got {type(text).__name__}"
@@ -54,6 +66,9 @@ def _chunk_text(c: dict[str, Any]) -> str:
 
 def _chunk_chapter_id(c: dict[str, Any]) -> str:
     """Read the chapter_id field from a chunk dict."""
+    if "chapter_id" not in c:
+        msg = "chunk.chapter_id is required"
+        raise WorkerError(msg)
     cid = c["chapter_id"]
     if not isinstance(cid, str):
         msg = f"chunk.chapter_id must be a str, got {type(cid).__name__}"
@@ -76,7 +91,10 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static capabilities (no I/O, sync)."""
-        speakers_json: list[JsonValue] = cast("list[JsonValue]", sorted(_ALL_SPEAKERS))
+        metadata: dict[str, JsonValue] = {
+            "speakers": cast("list[JsonValue]", sorted(_ALL_SPEAKERS)),
+            "default_speaker": self._settings.default_speaker,
+        }
         return WorkerCapabilities(
             worker_type=WorkerType.TTS,
             supported_languages_in=frozenset(_LANG_MAP),
@@ -86,10 +104,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             max_payload_bytes=None,
             batch_capable=True,
             model_source=f"huggingface:{_MODEL_ID}",
-            metadata={
-                "speakers": speakers_json,
-                "default_speaker": self._settings.default_speaker,
-            },
+            metadata=metadata,
         )
 
     async def startup(self) -> None:
