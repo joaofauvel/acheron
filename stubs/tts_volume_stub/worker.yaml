@@ -1,0 +1,6 @@
+worker_id: "tts-volume-stub"
+orchestrator_url: "http://orchestrator:8000"
+listen_port: 8002
+price_source: zero
+output_mode: volume
+output_volume_dir: /data

@@ -85,26 +85,26 @@ services:
   tts-stub:
     build:
       context: .
-      target: worker-stub
+      target: worker-stub-base
     ports:
       - "8001:8001"
-    environment:
-      WORKER_TYPE: TTS
-      WORKER_ENDPOINT: https://tts-stub:8001
-      ORCHESTRATOR_URL: https://orchestrator:8000
-      WORKER_PORT: "8001"
+    environment: &stub_env
+      WORKER_NAME: tts-local-stub
+      ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__WORKER_ID: tts-local-stub
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-      ACHERON_TLS_CERT_FILE: /certs/tts-stub.crt
-      ACHERON_TLS_KEY_FILE: /certs/tts-stub.key
+      ACHERON_WORKER__PRICE_SOURCE: zero
+      ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
       - ./certs:/certs:ro
-    healthcheck:
+    command: ["python", "-m", "stubs.tts_local_stub.main"]
+    healthcheck: &stub_healthcheck
       test:
         - "CMD-SHELL"
         - "python"
         - "-c"
-        - "import os, ssl, urllib.request; ctx = ssl.create_default_context(cafile=os.environ.get('SSL_CERT_FILE')); urllib.request.urlopen(f'https://localhost:{__import__(\"os\").environ[\"WORKER_PORT\"]}/health', context=ctx).read()"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -116,30 +116,24 @@ services:
   asr-stub:
     build:
       context: .
-      target: worker-stub
+      target: worker-stub-base
     ports:
       - "8002:8002"
     environment:
-      WORKER_TYPE: ASR
-      WORKER_ENDPOINT: https://asr-stub:8002
-      ORCHESTRATOR_URL: https://orchestrator:8000
-      WORKER_PORT: "8002"
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-      ACHERON_TLS_CERT_FILE: /certs/asr-stub.crt
-      ACHERON_TLS_KEY_FILE: /certs/asr-stub.key
-      SSL_CERT_FILE: /certs/acheron-ca.crt
+      <<: *stub_env
+      WORKER_NAME: asr-local-stub
+      ACHERON_WORKER__WORKER_ID: asr-local-stub
+      ACHERON_WORKER__LISTEN_PORT: "8002"
     volumes:
       - ./certs:/certs:ro
+    command: ["python", "-m", "stubs.asr_local_stub.main"]
     healthcheck:
+      <<: *stub_healthcheck
       test:
         - "CMD-SHELL"
         - "python"
         - "-c"
-        - "import os, ssl, urllib.request; ctx = ssl.create_default_context(cafile=os.environ.get('SSL_CERT_FILE')); urllib.request.urlopen(f'https://localhost:{__import__(\"os\").environ[\"WORKER_PORT\"]}/health', context=ctx).read()"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8002/health').read()"
     depends_on:
       orchestrator:
         condition: service_healthy
@@ -147,31 +141,24 @@ services:
   tts-grpc-stub:
     build:
       context: .
-      target: grpc-stub
+      target: worker-stub-base
     ports:
-      - "9001:9001"
       - "9002:9002"
     environment:
-      WORKER_ENDPOINT: tts-grpc-stub:9001
-      ORCHESTRATOR_URL: https://orchestrator:8000
-      WORKER_PORT: "9001"
-      WORKER_HTTP_PORT: "9002"
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-      ACHERON_TLS_CERT_FILE: /certs/tts-grpc-stub.crt
-      ACHERON_TLS_KEY_FILE: /certs/tts-grpc-stub.key
-      SSL_CERT_FILE: /certs/acheron-ca.crt
+      <<: *stub_env
+      WORKER_NAME: tts-grpc-stub
+      ACHERON_WORKER__WORKER_ID: tts-grpc-stub
+      ACHERON_WORKER__LISTEN_PORT: "9002"
     volumes:
       - ./certs:/certs:ro
+    command: ["python", "-m", "stubs.tts_grpc_stub.main"]
     healthcheck:
+      <<: *stub_healthcheck
       test:
         - "CMD-SHELL"
         - "python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:9002/health').read()"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     depends_on:
       orchestrator:
         condition: service_healthy
@@ -179,34 +166,27 @@ services:
   translation-stub:
     build:
       context: .
-      target: worker-stub
+      target: worker-stub-base
     ports:
       - "8003:8003"
     environment:
-      WORKER_TYPE: TRANSLATION
-      WORKER_ENDPOINT: https://translation-stub:8003
-      ORCHESTRATOR_URL: https://orchestrator:8000
-      WORKER_PORT: "8003"
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-      ACHERON_TLS_CERT_FILE: /certs/translation-stub.crt
-      ACHERON_TLS_KEY_FILE: /certs/translation-stub.key
-      SSL_CERT_FILE: /certs/acheron-ca.crt
+      <<: *stub_env
+      WORKER_NAME: translation-local-stub
+      ACHERON_WORKER__WORKER_ID: translation-local-stub
+      ACHERON_WORKER__LISTEN_PORT: "8003"
     volumes:
       - ./certs:/certs:ro
+    command: ["python", "-m", "stubs.translation_local_stub.main"]
     healthcheck:
+      <<: *stub_healthcheck
       test:
         - "CMD-SHELL"
         - "python"
         - "-c"
-        - "import os, ssl, urllib.request; ctx = ssl.create_default_context(cafile=os.environ.get('SSL_CERT_FILE')); urllib.request.urlopen(f'https://localhost:{__import__(\"os\").environ[\"WORKER_PORT\"]}/health', context=ctx).read()"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8003/health').read()"
     depends_on:
       orchestrator:
         condition: service_healthy
-    command: ["python", "-m", "stubs.translation_stub"]
 
   qwen3tts-edge:
     build:

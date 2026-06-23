@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import socket
 import zipfile
 from collections.abc import AsyncIterator, Callable, Coroutine
@@ -179,73 +178,96 @@ async def _start_uvicorn(app_factory: Callable[[], FastAPI]) -> tuple[str, async
 
 @pytest_asyncio.fixture
 async def http_tts_stub() -> AsyncIterator[str]:
-    """Start a TTS HTTP stub worker."""
+    """Start a TTS HTTP stub worker using the SDK-backed tts_local_stub handler."""
 
-    saved = {
-        k: os.environ.get(k)
-        for k in ("WORKER_TYPE", "WORKER_ENDPOINT", "ORCHESTRATOR_URL", "WORKER_PORT", "ACHERON_REGISTRATION_TOKEN")
-    }
-    os.environ["WORKER_TYPE"] = "TTS"
-    os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:0"
-    os.environ["ORCHESTRATOR_URL"] = "http://127.0.0.1:1"
-    os.environ["WORKER_PORT"] = "0"
-    os.environ["ACHERON_REGISTRATION_TOKEN"] = ""
+    from stubs._sdk_base import StubTTSHandler
 
-    try:
-        from stubs.worker_stub import create_app
+    from acheron.worker_sdk import WorkerSettings
+    from acheron.worker_sdk.app import create_worker_app
 
-        url, task = await _start_uvicorn(create_app)
-        yield url
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    def _factory() -> FastAPI:
+        settings = WorkerSettings(
+            worker_id="tts-http",
+            orchestrator_url="http://127.0.0.1:1",
+            price_source="zero",
+            listen_port=0,
+        )
+        return create_worker_app(handler=StubTTSHandler(settings), settings=settings, disable_registration=True)
+
+    url, task = await _start_uvicorn(_factory)
+    yield url
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 @pytest_asyncio.fixture
 async def http_translation_stub() -> AsyncIterator[str]:
-    """Start a translation HTTP stub worker."""
+    """Start a translation HTTP stub worker using the SDK-backed translation_local_stub handler."""
 
-    saved = {
-        k: os.environ.get(k)
-        for k in ("WORKER_TYPE", "WORKER_ENDPOINT", "ORCHESTRATOR_URL", "WORKER_PORT", "ACHERON_REGISTRATION_TOKEN")
-    }
-    os.environ["WORKER_TYPE"] = "TRANSLATION"
-    os.environ["WORKER_ENDPOINT"] = "http://127.0.0.1:0"
-    os.environ["ORCHESTRATOR_URL"] = "http://127.0.0.1:1"
-    os.environ["WORKER_PORT"] = "0"
-    os.environ["ACHERON_REGISTRATION_TOKEN"] = ""
+    from stubs._sdk_base import StubTranslationHandler
 
-    try:
-        from stubs.translation_stub import create_app
+    from acheron.worker_sdk import WorkerSettings
+    from acheron.worker_sdk.app import create_worker_app
 
-        url, task = await _start_uvicorn(create_app)
-        yield url
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    def _factory() -> FastAPI:
+        settings = WorkerSettings(
+            worker_id="translation-http",
+            orchestrator_url="http://127.0.0.1:1",
+            price_source="zero",
+            listen_port=0,
+        )
+        return create_worker_app(handler=StubTranslationHandler(settings), settings=settings, disable_registration=True)
+
+    url, task = await _start_uvicorn(_factory)
+    yield url
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 @pytest_asyncio.fixture
 async def grpc_tts_stub() -> AsyncIterator[str]:
-    """Start a TTS gRPC stub worker."""
-    from stubs.grpc_worker_stub import create_server
+    """Start a TTS gRPC stub worker using an in-process SynthesisServicer.
 
-    server, port = await create_server(port=0, register=False)
+    The legacy ``stubs.grpc_worker_stub`` was removed in Plan 3; the gRPC test
+    path is now exercised here via the minimal in-process servicer below.
+    The full OutputChunk-Artifact contract is exercised in
+    ``tests/shell/test_grpc_worker.py`` via ``_FakeSynthesisServicer``.
+    """
+    import grpc.aio
+
+    from acheron.proto import synthesis_pb2_grpc
+
+    server = grpc.aio.server()
+    servicer = _LegacyGrpcTtsServicer()
+    synthesis_pb2_grpc.add_SynthesisServicer_to_server(servicer, server)  # type: ignore[no-untyped-call]
+    port = server.add_insecure_port("127.0.0.1:0")
     await server.start()
     yield f"localhost:{port}"
     await server.stop(0)
+
+
+class _LegacyGrpcTtsServicer:
+    """Minimal in-process SynthesisServicer — legacy stub replacement.
+
+    Uses runtime-imported proto classes so mypy's acheron.proto.* override
+    keeps the type errors out of this fixture.
+    """
+
+    async def Synthesize(self, request: object, context: object) -> object:  # noqa: N802
+        from acheron.proto import synthesis_pb2
+
+        async def _gen() -> object:
+            for _ in range(3):
+                # mypy can't see generated attributes on synthesis_pb2; runtime is fine.
+                yield synthesis_pb2.OutputChunk(  # type: ignore[attr-defined]
+                    pcm_data=b"\x00\x00" * 2205,
+                    sample_rate=22050,
+                    channels=1,
+                )
+
+        return _gen()
 
 
 _LANGS = frozenset({"en", "es", "fr", "de"})

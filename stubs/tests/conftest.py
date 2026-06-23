@@ -1,21 +1,17 @@
-"""Shared pytest fixtures for the stubs/tests/ tree."""
+"""Shared fixtures for the 7-stub SDK matrix tests."""
 
 from __future__ import annotations
 
-import subprocess
-import sys
-from pathlib import Path
+from collections.abc import AsyncIterator
 
-import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
 
-@pytest.fixture
-def dev_certs(tmp_path: Path) -> Path:
-    """Run the dev cert generator and return the cert dir."""
-    script = Path(__file__).resolve().parents[2] / "scripts" / "generate_dev_certs.py"
-    subprocess.run(
-        [sys.executable, str(script), "--out-dir", str(tmp_path)],
-        check=True,
-        capture_output=True,
-    )
-    return tmp_path
+@pytest_asyncio.fixture
+async def http_client() -> AsyncIterator[AsyncClient]:
+    """Plain httpx ASGI client factory; each test gets its own transport."""
+    transport = ASGITransport(app=None)  # placeholder, set per test
+    client = AsyncClient(transport=transport, base_url="http://test")
+    yield client
+    await client.aclose()

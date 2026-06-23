@@ -1,0 +1,9 @@
+# The gRPC stub's worker-edge half stays HTTP — Plan 2 ships Artifact-mode
+# OutputChunk on the proto side and the existing test_grpc_worker.py covers
+# the gRPC path. This stub keeps the HTTP-edge side alive for compose-level
+# healthcheck / registration parity.
+worker_id: "tts-grpc-stub"
+orchestrator_url: "http://orchestrator:8000"
+listen_port: 9002
+price_source: zero
+output_mode: multipart

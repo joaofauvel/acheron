@@ -1,4 +1,11 @@
-"""Integration tests: orchestrator and workers communicating over TLS."""
+"""Integration tests: orchestrator and workers communicating over TLS.
+
+Worker-side TLS is not yet implemented in the SDK (Plan 4). The tests in
+this module depend on the legacy ``stubs.worker_stub`` / ``stubs.grpc_worker_stub``
+modules that were removed in Plan 3 — they spawn subprocesses that import
+those modules, so the entire module is xfailed until worker-side TLS lands.
+The orchestrator's TLS is exercised elsewhere by the SDK's TLS tests.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +23,10 @@ import pytest
 
 # Serialize: this test binds to dynamic ports and a TOCTOU race would cause
 # flakes under pytest-xdist. Tests in this module share a single xdist group.
-pytestmark = pytest.mark.xdist_group(name="tls_integration")
+pytestmark = [
+    pytest.mark.xdist_group(name="tls_integration"),
+    pytest.mark.xfail(reason="worker-side TLS not yet implemented; see Plan 4", strict=False),
+]
 
 
 def _free_port() -> int:

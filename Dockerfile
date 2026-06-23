@@ -24,25 +24,14 @@ RUN pip install --no-cache-dir ./*.whl[dashboard] && rm ./*.whl
 ENV PYTHONPATH=/app
 CMD ["uvicorn", "dashboard.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
 
-FROM python:3.14-slim AS worker-stub
+FROM python:3.14-slim AS worker-stub-base
 
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
 COPY stubs/ ./stubs/
-COPY proto/ ./proto/
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
 ENV PYTHONPATH=/app
-CMD ["python", "-m", "stubs.worker_stub"]
-
-FROM python:3.14-slim AS grpc-stub
-
-WORKDIR /app
-COPY --from=builder /app/dist/*.whl ./
-COPY stubs/ ./stubs/
-COPY proto/ ./proto/
-RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
-ENV PYTHONPATH=/app
-CMD ["python", "-m", "stubs.grpc_worker_stub"]
+# Per-stub CMD specified in docker-compose.yml. Override via `command:` field.
 
 FROM python:3.14-slim AS certs-init
 

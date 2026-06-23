@@ -1,0 +1,6 @@
+worker_id: "tts-runpod-stub"
+orchestrator_url: "http://orchestrator:8000"
+listen_port: 8003
+price_source: static
+dollars_per_hour: 0.69
+output_mode: multipart
