@@ -252,7 +252,10 @@ class TestHttpWorkerStepCache:
             return httpx.Response(
                 200,
                 headers={"content-type": "application/json"},
-                content=b'{"job_id": "j-1", "status": "success", "outputs": [], "metrics": {"duration_seconds": 1.0}, "error": null}',
+                content=(
+                    b'{"job_id": "j-1", "status": "success", "outputs": [], '
+                    b'"metrics": {"duration_seconds": 1.0}, "error": null}'
+                ),
             )
 
         respx.post(f"{_BASE_URL}/execute").mock(side_effect=_capture)

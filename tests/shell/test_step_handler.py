@@ -19,6 +19,7 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.shell.cache import StepCache
+from acheron.shell.local_handlers import LocalJobHandler
 from acheron.shell.registry import RegisteredWorker
 from acheron.shell.step_handler import create_step_handler, default_worker_factory
 from acheron.shell.stores.memory import InMemoryWorkerStore
@@ -328,5 +329,41 @@ class TestStepCachePlumbing:
         )
         plan = _make_plan()
         await handler(plan.steps[0], plan)
+        assert isinstance(captured["worker"], HttpWorker)
+        assert captured["worker"]._step_cache is cache  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_create_step_handler_default_factory_lambda_threads_cache(self, tmp_path: object) -> None:
+        """The DEFAULT factory lambda inside ``create_step_handler`` (no
+        ``worker_factory`` arg) must capture the caller's ``step_cache``
+        closure and pass it to ``default_worker_factory`` → ``HttpWorker``."""
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        cache = StepCache("/tmp/acheron-test-step-cache-3")
+        handler = create_step_handler(reg, step_cache=cache)
+        # Capture the worker the default-factory lambda produced.
+        original_default = default_worker_factory
+        captured: dict = {}
+
+        def _capturing_default(
+            registered: RegisteredWorker,
+            local_handlers: dict[str, LocalJobHandler] | None = None,
+            *,
+            step_cache: StepCache | None = None,
+        ) -> object:
+            worker = original_default(registered, local_handlers, step_cache=step_cache)
+            captured["worker"] = worker
+            worker.execute = _echo_job_result  # type: ignore[method-assign]
+            return worker
+
+        # Patch the default_worker_factory used by the lambda closure.
+        import acheron.shell.step_handler as sh
+
+        sh.default_worker_factory = _capturing_default  # type: ignore[assignment]
+        try:
+            plan = _make_plan()
+            await handler(plan.steps[0], plan)
+        finally:
+            sh.default_worker_factory = original_default
         assert isinstance(captured["worker"], HttpWorker)
         assert captured["worker"]._step_cache is cache  # noqa: SLF001

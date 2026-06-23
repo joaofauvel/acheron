@@ -168,3 +168,66 @@ async def test_asr_multipart_missing_audio_file_on_disk(tmp_path: Path, audio_fi
         )
         with pytest.raises(WorkerError, match="audio file missing"):
             await worker.execute(job)
+
+
+@pytest.mark.asyncio
+async def test_asr_multipart_server_error_raises_worker_error(tmp_path: Path, audio_file: Path) -> None:
+    """ASR path on a 5xx response raises WorkerError, not the raw httpx.HTTPStatusError.
+
+    The TTS path converts via _request() — the ASR path must match.
+    """
+    from acheron.core.errors import WorkerError
+
+    plan_job_id = "job-abc123"
+    cache = StepCache(tmp_path)
+    await _seed_extract_output(cache, plan_job_id, audio_file)
+    transport = httpx.MockTransport(lambda _r: httpx.Response(500, text="GPU OOM"))
+    async with httpx.AsyncClient(transport=transport, base_url="http://stub:8002") as client:
+        worker = HttpWorker(
+            "http://stub:8002",
+            client=client,
+            data_dir=tmp_path,
+            step_cache=cache,
+        )
+        job = Job(
+            job_id=f"{plan_job_id}-transcribe",
+            job_type=WorkerType.ASR,
+            payload={"source_language": "en"},
+            chapter_id="ch1",
+        )
+        with pytest.raises(WorkerError, match="500"):
+            await worker.execute(job)
+
+
+@pytest.mark.asyncio
+async def test_asr_multipart_connection_error_raises_worker_unavailable(tmp_path: Path, audio_file: Path) -> None:
+    """ASR path on a connect error raises WorkerUnavailableError, not raw httpx.ConnectError.
+
+    The TTS path converts via _request() — the ASR path must match.
+    """
+    from acheron.core.errors import WorkerUnavailableError
+
+    plan_job_id = "job-abc123"
+    cache = StepCache(tmp_path)
+    await _seed_extract_output(cache, plan_job_id, audio_file)
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        msg = "refused"
+        raise httpx.ConnectError(msg)
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://stub:8002") as client:
+        worker = HttpWorker(
+            "http://stub:8002",
+            client=client,
+            data_dir=tmp_path,
+            step_cache=cache,
+        )
+        job = Job(
+            job_id=f"{plan_job_id}-transcribe",
+            job_type=WorkerType.ASR,
+            payload={"source_language": "en"},
+            chapter_id="ch1",
+        )
+        with pytest.raises(WorkerUnavailableError):
+            await worker.execute(job)

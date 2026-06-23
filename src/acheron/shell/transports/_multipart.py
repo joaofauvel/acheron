@@ -7,12 +7,7 @@ so a worker needs no shared filesystem with the orchestrator.
 from __future__ import annotations
 
 import hashlib
-import json
-from email.message import Message
-from email.parser import BytesParser
-from email.policy import default as default_policy
 from pathlib import Path
-from typing import Any
 
 import aiofiles
 
@@ -89,49 +84,3 @@ def _build_result(
         metrics=metrics,
         error=None,
     )
-
-
-def _parse_request_multipart(
-    ctype: str,
-    body: bytes,
-) -> tuple[dict[str, Any], bytes, str]:
-    """Parse a ``/execute`` request body into (envelope, audio_bytes, audio_content_type).
-
-    Accepts either ``multipart/form-data`` (one ``application/json`` part + zero
-    or more binary parts) or plain ``application/json`` (legacy / TTS path).
-    For multipart with no binary part, ``audio_bytes`` is empty and
-    ``audio_content_type`` is ``""``.
-
-    The wire contract is the SDK's ``/execute`` request shape: a JSON
-    ``ExecuteRequest`` envelope plus an optional binary audio part. The
-    orchestrator and the SDK parse independently (each side does different
-    things with the result), so a single helper is the right level of
-    sharing.
-    """
-    if not ctype.startswith("multipart/"):
-        return (json.loads(body), b"", "")
-    boundary = ctype.split("boundary=", 1)[1].split(";", 1)[0].strip().strip('"')
-    full_body = (
-        f"Content-Type: {ctype.split(';', 1)[0].strip()}; boundary={boundary}\r\nMIME-Version: 1.0\r\n\r\n"
-    ).encode() + body
-    message = BytesParser(policy=default_policy).parsebytes(full_body)
-    if not message.is_multipart():
-        return (json.loads(body), b"", "")
-    envelope: dict[str, Any] | None = None
-    audio_bytes = b""
-    audio_ctype = ""
-    for part in message.get_payload():
-        if not isinstance(part, Message):
-            continue
-        part_ctype = part.get_content_type()
-        if part_ctype == "application/json" and envelope is None:
-            raw = part.get_payload(decode=True)
-            envelope = json.loads(raw if isinstance(raw, bytes) else str(raw).encode("utf-8"))
-        elif not audio_bytes and part_ctype != "application/json":
-            raw = part.get_payload(decode=True)
-            audio_bytes = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-            audio_ctype = part_ctype
-    if envelope is None:
-        msg = "Multipart body has no application/json part"
-        raise ValueError(msg)
-    return (envelope, audio_bytes, audio_ctype)
