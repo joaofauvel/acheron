@@ -19,7 +19,7 @@ def _settings(**overrides: Any) -> WorkerSettings:
         "default_speaker": "Ryan",
     }
     base.update(overrides)
-    return WorkerSettings(**base)  # type: ignore[arg-type]
+    return WorkerSettings(**base)
 
 
 def _build_job(chunks: list[dict[str, Any]], target_language: str = "en") -> Job:
@@ -137,7 +137,7 @@ class TestHandle:
             captured["speaker"] = speaker
             return [np.zeros(50, dtype=np.float32)], 22050
 
-        h._model.generate_custom_voice = _spy  # type: ignore[method-assign]
+        h._model.generate_custom_voice = _spy
         job = _build_job([{"chapter_id": "ch1", "sequence_id": 0, "text": "你好"}], target_language="zh")
         await h.handle(job)
         assert captured["speaker"] == ["Vivian"]
@@ -157,7 +157,7 @@ class TestHandle:
             captured["speaker"] = speaker
             return [np.zeros(50, dtype=np.float32)], 22050
 
-        h._model.generate_custom_voice = _spy  # type: ignore[method-assign]
+        h._model.generate_custom_voice = _spy
         job = Job(
             job_id="j1",
             job_type=WorkerType.TTS,
@@ -190,4 +190,35 @@ class TestHandle:
         h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
         job = _build_job([{"chapter_id": "ch1", "sequence_id": 0}])  # no text
         with pytest.raises(WorkerError, match="chunk.text"):
+            await h.handle(job)
+
+    @pytest.mark.asyncio
+    async def test_handle_chapter_id_with_slash_raises_worker_error(self) -> None:
+        """Defense-in-depth: reject path-traversal in chapter_id even if the orchestrator would catch it."""
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
+        job = _build_job([{"chapter_id": "../../etc", "sequence_id": 0, "text": "x"}])
+        with pytest.raises(WorkerError, match="path component"):
+            await h.handle(job)
+
+    @pytest.mark.asyncio
+    async def test_handle_chapter_id_dotdot_raises_worker_error(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
+        job = _build_job([{"chapter_id": "..", "sequence_id": 0, "text": "x"}])
+        with pytest.raises(WorkerError, match="path component"):
+            await h.handle(job)
+
+    @pytest.mark.asyncio
+    async def test_handle_chapter_id_with_nul_raises_worker_error(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
+        job = _build_job([{"chapter_id": "ch1\x00admin", "sequence_id": 0, "text": "x"}])
+        with pytest.raises(WorkerError, match="illegal whitespace"):
             await h.handle(job)

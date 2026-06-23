@@ -97,7 +97,7 @@ check_untyped_defs = true
 no_implicit_reexport = true
 warn_unused_ignores = true
 explicit_package_bases = true
-mypy_path = "src:stubs:workers"
+mypy_path = "src:stubs"
 exclude = ["src/acheron/proto/"]
 
 [[tool.mypy.overrides]]
@@ -109,7 +109,7 @@ module = ["acheron.proto.*"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["torch", "qwen_tts", "soundfile"]
+module = ["torch", "qwen_tts", "soundfile", "runpod"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -122,7 +122,7 @@ no_implicit_reexport = false
 [tool.basedpyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.14"
-include = ["src", "tests"]
+include = ["src", "tests", "workers"]
 extraPaths = ["src", "stubs", "workers"]
 exclude = [".venv", "src/acheron/proto/"]
 reportUnusedImport = false

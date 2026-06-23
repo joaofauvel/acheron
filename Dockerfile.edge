@@ -28,7 +28,7 @@ RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
 COPY workers/__init__.py /app/workers/__init__.py
 COPY workers/qwen3tts/__init__.py /app/workers/qwen3tts/__init__.py
 COPY workers/qwen3tts/handler.py /app/workers/qwen3tts/handler.py
-COPY workers/qwen3tts/worker.yaml /app/qwen3tts.worker.yaml
+COPY workers/qwen3tts/worker.edge.yaml /app/qwen3tts.worker.yaml
 
 ENV WORKER_NAME=qwen3tts \
     PYTHONPATH=/app

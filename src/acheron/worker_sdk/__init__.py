@@ -9,7 +9,7 @@ the runpod SDK installed.
 
 from acheron.worker_sdk.app import create_worker_app
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
-from acheron.worker_sdk.cloud import make_runpod_handler
+from acheron.worker_sdk.cloud import RunPodForwarderHandler, make_runpod_handler
 from acheron.worker_sdk.handler import WorkerHandler
 from acheron.worker_sdk.pricing import (
     PriceEstimate,
@@ -27,6 +27,7 @@ __all__ = [
     "FileArtifact",
     "PriceEstimate",
     "PriceSource",
+    "RunPodForwarderHandler",
     "RunPodPrice",
     "StaticPrice",
     "StreamArtifact",

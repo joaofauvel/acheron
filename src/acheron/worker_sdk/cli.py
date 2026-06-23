@@ -59,7 +59,13 @@ def main() -> None:
         raise SystemExit(msg)
 
     handler_class = _import_handler(settings.handler)
-    handler = handler_class(settings)
+    phantom_class: type[Any] | None = None
+    if settings.phantom_handler:
+        phantom_class = _import_handler(settings.phantom_handler)
+    if phantom_class is not None:
+        handler = handler_class(settings, phantom_handler=phantom_class)
+    else:
+        handler = handler_class(settings)
     app = create_worker_app(handler=handler, settings=settings)
 
     logging.basicConfig(

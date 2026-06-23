@@ -1,5 +1,5 @@
 worker_id: "translation-local-stub"
 orchestrator_url: "http://orchestrator:8000"
-listen_port: 8005
+listen_port: 8003
 price_source: zero
 output_mode: multipart

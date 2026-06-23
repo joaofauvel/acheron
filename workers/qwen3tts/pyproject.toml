@@ -6,8 +6,9 @@ requires-python = ">=3.12"
 license = "GPL-3.0-only"
 dependencies = [
     "acheron",
-    "qwen-tts",
-    "soundfile",
+    # qwen-tts + torch + flash-attn are installed directly by Dockerfile.runpod
+    # against the cu121 index. The workspace dev install skips them — they
+    # would pull llvmlite 0.36 which doesn't build on Python 3.14.
 ]
 
 [build-system]

@@ -60,6 +60,7 @@ class WorkerSettings(BaseSettings):
 
     handler: str = ""
     model_id: str | None = None
+    phantom_handler: str | None = None
 
     model_config = SettingsConfigDict(
         env_prefix="ACHERON_WORKER__",

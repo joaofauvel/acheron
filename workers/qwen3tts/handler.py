@@ -65,13 +65,25 @@ def _chunk_text(c: dict[str, Any]) -> str:
 
 
 def _chunk_chapter_id(c: dict[str, Any]) -> str:
-    """Read the chapter_id field from a chunk dict."""
+    r"""Read and sanitise the chapter_id field from a chunk dict.
+
+    Rejects blank, NUL-byte, ``..``, path-separator (``/`` / ``\``), and
+    absolute-path values. The orchestrator's ``_safe_join`` defends the
+    orchestrator boundary; this is defense-in-depth so the worker also
+    fails fast on malicious input.
+    """
     if "chapter_id" not in c:
         msg = "chunk.chapter_id is required"
         raise WorkerError(msg)
     cid = c["chapter_id"]
     if not isinstance(cid, str):
         msg = f"chunk.chapter_id must be a str, got {type(cid).__name__}"
+        raise WorkerError(msg)
+    if not cid or "\x00" in cid or "\n" in cid or "\r" in cid or "\t" in cid:
+        msg = f"chunk.chapter_id contains illegal whitespace/NUL: {cid!r}"
+        raise WorkerError(msg)
+    if "/" in cid or "\\" in cid or cid in {".", ".."} or ".." in cid.split("/") or ".." in cid.split("\\"):
+        msg = f"chunk.chapter_id contains a path component: {cid!r}"
         raise WorkerError(msg)
     return cid
 

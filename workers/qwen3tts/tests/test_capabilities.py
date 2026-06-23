@@ -14,7 +14,7 @@ def _settings(**overrides: Any) -> WorkerSettings:
         "default_speaker": "Ryan",
     }
     base.update(overrides)
-    return WorkerSettings(**base)  # type: ignore[arg-type]
+    return WorkerSettings(**base)
 
 
 def test_capabilities_shape() -> None:

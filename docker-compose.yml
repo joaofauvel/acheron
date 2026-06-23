@@ -82,7 +82,7 @@ services:
       orchestrator:
         condition: service_healthy
 
-  tts-stub:
+  tts-local-stub:
     build:
       context: .
       target: worker-stub-base
@@ -113,7 +113,7 @@ services:
       orchestrator:
         condition: service_healthy
 
-  asr-stub:
+  asr-local-stub:
     build:
       context: .
       target: worker-stub-base
@@ -138,32 +138,7 @@ services:
       orchestrator:
         condition: service_healthy
 
-  tts-grpc-stub:
-    build:
-      context: .
-      target: worker-stub-base
-    ports:
-      - "9002:9002"
-    environment:
-      <<: *stub_env
-      WORKER_NAME: tts-grpc-stub
-      ACHERON_WORKER__WORKER_ID: tts-grpc-stub
-      ACHERON_WORKER__LISTEN_PORT: "9002"
-    volumes:
-      - ./certs:/certs:ro
-    command: ["python", "-m", "stubs.tts_grpc_stub.main"]
-    healthcheck:
-      <<: *stub_healthcheck
-      test:
-        - "CMD-SHELL"
-        - "python"
-        - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://localhost:9002/health').read()"
-    depends_on:
-      orchestrator:
-        condition: service_healthy
-
-  translation-stub:
+  translation-local-stub:
     build:
       context: .
       target: worker-stub-base
@@ -221,6 +196,113 @@ services:
       orchestrator:
         condition: service_healthy
     profiles: ["runpod-tts"]
+
+  tts-volume-stub:
+    build:
+      context: .
+      target: worker-stub-base
+    ports:
+      - "8005:8005"
+    environment:
+      <<: *stub_env
+      WORKER_NAME: tts-volume-stub
+      ACHERON_WORKER__WORKER_ID: tts-volume-stub
+      ACHERON_WORKER__LISTEN_PORT: "8005"
+      ACHERON_WORKER__OUTPUT_MODE: volume
+      ACHERON_WORKER__OUTPUT_VOLUME_DIR: /data
+    volumes:
+      - ./certs:/certs:ro
+      - acheron-data:/data
+    command: ["python", "-m", "stubs.tts_volume_stub.main"]
+    healthcheck:
+      <<: *stub_healthcheck
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8005/health').read()"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+
+  tts-runpod-stub:
+    build:
+      context: .
+      target: worker-stub-base
+    ports:
+      - "8006:8006"
+    environment:
+      <<: *stub_env
+      WORKER_NAME: tts-runpod-stub
+      ACHERON_WORKER__WORKER_ID: tts-runpod-stub
+      ACHERON_WORKER__LISTEN_PORT: "8006"
+      ACHERON_WORKER__PRICE_SOURCE: static
+      ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
+    volumes:
+      - ./certs:/certs:ro
+    command: ["python", "-m", "stubs.tts_runpod_stub.main"]
+    healthcheck:
+      <<: *stub_healthcheck
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8006/health').read()"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+
+  translation-runpod-stub:
+    build:
+      context: .
+      target: worker-stub-base
+    ports:
+      - "8007:8007"
+    environment:
+      <<: *stub_env
+      WORKER_NAME: translation-runpod-stub
+      ACHERON_WORKER__WORKER_ID: translation-runpod-stub
+      ACHERON_WORKER__LISTEN_PORT: "8007"
+      ACHERON_WORKER__PRICE_SOURCE: static
+      ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
+    volumes:
+      - ./certs:/certs:ro
+    command: ["python", "-m", "stubs.translation_runpod_stub.main"]
+    healthcheck:
+      <<: *stub_healthcheck
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8007/health').read()"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+
+  tts-grpc-stub:
+    build:
+      context: .
+      target: worker-stub-base
+    ports:
+      - "9002:9002"
+    environment:
+      <<: *stub_env
+      WORKER_NAME: tts-grpc-stub
+      ACHERON_WORKER__WORKER_ID: tts-grpc-stub
+      ACHERON_WORKER__LISTEN_PORT: "9002"
+    volumes:
+      - ./certs:/certs:ro
+    command: ["python", "-m", "stubs.tts_grpc_stub.main"]
+    healthcheck:
+      <<: *stub_healthcheck
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:9002/health').read()"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
 
 volumes:
   acheron-data:

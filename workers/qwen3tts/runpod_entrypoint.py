@@ -17,6 +17,11 @@ from acheron.worker_sdk.config_loader import load_settings
 from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 
 logging.basicConfig(level=logging.INFO)
+# Third-party loggers are chatty; keep the cloud-side output clean for the
+# RunPod dashboard tail. Errors and warnings still surface.
+logging.getLogger("transformers").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 

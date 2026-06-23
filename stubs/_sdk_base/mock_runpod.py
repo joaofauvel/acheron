@@ -9,14 +9,28 @@ from fastapi import FastAPI
 
 
 def make_mock_runpod_app(artifacts_response: dict[str, Any]) -> FastAPI:
+    """Build a FastAPI app that mimics RunPod's /run + /status endpoints.
+
+    The /run handler echoes the submitted job's id in the response so the
+    SDK's poll-by-id flow (or a future forwarder) can correlate the
+    response with the request. The /status/{id} endpoint always reports
+    COMPLETED.
+    """
     app = FastAPI(title="Mock RunPod Serverless")
 
     @app.post("/run")
     async def run(body: dict[str, Any]) -> dict[str, Any]:
-        return {"id": "stub-job-1", "status": "COMPLETED", "output": artifacts_response}
+        # Echo the submitted job id so callers can correlate. The body shape
+        # mirrors what the SDK sends: {"input": {"job_id": ..., ...}}.
+        submitted_id = str(body.get("input", {}).get("job_id", "stub-job-1"))
+        return {
+            "id": submitted_id,
+            "status": "COMPLETED",
+            "output": artifacts_response,
+        }
 
     @app.get("/status/{job_id}")
-    async def status(job_id: str) -> dict[str, Any]:
+    async def status(job_id: str) -> dict[str, str]:
         return {"status": "COMPLETED"}
 
     return app

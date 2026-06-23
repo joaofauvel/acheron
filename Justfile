@@ -9,7 +9,7 @@ lint-strict:
 
 # Run static type analysis
 type-check:
-    uv run mypy src/ tests/
+    uv run mypy src/ tests/ workers/qwen3tts/
 
 # Run Python unit tests
 test:

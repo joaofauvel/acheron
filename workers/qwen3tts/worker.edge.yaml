@@ -1,0 +1,25 @@
+# Edge-side worker config for the acheron-worker-edge image.
+# This config is bundled into Dockerfile.edge and shipped with the image.
+# It differs from the cloud-side worker.yaml (used by Dockerfile.runpod):
+# - handler: the GPU-less RunPodForwarderHandler in the SDK
+# - phantom_handler: the cloud-side Qwen3TTSRunpodHandler, used solely to
+#   read its static capabilities() — no GPU/model is loaded in the edge.
+# - Secrets (runpod_api_key, runpod_endpoint_id, registration_token) are
+#   env-only and supplied by the operator at runtime.
+
+worker_id: "qwen3tts-edge"
+orchestrator_url: "http://orchestrator:8000"
+listen_port: 8001
+execution_timeout_s: 1800
+
+handler: "acheron.worker_sdk.cloud:RunPodForwarderHandler"
+phantom_handler: "workers.qwen3tts.handler:Qwen3TTSRunpodHandler"
+model_id: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+
+# Pricing — RunPod GraphQL API is the default. GPU type is auto-discovered
+# from the endpoint's gpuIds (RunPodPrice, no image rebuild required to switch).
+price_source: runpod
+secure_cloud: false
+
+# Edge transport is always HTTP multipart; the edge never writes to a shared volume.
+output_mode: multipart
