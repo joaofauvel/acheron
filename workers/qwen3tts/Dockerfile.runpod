@@ -1,0 +1,51 @@
+# RunPod Serverless runtime image for Qwen3-TTS-12Hz-1.7B-CustomVoice.
+#
+# Built from the repo root with:
+#   docker build -f workers/qwen3tts/Dockerfile.runpod -t acheron-qwen3tts-runpod .
+#
+# CI publishes this image to ghcr.io via .github/workflows/build-workers.yml.
+
+FROM python:3.12-slim AS runpod-runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+# OS deps for soundfile (libsndfile) + flash-attn build (git + build-essential).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libsndfile1 \
+        git \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch first — matches the CUDA version the host passes via --gpus.
+# Pin to 2.5.1 + cu121; flash-attn must match the torch ABI.
+RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
+        --index-url https://download.pytorch.org/whl/cu121
+
+# Install the acheron wheel (built from the monorepo) — provides acheron.worker_sdk.
+COPY dist/acheron-*.whl /tmp/
+RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
+
+# Worker deps — qwen-tts (model + transformers) + soundfile + flash-attn.
+RUN pip install --no-cache-dir qwen-tts soundfile
+RUN pip install --no-cache-dir flash-attn==2.5.9.post1 --no-build-isolation
+
+# RunPod SDK so runpod.serverless.start() is importable.
+RUN pip install --no-cache-dir runpod
+
+WORKDIR /app
+
+# The worker's deployable assets. The cloud-side handler is entrypoint-only.
+COPY workers/qwen3tts/handler.py /app/handler.py
+COPY workers/qwen3tts/runpod_entrypoint.py /app/runpod_entrypoint.py
+COPY workers/qwen3tts/worker.yaml /app/worker.yaml
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/qwen3tts/__init__.py /app/workers/qwen3tts/__init__.py
+
+# HF cache lives on the RunPod network volume; offline mode forces the cached snapshot.
+ENV HF_HOME=/runpod-volume/huggingface-cache \
+    PYTHONPATH=/app
+
+CMD ["python", "runpod_entrypoint.py"]

@@ -42,3 +42,12 @@ install:
 # Generate local Acheron CA + per-service dev certs in ./certs/
 certs:
     uv run python scripts/generate_dev_certs.py
+
+# Build a worker image locally for dev iteration. CI does the real publish.
+build-worker name:
+    uv build --package acheron --out-dir dist
+    docker build -f workers/{{name}}/Dockerfile.runpod -t acheron-{{name}}-runpod:dev .
+
+# Build the generic edge image (acheron-worker-edge).
+build-edge:
+    docker build -f Dockerfile.edge -t acheron-worker-edge:dev .
