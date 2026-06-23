@@ -197,6 +197,39 @@ services:
         condition: service_healthy
     profiles: ["runpod-tts"]
 
+  granite-speech-edge:
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
+    ports:
+      - "8008:8001"
+    environment:
+      WORKER_NAME: granite_speech
+      ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
+      ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID:-}
+      ACHERON_WORKER__PRICE_SOURCE: ${GRANITE_SPEECH_PRICE_SOURCE:-runpod}
+      ACHERON_WORKER__SECURE_CLOUD: "false"
+      ACHERON_WORKER__LISTEN_PORT: "8001"
+      SSL_CERT_FILE: /certs/acheron-ca.crt
+    volumes:
+      - ./certs:/certs:ro
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    profiles: ["runpod-asr"]
+
   tts-volume-stub:
     build:
       context: .
