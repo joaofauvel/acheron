@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from acheron.core.errors import WorkerError
 from acheron.core.models import CostBasis, JobMetrics, JobStatus, OutputFile
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
@@ -71,3 +72,57 @@ class TestBuildResult:
         assert result.metrics.cost_estimate == 0.042
         assert result.metrics.cost_basis == CostBasis.MEASURED
         assert result.error is None
+
+
+class TestSafeJoin:
+    @pytest.mark.asyncio
+    async def test_rejects_path_traversal(self, tmp_path: Path) -> None:
+        with pytest.raises(WorkerError, match="path-traversal"):
+            await _materialize_artifact(
+                data=b"x",
+                filename="../../etc/passwd",
+                content_type="text/plain",
+                dest_dir=tmp_path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_absolute_filename(self, tmp_path: Path) -> None:
+        with pytest.raises(WorkerError, match="path-traversal"):
+            await _materialize_artifact(
+                data=b"x",
+                filename="/etc/passwd",
+                content_type="text/plain",
+                dest_dir=tmp_path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_nul_byte(self, tmp_path: Path) -> None:
+        with pytest.raises(WorkerError, match="NUL"):
+            await _materialize_artifact(
+                data=b"x",
+                filename="good\x00bad",
+                content_type="text/plain",
+                dest_dir=tmp_path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_blank_filename(self, tmp_path: Path) -> None:
+        with pytest.raises(WorkerError, match="blank"):
+            await _materialize_artifact(
+                data=b"x",
+                filename="",
+                content_type="text/plain",
+                dest_dir=tmp_path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_returns_basename_not_raw(self, tmp_path: Path) -> None:
+        """Even when the safe path includes subdirs, the returned filename is just the basename."""
+        out = await _materialize_artifact(
+            data=b"x",
+            filename="audio.wav",
+            content_type="audio/wav",
+            dest_dir=tmp_path,
+        )
+        assert out.filename == "audio.wav"
+        assert Path(out.path).parent == tmp_path

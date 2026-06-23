@@ -3,6 +3,7 @@
 import pytest
 
 from acheron.core.models import (
+    CostBasis,
     ExecutorStrategy,
     JobMetrics,
     JobResult,
@@ -331,3 +332,47 @@ class TestErrorCapture:
         plan = _plan((_step("a"), _step("b")))
         result = await SequentialExecutor(handler).run(plan)
         assert result.errors == ()
+
+
+class TestAsyncExecutorCostBasis:
+    """P2-C1: AsyncExecutor must also populate total_cost_basis."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_step_dominates(self) -> None:
+        plan = Plan(
+            plan_id="p-async",
+            job_id="job-async",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.ASYNC,
+            steps=(
+                PlanStep(
+                    step_id="s0",
+                    type=WorkerType.EXTRACTION,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={},
+                ),
+                PlanStep(
+                    step_id="s1",
+                    type=WorkerType.CHUNKING,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={},
+                ),
+            ),
+        )
+
+        async def by_id_handler(step: PlanStep, plan: Plan) -> JobResult:
+            basis = {"s0": CostBasis.MEASURED, "s1": CostBasis.UNKNOWN}[step.step_id]
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.1, cost_basis=basis),
+            )
+
+        executor = AsyncExecutor(by_id_handler)
+        result = await executor.run(plan)
+        assert result.total_cost_basis == CostBasis.UNKNOWN

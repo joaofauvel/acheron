@@ -30,6 +30,7 @@ from acheron.core.errors import (
 )
 from acheron.core.interfaces import Executor
 from acheron.core.models import JobMetrics, JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStatus, PlanStep
+from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 if TYPE_CHECKING:
@@ -68,22 +69,26 @@ class StreamingExecutor(Executor):
             asyncio.Queue(maxsize=self._queue_size) for _ in range(len(steps) + 1)
         ]
 
-        last_error, total_cost = await self._run_pipeline(steps, plan, queues)
+        last_error, total_cost, per_step_metrics = await self._run_pipeline(steps, plan, queues)
         outputs, completed_count = await self._collect_outputs(steps, plan)
-        return self._build_result(plan, steps, outputs, completed_count, total_cost, last_error, start)
+        return self._build_result(
+            plan, steps, outputs, completed_count, total_cost, per_step_metrics, last_error, start
+        )
 
     async def _run_pipeline(
         self,
         steps: list[PlanStep],
         plan: Plan,
         queues: list[asyncio.Queue[JobResult | None]],
-    ) -> tuple[AcheronError | None, float]:
-        """Run the per-stage TaskGroup. Returns (first AcheronError, total cost from completed stages)."""
+    ) -> tuple[AcheronError | None, float, list[JobMetrics | None]]:
+        """Run the per-stage TaskGroup. Returns (error, total cost, per-step metrics)."""
         stage_costs: list[float | None] = [None] * len(steps)
+        stage_metrics: list[JobMetrics | None] = [None] * len(steps)
 
-        def _make_recorder(idx: int) -> Callable[[float], None]:
-            def record(cost: float) -> None:
+        def _make_recorder(idx: int) -> Callable[[float, JobMetrics], None]:
+            def record(cost: float, metrics: JobMetrics) -> None:
                 stage_costs[idx] = cost
+                stage_metrics[idx] = metrics
 
             return record
 
@@ -105,8 +110,12 @@ class StreamingExecutor(Executor):
                 for task in stage_tasks:
                     task.result()
         except BaseExceptionGroup as eg:
-            return self._extract_error(eg), sum(c for c in stage_costs if c is not None)
-        return None, sum(c for c in stage_costs if c is not None)
+            return (
+                self._extract_error(eg),
+                sum(c for c in stage_costs if c is not None),
+                list(stage_metrics),
+            )
+        return None, sum(c for c in stage_costs if c is not None), list(stage_metrics)
 
     async def _consume_final_queue(self, tg: asyncio.TaskGroup, final_queue: asyncio.Queue[JobResult | None]) -> None:
         """Drain the final queue until _END; spawn a background drain task."""
@@ -161,10 +170,12 @@ class StreamingExecutor(Executor):
         outputs: tuple[OutputFile, ...],
         completed_count: int,
         total_cost: float,
+        per_step_metrics: list[JobMetrics | None],
         last_error: AcheronError | None,
         start: float,
     ) -> PlanResult:
         duration = time.monotonic() - start
+        total_cost_basis = aggregate_cost_basis(per_step_metrics)
         if last_error is None:
             return PlanResult(
                 plan_id=plan.plan_id,
@@ -175,6 +186,7 @@ class StreamingExecutor(Executor):
                 total_cost=total_cost,
                 total_duration_seconds=duration,
                 errors=(),
+                total_cost_basis=total_cost_basis,
             )
         return PlanResult(
             plan_id=plan.plan_id,
@@ -185,6 +197,7 @@ class StreamingExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
             errors=(str(last_error),),
+            total_cost_basis=total_cost_basis,
         )
 
     async def _stage(
@@ -193,7 +206,7 @@ class StreamingExecutor(Executor):
         plan: Plan,
         upstream: asyncio.Queue[JobResult | None] | None,
         downstream: asyncio.Queue[JobResult | None],
-        record_cost: Callable[[float], None],
+        record_cost: Callable[[float, JobMetrics], None],
     ) -> None:
         """Run a single stage. Records cost via ``record_cost`` before any status check.
 
@@ -221,7 +234,7 @@ class StreamingExecutor(Executor):
                     outputs=outputs,
                     metrics=JobMetrics(duration_seconds=0.0),
                 )
-                record_cost(0.0)
+                record_cost(0.0, result.metrics)
                 await downstream.put(result)
                 return
 
@@ -241,7 +254,7 @@ class StreamingExecutor(Executor):
 
             # Capture cost before any status check so failed/partial steps
             # still report what they spent.
-            record_cost(result.metrics.cost_estimate or 0.0)
+            record_cost(result.metrics.cost_estimate or 0.0, result.metrics)
 
             if result.status is not JobStatus.SUCCESS:
                 msg = f"step {step.step_id} returned {result.status.value}: {result.error or 'unknown error'}"

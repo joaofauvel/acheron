@@ -5,12 +5,14 @@ import time
 
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
+    JobMetrics,
     JobStatus,
     OutputFile,
     Plan,
     PlanResult,
     PlanStatus,
 )
+from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, dependency_waves
 
 
@@ -29,6 +31,7 @@ class AsyncExecutor(Executor):
         total_cost = 0.0
         failed_steps: set[str] = set()
         errors: list[str] = []
+        per_step_metrics: list[JobMetrics | None] = []
 
         for wave in dependency_waves(plan.steps):
             runnable = [s for s in wave if not any(d in failed_steps for d in s.depends_on)]
@@ -38,6 +41,7 @@ class AsyncExecutor(Executor):
                 failed_steps.add(step.step_id)
                 failed += 1
                 errors.append(f"{step.step_id}: skipped (dependency failed)")
+                per_step_metrics.append(None)
 
             if not runnable:
                 continue
@@ -51,15 +55,18 @@ class AsyncExecutor(Executor):
                     failed += 1
                     failed_steps.add(step.step_id)
                     errors.append(f"{step.step_id}: {type(result).__name__}: {result}")
+                    per_step_metrics.append(None)
                 elif result.status == JobStatus.SUCCESS:
                     completed += 1
                     outputs.extend(result.outputs)
                     total_cost += result.metrics.cost_estimate or 0.0
+                    per_step_metrics.append(result.metrics)
                 else:
                     failed += 1
                     failed_steps.add(step.step_id)
                     errors.append(f"{step.step_id}: {result.error or 'unknown error'}")
                     total_cost += result.metrics.cost_estimate or 0.0
+                    per_step_metrics.append(result.metrics)
 
         duration = time.monotonic() - start
         status = PlanStatus.COMPLETED if failed == 0 else PlanStatus.FAILED if completed == 0 else PlanStatus.PARTIAL
@@ -73,4 +80,5 @@ class AsyncExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
             errors=tuple(errors),
+            total_cost_basis=aggregate_cost_basis(per_step_metrics),
         )

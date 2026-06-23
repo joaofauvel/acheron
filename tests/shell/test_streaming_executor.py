@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 
 from acheron.core.models import (
+    CostBasis,
     ExecutorStrategy,
     JobMetrics,
     JobResult,
@@ -521,3 +522,69 @@ class TestOutputsFromCache:
                 assert output.filename == "decoy.txt"
         finally:
             step_cache.load_outputs = real_load  # type: ignore[method-assign]
+
+
+class TestTotalCostBasis:
+    """P2-C1: StreamingExecutor must populate PlanResult.total_cost_basis
+    via aggregate_cost_basis() across per-step metrics."""
+
+    @pytest.mark.asyncio
+    async def test_three_step_plan_least_confident_basis(self, tmp_path: Path, step_cache: StepCache) -> None:
+        # extract=MEASURED, chunk=CACHED, package=STATIC → least-confident is CACHED.
+        per_step_basis = {
+            "extract": CostBasis.MEASURED,
+            "chunk": CostBasis.CACHED,
+            "package": CostBasis.STATIC,
+        }
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.wav"),),
+                metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.01, cost_basis=per_step_basis[step.step_id]),
+            )
+
+        plan = _linear_plan()
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+        # Confidence order: MEASURED=0, CACHED=1, STATIC=2, UNKNOWN=3.
+        # least-confident wins → STATIC.
+        assert result.total_cost_basis == CostBasis.STATIC
+
+    @pytest.mark.asyncio
+    async def test_unknown_step_dominates(self, tmp_path: Path, step_cache: StepCache) -> None:
+        # extract=MEASURED, chunk=UNKNOWN → UNKNOWN dominates.
+        per_step_basis = {
+            "extract": CostBasis.MEASURED,
+            "chunk": CostBasis.UNKNOWN,
+            "package": CostBasis.MEASURED,
+        }
+
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.wav"),),
+                metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.01, cost_basis=per_step_basis[step.step_id]),
+            )
+
+        plan = _linear_plan()
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+        assert result.total_cost_basis == CostBasis.UNKNOWN
+
+    @pytest.mark.asyncio
+    async def test_no_basis_anywhere_yields_none(self, tmp_path: Path, step_cache: StepCache) -> None:
+        async def handler(step: PlanStep, plan: Plan) -> JobResult:
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(_real_output(tmp_path, f"{step.step_id}.wav"),),
+                metrics=JobMetrics(duration_seconds=0.1),
+            )
+
+        plan = _linear_plan()
+        executor = StreamingExecutor(handler, step_cache)
+        result = await executor.run(plan)
+        assert result.total_cost_basis is None

@@ -127,7 +127,11 @@ class TestGrpcWorkerExecute:
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
         assert result.job_id == "j-1"
-        assert len(result.outputs) > 0
+        assert len(result.outputs) == 1
+        out = result.outputs[0]
+        assert out.filename == "j-1.pcm"
+        assert out.size_bytes == 4
+        assert out.content_type == "audio/pcm"
         await channel.close()
 
     @pytest.mark.asyncio

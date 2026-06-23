@@ -176,6 +176,7 @@ def _serialize_job(job: TrackedJob) -> str:
             "total_cost": job.result.total_cost,
             "total_duration_seconds": job.result.total_duration_seconds,
             "errors": list(job.result.errors),
+            "total_cost_basis": (job.result.total_cost_basis.value if job.result.total_cost_basis else None),
         }
 
     return json.dumps(
@@ -246,9 +247,10 @@ def _deserialize_job(blob: str) -> TrackedJob:
         )
     result = None
     if data.get("result") is not None:
-        from acheron.core.models import OutputFile, PlanResult  # noqa: PLC0415
+        from acheron.core.models import CostBasis, OutputFile, PlanResult  # noqa: PLC0415
 
         rd = data["result"]
+        basis_value = rd.get("total_cost_basis")
         result = PlanResult(
             plan_id=rd["plan_id"],
             status=PlanStatus(rd["status"]),
@@ -267,6 +269,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
             total_cost=rd["total_cost"],
             total_duration_seconds=rd["total_duration_seconds"],
             errors=tuple(rd["errors"]),
+            total_cost_basis=CostBasis(basis_value) if basis_value else None,
         )
 
     return TrackedJob(
