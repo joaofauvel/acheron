@@ -110,7 +110,7 @@ module = ["acheron.proto.*"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["torch", "qwen_tts", "soundfile", "runpod"]
+module = ["torch", "qwen_tts", "soundfile", "runpod", "transformers"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
