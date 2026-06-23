@@ -124,9 +124,12 @@ A Protocol with three concrete variants; the multipart encoder / volume writer t
 
 ```python
 class Artifact(Protocol):
-    filename: str
-    content_type: str
-    metadata: dict[str, JsonValue]
+    @property
+    def filename(self) -> str: ...
+    @property
+    def content_type(self) -> str: ...
+    @property
+    def metadata(self) -> dict[str, JsonValue]: ...
     async def stream(self) -> AsyncIterator[bytes]: ...
 
 @dataclass(frozen=True)
@@ -148,9 +151,11 @@ class FileArtifact:     # worker wrote to disk (shared-volume mode, or a tmp fil
     filename: str; content_type: str; path: Path
     metadata: dict[str, JsonValue] = field(default_factory=dict)
     async def stream(self) -> AsyncIterator[bytes]:
-        async with await aiofiles.open(self.path, "rb") as f:
+        async with aiofiles.open(self.path, "rb") as f:
             while chunk := await f.read(64 * 1024): yield chunk
 ```
+
+The Protocol declares `filename` / `content_type` / `metadata` as `@property` accessors (not plain attributes). This is intentional: the concrete implementations are `@dataclass(frozen=True)`, so their fields are read-only at instance level. A Protocol that declared plain attributes would be incompatible with frozen dataclasses under strict type-checkers (e.g. basedpyright reports `filename is writable in protocol, read-only in dataclass`). The property-based declaration matches the runtime read-only semantics of the frozen dataclasses.
 
 Workers compose the variant their model's API naturally produces — no forced buffering. The SDK composes one multipart body (or one gRPC `repeated Artifact`) from any mix of variants.
 
@@ -873,10 +878,15 @@ jobs:
 
 ### CI / packaging
 - `.github/workflows/build-workers.yml` (NEW) — publish `acheron-qwen3tts-runpod` to GHCR.
-- `pyproject.toml` — declare `acheron-worker-sdk` console script (`acheron-worker-sdk = "acheron.worker_sdk.cli:main"`); add `runpod` to runtime deps.
+- `pyproject.toml` — declare `acheron-worker-edge` console script (`acheron-worker-edge = "acheron.worker_sdk.cli:main"`).
 - `pyproject.toml` — uv workspace members declaration + import-linter contracts for `worker_sdk`, `workers.*`.
 - `Justfile` — `build-worker <name>` target wrapping local `docker build`.
 - `tests/__init__.py` paths adjusted for the new worker / SDK layouts per AGENTS.md mirror rule.
+
+### `runpod` Python SDK packaging (deviation from initial plan)
+- **Not** declared in the top-level `pyproject.toml` `dependencies`: the SDK pins `cryptography<47` (latest 1.9.x) which is incompatible with the dev group's `cryptography~=49.0` — `uv` resolution fails when both are required. Imported lazily inside `acheron.worker_sdk._runpod_client._open_endpoint` so unit tests mock via `monkeypatch.setattr` without the SDK installed.
+- Installed in Plan 3's published worker image via the Dockerfile's `uv pip install runpod` step.
+- Production orchestrator image that hosts the `acheron-worker-edge` container installs the SDK in the same way (it does not need to share the dev group's `cryptography` constraint).
 
 ## References
 
