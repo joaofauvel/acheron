@@ -82,6 +82,7 @@ combine-as-imports = true
 "dashboard/__init__.py" = ["D104"]
 "dashboard/templates/__init__.py" = ["D104"]
 "stubs/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC003", "ANN", "ARG001", "ARG002", "FBT"]
+"workers/qwen3tts/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "ASYNC240"]
 "src/acheron/proto/**" = ["I", "E", "F", "W", "D", "ANN", "N"]
 "src/acheron/core/interfaces.py" = ["TC001"]
 
@@ -106,6 +107,10 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["acheron.proto.*"]
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["torch", "qwen_tts", "soundfile"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
