@@ -10,6 +10,7 @@ from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.inputs import Input
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -31,7 +32,7 @@ class _Stub(WorkerHandler):
             model_source="huggingface:test",
         )
 
-    async def handle(self, job: Job) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
         self.calls += 1
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 

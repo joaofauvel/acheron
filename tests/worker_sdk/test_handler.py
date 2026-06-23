@@ -7,6 +7,7 @@ import pytest
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.inputs import Input
 
 
 class _Echo(WorkerHandler):
@@ -22,7 +23,7 @@ class _Echo(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"echo")]
 
 

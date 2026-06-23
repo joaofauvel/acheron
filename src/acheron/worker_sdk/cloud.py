@@ -24,6 +24,7 @@ from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult
 from acheron.worker_sdk.artifacts import BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.inputs import Input
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -65,9 +66,13 @@ async def _serialise(artifact: Artifact) -> dict[str, Any]:
     }
 
 
-def _serialise_job_for_runpod(job: Job) -> dict[str, Any]:
-    """Serialise a Job into the RunPod /run input shape (matches make_runpod_handler)."""
-    return {
+async def _serialise_job_for_runpod(job: Job, input: Input | None = None) -> dict[str, Any]:
+    """Serialise a Job + optional Input into the RunPod /run input shape.
+
+    The ``input_audio`` field is the base64-encoded body of an ``Input`` (8b);
+    RunPod's /run wire is JSON, so binary inputs round-trip via base64.
+    """
+    out: dict[str, Any] = {
         "input": {
             "job_id": job.job_id,
             "job_type": job.job_type.value,
@@ -76,6 +81,14 @@ def _serialise_job_for_runpod(job: Job) -> dict[str, Any]:
             "sequence_ids": list(job.sequence_ids) if job.sequence_ids else [],
         }
     }
+    if input is not None:
+        body = b"".join([chunk async for chunk in input.stream()])
+        out["input"]["input_audio"] = {
+            "content_type": input.content_type,
+            "data": base64.b64encode(body).decode("ascii"),
+            "metadata": dict(input.metadata),
+        }
+    return out
 
 
 def _deserialise_runpod_artifacts(result: RunPodJobResult) -> list[Artifact]:
@@ -167,12 +180,12 @@ class RunPodForwarderHandler(WorkerHandler):
         """Drop the client; RunPod SDK has no explicit close."""
         self._client = None
 
-    async def handle(self, job: Job) -> list[Artifact]:
-        """Forward the job to RunPod and decode the returned artifacts."""
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+        """Forward the job (and optional audio input) to RunPod and decode artifacts."""
         if self._client is None:
             msg = "RunPodClient not initialised (startup() not run)"
             raise WorkerError(msg)
-        payload = _serialise_job_for_runpod(job)
+        payload = await _serialise_job_for_runpod(job, input)
         result = await self._client.run(payload)
         return _deserialise_runpod_artifacts(result)
 

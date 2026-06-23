@@ -11,6 +11,7 @@ from acheron.worker_sdk._runpod_client import RunPodJobResult
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.cloud import RunPodForwarderHandler, make_runpod_handler
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.inputs import Input
 from acheron.worker_sdk.settings import WorkerSettings
 
 
@@ -31,7 +32,7 @@ class _Stub(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
         self.last_input = dict(job.payload)
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"audio")]
 

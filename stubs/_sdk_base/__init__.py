@@ -13,6 +13,7 @@ from typing import Any
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.inputs import Input
 
 
 def _silent_wav(duration_ms: int = 100, sample_rate: int = 22050) -> bytes:
@@ -55,7 +56,7 @@ class StubTTSHandler(WorkerHandler):
     async def shutdown(self) -> None:
         return None
 
-    async def handle(self, job: Job) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
         chunks = job.payload.get("chunks", [])
         if not isinstance(chunks, list) or not chunks:
             return [
@@ -103,7 +104,9 @@ class StubASRHandler(WorkerHandler):
     async def shutdown(self) -> None:
         return None
 
-    async def handle(self, job: Job) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+        # `input` is accepted and ignored — the stub proves the multipart
+        # contract end-to-end without GPU.
         text = "mock transcription"
         return [
             BytesArtifact(
@@ -140,7 +143,7 @@ class StubTranslationHandler(WorkerHandler):
     async def shutdown(self) -> None:
         return None
 
-    async def handle(self, job: Job) -> list[Artifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
         chunks = job.payload.get("chunks", [])
         translated: list[str] = []
         if isinstance(chunks, list):
