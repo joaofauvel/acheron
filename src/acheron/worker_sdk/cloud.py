@@ -24,6 +24,7 @@ from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult
 from acheron.worker_sdk.artifacts import BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
+from acheron.worker_sdk.inputs import BytesInput
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -40,7 +41,18 @@ def make_runpod_handler(
 
     async def _rp_handler(runpod_job: dict[str, Any]) -> dict[str, Any]:
         job = _deserialise_job(runpod_job["input"])
-        artifacts = await handler.handle(job)
+        audio_payload = runpod_job["input"].get("input_audio")
+        if audio_payload is not None:
+            data_b64 = audio_payload.get("data", "")
+            body = base64.b64decode(data_b64) if isinstance(data_b64, str) else b""
+            input_obj = BytesInput(
+                content_type=str(audio_payload.get("content_type", "audio/wav")),
+                data=body,
+                metadata=dict(audio_payload.get("metadata", {})),
+            )
+            artifacts = await handler.handle(job, input_obj)
+        else:
+            artifacts = await handler.handle(job)
         return {"artifacts": [await _serialise(a) for a in artifacts]}
 
     return _rp_handler
