@@ -383,7 +383,6 @@ def validate_chunking_fits_workers(
                     f"at chars_per_token={chars_per_token})"
                 )
                 raise ChunkingTooLongForWorkerError(msg)
-            break
 ```
 
 - [ ] **Step 4: Run the new tests; verify they pass**
