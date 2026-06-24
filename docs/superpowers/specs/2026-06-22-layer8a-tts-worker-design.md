@@ -512,9 +512,10 @@ Docker setup:
 ### `handler.py`
 
 ```python
-import asyncio, io
+import asyncio, io, json
 from acheron.core.models import WorkerType, WorkerCapabilities, Job
 from acheron.worker_sdk import WorkerHandler, BytesArtifact
+from acheron.worker_sdk.inputs import Input
 from acheron.core.errors import WorkerError
 from qwen_tts import Qwen3TTSModel
 import torch, soundfile as sf
@@ -553,6 +554,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             supported_formats_out=frozenset({"wav"}),
             max_payload_bytes=None,
             batch_capable=True,
+            max_input_tokens=2048,  # qwen3-tts is 2K context; since 8c
             model_source=f"huggingface:{_MODEL_ID}",
             metadata={
                 "speakers": sorted(_ALL_SPEAKERS),
@@ -576,10 +578,31 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             self._model = None
             torch.cuda.empty_cache()
 
-    async def handle(self, job: Job) -> list[BytesArtifact]:
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:
+        """Run batched custom-voice inference for all chunks in the job.
+
+        Chunks arrive via the ``input`` parameter (8b's ``BytesInput`` Protocol):
+        JSON-serialised ``chunks.json`` from the upstream chunking step, sent
+        as a multipart part. ``input`` is required; chunks in ``job.payload``
+        is no longer a supported path. See "Cross-cutting 8c refactor" below.
+        """
         if self._model is None:
             raise WorkerError("Qwen3-TTS model not loaded (startup() not run)")
-        chunks = job.payload.get("chunks", [])
+        if input is None:
+            msg = "Qwen3-TTS requires a chunks.json input (multipart part)"
+            raise WorkerError(msg)
+        chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])
+        if not chunks_json_bytes:
+            return []
+        try:
+            raw_chunks = json.loads(chunks_json_bytes.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            msg = f"chunks.json is not valid JSON: {exc}"
+            raise WorkerError(msg) from exc
+        if not isinstance(raw_chunks, list):
+            msg = "chunks.json must be a JSON array of chunk dicts"
+            raise WorkerError(msg)
+        chunks = [c for c in raw_chunks if isinstance(c, dict)]
         if not chunks:
             return []
         target_lang = job.payload["target_language"]
@@ -720,6 +743,7 @@ huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     "supported_formats_out": ["wav"],
     "max_payload_bytes": null,
     "batch_capable": true,
+    "max_input_tokens": 2048,
     "model_source": "huggingface:Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
     "metadata": {
       "speakers": ["Aiden","Dylan","Eric","Ono_Anna","Ryan","Serena","Sohee","Uncle_Fu","Vivian"],
@@ -732,6 +756,45 @@ huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
 ```
 
 The existing `RunPodHealthProvider` + `HealthMonitor._handle_failure` consume `health_provider` + `health_endpoint_id` to distinguish booting from offline during cold starts. No orchestrator change.
+
+## Cross-cutting 8c refactor (qwen3tts end-to-end)
+
+> Post-8c addition (2026-06-23). The 8a spec shipped worker-only;
+> no orchestrator code path injected the upstream chunking step's
+> chunks into the synthesize step's payload, so the
+> `job.payload["chunks"]` read in `handle()` was a latent gap. 8c
+> closes this gap and refactors the qwen3tts handler to match.
+
+**Changes:**
+
+- `Qwen3TTSRunpodHandler.capabilities()` publishes `max_input_tokens=2048`
+  (qwen3-tts is a 2K-context model). The
+  `WorkerCapabilities.max_input_tokens` field is new in 8c; see
+  [Layer 8c spec](./2026-06-23-layer8c-translategemma-worker-design.md).
+- `handle(self, job, input: Input | None = None)` reads chunks from
+  the `Input` parameter (8b's `BytesInput`): JSON-serialised
+  `chunks.json` from the upstream chunking step, sent as a multipart
+  part. The `job.payload["chunks"]` read is removed (no fallback).
+  Malformed `chunks.json` raises `WorkerError`; `input is None`
+  raises `WorkerError("Qwen3-TTS requires a chunks.json input (multipart part)")`.
+- The orchestrator's `HttpWorker.execute()` gains a `WorkerType.TTS`
+  arm that loads the upstream chunking step's `chunks.json` from
+  `StepCache` and POSTs it as a multipart part alongside the JSON
+  envelope. ASR + TRANSLATION get the same shape.
+- `Settings.chars_per_token: int = 4` is a new orchestrator setting
+  (8c). The planner's `validate_chunking_fits_workers` (also 8c)
+  uses it to check that the chunking step's `max_chunk_length` fits
+  each text-input worker's `max_input_tokens`. Misconfigurations fail
+  at plan compile time.
+
+**Test fixture changes:** `workers/qwen3tts/tests/test_handler.py` —
+`_build_job` no longer takes `chunks`; tests construct a `BytesInput`
+with `chunks.json` bytes and pass it as `input`. Existing assertions
+preserved.
+
+**Behaviour unchanged:** Empty chunks still return `[]`; speaker /
+language / chunk-shape validation unchanged; the 9-speaker custom-voice
+model is unchanged.
 
 ## Deployment Flow
 
