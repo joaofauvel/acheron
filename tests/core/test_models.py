@@ -115,6 +115,51 @@ class TestWorkerCapabilities:
         assert caps.metadata == {}
 
 
+class TestWorkerCapabilitiesMaxInputTokens:
+    def test_default_is_none(self) -> None:
+        caps = WorkerCapabilities(
+            worker_type=WorkerType.TRANSLATION,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"text"}),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+        )
+        assert caps.max_input_tokens is None
+
+    def test_explicit_int(self) -> None:
+        caps = WorkerCapabilities(
+            worker_type=WorkerType.TRANSLATION,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"text"}),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+            max_input_tokens=2048,
+        )
+        assert caps.max_input_tokens == 2048
+
+    def test_included_in_asdict(self) -> None:
+        import dataclasses
+
+        caps = WorkerCapabilities(
+            worker_type=WorkerType.TRANSLATION,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"text"}),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+            max_input_tokens=2048,
+        )
+        assert dataclasses.asdict(caps)["max_input_tokens"] == 2048
+
+
 class TestJob:
     def test_construction(self) -> None:
         job = Job(

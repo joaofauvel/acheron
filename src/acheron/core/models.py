@@ -86,6 +86,7 @@ class WorkerCapabilities:
     max_payload_bytes: int | None
     batch_capable: bool
     model_source: str | None
+    max_input_tokens: int | None = None  # per-chunk input token limit; None = unbounded
     metadata: dict[str, JsonValue] = field(default_factory=dict)
 
 
