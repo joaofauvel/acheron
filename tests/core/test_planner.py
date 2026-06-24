@@ -2,7 +2,7 @@
 
 import pytest
 
-from acheron.core.errors import InvalidLanguagePathError
+from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -11,7 +11,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
-from acheron.core.planner import compile_plan
+from acheron.core.planner import compile_plan, validate_chunking_fits_workers
 
 
 def _tts_caps(lang: str = "es") -> WorkerCapabilities:
@@ -176,3 +176,105 @@ class TestLanguagePathValidation:
         plan = compile_plan(request, ExecutorStrategy.STREAMING, caps)
         by_id = {s.step_id: s for s in plan.steps}
         assert by_id["synthesize"].depends_on == ("chunk",)
+
+
+def _text_input_tts_caps(max_input_tokens: int | None = 2048) -> WorkerCapabilities:
+    return WorkerCapabilities(
+        worker_type=WorkerType.TTS,
+        supported_languages_in=frozenset({"en"}),
+        supported_languages_out=frozenset({"en"}),
+        supported_formats_in=frozenset({"text"}),
+        supported_formats_out=frozenset({"wav"}),
+        max_payload_bytes=None,
+        batch_capable=True,
+        model_source=None,
+        max_input_tokens=max_input_tokens,
+    )
+
+
+def _text_input_translation_caps(max_input_tokens: int | None = 2048) -> WorkerCapabilities:
+    return WorkerCapabilities(
+        worker_type=WorkerType.TRANSLATION,
+        supported_languages_in=frozenset({"en"}),
+        supported_languages_out=frozenset({"es"}),
+        supported_formats_in=frozenset({"text"}),
+        supported_formats_out=frozenset({"text"}),
+        max_payload_bytes=None,
+        batch_capable=False,
+        model_source=None,
+        max_input_tokens=max_input_tokens,
+    )
+
+
+class TestValidateChunkingFitsWorkers:
+    def test_passes_when_chunking_within_limit(self) -> None:
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        # 250 chars / 4 chars-per-token = 62 tokens, well under 2048.
+        validate_chunking_fits_workers(caps, chunking_max_length=250)
+
+    def test_raises_when_chunking_exceeds_tts_limit(self) -> None:
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        # 9000 chars / 4 = 2250 tokens, exceeds 2048.
+        with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=2048"):
+            validate_chunking_fits_workers(caps, chunking_max_length=9000)
+
+    def test_raises_when_chunking_exceeds_translation_limit(self) -> None:
+        caps = (_text_input_translation_caps(max_input_tokens=2048),)
+        with pytest.raises(ChunkingTooLongForWorkerError, match="translation"):
+            validate_chunking_fits_workers(caps, chunking_max_length=9000)
+
+    def test_ignores_workers_with_unlimited_tokens(self) -> None:
+        caps = (_text_input_tts_caps(max_input_tokens=None),)
+        # Even with a huge chunk length, an unbounded worker is fine.
+        validate_chunking_fits_workers(caps, chunking_max_length=10_000_000)
+
+    def test_ignores_non_text_input_worker_types(self) -> None:
+        # ASR caps don't carry max_input_tokens (and the function should skip ASR entirely).
+        caps = (
+            WorkerCapabilities(
+                worker_type=WorkerType.ASR,
+                supported_languages_in=frozenset({"en"}),
+                supported_languages_out=frozenset({"en"}),
+                supported_formats_in=frozenset({"wav"}),
+                supported_formats_out=frozenset({"text"}),
+                max_payload_bytes=None,
+                batch_capable=False,
+                model_source=None,
+                max_input_tokens=10,  # tiny, but should be ignored
+            ),
+        )
+        # ASR is not in the text-input list; should not raise.
+        validate_chunking_fits_workers(caps, chunking_max_length=10_000_000)
+
+    def test_smaller_chars_per_token_triggers_earlier(self) -> None:
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        # 1000 chars / 2 chars-per-token = 500 tokens, OK.
+        validate_chunking_fits_workers(caps, chunking_max_length=1000, chars_per_token=2)
+        # 1000 chars / 1 char-per-token = 1000 tokens, OK.
+        validate_chunking_fits_workers(caps, chunking_max_length=1000, chars_per_token=1)
+        with pytest.raises(ChunkingTooLongForWorkerError):
+            validate_chunking_fits_workers(caps, chunking_max_length=10_000, chars_per_token=1)
+
+    def test_error_message_includes_all_values(self) -> None:
+        caps = (_text_input_tts_caps(max_input_tokens=512),)
+        with pytest.raises(ChunkingTooLongForWorkerError) as excinfo:
+            validate_chunking_fits_workers(caps, chunking_max_length=3000, chars_per_token=4)
+        msg = str(excinfo.value)
+        assert "max_chunk_length=3000" in msg
+        assert "max_input_tokens=512" in msg
+        assert "chars_per_token=4" in msg
+        assert "tts" in msg
+
+    def test_invalid_chars_per_token_raises(self) -> None:
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        with pytest.raises(ValueError, match="chars_per_token must be > 0"):
+            validate_chunking_fits_workers(caps, chunking_max_length=100, chars_per_token=0)
+
+    def test_all_workers_checked_not_just_first(self) -> None:
+        # Two TTS workers: the first has plenty of headroom, the second is too small.
+        caps = (
+            _text_input_tts_caps(max_input_tokens=2048),
+            _text_input_tts_caps(max_input_tokens=10),
+        )
+        with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=10"):
+            validate_chunking_fits_workers(caps, chunking_max_length=1000)

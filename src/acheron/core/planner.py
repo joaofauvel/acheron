@@ -2,7 +2,7 @@
 
 import uuid
 
-from acheron.core.errors import InvalidLanguagePathError
+from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -87,6 +87,45 @@ def _has_worker(
         c.worker_type == worker_type and lang_in in c.supported_languages_in and lang_out in c.supported_languages_out
         for c in caps
     )
+
+
+def validate_chunking_fits_workers(
+    capabilities: tuple[WorkerCapabilities, ...],
+    chunking_max_length: int,
+    chars_per_token: int = 4,
+) -> None:
+    """Verify the chunking step's max_chunk_length fits each text-input worker's limit.
+
+    A text-input worker is one whose ``max_input_tokens`` is set on its capabilities
+    (TRANSLATION, TTS in v1). If any such worker has a lower per-chunk token limit
+    than the chunking step's max_chunk_length allows (estimated at ``chars_per_token``
+    per token), raises ``ChunkingTooLongForWorkerError`` so the caller fails the job
+    at plan compile time, before any GPU time is spent.
+
+    Conservative ``chars_per_token`` default (4) overestimates tokens for CJK languages;
+    this is acceptable as a hard ceiling. A future sub-project could swap in a
+    tokenizer-based estimator.
+
+    Pure: no I/O, no global state. The caller is responsible for passing fresh
+    ``capabilities`` and the chunking step's config.
+    """
+    if chars_per_token <= 0:
+        msg = f"chars_per_token must be > 0, got {chars_per_token}"
+        raise ValueError(msg)
+    text_input_types = (WorkerType.TRANSLATION, WorkerType.TTS)
+    for step_type in text_input_types:
+        for c in capabilities:
+            if c.worker_type != step_type or c.max_input_tokens is None:
+                continue
+            estimated_tokens = chunking_max_length // chars_per_token
+            if estimated_tokens > c.max_input_tokens:
+                msg = (
+                    f"Chunking max_chunk_length={chunking_max_length} chars "
+                    f"exceeds {step_type.value} worker max_input_tokens="
+                    f"{c.max_input_tokens} (estimated {estimated_tokens} tokens "
+                    f"at chars_per_token={chars_per_token})"
+                )
+                raise ChunkingTooLongForWorkerError(msg)
 
 
 def _epub_steps(request: EpubRequest) -> list[PlanStep]:
