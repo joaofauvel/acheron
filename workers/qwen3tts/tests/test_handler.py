@@ -120,9 +120,7 @@ class TestHandle:
         h = Qwen3TTSRunpodHandler(_settings(default_speaker="Bogus"))
         h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
         with pytest.raises(WorkerError, match="Unknown speaker"):
-            await h.handle(
-                _build_job(), input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}])
-            )
+            await h.handle(_build_job(), input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]))
 
     @pytest.mark.asyncio
     async def test_handle_without_startup_raises_worker_error(self) -> None:
@@ -180,9 +178,7 @@ class TestHandle:
             payload={"chapter_id": "ch1", "target_language": "en", "speaker": "Dylan"},
             chapter_id="ch1",
         )
-        await h.handle(
-            job, input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}])
-        )
+        await h.handle(job, input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]))
         assert captured["speaker"] == ["Dylan"]
 
     @pytest.mark.asyncio
@@ -218,9 +214,7 @@ class TestHandle:
         with pytest.raises(WorkerError, match="path component"):
             await h.handle(
                 _build_job(),
-                input=_build_input(
-                    [{"chapter_id": "../../etc", "sequence_id": 0, "text": "x"}]
-                ),
+                input=_build_input([{"chapter_id": "../../etc", "sequence_id": 0, "text": "x"}]),
             )
 
     @pytest.mark.asyncio
@@ -244,9 +238,7 @@ class TestHandle:
         with pytest.raises(WorkerError, match="illegal whitespace"):
             await h.handle(
                 _build_job(),
-                input=_build_input(
-                    [{"chapter_id": "ch1\x00admin", "sequence_id": 0, "text": "x"}]
-                ),
+                input=_build_input([{"chapter_id": "ch1\x00admin", "sequence_id": 0, "text": "x"}]),
             )
 
     @pytest.mark.asyncio

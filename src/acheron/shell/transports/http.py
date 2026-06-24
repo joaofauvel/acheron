@@ -239,7 +239,7 @@ class HttpWorker(Worker):
     async def health(self) -> bool:  # noqa: D102
         try:
             resp = await self._request("GET", "/health")
-        except (WorkerError, WorkerUnavailableError):
+        except WorkerError, WorkerUnavailableError:
             return False
         else:
             return resp.status_code == httpx.codes.OK

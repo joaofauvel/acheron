@@ -138,20 +138,14 @@ class TestOrchestrator:
         )
         reg = InMemoryWorkerStore()
         await reg.register("tts-bounded", "http://127.0.0.1:1", "http", bounded_caps)
-        await reg.register(
-            "trans-1", "http://127.0.0.1:2", "http", translation_caps()
-        )
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
         settings = Settings(chars_per_token=1)
         settings.workers.chunking.max_chunk_length = 100
         settings.orchestrator.data_dir = tmp_path
-        orch = Orchestrator(
-            reg, PlanCache(tmp_path), _success_handler, settings=settings
-        )
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, settings=settings)
         await orch.start()
 
-        request = EpubRequest(
-            source_path="/input/book.epub", source_language="en", target_language="en"
-        )
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
         with pytest.raises(InvalidLanguagePathError, match="max_input_tokens=10"):
             await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
@@ -164,14 +158,10 @@ class TestOrchestrator:
         settings = Settings(chars_per_token=4)
         settings.workers.chunking.max_chunk_length = 250
         settings.orchestrator.data_dir = tmp_path
-        orch = Orchestrator(
-            reg, PlanCache(tmp_path), _success_handler, settings=settings
-        )
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, settings=settings)
         await orch.start()
 
-        request = EpubRequest(
-            source_path="/input/book.epub", source_language="en", target_language="es"
-        )
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
         assert tracked.plan is not None
 
