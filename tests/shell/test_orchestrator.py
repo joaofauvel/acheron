@@ -529,6 +529,25 @@ class TestOrchestrator:
         await orch.close()
         await orch.shutdown()
 
+    @pytest.mark.asyncio
+    async def test_orchestrator_persists_registration_token_with_0600_mode(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """SEC-009: the persisted token file must have 0600 permissions, regardless of process umask."""
+        import stat
+
+        from acheron.shell.config import OrchestratorSettings
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+
+        token_file = tmp_path / ".registration_token"
+        assert token_file.exists()
+        mode = token_file.stat().st_mode
+        assert stat.S_IMODE(mode) == 0o600, f"token file mode is {oct(stat.S_IMODE(mode))}, expected 0o600"
+
+        await orch.close()
+        await orch.shutdown()
+
 
 @pytest.mark.asyncio
 async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) -> None:  # type: ignore[no-untyped-def]

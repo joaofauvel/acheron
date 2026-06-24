@@ -654,17 +654,17 @@ related: [SEC-002, MAINT-006, SEC-009, SEC-011]
 ### SEC-009 — Registration token file created with process umask (potentially world-readable)
 
 ```yaml
-status: open
+status: fixed
 severity: high
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: b1d1d05
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 181-198
+    lines: 182-198
 related: [SEC-001, SEC-008, SEC-011]
 ```
 
