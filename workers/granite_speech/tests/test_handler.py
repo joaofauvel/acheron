@@ -46,9 +46,7 @@ def _fake_transcribe(_audio_bytes: bytes) -> str:
 
 class TestHandle:
     @pytest.mark.asyncio
-    async def test_handle_with_bytes_input_produces_text_artifact(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_handle_with_bytes_input_produces_text_artifact(self, monkeypatch: pytest.MonkeyPatch) -> None:
         h = _handler()
         h._model = object()  # mark loaded
         h._processor = object()
@@ -105,9 +103,7 @@ class TestHandle:
             await h.handle(job, inp)
 
     @pytest.mark.asyncio
-    async def test_handle_with_path_traversal_chapter_id_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_handle_with_path_traversal_chapter_id_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         h = _handler()
         h._model = object()
         h._processor = object()

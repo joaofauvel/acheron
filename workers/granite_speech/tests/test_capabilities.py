@@ -12,9 +12,8 @@ from acheron.core.models import WorkerType
 @pytest.fixture
 def handler() -> Any:
     """Construct a handler without loading the model."""
-    from workers.granite_speech.handler import GraniteSpeechRunpodHandler
-
     from acheron.worker_sdk.settings import WorkerSettings
+    from workers.granite_speech.handler import GraniteSpeechRunpodHandler
 
     return GraniteSpeechRunpodHandler(
         WorkerSettings(

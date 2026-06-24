@@ -61,10 +61,10 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
 
     async def startup(self) -> None:
         """Eagerly load the model + processor at container boot."""
-        import torch  # noqa: PLC0415 - keep torch import out of test contexts
+        import torch
 
         def _load() -> None:
-            from transformers import (  # noqa: PLC0415 - lazy, not always installed
+            from transformers import (
                 AutoModelForSpeechSeq2Seq,
                 AutoProcessor,
             )
@@ -87,7 +87,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
         if self._processor is not None:
             del self._processor
             self._processor = None
-        import torch  # noqa: PLC0415 - keep torch import out of test contexts
+        import torch
 
         torch.cuda.empty_cache()
 
@@ -126,12 +126,10 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
 
     def _transcribe(self, audio_bytes: bytes) -> str:
         """Run transformers inference; returns the transcript string."""
-        import torch  # noqa: PLC0415
+        import torch
 
         chat = [{"role": "user", "content": f"<|audio|>{_DEFAULT_PROMPT}"}]
-        prompt_text = self._processor.tokenizer.apply_chat_template(
-            chat, tokenize=False, add_generation_prompt=True
-        )
+        prompt_text = self._processor.tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
         model_inputs = self._processor(
             prompt_text,
             audio_bytes,
@@ -139,9 +137,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
             return_tensors="pt",
         ).to("cuda:0")
         with torch.inference_mode():
-            model_outputs = self._model.generate(
-                **model_inputs, max_new_tokens=4096, do_sample=False, num_beams=1
-            )
+            model_outputs = self._model.generate(**model_inputs, max_new_tokens=4096, do_sample=False, num_beams=1)
         num_input_tokens = model_inputs["input_ids"].shape[-1]
         new_tokens = model_outputs[0, num_input_tokens:].unsqueeze(0)
         text: list[str] = self._processor.tokenizer.batch_decode(

@@ -6,12 +6,11 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Mapping
 from email.message import Message
 from email.parser import BytesParser
 from email.policy import default as default_policy
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from pydantic import TypeAdapter
@@ -28,6 +27,9 @@ from acheron.core.models import (
 )
 from acheron.shell.cache import StepCache
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)

@@ -13,6 +13,7 @@ resolution-markers = [
 [manifest]
 members = [
     "acheron",
+    "acheron-granite-speech",
     "acheron-qwen3tts",
 ]
 
@@ -112,6 +113,17 @@ dev = [
     { name = "types-protobuf", specifier = "~=5.29" },
     { name = "types-pyyaml", specifier = "~=6.0" },
 ]
+
+[[package]]
+name = "acheron-granite-speech"
+version = "0.1.0"
+source = { editable = "workers/granite_speech" }
+dependencies = [
+    { name = "acheron" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "acheron", editable = "." }]
 
 [[package]]
 name = "acheron-qwen3tts"
