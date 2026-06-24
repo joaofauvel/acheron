@@ -15,6 +15,7 @@ members = [
     "acheron",
     "acheron-granite-speech",
     "acheron-qwen3tts",
+    "acheron-translategemma",
 ]
 
 [[package]]
@@ -129,6 +130,17 @@ requires-dist = [{ name = "acheron", editable = "." }]
 name = "acheron-qwen3tts"
 version = "0.1.0"
 source = { editable = "workers/qwen3tts" }
+dependencies = [
+    { name = "acheron" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "acheron", editable = "." }]
+
+[[package]]
+name = "acheron-translategemma"
+version = "0.1.0"
+source = { editable = "workers/translategemma" }
 dependencies = [
     { name = "acheron" },
 ]
