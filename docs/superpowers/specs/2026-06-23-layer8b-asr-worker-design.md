@@ -45,10 +45,12 @@ forward — no further SDK churn.
   and `main`.
 
 **Out of scope (deferred to separate sub-projects):**
-- 8c — `translategemma` translation worker. Inherits the `Input` Protocol
-  forward (translation is text-in, text-out; the `input` parameter is
-  always `None` for 8c). See [Layer 8a TTS design](./2026-06-22-layer8a-tts-worker-design.md)
-  for the 8c spec when it's written.
+- 8c — `translategemma` translation worker. Refines the `Input` Protocol
+  contract: translation is text-in/text-out, but the chunks arrive via a
+  multipart `BytesInput` (carrying `chunks.json`), not as a `None`
+  payload. 8c also retroactively refactors the qwen3tts handler to read
+  from `Input` (closing the latent end-to-end gap the 8a spec left
+  open). See [Layer 8c spec](./2026-06-23-layer8c-translategemma-worker-design.md).
 - `granite-speech-4.1-2b-plus` (speaker-attributed ASR + word-level
   timestamps) — deferred to a future sub-project. v1 emits one transcript
   per chapter without word boundaries; the downstream `ChunkingHandler` is
@@ -224,8 +226,11 @@ class WorkerHandler(ABC):
         """Run inference for `job`, consuming `input` if the step is audio-in.
 
         `input` is the new second parameter (8b). Default `None` keeps
-        backward compatibility — TTS, translation, and stub handlers that
-        don't take an input are unchanged.
+        backward compatibility for stub handlers that don't take an input.
+        Real workers (ASR, TTS, translation) consume `input` — see the
+        8b ASR handler for audio bytes and the 8c handlers for text
+        chunks; the qwen3tts handler was refactored to consume `input`
+        in 8c (closing the latent end-to-end gap from 8a).
 
         The handler may consume `input` once via `input.stream()` (returns an
         `AsyncIterator[bytes]`); iterating past the first call is
@@ -250,11 +255,13 @@ behaving unchanged. Only `GraniteSpeechRunpodHandler` and
 - **`application/json`** — the existing path. TTS / translation / non-audio
   workers continue to receive the same `ExecuteRequest` envelope; `input`
   is `None` on the handler call.
-- **`multipart/form-data`** — the new 8b path. The first `application/json`
+- **`multipart/form-data`** — the 8b path. The first `application/json`
   part is the `ExecuteRequest` envelope; the first binary part (any
   content-type other than `application/json`) is built into a `BytesInput`
-  and passed as the second argument to `handler.handle()`. TTS jobs sent as
-  multipart (no audio part) behave identically to today.
+  and passed as the second argument to `handler.handle()`. ASR workers
+  expect a binary audio part; TTS and translation workers (post-8c)
+  expect a JSON `chunks.json` part. EXTRACTION / CHUNKING / PACKAGING
+  continue to use the legacy `application/json` request body.
 
 The error response body is unchanged: a `JobResult`-shaped JSON body with
 `status=FAILED` and `error=<message>` (handler exception), parseable by
@@ -1266,9 +1273,12 @@ required for the unit test.
   audio file (`WorkerError`).
 - **`tests/shell/transports/test_http_worker.py` (extended)** — adds a
   1-test case asserting the legacy JSON `HttpWorker.execute()` path (for
-  TTS) is unchanged: with `job.job_type = TTS`, the transport sends
-  `json=` and parses the response as `multipart/mixed` or `JobResult` JSON
-  without entering the new `_execute_asr_multipart` branch.
+  EXTRACTION / CHUNKING / PACKAGING) is unchanged: with those
+  `WorkerType` values, the transport sends `json=` and parses the
+  response as `multipart/mixed` or `JobResult` JSON without entering
+  the new `_execute_with_upstream_input` branch. (The TTS path
+  changed in 8c — see the 8c plan's test additions for the new
+  TTS / TRANSLATION arms.)
 - **`tests/shell/transports/test_step_handler.py` (extended)** — adds a
   1-test case asserting the ASR branch of `HttpWorker.execute()` is
   invoked when `step.type == ASR`.
@@ -1297,9 +1307,11 @@ required for the unit test.
 - **`test_cloud_audio.py` (NEW)** — `_serialise_job_for_runpod` includes
   `input_audio` only when `input is not None`. `make_runpod_handler._rp_handler`
   reads `input_audio`, builds a `BytesInput`, and passes it to
-  `handler.handle(job, input)`. A TTS job (no `input_audio`) still calls
-  `handler.handle(job, input=None)`. The base64 round-trip preserves
-  bytes.
+  `handler.handle(job, input)`. Post-8c, TTS and TRANSLATION jobs also
+  carry an `input` part (chunks.json) and call
+  `handler.handle(job, input=BytesInput(...))`. EXTRACTION / CHUNKING /
+  PACKAGING still call `handler.handle(job, input=None)` (legacy path).
+  The base64 round-trip preserves bytes.
 - **`test_runpod_forwarder.py` (extended)** — `RunPodForwarderHandler.handle`
   forwards `input` to the cloud side via base64; a TTS job (no input)
   continues to work unchanged.
@@ -1349,7 +1361,8 @@ required for the unit test.
   `_parse_request_multipart` helper.
 - `tests/shell/transports/test_asr_multipart.py` (NEW).
 - `tests/shell/transports/test_http_worker.py` (EXTENDED) — backward-compat
-  case for TTS path.
+  case for the EXTRACTION / CHUNKING / PACKAGING (legacy JSON) path.
+  8c adds the new TTS / TRANSLATION arm tests.
 - `tests/shell/transports/test_step_handler.py` (EXTENDED) — ASR branch
   routing.
 - `tests/shell/transports/test_multipart.py` (EXTENDED) — request parser
