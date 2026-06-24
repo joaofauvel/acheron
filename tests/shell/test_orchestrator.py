@@ -491,18 +491,73 @@ class TestOrchestrator:
     async def test_orchestrator_loads_existing_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from acheron.shell.config import OrchestratorSettings, Settings
 
-        # Pre-populate token file
+        # Pre-populate token file with a 32+ char token (SEC-011 minimum)
         token_file = tmp_path / ".registration_token"
-        token_file.write_text("pre-existing-token", encoding="utf-8")
+        pre_existing = "0123456789abcdef0123456789abcdef"  # 32 hex chars
+        token_file.write_text(pre_existing, encoding="utf-8")
 
         settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
         await orch.start()
 
         # Should load the pre-existing token
-        assert orch.settings.orchestrator.registration_token == "pre-existing-token"
+        assert orch.settings.orchestrator.registration_token == pre_existing
 
         # Clean up
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_rejects_dev_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """SEC-011/018/022: refuse to start with the publicly-known dev-registration-token."""
+        from acheron.shell.config import OrchestratorSettings
+
+        settings = Settings(
+            orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token="dev-registration-token")
+        )
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        with pytest.raises(RuntimeError, match="dev-registration-token"):
+            await orch.start()
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_rejects_short_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """SEC-011: refuse to start with a token shorter than 32 chars."""
+        from acheron.shell.config import OrchestratorSettings
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token="short-token"))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        with pytest.raises(RuntimeError, match="too short"):
+            await orch.start()
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_rejects_short_registration_token_from_file(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """SEC-011: refuse to load a too-short token from the persisted file."""
+        from acheron.shell.config import OrchestratorSettings
+
+        token_file = tmp_path / ".registration_token"
+        token_file.write_text("too-short", encoding="utf-8")
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        with pytest.raises(RuntimeError, match="too short"):
+            await orch.start()
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_accepts_valid_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """SEC-011: accept a 32+ char token from the env / settings."""
+        from acheron.shell.config import OrchestratorSettings
+
+        valid = "a" * 64
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=valid))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+        assert orch.settings.orchestrator.registration_token == valid
         await orch.close()
         await orch.shutdown()
 

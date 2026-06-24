@@ -47,6 +47,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_MIN_TOKEN_LENGTH = 32
+_PUBLIC_TOKEN_VALUES = frozenset({"dev-registration-token"})
+
+
+def _validate_registration_token(token: str | None) -> None:
+    if token is None:
+        return
+    if token in _PUBLIC_TOKEN_VALUES:
+        msg = (
+            f"ACHERON_REGISTRATION_TOKEN is set to the publicly-known value {token!r}. "
+            f"Generate a fresh token with `openssl rand -hex 32` and set it in your environment."
+        )
+        raise RuntimeError(msg)
+    if len(token) < _MIN_TOKEN_LENGTH:
+        msg = (
+            f"ACHERON_REGISTRATION_TOKEN is too short ({len(token)} chars); "
+            f"minimum is {_MIN_TOKEN_LENGTH} characters. "
+            f"Generate a fresh token with `openssl rand -hex 32`."
+        )
+        raise RuntimeError(msg)
+
+
 class Orchestrator:
     """Service layer wiring together all pipeline components."""
 
@@ -173,6 +195,10 @@ class Orchestrator:
 
         Idempotent: calling start() more than once is a no-op so the FastAPI
         lifespan path and explicit callers can both be safe.
+
+        Raises:
+            RuntimeError: If ``ACHERON_REGISTRATION_TOKEN`` is set to a
+                publicly-known value or is shorter than 32 characters.
         """
         if self._started:
             return
@@ -197,6 +223,8 @@ class Orchestrator:
                     logger.info("Generated and persisted registration token to %s", token_file)
                 except OSError as exc:
                     logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
+
+        _validate_registration_token(self._settings.orchestrator.registration_token)
 
         await self._registry.connect()
         await self._job_store.connect()

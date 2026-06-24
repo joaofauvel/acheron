@@ -80,7 +80,7 @@ class TestRegistrationSecurity:
         response = await client_with_token.post(
             "/workers",
             json=_WORKER_PAYLOAD,
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
         )
         assert response.status_code == 201
 

@@ -89,7 +89,7 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
     base_env = os.environ.copy()
     base_env["SSL_CERT_FILE"] = str(ca)
     base_env["ACHERON_DATA_DIR"] = str(certs_dir / "data")
-    base_env["ACHERON_REGISTRATION_TOKEN"] = "test-token"
+    base_env["ACHERON_REGISTRATION_TOKEN"] = "test-registration-token-must-be-32-chars-or-more"
     base_env["ACHERON_TLS_CA_FILE"] = str(ca)
     base_env["ACHERON_STORE_BACKEND"] = "memory"
     base_env["ACHERON_ALLOW_INSECURE"] = "1"
@@ -112,7 +112,7 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
         "WORKER_CONFIG": str(repo_root / "stubs" / "tts_local_stub" / "worker.yaml"),
         "ACHERON_WORKER__LISTEN_PORT": str(tts_port),
         "ACHERON_WORKER__ORCHESTRATOR_URL": f"https://127.0.0.1:{orch_port}",
-        "ACHERON_WORKER__REGISTRATION_TOKEN": "test-token",
+        "ACHERON_WORKER__REGISTRATION_TOKEN": "test-registration-token-must-be-32-chars-or-more",
         "ACHERON_TLS_CERT_FILE": str(certs_dir / "tts-stub.crt"),
         "ACHERON_TLS_KEY_FILE": str(certs_dir / "tts-stub.key"),
     }
@@ -121,7 +121,7 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
         "WORKER_CONFIG": str(repo_root / "stubs" / "tts_grpc_stub" / "worker.yaml"),
         "ACHERON_WORKER__LISTEN_PORT": str(grpc_port),
         "ACHERON_WORKER__ORCHESTRATOR_URL": f"https://127.0.0.1:{orch_port}",
-        "ACHERON_WORKER__REGISTRATION_TOKEN": "test-token",
+        "ACHERON_WORKER__REGISTRATION_TOKEN": "test-registration-token-must-be-32-chars-or-more",
         "ACHERON_TLS_CERT_FILE": str(certs_dir / "tts-grpc-stub.crt"),
         "ACHERON_TLS_KEY_FILE": str(certs_dir / "tts-grpc-stub.key"),
     }

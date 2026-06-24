@@ -706,14 +706,7 @@ related: [SEC-005, SEC-006, OBS-005]
 ### SEC-011 — `ACHERON_REGISTRATION_TOKEN` defaults to publicly-known `dev-registration-token` in compose and `.env.example`
 
 ```yaml
-status: open
-severity: high
-effort: S
-reviewed_at: dbec2be
-last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+fixedopenpendinge54458416e9bfe890a473dd9d542978d205b40a12026-06-242026-06-23["pending"]
 files:
   - path: docker-compose.yml
     lines: 35
@@ -897,14 +890,7 @@ related: [SEC-015]
 ### SEC-018 — `granite-speech-edge` compose service hardcodes `:-dev-registration-token` fallback (new instance of SEC-011)
 
 ```yaml
-status: open
-severity: high
-effort: S
-reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
-last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+fixedopenpendinge54458416e9bfe890a473dd9d542978d205b40a12026-06-242026-06-23["pending"]
 files:
   - path: docker-compose.yml
     lines: 209
@@ -1055,14 +1041,7 @@ related: [SEC-014, SEC-016]
 ### SEC-022 — `translategemma-edge` compose service hardcodes `${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` fallback (new instance of SEC-011/SEC-018)
 
 ```yaml
-status: open
-severity: high
-effort: S
-reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
-last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+fixedopenpendingeb6849c85d83f2277eb450f18a11e63cae2defd12026-06-242026-06-24["pending"]
 files:
   - path: docker-compose.yml
     lines: 242

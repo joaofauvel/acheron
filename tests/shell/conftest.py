@@ -99,7 +99,7 @@ async def client(
 @pytest_asyncio.fixture
 async def client_with_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     """Create an async client with registration token enabled."""
-    monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "test-token")
+    monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "test-registration-token-must-be-32-chars-or-more")
     app = await make_app(tmp_path)
     await app.state.orchestrator.start()
     transport = ASGITransport(app=app)
