@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: dbec2be
+last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
 last_staleness_scan:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 ---
 
@@ -157,12 +157,12 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 83-116
+    lines: 88-121
 related: [CORR-017]
 ```
 
@@ -182,7 +182,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -192,6 +192,8 @@ files:
     lines: 125-147
   - path: src/acheron/worker_sdk/pricing.py
     lines: 195-211
+  - path: src/acheron/shell/transports/http.py
+    lines: 143-165
 related: []
 ```
 
@@ -272,16 +274,16 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 230-237
+    lines: 234-241
   - path: src/acheron/shell/health.py
     lines: 113-152
   - path: src/acheron/shell/step_handler.py
-    lines: 123
+    lines: 138
   - path: dashboard/app.py
     lines: 27
 related: []
@@ -383,14 +385,20 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 151-194
+    lines: 156-163
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 167-186
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 233-271
   - path: docker-compose.yml
     lines: 166-198
+  - path: docker-compose.yml
+    lines: 200-231
 related: [SEC-005, SEC-014]
 ```
 
@@ -624,12 +632,12 @@ severity: critical
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 192
+    lines: 196
 related: [SEC-002, MAINT-006, SEC-009, SEC-011]
 ```
 
@@ -649,12 +657,12 @@ severity: high
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 178-194
+    lines: 182-198
 related: [SEC-001, SEC-008, SEC-011]
 ```
 
@@ -701,12 +709,18 @@ severity: high
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: docker-compose.yml
-    lines: 35, 95, 175
+    lines: 35
+  - path: docker-compose.yml
+    lines: 95
+  - path: docker-compose.yml
+    lines: 175
+  - path: docker-compose.yml
+    lines: 209
   - path: .env.example
     lines: 7
 related: [SEC-008, SEC-009, DOC-003]
@@ -728,12 +742,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 157-178
+    lines: 240-255
 related: [SEC-006, OBS-007]
 ```
 
@@ -778,7 +792,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -805,16 +819,16 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: Dockerfile
     lines: 1-41
   - path: Dockerfile.edge
-    lines: 1-37
+    lines: 1-43
   - path: workers/qwen3tts/Dockerfile.runpod
-    lines: 1-51
+    lines: 1-53
 related: []
 ```
 
@@ -825,3 +839,155 @@ related: []
 **Recommendation.** Add a `RUN useradd --create-home --uid 1000 acheron` (or similar) to each stage and a `USER acheron` before the `CMD`. For stages that need to bind privileged ports (<1024), use setcap or a higher port (orchestrator already uses 8000, edge uses 8001, dashboard 8080 — all > 1024). Update healthcheck commands that run python to either run as the unprivileged user or use `gosu`. In compose, ensure bind-mounted volumes are owned by the matching uid (a `user:` directive on each service is the cleanest approach).
 
 **Verification.** Build any of the images and `docker run --rm <image> id` — must print `uid=1000(acheron)`. Add a startup test that confirms the healthcheck command (which uses urllib) still works as the unprivileged user. For the runpod image, confirm torch can still write to the model cache dir under the unprivileged user (chown the volume on first mount).
+
+### SEC-016 — Granite-speech edge image default `orchestrator_url` is HTTP — registration token sent in cleartext when env var is not overridden (new instance of SEC-014)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: workers/granite_speech/worker.edge.yaml
+    lines: 7
+related: [SEC-014]
+```
+
+**Issue.** `workers/granite_speech/worker.edge.yaml:7` sets `orchestrator_url: "http://orchestrator:8000"`. The docker-compose service overrides to https at line 208, but a deployer that runs the acheron-worker-edge image standalone (RunPod pod, different topology) inherits the HTTP default; `registration.py:50` puts the bearer token in the Authorization header, transmitted in cleartext.
+
+**Why it matters.** Bakes an HTTP fallback into a second image. Standalone deployers inherit the bug. Token sent in cleartext over HTTP allows on-path observers to register a malicious worker endpoint and exfiltrate job payloads — same downstream impact as SEC-008/009.
+
+**Recommendation.** Default `orchestrator_url` to `https://orchestrator:8000` in `workers/granite_speech/worker.edge.yaml:7`. In `settings.py`, log a WARNING at startup if `orchestrator_url` starts with `http://` and `ACHERON_ALLOW_INSECURE_REGISTRATION=1` is not set.
+
+**Verification.** Build the edge image with the default `worker.edge.yaml`; confirm `worker.edge.yaml:7` reads `https://orchestrator:8000`.
+
+### SEC-017 — Granite-speech runpod image runs as root — no `USER` directive (new instance of SEC-015)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: workers/granite_speech/Dockerfile.runpod
+    lines: 1-63
+related: [SEC-015]
+```
+
+**Issue.** `workers/granite_speech/Dockerfile.runpod` is structurally identical to `workers/qwen3tts/Dockerfile.runpod` that SEC-015 was filed against: no `RUN useradd`, no `USER` directive, the final `CMD` runs as uid 0.
+
+**Why it matters.** Defense-in-depth regression identical to SEC-015: a malicious or compromised HF checkpoint that triggers `torch.load` arbitrary code execution (or a soundfile deserialization issue) escalates to full host root.
+
+**Recommendation.** Add a `RUN useradd --create-home --uid 1000 acheron` step before `CMD` and `USER acheron` at the bottom. Confirm the entrypoint works as the unprivileged user.
+
+**Verification.** Build the image; `docker run --rm <image> id` must print `uid=1000(acheron)`.
+
+### SEC-018 — `granite-speech-edge` compose service hardcodes `:-dev-registration-token` fallback (new instance of SEC-011)
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: docker-compose.yml
+    lines: 209
+related: [SEC-011]
+```
+
+**Issue.** `docker-compose.yml:209` sets `ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` for the new `granite-speech-edge` service. If the operator forgets to set `ACHERON_REGISTRATION_TOKEN` in their `.env`, the new service ships with the publicly-known `dev-registration-token`.
+
+**Why it matters.** Re-introduces the SEC-011 dev-default bypass in a second compose service. Registering a malicious worker against the orchestrator allows an attacker to receive ASR job payloads and to consume the RunPod credits.
+
+**Recommendation.** Remove the `:-dev-registration-token` fallback in `docker-compose.yml:209` so the env var is required. Make `.env.example:7` document the variable with a placeholder and a comment instructing the operator to generate one with `openssl rand -hex 32`. The orchestrator's startup should fail closed if the env var is the empty string.
+
+**Verification.** `docker compose --profile runpod-asr up` with no `.env`; assert refusal.
+
+### SEC-019 — Edge `/execute` multipart branch returns 500 body with `error=str(exc)`, exposing raw exception detail (new instance of SEC-012)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 167-186
+related: [SEC-012]
+```
+
+**Issue.** `_run_execute_multipart` (lines 167-186) catches `WorkerError` from `_parse_multipart_request` and returns a JSON 500 body built from `JobResult(... error=str(exc) ...)`. Internal exception detail (parse-failure messages naming internal paths, boundary mismatches, content-type strings) flows through to `GET /jobs/{id}`.
+
+**Why it matters.** Compounds SEC-012's information disclosure. The ASR multipart branch is the dominant new code path.
+
+**Recommendation.** Categorize `str(exc)` into a small set of public-safe buckets before returning the 500. Keep `logger.exception(...)` for the full traceback.
+
+**Verification.** Force a multipart parse failure; assert the 500 body's `error` field is one of the documented buckets, not the raw `BytesParser` error string.
+
+### OBS-009 — `granite-speech-edge` service exposes `/execute` on host port 8008 — unauthenticated (new instance of OBS-007)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: docker-compose.yml
+    lines: 200-231
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 156-163, 167-186, 233-271
+related: [OBS-007]
+```
+
+**Issue.** `docker-compose.yml:204` maps `8008:8001` for `granite-speech-edge`, exposing the edge's unauthenticated POST `/execute` on the host network. Any host-side process can call `/execute` directly, bypassing the orchestrator's job-submission path.
+
+**Why it matters.** The `/execute` endpoint is the entire cost-bearing surface of the RunPod edge — a single host-level access yields a billable surface, a probe for the RunPod endpoint_id via timing/exception response, and a free proxy to the RunPod serverless endpoint.
+
+**Recommendation.** Require an `Authorization: Bearer <registration_token>` dependency on `/execute`, and gate the port to `expose: [8001]` instead of `ports:` in compose so it is not host-reachable.
+
+**Verification.** `curl -X POST http://localhost:8008/execute -d '{...}'` from the host should be rejected (401/403).
+
+### PERF-008 — `HttpWorker._post_multipart` constructs a new `httpx.AsyncClient` per call (new instance of PERF-007)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 143-165
+related: [PERF-007]
+```
+
+**Issue.** The new `_post_multipart` method (transports/http.py:143-165) follows the same pattern PERF-007 flagged: when `self._client is None` (the common case), the method opens a throwaway `httpx.AsyncClient` per call. The pre-existing `_request` method at lines 73-74 has the same anti-pattern.
+
+**Why it matters.** Per-call `httpx.AsyncClient` defeats keep-alive and forces a full handshake on every request. For a long-running ASR plan with N steps, that's N handshakes to the edge per job.
+
+**Recommendation.** Reuse the existing `self._client` injection seam on `_post_multipart` (the `if self._client is not None` branch is already in place at line 151-152). At the `default_worker_factory` level, build a shared `httpx.AsyncClient` per `worker_id` and pass it to the constructed `HttpWorker`.
+
+**Verification.** Run a 10-step ASR plan against a fake edge that records connection setup; assert the counter increments by 1 (one per worker_id), not 20.

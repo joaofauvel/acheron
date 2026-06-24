@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: dbec2be
+last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
 last_staleness_scan:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-DX-001 is verified. One new DX finding: DX-003 (medium) — `just install` does not install the new `workers/qwen3tts/` workspace member, breaking the documented fresh-clone setup. DX-002 remains open (README Quick Start still uses the non-existent `acheron submit`).
+DX-001 is verified. DX-002 (medium) transitioned to `fixed` in 5b55e6f (README Quick Start replaced `acheron submit` with the canonical `acheron job ...` form). DX-003 (medium) remains open and re-resolved: the new `workers/granite_speech` workspace member widens the gap. No new DX findings at high threshold.
 
 ### DX-001 — Quick Start omits `just certs` — fresh clone breaks `docker compose up`
 
@@ -48,21 +48,20 @@ related: []
 ### DX-002 — README Quick Start command `acheron submit` no longer exists; the canonical first-run example fails
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
-fixed_in: []
+fixed_in:
+  - 5b55e6f
 files:
   - path: README.md
     lines: 16
   - path: README.md
-    lines: 169-184
-  - path: src/acheron/cli.py
-    lines: 138-150
+    lines: 214-219
 related: [DOC-003]
 ```
 
@@ -82,16 +81,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: Justfile
     lines: 38-40
   - path: pyproject.toml
-    lines: 190-194
+    lines: 194-198
   - path: pyproject.toml
-    lines: 136
+    lines: 139-140
 related: []
 ```
 
@@ -145,16 +144,16 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: pyproject.toml
-    lines: 143-145
+    lines: 148-149
   - path: pyproject.toml
-    lines: 174
+    lines: 178
   - path: pyproject.toml
-    lines: 181
+    lines: 185
 related: []
 ```
 
@@ -174,14 +173,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: Dockerfile
     lines: 36-40
   - path: pyproject.toml
-    lines: 168
+    lines: 172
 related: [DOC-003]
 ```
 
@@ -197,7 +196,7 @@ related: [DOC-003]
 
 **Grade:** A
 
-DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. No new DOC findings at high threshold.
+DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. One new DOC finding: DOC-004 (medium) — README architecture tree (line 76-77), Test paths (line 125), and CI section (line 160-163) all omit the new `granite_speech` workspace member despite the new `build-granite-speech` GHCR job and the new `granite-speech-edge` compose service. The drift is exactly the shape AGENTS.md targets (qwen3tts/granite_speech asymmetry hidden from a README-only reader).
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -261,7 +260,7 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -270,11 +269,13 @@ files:
   - path: .env.example
     lines: 9-27
   - path: README.md
-    lines: 139
+    lines: 182-193
   - path: dashboard/app.py
     lines: 58
   - path: src/acheron/shell/api/deps.py
     lines: 33
+  - path: docker-compose.yml
+    lines: 203-213
 related: [DX-002, SEC-011, PKG-003]
 ```
 
@@ -285,3 +286,32 @@ related: [DX-002, SEC-011, PKG-003]
 **Recommendation.** Update `.env.example:7` to empty the registration token and add an `ACHERON_TRUST_REVERSE_PROXY=0` line with a comment. Add `ACHERON_TRUST_REVERSE_PROXY` to the README's Configuration table. Align the `ACHERON_OPEN_REGISTRATION` documentation with the loader (CFG-003). Coordinate the empty-token change with the SEC-011 startup-validation fix.
 
 **Verification.** `grep -rn 'ACHERON_' README.md .env.example acheron.yaml.example` matches every env var that is actually read by `src/`. New `ACHERON_*` env vars introduced in this diff appear in the docs; removed env vars do not. The registration-token example no longer contains `dev-registration-token`.
+
+### DOC-004 — README architecture tree, CI section, and Test paths omit the new `granite_speech` worker
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: README.md
+    lines: 76-77
+  - path: README.md
+    lines: 125
+  - path: README.md
+    lines: 160-163
+related: [DOC-003]
+```
+
+**Issue.** The new `workers/granite_speech/` workspace member is wired into the workspace, has its own CI job, its own Dockerfile.runpod, its own tests, and its own `docker-compose.yml` service — but the README's onboarding map still names only the qwen3tts worker. (1) Architecture tree (README.md:76-77) lists `qwen3tts/` under `workers/`, with no `granite_speech/` entry. (2) Test paths (README.md:125) lists only `workers/qwen3tts/tests/`, omitting both `workers/granite_speech/tests/` and `workers/_shared/tests/`. (3) CI section (README.md:160-163) lists two published images — `acheron-qwen3tts-runpod` and `acheron-worker-edge` — but `.github/workflows/build-workers.yml:48-76` adds a third `build-granite-speech` job publishing `acheron-granite-speech-runpod:latest` and `:<sha>`, which is not in the README.
+
+**Why it matters.** The README is the primary onboarding map for the package. The drift is exactly the shape AGENTS.md targets (the qwen3tts/granite_speech asymmetry would not be visible to a new contributor reading the README).
+
+**Recommendation.** Update README.md:76-77 to add `granite_speech/  # Granite-Speech ASR RunPod + edge worker` under `workers/`. Update README.md:125 to add `workers/granite_speech/tests/`, `workers/_shared/tests/`. Update README.md:160-163 to add `acheron-granite-speech-runpod` to the CI bullet list.
+
+**Verification.** `grep -n 'granite' README.md` returns hits in the architecture tree, test paths, and CI section.

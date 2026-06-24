@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: dbec2be
+last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
 last_staleness_scan:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-MAINT-001, MAINT-003, MAINT-004 remain verified. MAINT-002, MAINT-005, MAINT-006, MAINT-007, MAINT-008 re-resolved (lines mostly unchanged since 63faed4). Six new MAINT findings: MAINT-009 (low) — Python 2-style `except A, B:` syntax at 7 sites across 6 files; MAINT-010 (low) — `create_worker_app` has a duplicate docstring; MAINT-011 (medium) — `create_worker_app` builds an `EdgeApp` only to copy its routes via path-string matching; MAINT-012 (low) — `_registration_caps` manually re-lists every `WorkerCapabilities` field instead of `dataclasses.replace`; MAINT-013 (low) — `_caps_to_response` (edge) and `_caps_to_dict` (registration) duplicate the same `WorkerCapabilities` → dict serialisation; MAINT-014 (low) — stub handlers redundantly override the ABC's default no-op `startup`/`shutdown` methods.
+MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -60,7 +60,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -68,7 +68,7 @@ files:
     lines: 30-282
   - path: src/acheron/shell/cache.py
     lines: 27-128
-related: [DATA-002]
+related: [DATA-002, MAINT-015]
 ```
 
 **Issue.** redis.py hand-rolls ~150 lines of JSON serialization for TrackedJob/Plan/PlanStep/PlanResult/WorkerCapabilities (`_serialize_job`, `_deserialize_job`, `_serialize_capabilities`, `_deserialize_capabilities`, `_deserialize_worker` — redis.py:30-282) via json.dumps/loads with field-by-field reconstruction and a manual `source_type` match dispatch. cache.py serializes the same Plan/OutputFile models via pydantic `TypeAdapter` (cache.py:44,59,85,107 — `_plan_adapter.dump_json`/`validate_json`). Adding a field to PlanStep/Plan/PlanResult requires editing the redis ser site and the deser site separately, while cache.py adapts automatically. The manual deser re-derives `source_type` via a match on AudioRequest/EpubRequest, duplicating planner logic rather than persisting it. The new `CostBasis` field added in this delta required touching both the manual ser site (line 179) and deser site (line 272), reinforcing the drift story. The fundamental duplication remains — redis.py is still the largest file in the shell package.
@@ -143,12 +143,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 319-344
+    lines: 323-348
 related: [OBS-004]
 ```
 
@@ -168,12 +168,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 177-194
+    lines: 181-198
 related: [SEC-008, MAINT-007]
 ```
 
@@ -193,7 +193,7 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -220,7 +220,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -245,7 +245,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -254,7 +254,7 @@ files:
   - path: src/acheron/shell/health_providers.py
     lines: 80
   - path: src/acheron/shell/transports/http.py
-    lines: 145
+    lines: 223
   - path: src/acheron/shell/local_handlers.py
     lines: 296
   - path: src/acheron/shell/executors/streaming.py
@@ -282,7 +282,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -307,7 +307,7 @@ severity: medium
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -332,7 +332,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -357,12 +357,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 44-55
+    lines: 49-60
   - path: src/acheron/worker_sdk/registration.py
     lines: 78-91
 related: [MAINT-012]
@@ -384,16 +384,16 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: stubs/_sdk_base/__init__.py
-    lines: 52-56
+    lines: 53-57
   - path: stubs/_sdk_base/__init__.py
-    lines: 100-104
+    lines: 101-105
   - path: stubs/_sdk_base/__init__.py
-    lines: 138-141
+    lines: 140-144
 related: []
 ```
 
@@ -405,11 +405,38 @@ related: []
 
 **Verification.** `grep -n 'async def startup\|async def shutdown' stubs/` returns zero hits; `just test` still passes (no behavioural change); `just type-check`.
 
+### MAINT-015 — `inputs.py` is a near-verbatim copy of `artifacts.py` — same Protocol + three-variant shape duplicated 95%
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/inputs.py
+    lines: 1-79
+  - path: src/acheron/worker_sdk/artifacts.py
+    lines: 1-78
+related: [MAINT-002, MAINT-013]
+```
+
+**Issue.** `src/acheron/worker_sdk/inputs.py` (NEW 79 lines) is structurally a copy of `src/acheron/worker_sdk/artifacts.py` (78 lines): same `@runtime_checkable` Protocol (Input/Artifact), same three variants (Bytes/Stream/File), same field shape (content_type, metadata, stream), same FileX.stream() 64-KiB read loop, same `# noqa: TC003` import pattern, same `dataclass(frozen=True)` field metadata. The only differences are (a) `data: bytes` vs `filename: str` and (b) `producer: Callable` vs `path: Path`. ~80 lines of structural duplication; a new 8c worker will inevitably get a 4th copy unless a shared base is introduced.
+
+**Why it matters.** AGENTS.md bans coupled comments and stale-prone structures; symmetric pairs of structurally-identical files are exactly the kind of drift hotspot the greenfield rubric catches. Adding a field to the wire format (e.g. `encoding`, `checksum`) requires editing both files in lockstep. The 8b layer is the natural moment to consolidate before more workers copy the shape.
+
+**Recommendation.** Introduce a single `Wire[T]` Protocol with a `direction: Literal['input', 'output']` parameter, or extract a shared `_wire.py` base with covariant type parameters. Each variant can be a thin subclass. Bundle: ~80 lines collapse to ~30 + the variants. Keep `inputs.py` and `artifacts.py` as the public re-exports so callers can keep their current imports.
+
+**Verification.** `just test`; `git diff --stat src/acheron/worker_sdk/{inputs,artifacts}.py` shows a single shared base; new test that adding a field to one variant does not require editing the other file; `just type-check`.
+
 ## EXC — Exception discipline
 
 **Grade:** A
 
-EXC-001 (medium) remains open and re-resolved: `tenacity` is still unused, but new error paths exist in `_runpod_client.py:84-86` (bare `TimeoutError` re-raise where `WorkerTimeoutError` is the project's chosen type). EXC-002 is verified. EXC-003 (low) re-resolved. One new EXC finding: EXC-004 (medium) — `create_worker_app` lifespan catches bare `BaseException` for the eager price refresh, swallowing `KeyboardInterrupt`/`SystemExit`/`CancelledError`.
+EXC-001 (medium) remains open and re-resolved: `tenacity` is still unused, and the `_runpod_client.py:84-86` bare `TimeoutError` site is still there. EXC-002 is verified. EXC-003 (low) and EXC-004 (medium) re-resolved with no line shifts. One new finding: EXC-005 (medium) — `_edge_http.py` `EdgeApp._dispatch` catches bare `BaseException` for handler failures, the same anti-pattern as EXC-004 in a second file. Pattern-level: the broad-catch anti-pattern is now present at two sites in the worker_sdk (`app.py:122` and `_edge_http.py:242`); `KeyboardInterrupt` during a long handler and `asyncio.CancelledError` on orchestrator-cancelled steps both get wrapped in a 500 instead of propagating.
 
 ### EXC-001 — tenacity dependency is unused; WorkerTimeoutError/PlanValidationError are never raised; transient network calls have no retry
 
@@ -419,7 +446,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -490,7 +517,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -519,7 +546,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -536,11 +563,36 @@ related: [OBS-008, MAINT-010]
 
 **Verification.** `just test`; a new test that injects a price source whose `refresh()` raises `KeyboardInterrupt` (or `asyncio.CancelledError`) and asserts the exception propagates out of the lifespan, not into the WARNING log.
 
+### EXC-005 — `_edge_http.py` `_dispatch` catches bare `BaseException` for handler failures; same anti-pattern as EXC-004 in a second file
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 240-255
+related: [EXC-004]
+```
+
+**Issue.** `EdgeApp._dispatch` (lines 237-255) wraps `await self.handler.handle(job, input_obj)` in `except BaseException as exc:`. This is the same anti-pattern as EXC-004 (`create_worker_app` lifespan, app.py:122). `BaseException` is broader than what the error-conversion contract justifies: it also catches `KeyboardInterrupt` (operator Ctrl-C during a long handler), `SystemExit` (container shutdown), and `asyncio.CancelledError` (FastAPI's own request cancellation, which is the dominant path for an orchestrator cancelling a step). All three should propagate cleanly. The diff also removed the 3-line inline rationale comment, so the broad catch is now unexplained at the call site.
+
+**Why it matters.** Pattern-level EXC: the same broad-catch anti-pattern is now present in two files (`app.py:122` and `_edge_http.py:242`). The handler is async user code — it can raise `KeyboardInterrupt` during model load — and the broad catch means a Ctrl-C'd deployer gets a 500 response and a WARNING log line instead of a clean shutdown.
+
+**Recommendation.** Narrow to `except Exception as exc:` (or list the concrete expected types: `(WorkerError, ValueError, KeyError, TypeError, OSError)`). The `BaseException` subclasses that should propagate (`KeyboardInterrupt`, `SystemExit`, `CancelledError`) will then do so.
+
+**Verification.** `just test`; new test that injects a handler raising `KeyboardInterrupt` and asserts the exception propagates out of `_dispatch` rather than being wrapped in a 500; `grep -n 'except BaseException' src/acheron/worker_sdk/` returns zero hits.
+
 ## TYPE — Type safety
 
 **Grade:** A
 
-TYPE-002 remains verified. TYPE-001, TYPE-003, TYPE-004 re-resolved (most line numbers shifted +3 due to the new `_runpod_client`-related additions in surrounding files). Four new TYPE findings: TYPE-005 (low) — `JobResponse.status` and `JobResponse.total_cost_basis` are stringly-typed despite enums existing; TYPE-006 (low) — `grpc.py` accumulates 5 new `# type: ignore` markers for the proto Artifact oneof; TYPE-007 (low) — `RunPodForwarderHandler.__init__` uses `# type: ignore[call-arg]` where a constructor Protocol is the right typing; TYPE-008 (low) — `WorkerSDK` has 14+ `Any`/`dict[str, Any]` annotations in 5 files.
+TYPE-002 remains verified. All seven open TYPE stories (TYPE-001, 003, 004, 005, 006, 007, 008) re-resolved: most line numbers held, with notable shifts in `cloud.py` (TYPE-007 moved from 132-139 to 164-168; TYPE-008 expanded from 7 to 10 sites, with significant line shifts in `cloud.py` and `_edge_http.py`). The new `workers/granite_speech/handler.py` package is now in scope: TYPE-009 (low) — `GraniteSpeechRunpodHandler` types `self._model` and `self._processor` as `Any` with a 2-line stale-prone comment justifying a workspace-test detail; a Protocol stub under `TYPE_CHECKING` would be cleaner. Pattern-level: the worker packages are a new `Any`/`# type: ignore` surface that will multiply the worker_sdk count.
 
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 
@@ -550,7 +602,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -613,7 +665,7 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -652,7 +704,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -681,7 +733,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -712,7 +764,7 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -745,12 +797,12 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 132-139
+    lines: 164-168
 related: []
 ```
 
@@ -770,14 +822,14 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 20,37,40,48,52,58,68
+    lines: 20,39,42,67,71,77,93,168,201,206
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 19,44,68,72,79,148
+    lines: 22,49,73,77,84,153
   - path: src/acheron/worker_sdk/pricing.py
     lines: 13,183,184,192
   - path: src/acheron/worker_sdk/cli.py
@@ -794,3 +846,32 @@ related: []
 **Recommendation.** Three bundles, one per file. (1) `cloud.py` + `_edge_http.py` + `app.py`: replace `dict[str, Any]` with `dict[str, JsonValue]` for the wire-side payloads (RunPod input, multipart metadata header, settings dict). The `_rp_handler` shape in cloud.py:37,40 stays `Callable[..., Awaitable[dict[str, Any]]]` because the runpod SDK uses raw dicts internally. (2) `pricing.py`: introduce a pydantic `GraphQLGpuTypesResponse` for the GPU price query; the `_post_graphql` helper returns `dict[str, Any]` as an internal type only. (3) `cli.py`: `type[Any]` for the imported handler class is fine (intentional, since the import path is configurable) — keep that one. Audit result: roughly 6 `Any` annotations remain after the cleanup (all justified, all in `Any`-typed dispatch sites).
 
 **Verification.** `grep -rn 'dict\[str, Any\]\|: Any' src/acheron/worker_sdk/` drops from 14+ to ~6 justified sites; `just type-check`; `just test`.
+
+### TYPE-009 — `GraniteSpeechRunpodHandler` types `self._model` and `self._processor` as `Any`; 2-line comment is a stale-prone impl-phase justification
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: workers/granite_speech/handler.py
+    lines: 37-42
+  - path: workers/granite_speech/handler.py
+    lines: 64-80
+  - path: workers/granite_speech/handler.py
+    lines: 127-145
+related: [TYPE-008]
+```
+
+**Issue.** `GraniteSpeechRunpodHandler.__init__` (lines 37-42) types `self._model: Any = None` and `self._processor: Any = None`. The accompanying 2-line comment ('The model + processor are typed loosely so the workspace tests don't need torch or transformers installed') is a stale-prone impl-phase comment — it references a workspace-test implementation detail that can change. The actual production code does not use the `Any`: lines 64-80 import torch + transformers inside `startup()`; lines 127-145 import torch inside `_transcribe()`.
+
+**Why it matters.** AGENTS.md explicitly bans `Any` and stale-prone comments that reference impl details. Bundle-level TYPE-008 already counts 14+ `Any` annotations in worker_sdk; the worker packages are a new surface that will multiply the count.
+
+**Recommendation.** Introduce a minimal Protocol stub for `_ModelProto` and `_ProcessorProto`. Type the fields as `_ModelProto | None` and `_ProcessorProto | None`. Move the heavy imports under `TYPE_CHECKING` for type-checker satisfaction. Delete the 2-line comment — the `TYPE_CHECKING` import explains itself.
+
+**Verification.** `just type-check` (no new `# type: ignore` needed); `grep -n ': Any' workers/granite_speech/handler.py` drops from 2 to 0; `just test`.

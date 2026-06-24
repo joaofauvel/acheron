@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: dbec2be
+last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
 last_staleness_scan:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 ---
 
@@ -49,7 +49,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -132,7 +132,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -157,7 +157,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -182,7 +182,7 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -209,14 +209,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
     lines: 32-52, 60-84
   - path: tests/worker_sdk/test_app.py
-    lines: 55-87
+    lines: 56-88
 related: []
 ```
 
@@ -242,7 +242,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -297,7 +297,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -434,7 +434,7 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -461,16 +461,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 89-140
-  - path: tests/shell/transports/test_multipart.py
-    lines: 1-128
+    lines: 167-218
+  - path: tests/shell/transports/test_asr_multipart.py
+    lines: 1-233
   - path: tests/shell/test_http_worker.py
-    lines: 1-200
+    lines: 1-200, 203-267
 related: [CORR-013]
 ```
 
@@ -490,7 +490,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -512,3 +512,168 @@ related: [CORR-014]
 **Recommendation.** Add three tests: (1) `test_runpod_client.py:test_artifacts_not_list_raises_worker_error`, parametrized over `artifacts = {}`, `'a string'`, `None`, with each raising `WorkerError` match='must be a list'; (2) `test_artifacts.py:test_file_artifact_empty_file_streams_nothing` — write an empty tmp file, collect, assert `== b''`; (3) `test_artifacts.py:test_file_artifact_missing_path_raises_filenotfounderror` — assert `FileNotFoundError` propagates from `stream()` without catching.
 
 **Verification.** Run `just test tests/worker_sdk/test_runpod_client.py tests/worker_sdk/test_artifacts.py`; new tests pass without new dependencies.
+
+### TEST-009 — `test_inputs.py` missing Protocol isinstance, FileInput missing-path, StreamInput empty, and FileInput empty-file edge cases
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/inputs.py
+    lines: 21-34, 64-79
+  - path: tests/worker_sdk/test_inputs.py
+    lines: 1-86
+related: []
+```
+
+**Issue.** `test_inputs.py` covers happy paths and a few defensive cases (frozen dataclass, 64 KiB chunking, metadata defaults) but does not exercise: (1) `isinstance(b, Input)` against the `@runtime_checkable` Protocol — the contract every handler relies on; (2) `FileInput.stream()` on a non-existent path; (3) `StreamInput.stream()` when the producer yields no bytes; (4) `FileInput.stream()` on an empty file.
+
+**Why it matters.** A regression that drops `@runtime_checkable` would silently break `EdgeApp._dispatch` parameter validation. A `FileInput` path-traversal bug would crash inside `aiofiles.open` deep in the handler with no test proving the path was actually opened.
+
+**Recommendation.** Add 4 small tests: `test_isinstance_input`; `test_file_input_missing_path_raises_filenotfounderror`; `test_stream_input_empty_producer_yields_nothing`; `test_file_input_empty_file_streams_nothing`.
+
+**Verification.** `just test tests/worker_sdk/test_inputs.py`.
+
+### TEST-010 — `test_safe_chapter_id.py` missing unicode `chapter_id` coverage
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: workers/_shared.py
+    lines: 10-31
+  - path: workers/_shared/tests/test_safe_chapter_id.py
+    lines: 1-55
+related: []
+```
+
+**Issue.** Covers blank, whitespace-only, NUL/newline/tab, path-separator, dot/dotdot, length boundaries — but not unicode `chapter_id` values. A regression adding `cid.isascii()` to the check would break valid unicode values like '第1章' or 'café'.
+
+**Why it matters.** The ePUB metadata field accepts arbitrary text; unicode is a legitimate production value. `qwen3tts/handler.py` now delegates to this shared helper, propagating the regression to the existing TTS path.
+
+**Recommendation.** Add `test_unicode_chapter_id_passes` parametrized test asserting `safe_chapter_id('第1章') == '第1章'`, `safe_chapter_id('café') == 'café'`, `safe_chapter_id('Ω') == 'Ω'`.
+
+**Verification.** `just test workers/_shared/tests/test_safe_chapter_id.py`.
+
+### TEST-011 — `test_cloud_audio.py` missing default-content_type and default-metadata branches in `make_runpod_handler`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 44-58
+  - path: tests/worker_sdk/test_cloud_audio.py
+    lines: 1-146
+related: []
+```
+
+**Issue.** `cloud.py:55` falls back to `'audio/wav'` when content_type is missing; `cloud.py:50` falls back to `{}` when metadata is missing. Neither default-fallback branch is asserted. The `str(None)` cast is also a silent coercion that is never tested.
+
+**Why it matters.** The defaults are the wire contract's forward-compat extension. A change making the handler raise on missing content_type would break older clients; dropping `str(...)` would let `None` propagate as `data: null`.
+
+**Recommendation.** Add 2 tests: `test_input_audio_missing_content_type_defaults_to_audio_wav` and `test_input_audio_missing_metadata_defaults_to_empty_dict`.
+
+**Verification.** `just test tests/worker_sdk/test_cloud_audio.py`.
+
+### TEST-012 — `test_step_handler.py` mutates module-level `default_worker_factory` instead of using `monkeypatch`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: tests/shell/test_step_handler.py
+    lines: 336-369
+related: []
+```
+
+**Issue.** `test_create_step_handler_default_factory_lambda_threads_cache` (lines 336-369) does `sh.default_worker_factory = _capturing_default; try: ...; finally: sh.default_worker_factory = original_default`. If the test raises before the `finally` block, the global is left pointing at the test's mock for the rest of the process.
+
+**Why it matters.** A test failure or pytest-xdist worker crash would leave the module's default factory pointing at a test mock — other tests would silently route through it.
+
+**Recommendation.** Replace with `monkeypatch.setattr('acheron.shell.step_handler.default_worker_factory', _capturing_default)`.
+
+**Verification.** `just test tests/shell/test_step_handler.py`.
+
+### TEST-013 — `test_edge_http.py` and `test_edge_http_multipart.py` don't assert `X-Acheron-Metadata` header construction in `_build_multipart_response`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 104-114
+  - path: tests/worker_sdk/test_edge_http.py
+    lines: 70-86
+  - path: tests/worker_sdk/test_edge_http_multipart.py
+    lines: 78-107
+related: [CORR-013]
+```
+
+**Issue.** `_build_multipart_response` emits `X-Acheron-Metadata: {json}` per artifact part (line 108). No test parses the response to confirm the per-part metadata header is present and contains the artifact's metadata dict. CORR-013 already noted the symmetric parser gap; the build-side test is the missing half.
+
+**Why it matters.** A regression dropping the metadata header would be invisible until CORR-013 is fixed, at which point the build-side test becomes load-bearing.
+
+**Recommendation.** Add a test that builds an artifact with `metadata={'sequence_id': 0}`, posts to `/execute`, parses the multipart response, asserts `X-Acheron-Metadata` header contains the dict.
+
+**Verification.** `just test tests/worker_sdk/test_edge_http.py`.
+
+### DATA-008 — `HttpWorker._parse_multipart` response-side edge cases (no metrics part, missing boundary, non-multipart body) still uncovered after Layer 8b test additions
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 167-218
+  - path: tests/shell/transports/test_asr_multipart.py
+    lines: 1-233
+  - path: tests/shell/test_http_worker.py
+    lines: 135-200, 203-267
+related: [DATA-006, CORR-013]
+```
+
+**Issue.** The new `test_asr_multipart.py` covers the ASR REQUEST side (orchestrator → worker) but NOT the response parser (`_parse_multipart`, http.py:167-218): (1) trailing `application/json` part missing → defaults to `JobMetrics(duration_seconds=0.0)` (line 217); (2) content-type lacks `boundary=` → `ctype.split('boundary=', 1)[1]` raises `IndexError` (line 171); (3) body is not actually multipart → `is_multipart()` returns False → `WorkerError` raised (lines 180-182).
+
+**Why it matters.** A worker returning a bare audio body with no metrics part would silently produce a `JobResult` with `cost_basis=None` and `duration_seconds=0.0`. A worker with no boundary parameter would crash with `IndexError` far from the cause.
+
+**Recommendation.** Add 3 tests: `test_no_metrics_part_yields_zero_duration`; `test_missing_boundary_raises_indexerror` (or change impl to raise `WorkerError`); `test_non_multipart_body_raises_worker_error`.
+
+**Verification.** `just test tests/shell/test_http_worker.py`; coverage of `_parse_multipart` reaches 100%.
+

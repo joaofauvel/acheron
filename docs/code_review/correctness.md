@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: dbec2be
+last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
 last_staleness_scan:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-Layer 8a added the `worker_sdk` subpackage, the qwen3tts RunPod worker, and the transport `_multipart` refactor. Five new CORR findings: CORR-013 (medium) — `_parse_multipart` discards the per-part `X-Acheron-Metadata` header, losing per-chunk ordering info; CORR-014 (high) — `RunPodClient.run` silently treats a FAILED RunPod job as a successful empty result, propagating as a 0-artifact JobResult; CORR-015 (medium) — `create_worker_app` cherry-picks routes from `EdgeApp` via a hardcoded `inner_paths` set, silently dropping new routes; CORR-016 (low) — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time; CORR-017 (low) — `_build_multipart_response` materializes the entire artifact stream in memory, defeating the `StreamArtifact` contract. CORR-009, CORR-010, CORR-011, CORR-012 re-resolved — cited code unchanged since 63faed4. All other stories remain verified at dbec2be.
+Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -236,12 +236,12 @@ severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/step_handler.py
-    lines: 87-128
+    lines: 102-143
 related: []
 ```
 
@@ -338,12 +338,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 115-137
+    lines: 167-218
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 188-231
 related: []
 ```
 
@@ -413,14 +415,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 5-13
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 21
+    lines: 1-8
+  - path: src/acheron/worker_sdk/__init__.py
+    lines: 12
 related: [ARCH-011]
 ```
 
@@ -440,12 +442,12 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 97-116
+    lines: 88-121
 related: [PERF-006]
 ```
 
@@ -456,6 +458,206 @@ related: [PERF-006]
 **Recommendation.** Build the multipart body as an async iterator and return `StreamingResponse(body_iter, media_type=...)` instead of `Response(content=full_bytes, ...)`. The body iter yields the boundary header, each chunk from `artifact.stream()`, the trailing `\r\n`, then the metrics part, then the closing boundary. This preserves the streaming contract end-to-end (handler.stream → encoder → uvicorn chunked transfer).
 
 **Verification.** Mock a `StreamArtifact` whose `stream()` yields 1000 chunks of 1MB each; assert that `_build_multipart_response` does not allocate a 1GB intermediate `bytes` object (e.g., patch the accumulator to count allocations, or assert a maximum peak buffer size).
+
+### CORR-018 — ASR multipart path materializes entire audio file in memory
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 129-136
+related: []
+```
+
+**Issue.** `HttpWorker._execute_asr_multipart` (http.py:133) reads the entire audio file via `await asyncio.to_thread(audio_path.read_bytes)` and embeds the resulting `bytes` object in the httpx `files=` form tuple. For an audiobook chapter that is tens or hundreds of MB this is a hard memory cliff: the orchestrator holds the file in RAM and the httpx client serialises it into a second buffer while building the multipart body, so peak orchestrator RSS for a single ASR step can be ~3-4x the audio size. The same anti-pattern is being closed in the response path (CORR-017) but is being introduced in the request path here.
+
+**Why it matters.** The Layer 8b design intent (per the new `Input` Protocol and its `StreamInput` / `FileInput` variants in `worker_sdk/inputs.py`) is that audio flows without buffering. The orchestrator side silently violates that contract for ASR jobs. A long chapter could OOM the orchestrator on what is, by design, a streaming workload.
+
+**Recommendation.** Either: (1) construct the httpx multipart body by hand from the file (open the file, use a streaming `Content-Length`-aware `content=` body iterator, set the boundary header manually so the file is not re-buffered), or (2) point the orchestrator to read from a `FileInput` over a shared volume (consistent with `FileInput` in `inputs.py`) so the worker reads bytes itself instead of receiving them in a POST body. Option (1) keeps the wire contract; option (2) eliminates the orchestrator's in-memory copy entirely.
+
+**Verification.** Add a test that points the HttpWorker at a 200 MB sparse file and asserts (via a memory-profiling fixture or by patching `read_bytes` to record peak buffer size) that peak buffer is bounded and does not scale with file size.
+
+### CORR-019 — SDK edge `_parse_multipart_request` materializes entire request body in memory
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 188-231
+related: []
+```
+
+**Issue.** `_parse_multipart_request` (line 195) calls `body = await request.body()` to obtain the full upload bytes, then on line 196-198 builds a second buffer `full_body = (synthetic_header).encode() + body` to satisfy the email `BytesParser`. The synthetic header prepend + the body concatenation is a transient ~2x memory spike; the persistent copy (`full_body`) is then held until parsing completes. The parser itself walks `body_data` linearly, so streaming is feasible but not used.
+
+**Why it matters.** This is the receiving side of the same problem as CORR-018: the ASR edge is supposed to accept large audio uploads, but it never sees a chunk of audio smaller than the full request. The edge container's RSS can balloon on a 200 MB upload and (because of the email `BytesParser`) the entire body must be in memory at once — there is no per-part streaming. CORR-017 (response side) gets the same treatment, but at least that one is bounded by the small `~100ms` silent WAVs emitted by the existing stubs. The request side is unbounded.
+
+**Recommendation.** Use the `python-multipart` library (already a FastAPI transitive dep) to parse the request as a streaming multipart, yielding parts one at a time. Forward the audio part's `SpooledTemporaryFile` directly to a `FileInput` (writing through `aiofiles`) so the worker can stream from disk instead of materialising in RAM. If the SDK must keep its zero-dep posture, at minimum avoid the synthetic-header concatenation by using `email.parser.BytesFeedParser` and feeding `request.stream()` directly.
+
+**Verification.** Add a test that POSTs a multipart body with a 200 MB audio part and asserts the edge container's resident memory never grows past the 64 KiB streaming chunk size. Patch `request.body()` to record the peak bytes it ever holds.
+
+### CORR-020 — `make_runpod_handler` silently coerces missing `data` field to empty bytes
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 42-62
+related: []
+```
+
+**Issue.** In `make_runpod_handler._rp_handler` (cloud.py:46), `data_b64 = audio_payload.get("data", "")` defaults a missing or None `data` field to the empty string. `base64.b64decode("")` returns `b""`, and the resulting `BytesInput` is then handed to the handler. The granite_speech handler rejects empty audio with `WorkerError("Empty audio input")`, but other handlers (e.g. `StubASRHandler` in `stubs/_sdk_base/__init__.py:107`) silently return a successful JobResult with a canned transcript, regardless of whether the audio was empty. The orchestrator's caller therefore cannot distinguish "the worker transcribed silence" from "the worker received an empty payload". The non-str case is correctly rejected on line 48, so the gap is specifically the *missing* case.
+
+**Why it matters.** A wire-format error upstream (e.g. a RunPod input builder that drops the audio field, or a hand-rolled RunPod request that omits `data`) is converted into a successful empty artifact from the edge. The orchestrator proceeds as if inference completed, downstream stages may process an empty transcript, and the cost is non-zero (the model ran, even if on nothing).
+
+**Recommendation.** After `audio_payload = runpod_job["input"].get("input_audio")`, validate the payload shape up-front: `isinstance(audio_payload, dict)` and `isinstance(audio_payload.get("data"), str) and audio_payload["data"]`. If absent or empty, raise `WorkerError("RunPod input_audio.data is required and must be a non-empty base64 str")` to match the spirit of the existing non-str-data rejection.
+
+**Verification.** Add a test to `tests/worker_sdk/test_cloud_audio.py` that calls the wrapped handler with `input_audio: {"content_type": "audio/wav", "metadata": {}}` (no `data` field) and asserts `WorkerError` is raised. Then add a test for `data: ""` (empty string) and assert the same.
+
+### CORR-021 — `make_runpod_handler` does not validate that `input_audio` payload is a dict
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 42-53
+related: []
+```
+
+**Issue.** The decoder (cloud.py:44) does `audio_payload = runpod_job["input"].get("input_audio")` and then `if audio_payload is not None:` enters a block that calls `audio_payload.get(...)`. If `input_audio` is a non-dict truthy value (e.g. an int, a list, a str), `audio_payload.get` raises `AttributeError`, which is not caught and is not a `WorkerError`. The RunPod serverless loop then sees an opaque traceback and may mark the job as INTERNAL_ERROR instead of forwarding a clean `JobResult` failure body to the orchestrator. The `metadata` field gets the same treatment on line 50 — a non-dict value would have been caught by the `isinstance(metadata_raw, dict)` check, but only if execution reaches line 50; the `AttributeError` on line 46/50 short-circuits first.
+
+**Why it matters.** The wire contract is that `input_audio` is an object with `content_type`, `data`, `metadata`. A malformed upstream payload (typo, schema drift, attack) becomes an opaque crash in the edge container. The existing test `test_rejects_non_str_data_field` only exercises a `data: 42` case where `input_audio` is still a dict — the case of a non-dict `input_audio` is uncovered.
+
+**Recommendation.** Immediately after `if audio_payload is not None:` add `if not isinstance(audio_payload, dict): raise WorkerError("RunPod input_audio must be a dict")` so all the downstream `.get` calls are safe. Also move the `data_b64` / `metadata_raw` extractions to local variables and validate their types together to match the symmetry of the existing checks.
+
+**Verification.** Add a test where `input_audio` is a list (`["audio/wav", "AAAAAA==", {}]`) and an int (`42`); assert `WorkerError` is raised, not `AttributeError`.
+
+### CORR-022 — `make_runpod_handler` does not validate `content_type` is a string
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 54-58
+related: []
+```
+
+**Issue.** Line 55 reads `content_type=str(audio_payload.get("content_type", "audio/wav"))`. If the wire payload has `content_type: 42` or `content_type: ["audio/wav"]`, the `str()` call silently coerces it to `"42"` or `"['audio/wav']"`. The downstream handler then receives a `BytesInput` with a non-audio content type and (in the case of the granite_speech worker) feeds it to the transformers processor as if it were a real audio file. There is no parallel check for `isinstance(content_type, str)` like the one applied to `data_b64` and `metadata_raw` on the lines above.
+
+**Why it matters.** Silent string coercion of an obviously-wrong type is the same class of bug as the silent empty `data` case (CORR-020) — a wire-format error is converted into a "successful" run that the orchestrator cannot distinguish from a legitimate one. The fix is one `isinstance` check.
+
+**Recommendation.** Extract `content_type_raw = audio_payload.get("content_type", "audio/wav")` and `if not isinstance(content_type_raw, str): raise WorkerError(...)`. The default remains `"audio/wav"` only for the missing-key case, not for the wrong-type case.
+
+**Verification.** Add a test where `input_audio: {"content_type": 42, "data": "AAAAAA==", "metadata": {}}` and assert `WorkerError` is raised.
+
+### CORR-023 — `_run_execute_multipart` only catches `WorkerError` from the parser; JSONDecodeError / ValidationError leak as opaque 500s
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 167-186
+related: []
+```
+
+**Issue.** The outer try/except on line 169 catches only `WorkerError` from `_parse_multipart_request`. But the parser (line 219) also raises `json.JSONDecodeError` (from `json.loads(envelope_json)`) and `pydantic.ValidationError` (from `ExecuteRequest.model_validate(...)`). Both inherit from `ValueError`, not `WorkerError`, so they bubble past the except and FastAPI returns a default opaque 500 with no `JobResult` body. The dispatch path on the legacy JSON side (the same `try/except BaseException` in `_dispatch`) also catches these, so the two branches are inconsistent: malformed JSON on the legacy path returns a clean JobResult, malformed JSON on the multipart path returns a stack trace.
+
+**Why it matters.** The contract documented in the module docstring ("On handler failure the response is a plain JSON ``ExecuteError`` body with status 500") only holds for the JSON path. A client that sends a malformed multipart envelope gets an opaque 500; the orchestrator's `TypeAdapter(JobResult).validate_json(resp.content)` then raises a different error, masking the real cause. The two test cases `test_multipart_request_missing_json_part_raises` and `test_multipart_request_missing_boundary_raises` only cover `WorkerError` paths and don't exercise the JSONDecodeError / ValidationError paths.
+
+**Recommendation.** Either widen the except to `(WorkerError, json.JSONDecodeError, ValidationError)` and wrap non-WorkerError exceptions in a WorkerError message, or — cleaner — call `Envelope.model_validate_json(envelope_json)` via a helper that always raises `WorkerError` (a `try/except (json.JSONDecodeError, ValidationError) as exc: raise WorkerError(f"Malformed envelope: {exc}") from exc`). Apply the same change to the JSON-path dispatcher if it doesn't already wrap pydantic errors.
+
+**Verification.** Add a test that POSTs a multipart body with a non-JSON envelope part (e.g. `application/json` part whose body is `not-json`) and asserts the 500 response is a `JobResult` JSON with `status="failed"` and a useful `error` string, not a plain text 500.
+
+### CORR-024 — Edge `_parse_multipart_request` hardcodes `BytesInput.metadata={}`; per-part metadata is never parsed/forwarded
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 223-230
+related: []
+```
+
+**Issue.** When constructing the `BytesInput` from the audio part (line 226-230), the code sets `metadata={}` unconditionally. There is no per-part header parser for an `X-Acheron-Metadata` (the same one the response side emits on line 108). This is the request-side mirror of CORR-013: the orchestrator is free to send per-chunk metadata over the multipart wire, but the SDK discards it before the handler ever sees it. The `Input` Protocol's `metadata: dict[str, JsonValue]` field was specifically designed to carry this — and the granite_speech handler does not read it (it just reads bytes), so the loss is silent.
+
+**Why it matters.** The `Input.metadata` field has no current consumer, but CORR-013's `OutputFile.metadata` is also empty on the response side. Together this means the per-chunk metadata contract is broken in both directions for ASR jobs. Any future handler that wants to read input metadata (e.g. a multi-speaker ASR that distinguishes chapters by an injected `speaker_hint` header) will silently get `{}` and produce wrong output.
+
+**Recommendation.** Add a per-part `X-Acheron-Metadata` parser in the loop at line 206-214, mirroring the response encoder on line 108 (`_encode_metadata`). Pass the parsed dict to `BytesInput(metadata=...)`. Add a test that posts a multipart body with `X-Acheron-Metadata: {"chapter_id": "ch1", "language": "en"}` and asserts the handler receives a `BytesInput` whose `metadata` dict has those keys.
+
+**Verification.** Add a test to `tests/worker_sdk/test_edge_http_multipart.py` that posts a multipart with the per-part `X-Acheron-Metadata` header and asserts `handler.received_input.metadata == {"chapter_id": "ch1", ...}`.
+
+### CORR-025 — Edge `_parse_multipart_request` treats any non-JSON part as audio regardless of content_type
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 206-214
+related: []
+```
+
+**Issue.** In the part-iteration loop (line 206-214), the `elif audio_part is None: audio_part = part` branch catches every part whose content-type is not `application/json`, including `text/plain`, `image/jpeg`, `application/octet-stream`, etc. A multipart body that legitimately has multiple parts (e.g. an envelope + a debug log + an audio) would have the wrong part selected as the audio. The `BytesInput` is then built with whatever the wrong part's `content_type` reports (line 227), and the handler receives those bytes as if they were audio. The downstream granite_speech handler will fail with a transformer-side error, but the failure is reported as a model error rather than a wire-format error, and the stub ASR handler in `stubs/_sdk_base/__init__.py:107` would happily transcribe the bytes as if they were audio.
+
+**Why it matters.** This is a defense-in-depth gap. The orchestrator currently sends exactly two parts (envelope + audio), so the loop is correct in practice. But a future caller that legitimately needs to attach sidecar parts (e.g. a separate metadata part, a per-chunk captioning hint) would silently have one of them treated as the audio input. The fix is one `startswith("audio/")` check, and it would also make the symmetric request-side validation of the orchestrator's `_execute_asr_multipart` (which only sends `audio/*` content types) explicit.
+
+**Recommendation.** Change the elif to: `elif audio_part is None and part.get_content_type().startswith("audio/"): audio_part = part`. If no audio part is found at all, raise `WorkerError("Multipart body has no audio part")` so the response is a clean JobResult failure rather than a downstream crash.
+
+**Verification.** Add a test to `tests/worker_sdk/test_edge_http_multipart.py` that posts a multipart body with only a `text/plain` sidecar part (no `audio/*` part) and asserts a 500 with `"no audio part"` in the error. Add a second test that posts two `audio/*` parts and asserts the first is used (or the second, if a more specific selector is added).
 
 ## ML — ML correctness
 

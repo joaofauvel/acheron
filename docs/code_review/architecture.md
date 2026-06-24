@@ -1,9 +1,9 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: dbec2be
+last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
 last_staleness_scan:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-Layer 8a added the `worker_sdk` subpackage and the `workers/qwen3tts/` RunPod worker, plus a transport `_multipart` refactor. The hexagonal layering is clean (no `core/` → `shell/`, `worker_sdk` → `shell/`, or `workers/` → `shell/` imports), but the new code surfaced three new ARCH findings and one transport-DRY finding. ARCH-008 re-resolved (lines shifted by the new constructor). All other stories remain verified at dbec2be.
+Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -225,12 +225,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 53-82
+    lines: 53-86
   - path: src/acheron/shell/api/app.py
     lines: 46-49
 related: [ARCH-006, CFG-004]
@@ -252,7 +252,7 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -279,16 +279,16 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
-    lines: 97-114
+    lines: 97-115
   - path: src/acheron/shell/health.py
-    lines: 85-137
+    lines: 77-91
   - path: src/acheron/shell/orchestrator.py
-    lines: 77-82
+    lines: 81-86
 related: []
 ```
 
@@ -308,14 +308,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
     lines: 1-12
+  - path: src/acheron/worker_sdk/__init__.py
+    lines: 12-14
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 24
+    lines: 22-27
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 21
 related: [CORR-016]
@@ -337,14 +339,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
     lines: 87-144
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 119-155
+    lines: 124-271
 related: [CORR-015, MAINT-011]
 ```
 
@@ -364,14 +366,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 42-53
   - path: src/acheron/shell/transports/http.py
-    lines: 44-55
+    lines: 51-65
 related: [CFG-006]
 ```
 
@@ -387,7 +389,7 @@ related: [CFG-006]
 
 **Grade:** B
 
-CFG-001, CFG-002 remain verified. CFG-003, CFG-004, CFG-005 remain open and re-resolved at slightly shifted line numbers. Two new CFG findings: CFG-006 (medium) — five more env-var reads outside the settings loaders in the new transport and worker_sdk code, on top of the four sites already flagged; CFG-007 (medium) — `WorkerSettings.model_id` and `WorkerSettings.output_mode` are config knobs that don't actually control anything.
+CFG-001, CFG-002 remain verified. CFG-003, CFG-004, CFG-005, CFG-006, CFG-007 remain open and re-resolved. CFG-007 is now widened by the 8b worker: `WorkerSettings.model_id` is configured in FOUR YAML files (qwen3tts + granite-speech, each with a `worker.yaml` and `worker.edge.yaml`) and still has zero consumers, so the documented knob is now silent across a wider surface. New CFG-008 (medium) — tracks that regression.
 
 ### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
 
@@ -459,14 +461,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/api/deps.py
-    lines: 33
-  - path: src/acheron/shell/config.py
-    lines: 111-130
+    lines: 22-49
 related: [CFG-006]
 ```
 
@@ -486,12 +486,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 63-68
+    lines: 53-74
   - path: src/acheron/shell/api/app.py
     lines: 46-49
 related: [ARCH-008, CFG-006]
@@ -521,7 +521,7 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
@@ -530,7 +530,7 @@ files:
   - path: acheron.yaml.example
     lines: 47-53
   - path: src/acheron/shell/health_providers.py
-    lines: 108-114
+    lines: 108-115
 related: [CORR-010, CORR-011, CFG-006]
 ```
 
@@ -550,14 +550,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 52
   - path: src/acheron/shell/transports/http.py
-    lines: 54
+    lines: 62
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 45-51
   - path: src/acheron/worker_sdk/app.py
@@ -583,21 +583,27 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/settings.py
-    lines: 50-51, 62-63
+    lines: 50-51
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 62-63
   - path: workers/qwen3tts/worker.yaml
-    lines: 35
+    lines: 37
   - path: workers/qwen3tts/worker.edge.yaml
     lines: 17
-  - path: src/acheron/worker_sdk/cli.py
-    lines: 30-75
+  - path: workers/granite_speech/worker.yaml
+    lines: 30
+  - path: workers/granite_speech/worker.edge.yaml
+    lines: 13
   - path: workers/qwen3tts/handler.py
-    lines: 52
-related: []
+    lines: 54-125
+  - path: workers/granite_speech/handler.py
+    lines: 30-121
+related: [CFG-008]
 ```
 
 **Issue.** Two new `WorkerSettings` fields are configured but never consumed. (1) `model_id: str | None = None` (settings.py:62) is set in both `workers/qwen3tts/worker.yaml:35` and `workers/qwen3tts/worker.edge.yaml:17`, but `grep -rn '\.model_id' src/ workers/` returns zero matches — no code path reads it. The qwen3tts handler hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` (handler.py:52) and uses that constant directly in `capabilities()` and `startup()`. (2) `output_mode: Literal["multipart", "volume"] = "multipart"` (settings.py:50) is validated in the `_validate_composite` after-validator (settings.py:116-117) to require `output_volume_dir` when `output_mode == "volume"`, but no code consumes the field: `_edge_http.py` always emits `multipart/mixed` (lines 96-117), and `cli.py` does not branch on `output_mode` either. The edge-side `worker.edge.yaml:24-25` even says "Edge transport is always HTTP multipart; the edge never writes to a shared volume." AGENTS.md explicitly calls this out: "config knobs that don't actually control anything" and "silent/unexpected behavior is worse than no control at all."
@@ -607,3 +613,129 @@ related: []
 **Recommendation.** Either (a) implement the controls: read `settings.model_id` in the qwen3tts handler instead of the hard-coded `_MODEL_ID`, and branch the `_edge_http.py` execute() path on `settings.output_mode` (multipart for the edge, volume for the volume stub); or (b) drop the fields from `WorkerSettings` and the YAML files until the corresponding behavior is implemented. Per AGENTS.md's greenfield rule, do not keep a named knob that silently behaves like another. Option (b) is the smaller change for now.
 
 **Verification.** `just test`; `grep -rn 'model_id\|output_mode' src/ workers/` to confirm only one site defines each and one site consumes it; `just lint-strict`; `just type-check`.
+
+### ARCH-014 — `HttpWorker.execute()` branches on `WorkerType.ASR` to add a transport-specific audio pipeline
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 41-141
+  - path: src/acheron/shell/transports/http.py
+    lines: 101-141
+related: [ARCH-013]
+```
+
+**Issue.** `HttpWorker.execute()` (http.py:90-99) now starts with `if job.job_type == WorkerType.ASR: return await self._execute_asr_multipart(job)` (http.py:91-92), then `_execute_asr_multipart` (http.py:101-141) reads the upstream `extract` step's audio file from `self._step_cache`, builds a `multipart/form-data` body with a JSON envelope + binary audio, posts it, and parses a `multipart/mixed` response. The Worker interface is supposed to be transport-neutral; the transport is now coupled to a specific job type's semantics (the literal `WorkerType.ASR` discriminant, the magic step_id `"extract"` at http.py:113, the audio content-type filter at http.py:118, the multipart form shape).
+
+**Why it matters.** The `Worker` ABC is the project's transport-neutral boundary. Putting `WorkerType.ASR` knowledge inside the transport implementation inverts the dependency that AGENTS.md's "strict domain separation" rule calls out. Adding a new audio-in step type requires editing HttpWorker; adding a new wire format for ASR requires editing HttpWorker.
+
+**Recommendation.** Extract an `AsrHttpWorker(Worker)` (or an `AsrTransport` mixin) that owns the audio-fan-in + multipart upload. Have `HttpWorker.execute()` dispatch on the worker's registered `worker_type` (a constructor arg) or return `WorkerError` for ASR. Alternatively, encode the input requirement on the `Job` (`Job.input: Input | None`) and have a single transport class branch on `job.input is not None` (data-driven) rather than on the enum.
+
+**Verification.** `git grep -n 'WorkerType\.ASR' src/acheron/shell/transports/` returns no matches outside tests; `just test`; `just lint-strict`.
+
+### ARCH-015 — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/step_handler.py
+    lines: 29-64
+  - path: src/acheron/shell/step_handler.py
+    lines: 80-101
+  - path: src/acheron/shell/orchestrator.py
+    lines: 60-74
+  - path: src/acheron/shell/transports/http.py
+    lines: 51-64
+related: [ARCH-014]
+```
+
+**Issue.** `create_step_handler` (step_handler.py:80) and `default_worker_factory` (step_handler.py:29) now take a `step_cache: StepCache | None = None` keyword. `Orchestrator.__init__` constructs the cache and passes it in. The cache flows through the factory's `case "grpc"` and `case "local"` branches untouched and is only consumed at `case _: return HttpWorker(registered.endpoint, step_cache=step_cache)` (step_handler.py:64).
+
+**Why it matters.** The factory signature is a leaky abstraction: every transport is told that the orchestrator wants the ASR step's audio file accessible, but only one consumer (HttpWorker) uses it. Adding a new transport that does not need `step_cache` forces the author to add a useless kwarg. AGENTS.md's "make illegal states unrepresentable" implies the parameter should be on the consumer, not the dispatcher.
+
+**Recommendation.** Move `step_cache` construction into the consumer. Let `HttpWorker.__init__` continue to accept an optional `step_cache` but have the factory pass `None` for non-HTTP transports. The `default_worker_factory` and `create_step_handler` signatures then drop the parameter.
+
+**Verification.** `git grep -n 'step_cache' src/acheron/shell/step_handler.py` returns no matches; `just test`; `just lint-strict`; `just type-check`.
+
+### ARCH-016 — `workers/_shared` is a module (file) co-located with a same-name test directory and an out-of-workspace `pyproject`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: workers/_shared.py
+    lines: 1-31
+  - path: workers/_shared/pyproject.toml
+    lines: 1-2
+  - path: workers/_shared/tests/test_safe_chapter_id.py
+    lines: 1-55
+  - path: pyproject.toml
+    lines: 195
+related: []
+```
+
+**Issue.** `workers/_shared.py` is a single-file module that exports `safe_chapter_id`. A separate `workers/_shared/` directory exists alongside it, containing `pyproject.toml` (with `[tool.pytest.ini_options] pythonpath = ["../.."]`) and `tests/test_safe_chapter_id.py`. The `pyproject.toml` is NOT listed in `tool.uv.workspace.members` (pyproject.toml:195 has only `workers/qwen3tts` and `workers/granite_speech`). The naming is inconsistent: every other worker (`workers/qwen3tts`, `workers/granite_speech`) is a package with `__init__.py`; `_shared` is a file.
+
+**Why it matters.** The co-existence of `workers/_shared.py` and `workers/_shared/` is a latent footgun. If a future contributor adds `workers/_shared/__init__.py` (e.g. to share pytest fixtures between workers), Python's package-vs-module precedence will silently make `from workers._shared import safe_chapter_id` resolve to the empty package, breaking every handler import.
+
+**Recommendation.** Pick one shape: (a) convert `_shared` to a real package — `rm workers/_shared.py`, `mkdir -p workers/_shared`, move the function into `workers/_shared/__init__.py`, add `workers/_shared` to `tool.uv.workspace.members`; (b) drop the directory entirely — keep `workers/_shared.py`, move the test, drop the hand-rolled `pyproject.toml`. Option (a) matches the package convention used by the other workers.
+
+**Verification.** `python -c "import workers._shared; assert workers._shared.__file__.endswith('workers/_shared/__init__.py')"` passes (option a); `git grep -n '_shared' workers/` shows consistent package-shape; `uv lock --check` succeeds.
+
+### CFG-008 — CFG-007 regression: `WorkerSettings.model_id` is set in 4 YAML files and still never consumed by any handler
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  date: 2026-06-23
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 62-63
+  - path: workers/qwen3tts/worker.yaml
+    lines: 37
+  - path: workers/qwen3tts/worker.edge.yaml
+    lines: 17
+  - path: workers/granite_speech/worker.yaml
+    lines: 30
+  - path: workers/granite_speech/worker.edge.yaml
+    lines: 13
+  - path: workers/qwen3tts/handler.py
+    lines: 54
+  - path: workers/granite_speech/handler.py
+    lines: 30
+related: [CFG-007]
+```
+
+**Issue.** The 8b worker addition widened CFG-007: `WorkerSettings.model_id: str | None` (settings.py:62) is now configured in FOUR YAML files (`workers/qwen3tts/worker.yaml:37`, `workers/qwen3tts/worker.edge.yaml:17`, `workers/granite_speech/worker.yaml:30`, `workers/granite_speech/worker.edge.yaml:13`) and STILL has zero consumers. `workers/qwen3tts/handler.py:54` hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` and uses it in `capabilities()` and `startup()`. `workers/granite_speech/handler.py:30` hard-codes `_MODEL_ID = "ibm-granite/granite-speech-4.1-2b"`.
+
+**Why it matters.** An operator editing `model_id` in any of the 4 YAMLs to point at a different revision will silently get the hard-coded model anyway — exactly the documentation-via-runtime-error pattern AGENTS.md calls out.
+
+**Recommendation.** Either (a) implement the wiring: in each handler, replace the module-level `_MODEL_ID` reference inside `startup()` and `capabilities()` with `self._settings.model_id or _MODEL_ID`; or (b) drop the field from `WorkerSettings` and the 4 YAMLs until the wiring is implemented. Per AGENTS.md's greenfield rule, do not keep a named knob that silently behaves like another.
+
+**Verification.** `git grep -n 'model_id' src/ workers/` returns either zero sites (option b) or one definition + one consumer per handler (option a); `just test`; `just lint-strict`; `just type-check`.
