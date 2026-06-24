@@ -86,6 +86,8 @@ combine-as-imports = true
 "workers/_shared/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
 "workers/granite_speech/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
 "workers/granite_speech/**" = ["PLC0415"]
+"workers/translategemma/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
+"workers/translategemma/**" = ["PLC0415"]
 "src/acheron/proto/**" = ["I", "E", "F", "W", "D", "ANN", "N"]
 "src/acheron/core/interfaces.py" = ["TC001"]
 
@@ -136,7 +138,7 @@ reportMissingImports = false
 [tool.pytest.ini_options]
 xfail_strict = true
 addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80 --dist=loadgroup -n auto --import-mode=importlib"
-testpaths = ["tests", "stubs/tests", "dashboard/tests", "workers/qwen3tts/tests", "workers/granite_speech/tests", "workers/_shared/tests"]
+testpaths = ["tests", "stubs/tests", "dashboard/tests", "workers/qwen3tts/tests", "workers/granite_speech/tests", "workers/_shared/tests", "workers/translategemma/tests"]
 pythonpath = ["."]
 filterwarnings = [
     "ignore::DeprecationWarning:websockets.legacy",
@@ -192,7 +194,7 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["workers/qwen3tts", "workers/granite_speech"]
+members = ["workers/qwen3tts", "workers/granite_speech", "workers/translategemma"]
 
 [tool.uv.sources]
 acheron = { workspace = true }

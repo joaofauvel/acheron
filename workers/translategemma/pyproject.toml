@@ -1,0 +1,21 @@
+[project]
+name = "acheron-translategemma"
+version = "0.1.0"
+description = "RunPod Serverless worker for google/translategemma-12b-it"
+requires-python = ">=3.12"
+license = "GPL-3.0-only"
+dependencies = [
+    "acheron",
+    # transformers + torch are installed by Dockerfile.runpod
+    # against the cu121 index. The workspace dev install skips them.
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+pythonpath = ["../.."]
