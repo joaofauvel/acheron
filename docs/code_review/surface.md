@@ -353,12 +353,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 216-224
+    lines: 217-225
   - path: src/acheron/core/planner.py
     lines: 92-111
 related: [ARCH-019, CFG-009]

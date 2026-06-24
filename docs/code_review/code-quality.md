@@ -143,12 +143,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 328-353
+    lines: 329-354
 related: [OBS-004]
 ```
 
@@ -168,12 +168,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 181-198
+    lines: 181-199
 related: [SEC-008, MAINT-007]
 ```
 
@@ -886,7 +886,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
@@ -895,7 +895,7 @@ files:
   - path: src/acheron/core/planner.py
     lines: 92-128
   - path: src/acheron/shell/orchestrator.py
-    lines: 245-249
+    lines: 246-250
 related: [ARCH-018]
 ```
 

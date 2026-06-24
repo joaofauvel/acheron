@@ -219,16 +219,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 206-214, 262-264, 268-356
+    lines: 208-216, 259-261, 265-353
   - path: src/acheron/shell/orchestrator.py
-    lines: 206-214, 262-264, 268-356
+    lines: 208-216, 259-261, 265-353
   - path: src/acheron/shell/orchestrator.py
-    lines: 206-214, 262-264, 268-356
+    lines: 208-216, 259-261, 265-353
 related: [OBS-004]
 ```
 
@@ -274,12 +274,12 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 234-241
+    lines: 235-242
   - path: src/acheron/shell/health.py
     lines: 113-152
   - path: src/acheron/shell/step_handler.py
@@ -584,12 +584,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 328-353
+    lines: 325-351
 related: [OBS-004, SEC-010, SEC-012]
 ```
 
@@ -654,17 +654,17 @@ related: [SEC-002, MAINT-006, SEC-009, SEC-011]
 ### SEC-009 — Registration token file created with process umask (potentially world-readable)
 
 ```yaml
-status: fixed
+status: verified
 severity: high
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 7472ebc
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: [7472ebc]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 182-198
+    lines: 182-199
 related: [SEC-001, SEC-008, SEC-011]
 ```
 
@@ -1139,12 +1139,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 244-251
+    lines: 246-250
 related: [TEST-015, ARCH-019, CFG-009]
 ```
 

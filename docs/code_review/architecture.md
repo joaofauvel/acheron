@@ -225,7 +225,7 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
@@ -279,7 +279,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
@@ -486,12 +486,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 53-86
+    lines: 53-74
   - path: src/acheron/shell/api/app.py
     lines: 46-49
 related: [ARCH-008, CFG-006]
@@ -655,7 +655,7 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
@@ -828,7 +828,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
@@ -837,7 +837,7 @@ files:
   - path: src/acheron/core/planner.py
     lines: 92-128
   - path: src/acheron/shell/orchestrator.py
-    lines: 244-249
+    lines: 244-250
 related: [CFG-009, CORR-026]
 ```
 
@@ -942,7 +942,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: b1d1d05
+  commit: 7472ebc
   date: 2026-06-24
 fixed_in: []
 files:
@@ -951,7 +951,7 @@ files:
   - path: src/acheron/core/planner.py
     lines: 92-128
   - path: src/acheron/shell/orchestrator.py
-    lines: 245-249
+    lines: 246-250
   - path: acheron.yaml.example
     lines: 1-65
 related: [ARCH-019, CORR-026]
