@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 from typing import TYPE_CHECKING, Any, cast
 
 from acheron.core.errors import WorkerError
@@ -110,6 +111,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             supported_formats_out=frozenset({"wav"}),
             max_payload_bytes=None,
             batch_capable=True,
+            max_input_tokens=2048,
             model_source=f"huggingface:{_MODEL_ID}",
             metadata=metadata,
         )
@@ -139,27 +141,25 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
 
             torch.cuda.empty_cache()
 
-    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002, ARG002
-        """Run batched custom-voice inference for all chunks in the job."""
+    async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
+        """Run batched custom-voice inference for all chunks in the job.
+
+        Chunks arrive via the ``input`` parameter (8b's ``BytesInput`` Protocol):
+        JSON-serialised ``chunks.json`` from the upstream chunking step. ``input``
+        is required; ``job.payload["chunks"]`` is no longer a supported path.
+        """
         if self._model is None:
             msg = "Qwen3-TTS model not loaded (startup() not run)"
             raise WorkerError(msg)
-        raw_chunks = job.payload.get("chunks", [])
-        if not isinstance(raw_chunks, list) or not raw_chunks:
+        if input is None:
+            msg = "Qwen3-TTS requires a chunks.json input (multipart part)"
+            raise WorkerError(msg)
+        chunks = await self._load_chunks(input)
+        if not chunks:
             return []
-        chunks: list[dict[str, Any]] = [c for c in raw_chunks if isinstance(c, dict)]
-        target_lang = job.payload.get("target_language")
-        if not isinstance(target_lang, str) or target_lang not in _LANG_MAP:
-            msg = f"Unsupported target language: {target_lang!r}"
-            raise WorkerError(msg)
+        target_lang = self._validate_target_lang(job)
         qwen_lang = _LANG_MAP[target_lang]
-
-        speaker = job.payload.get("speaker")
-        if not isinstance(speaker, str) or not speaker:
-            speaker = self._settings.per_language_defaults.get(target_lang, self._settings.default_speaker)
-        if speaker not in _ALL_SPEAKERS:
-            msg = f"Unknown speaker '{speaker}' in worker config"
-            raise WorkerError(msg)
+        speaker = self._resolve_speaker(job, target_lang)
 
         texts = [_chunk_text(c) for c in chunks]
         languages = [qwen_lang] * len(chunks)
@@ -194,3 +194,39 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
                 )
             )
         return artifacts
+
+    @staticmethod
+    async def _load_chunks(input: Input) -> list[dict[str, Any]]:  # noqa: A002
+        """Parse the JSON-serialised ``chunks.json`` body from ``input``.
+
+        Returns an empty list if the body is empty. Raises ``WorkerError`` on
+        malformed JSON or a non-list top-level value.
+        """
+        chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])
+        if not chunks_json_bytes:
+            return []
+        try:
+            raw_chunks = json.loads(chunks_json_bytes.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            msg = f"chunks.json is not valid JSON: {exc}"
+            raise WorkerError(msg) from exc
+        if not isinstance(raw_chunks, list):
+            msg = "chunks.json must be a JSON array of chunk dicts"
+            raise WorkerError(msg)
+        return [c for c in raw_chunks if isinstance(c, dict)]
+
+    def _validate_target_lang(self, job: Job) -> str:
+        target_lang = job.payload.get("target_language")
+        if not isinstance(target_lang, str) or target_lang not in _LANG_MAP:
+            msg = f"Unsupported target language: {target_lang!r}"
+            raise WorkerError(msg)
+        return target_lang
+
+    def _resolve_speaker(self, job: Job, target_lang: str) -> str:
+        speaker = job.payload.get("speaker")
+        if not isinstance(speaker, str) or not speaker:
+            speaker = self._settings.per_language_defaults.get(target_lang, self._settings.default_speaker)
+        if speaker not in _ALL_SPEAKERS:
+            msg = f"Unknown speaker '{speaker}' in worker config"
+            raise WorkerError(msg)
+        return speaker

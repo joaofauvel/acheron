@@ -26,6 +26,7 @@ def test_capabilities_shape() -> None:
     assert caps.supported_formats_in == frozenset({"text"})
     assert caps.supported_formats_out == frozenset({"wav"})
     assert caps.batch_capable is True
+    assert caps.max_input_tokens == 2048
     assert caps.model_source == "huggingface:Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
 
