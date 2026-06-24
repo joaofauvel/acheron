@@ -147,3 +147,74 @@ class TestEdgeRoutes:
         metrics = json.loads(json_bytes)
         assert metrics["cost_basis"] is None
         assert "unknown" not in json_bytes.decode("utf-8")
+
+
+class TestEdgeExecuteAuth:
+    """OBS-010: /execute must require a Bearer token when registration_token is configured."""
+
+    @pytest.fixture
+    def app_with_token(self) -> tuple[FastAPI, _Stub]:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), registration_token="test-secret-32-chars-min-aaaa").app
+        return app, h
+
+    @pytest.mark.asyncio
+    async def test_execute_rejects_missing_authorization_header(self, app_with_token: tuple[FastAPI, _Stub]) -> None:
+        app, h = app_with_token
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 401
+        assert h.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_rejects_wrong_authorization_token(self, app_with_token: tuple[FastAPI, _Stub]) -> None:
+        app, h = app_with_token
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                headers={"Authorization": "Bearer wrong-token"},
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 401
+        assert h.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_accepts_correct_bearer_token(self, app_with_token: tuple[FastAPI, _Stub]) -> None:
+        app, h = app_with_token
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                headers={"Authorization": "Bearer test-secret-32-chars-min-aaaa"},
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 200
+        assert h.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_open_mode_when_token_unset(self, app_handler: tuple[FastAPI, _Stub]) -> None:
+        """When registration_token is None, /execute must remain open (back-compat with existing tests)."""
+        app, h = app_handler
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 200
+        assert h.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_health_and_capabilities_remain_unauthenticated(self, app_with_token: tuple[FastAPI, _Stub]) -> None:
+        app, _ = app_with_token
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            h = await c.get("/health")
+            caps = await c.get("/capabilities")
+        assert h.status_code == 200
+        assert caps.status_code == 200

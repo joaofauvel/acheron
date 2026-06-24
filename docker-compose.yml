@@ -167,8 +167,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.edge
-    ports:
-      - "8004:8001"
+    expose:
+      - "8001"
     environment:
       WORKER_NAME: qwen3tts
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
@@ -201,8 +201,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.edge
-    ports:
-      - "8008:8001"
+    expose:
+      - "8001"
     environment:
       WORKER_NAME: granite_speech
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
@@ -234,8 +234,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.edge
-    ports:
-      - "8009:8001"
+    expose:
+      - "8001"
     environment:
       WORKER_NAME: translategemma
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000

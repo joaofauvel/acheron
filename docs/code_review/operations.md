@@ -1100,14 +1100,14 @@ related: [DOC-005]
 ### OBS-010 — `translategemma-edge` service exposes `/execute` on host port 8009 — unauthenticated (new instance of OBS-007/OBS-009)
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 9b4adb6
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: docker-compose.yml
     lines: 233-265

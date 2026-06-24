@@ -97,7 +97,12 @@ def create_worker_app(
     """
     caps = handler.capabilities()
     price_source = _build_price_source(settings)
-    inner = EdgeApp(handler=handler, capabilities=caps, price_source=price_source)
+    inner = EdgeApp(
+        handler=handler,
+        capabilities=caps,
+        price_source=price_source,
+        registration_token=settings.registration_token,
+    )
 
     async def _register() -> None:
         async with httpx.AsyncClient() as client:

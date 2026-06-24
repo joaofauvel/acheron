@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -21,7 +22,7 @@ from email.parser import BytesParser
 from email.policy import default as default_policy
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from acheron.core.errors import WorkerError
@@ -130,10 +131,23 @@ class EdgeApp:
         handler: WorkerHandler,
         capabilities: WorkerCapabilities,
         price_source: PriceSource | None = None,
+        registration_token: str | None = None,
     ) -> None:
         self.handler = handler
         self.capabilities = capabilities
         self.price_source = price_source
+        self.registration_token = registration_token
+
+        async def _verify_bearer(
+            authorization: str | None = Header(default=None),
+        ) -> None:
+            if self.registration_token is None:
+                return
+            if authorization is None:
+                raise HTTPException(status_code=401, detail="Missing Authorization header")
+            scheme, _, provided = authorization.partition(" ")
+            if scheme.lower() != "bearer" or not secrets.compare_digest(provided, self.registration_token):
+                raise HTTPException(status_code=401, detail="Invalid registration token")
 
         @asynccontextmanager
         async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
@@ -153,7 +167,7 @@ class EdgeApp:
         async def get_capabilities() -> dict[str, Any]:
             return _caps_to_response(self.capabilities)
 
-        @app.post("/execute")
+        @app.post("/execute", dependencies=[Depends(_verify_bearer)])
         async def execute(request: Request) -> Response:
             """Accept either ``application/json`` (legacy / TTS) or ``multipart/form-data`` (8b ASR)."""
             ctype = request.headers.get("content-type", "")
