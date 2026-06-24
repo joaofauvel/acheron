@@ -95,7 +95,6 @@ def create_worker_app(
     Set ``disable_registration=True`` in tests to skip the orchestrator
     registration step. Never set it in production.
     """
-    """Build the edge FastAPI app wired with registration + price refresh."""
     caps = handler.capabilities()
     price_source = _build_price_source(settings)
     inner = EdgeApp(handler=handler, capabilities=caps, price_source=price_source)

@@ -1,11 +1,4 @@
-"""Integration tests: orchestrator and workers communicating over TLS.
-
-Worker-side TLS is not yet implemented in the SDK (Plan 4). The tests in
-this module depend on the legacy ``stubs.worker_stub`` / ``stubs.grpc_worker_stub``
-modules that were removed in Plan 3 — they spawn subprocesses that import
-those modules, so the entire module is xfailed until worker-side TLS lands.
-The orchestrator's TLS is exercised elsewhere by the SDK's TLS tests.
-"""
+"""Integration tests: orchestrator and workers communicating over TLS."""
 
 from __future__ import annotations
 
@@ -23,10 +16,7 @@ import pytest
 
 # Serialize: this test binds to dynamic ports and a TOCTOU race would cause
 # flakes under pytest-xdist. Tests in this module share a single xdist group.
-pytestmark = [
-    pytest.mark.xdist_group(name="tls_integration"),
-    pytest.mark.xfail(reason="worker-side TLS not yet implemented; see Plan 4", strict=False),
-]
+pytestmark = pytest.mark.xdist_group(name="tls_integration")
 
 
 def _free_port() -> int:
@@ -102,6 +92,7 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
     base_env["ACHERON_REGISTRATION_TOKEN"] = "test-token"
     base_env["ACHERON_TLS_CA_FILE"] = str(ca)
     base_env["ACHERON_STORE_BACKEND"] = "memory"
+    base_env["ACHERON_ALLOW_INSECURE"] = "1"
     base_env["PYTHONPATH"] = (
         str(Path(__file__).resolve().parents[2] / "src")
         + os.pathsep
@@ -115,21 +106,22 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
         "ACHERON_TLS_CERT_FILE": str(certs_dir / "orchestrator.crt"),
         "ACHERON_TLS_KEY_FILE": str(certs_dir / "orchestrator.key"),
     }
+    repo_root = Path(__file__).resolve().parents[2]
     tts_env = {
         **base_env,
-        "WORKER_TYPE": "TTS",
-        "WORKER_ENDPOINT": f"https://127.0.0.1:{tts_port}",
-        "ORCHESTRATOR_URL": f"https://127.0.0.1:{orch_port}",
-        "WORKER_PORT": str(tts_port),
+        "WORKER_CONFIG": str(repo_root / "stubs" / "tts_local_stub" / "worker.yaml"),
+        "ACHERON_WORKER__LISTEN_PORT": str(tts_port),
+        "ACHERON_WORKER__ORCHESTRATOR_URL": f"https://127.0.0.1:{orch_port}",
+        "ACHERON_WORKER__REGISTRATION_TOKEN": "test-token",
         "ACHERON_TLS_CERT_FILE": str(certs_dir / "tts-stub.crt"),
         "ACHERON_TLS_KEY_FILE": str(certs_dir / "tts-stub.key"),
     }
     grpc_env = {
         **base_env,
-        "WORKER_ENDPOINT": f"127.0.0.1:{grpc_port}",
-        "ORCHESTRATOR_URL": f"https://127.0.0.1:{orch_port}",
-        "WORKER_PORT": str(grpc_port),
-        "WORKER_HTTP_PORT": str(grpc_http_port),
+        "WORKER_CONFIG": str(repo_root / "stubs" / "tts_grpc_stub" / "worker.yaml"),
+        "ACHERON_WORKER__LISTEN_PORT": str(grpc_port),
+        "ACHERON_WORKER__ORCHESTRATOR_URL": f"https://127.0.0.1:{orch_port}",
+        "ACHERON_WORKER__REGISTRATION_TOKEN": "test-token",
         "ACHERON_TLS_CERT_FILE": str(certs_dir / "tts-grpc-stub.crt"),
         "ACHERON_TLS_KEY_FILE": str(certs_dir / "tts-grpc-stub.key"),
     }
@@ -139,24 +131,28 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
         orch_proc = subprocess.Popen(
             [str(venv_python), "-m", "acheron.shell.api", "--port", str(orch_port)],
             env=orch_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         procs.append(orch_proc)
         tts_proc = subprocess.Popen(
-            [str(venv_python), "-m", "stubs.worker_stub"],
+            [str(venv_python), "-m", "stubs.tts_local_stub.main"],
             env=tts_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         procs.append(tts_proc)
         grpc_proc = subprocess.Popen(
-            [str(venv_python), "-m", "stubs.grpc_worker_stub"],
+            [str(venv_python), "-m", "stubs.tts_grpc_stub.main"],
             env=grpc_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         procs.append(grpc_proc)
         _wait_healthy(f"https://127.0.0.1:{orch_port}/health", ca)
         _wait_healthy(f"https://127.0.0.1:{tts_port}/health", ca)
-        # The gRPC HTTP /health sidecar is plain HTTP — it's a healthcheck-only endpoint
-        # that doesn't have TLS. Docker healthchecks are internal and don't need encryption.
-        _wait_healthy(f"http://127.0.0.1:{grpc_http_port}/health", None)
-        _wait_for_workers_registered(orch_port, {"tts-stub", "tts-grpc-stub"}, ca)
+        _wait_healthy(f"https://127.0.0.1:{grpc_port}/health", ca)
+        _wait_for_workers_registered(orch_port, {"tts-local-stub", "tts-grpc-stub"}, ca)
     except Exception:
         for p in procs:
             p.terminate()
@@ -195,7 +191,7 @@ def test_http_worker_registers_over_https(tls_stack: dict[str, object]) -> None:
         assert resp.status_code == 200
         workers = resp.json()["workers"]
         ids = {w["worker_id"] for w in workers}
-        assert "tts-stub" in ids
+        assert "tts-local-stub" in ids
 
 
 def test_grpc_worker_registers(tls_stack: dict[str, object]) -> None:
