@@ -5,6 +5,7 @@ from acheron.core.errors import (
     CacheCorruptedError,
     CacheError,
     CacheMissError,
+    ChunkingTooLongForWorkerError,
     InvalidLanguagePathError,
     PlanError,
     PlanValidationError,
@@ -19,6 +20,7 @@ class TestExceptionHierarchy:
         "exc_cls",
         [
             InvalidLanguagePathError,
+            ChunkingTooLongForWorkerError,
             PlanValidationError,
             PlanError,
             WorkerUnavailableError,
@@ -36,6 +38,7 @@ class TestExceptionHierarchy:
         ("child", "parent"),
         [
             (InvalidLanguagePathError, PlanError),
+            (ChunkingTooLongForWorkerError, InvalidLanguagePathError),
             (PlanValidationError, PlanError),
             (WorkerUnavailableError, WorkerError),
             (WorkerTimeoutError, WorkerError),
@@ -59,6 +62,10 @@ class TestMessagePropagation:
     def test_catch_by_intermediate(self) -> None:
         with pytest.raises(PlanError):
             raise PlanValidationError("missing step dependency")
+
+    def test_chunking_too_long_caught_as_language_path(self) -> None:
+        with pytest.raises(InvalidLanguagePathError):
+            raise ChunkingTooLongForWorkerError("chunking exceeds worker limit")
 
 
 class TestPipelineError:

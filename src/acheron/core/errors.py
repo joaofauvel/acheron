@@ -13,6 +13,15 @@ class InvalidLanguagePathError(PlanError):
     """Requested source/target language pair is not supported."""
 
 
+class ChunkingTooLongForWorkerError(InvalidLanguagePathError):
+    """Chunking step's max_chunk_length exceeds a text-input worker's max_input_tokens.
+
+    Raised at plan compile time so misconfigurations fail fast, before any GPU time.
+    Subclass of ``InvalidLanguagePathError`` so existing handling (job rejection,
+    dashboard) still works.
+    """
+
+
 class PlanValidationError(PlanError):
     """Plan failed structural validation."""
 
