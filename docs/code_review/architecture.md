@@ -225,12 +225,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 53-86
+    lines: 75-108
   - path: src/acheron/shell/api/app.py
     lines: 46-49
 related: [ARCH-006, CFG-004]
@@ -279,7 +279,7 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -288,7 +288,7 @@ files:
   - path: src/acheron/shell/health.py
     lines: 77-91
   - path: src/acheron/shell/orchestrator.py
-    lines: 81-86
+    lines: 103-108
 related: []
 ```
 
@@ -486,12 +486,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 53-74
+    lines: 75-96
   - path: src/acheron/shell/api/app.py
     lines: 46-49
 related: [ARCH-008, CFG-006]
@@ -655,7 +655,7 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -664,7 +664,7 @@ files:
   - path: src/acheron/shell/step_handler.py
     lines: 80-101
   - path: src/acheron/shell/orchestrator.py
-    lines: 60-74
+    lines: 85-95
   - path: src/acheron/shell/transports/http.py
     lines: 51-64
 related: [ARCH-014]
@@ -828,7 +828,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -837,7 +837,7 @@ files:
   - path: src/acheron/core/planner.py
     lines: 92-128
   - path: src/acheron/shell/orchestrator.py
-    lines: 244-250
+    lines: 274-278
 related: [CFG-009, CORR-026]
 ```
 
@@ -942,7 +942,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -951,7 +951,7 @@ files:
   - path: src/acheron/core/planner.py
     lines: 92-128
   - path: src/acheron/shell/orchestrator.py
-    lines: 246-250
+    lines: 274-278
   - path: acheron.yaml.example
     lines: 1-65
 related: [ARCH-019, CORR-026]

@@ -260,14 +260,14 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 9b4adb6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: .env.example
-    lines: 7
+    lines: 9-46
   - path: .env.example
-    lines: 9-27
+    lines: 9-46
   - path: README.md
     lines: 182-193
   - path: dashboard/app.py
@@ -353,12 +353,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 217-225
+    lines: 246-253
   - path: src/acheron/core/planner.py
     lines: 92-111
 related: [ARCH-019, CFG-009]

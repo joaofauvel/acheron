@@ -219,16 +219,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 208-216, 259-261, 265-353
+    lines: 235-243, 291-293, 297-385
   - path: src/acheron/shell/orchestrator.py
-    lines: 208-216, 259-261, 265-353
+    lines: 235-243, 291-293, 297-385
   - path: src/acheron/shell/orchestrator.py
-    lines: 208-216, 259-261, 265-353
+    lines: 235-243, 291-293, 297-385
 related: [OBS-004]
 ```
 
@@ -274,12 +274,12 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 235-242
+    lines: 263-270
   - path: src/acheron/shell/health.py
     lines: 113-152
   - path: src/acheron/shell/step_handler.py
@@ -385,8 +385,8 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 9b4adb6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
@@ -396,11 +396,11 @@ files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 233-271
   - path: docker-compose.yml
-    lines: 166-198
+    lines: 166-198, 200-231, 233-265
   - path: docker-compose.yml
-    lines: 200-231
+    lines: 166-198, 200-231, 233-265
   - path: docker-compose.yml
-    lines: 233-265
+    lines: 166-198, 200-231, 233-265
 related: [SEC-005, SEC-014, OBS-009, OBS-010]
 ```
 
@@ -584,12 +584,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 325-351
+    lines: 357-382
 related: [OBS-004, SEC-010, SEC-012]
 ```
 
@@ -789,8 +789,8 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 9b4adb6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: workers/qwen3tts/worker.edge.yaml
@@ -816,8 +816,8 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 9b4adb6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: Dockerfile
@@ -845,8 +845,8 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 9b4adb6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: workers/granite_speech/worker.edge.yaml
@@ -890,7 +890,14 @@ related: [SEC-015]
 ### SEC-018 — `granite-speech-edge` compose service hardcodes `:-dev-registration-token` fallback (new instance of SEC-011)
 
 ```yaml
-fixedopenpendinge54458416e9bfe890a473dd9d542978d205b40a12026-06-242026-06-23["pending"]
+status: verified
+severity: high
+effort: S
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+last_verified_at:
+  commit: 9b4adb6
+  date: 2026-06-24
+fixed_in: [9b4adb6]
 files:
   - path: docker-compose.yml
     lines: 209
@@ -940,14 +947,14 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 9b4adb6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: docker-compose.yml
-    lines: 200-231
+    lines: 200-231, 233-265
   - path: docker-compose.yml
-    lines: 233-265
+    lines: 200-231, 233-265
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 156-163, 167-186, 233-271
 related: [OBS-007, OBS-010]
@@ -996,7 +1003,7 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -1021,7 +1028,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -1041,7 +1048,14 @@ related: [SEC-014, SEC-016]
 ### SEC-022 — `translategemma-edge` compose service hardcodes `${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` fallback (new instance of SEC-011/SEC-018)
 
 ```yaml
-fixedopenpendingeb6849c85d83f2277eb450f18a11e63cae2defd12026-06-242026-06-24["pending"]
+status: verified
+severity: high
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: 9b4adb6
+  date: 2026-06-24
+fixed_in: [9b4adb6]
 files:
   - path: docker-compose.yml
     lines: 242
@@ -1093,7 +1107,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
@@ -1118,12 +1132,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7472ebc
+  commit: 9b4adb6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 246-250
+    lines: 274-278
 related: [TEST-015, ARCH-019, CFG-009]
 ```
 
