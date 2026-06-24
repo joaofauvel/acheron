@@ -1,0 +1,30 @@
+# TranslateGemma worker — image default config.
+# Sensitive fields (RUNPOD_API_KEY, RUNPOD_ENDPOINT_ID, REGISTRATION_TOKEN)
+# are env-only — rejected when present here. Override per-deploy by mounting
+# a translategemma.worker.yaml override or by setting ACHERON_WORKER_* env vars.
+
+worker_id: "translategemma-1"
+# Default to TLS — the orchestrator serves HTTPS in the default compose stack
+# (Layer 7c). The compose service overrides via env at deploy time.
+orchestrator_url: "https://orchestrator:8000"
+listen_port: 8009
+execution_timeout_s: 1800
+
+# Pricing — RunPod GraphQL API is the default. The GPU type is NOT a config
+# field: RunPodPrice reads the endpoint's gpuIds via the RunPod GraphQL API.
+# The deployer provisions a single A40 endpoint (48 GB; needed for 12B BF16);
+# changing GPU on the RunPod endpoint takes effect on the next price_cache_ttl_s
+# refresh; no image rebuild required.
+price_source: runpod
+secure_cloud: false
+# price_cache_ttl_s: 3600.0
+
+# Output transport — multipart default (TRANSLATION uses multipart input too:
+# chunks.json from the upstream chunking step).
+output_mode: multipart
+
+# Handler — used by the generic acheron-worker-edge CLI to import the handler
+# class when running the edge container alongside the orchestrator. The
+# runpod_entrypoint.py in the RunPod runtime image uses the import directly.
+handler: "workers.translategemma.handler:TranslateGemmaRunpodHandler"
+model_id: "google/translategemma-12b-it"

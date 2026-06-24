@@ -1,0 +1,21 @@
+# Edge-side worker config for the acheron-worker-edge image.
+# Identical shape to workers/qwen3tts/worker.edge.yaml — phantom_handler
+# is the cloud-side TranslateGemmaRunpodHandler, which the edge imports
+# to read its static capabilities() without loading the model.
+
+worker_id: "translategemma-edge"
+orchestrator_url: "http://orchestrator:8000"
+listen_port: 8009
+execution_timeout_s: 1800
+
+handler: "acheron.worker_sdk.cloud:RunPodForwarderHandler"
+phantom_handler: "workers.translategemma.handler:TranslateGemmaRunpodHandler"
+model_id: "google/translategemma-12b-it"
+
+price_source: runpod
+secure_cloud: false
+
+# Edge transport is always HTTP multipart on the output side; the input
+# side is multipart (form-data) for TRANSLATION (chunks.json from chunking
+# step), JSON otherwise.
+output_mode: multipart
