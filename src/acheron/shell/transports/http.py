@@ -12,6 +12,9 @@ from email.policy import default as default_policy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
 import httpx
 from pydantic import TypeAdapter
 
@@ -29,7 +32,7 @@ from acheron.shell.cache import StepCache
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
@@ -88,50 +91,66 @@ class HttpWorker(Worker):
         return _caps_adapter.validate_json(resp.content)
 
     async def execute(self, job: Job) -> JobResult:  # noqa: D102
-        if job.job_type == WorkerType.ASR:
-            return await self._execute_asr_multipart(job)
-        # Existing JSON / multipart-mixed response path (unchanged).
-        resp = await self._request("POST", "/execute", json=_job_to_dict(job))
-        ctype = resp.headers.get("content-type", "")
-        if ctype.startswith("multipart/mixed"):
-            return await self._parse_multipart(resp, job.job_id)
-        # Legacy JSON path — backward-compatible with existing HTTP stubs.
-        return _result_adapter.validate_json(resp.content)
+        match job.job_type:
+            case WorkerType.ASR:
+                return await self._execute_with_upstream_input(
+                    job,
+                    upstream_step="extract",
+                    content_type_predicate=lambda c: c.startswith("audio/"),
+                    form_field="audio",
+                )
+            case WorkerType.TRANSLATION | WorkerType.TTS:
+                return await self._execute_with_upstream_input(
+                    job,
+                    upstream_step="chunk",
+                    content_type_predicate=lambda c: c == "application/json",
+                    form_field="chunks",
+                )
+            case _:
+                # Existing JSON / multipart-mixed response path (unchanged).
+                resp = await self._request("POST", "/execute", json=_job_to_dict(job))
+                ctype = resp.headers.get("content-type", "")
+                if ctype.startswith("multipart/mixed"):
+                    return await self._parse_multipart(resp, job.job_id)
+                return _result_adapter.validate_json(resp.content)
 
-    async def _execute_asr_multipart(self, job: Job) -> JobResult:
-        """Read the upstream extract step's audio file and POST multipart to the worker.
+    async def _execute_with_upstream_input(
+        self,
+        job: Job,
+        *,
+        upstream_step: str,
+        content_type_predicate: Callable[[str], bool],
+        form_field: str,
+    ) -> JobResult:
+        """Read the upstream step's matching output and POST it as multipart to the worker.
 
-        The orchestrator's ``StepCache`` holds the manifest of the previous
-        step's outputs; the audio file is at the path recorded in the manifest.
-        We POST ``multipart/form-data`` with one ``application/json`` part (the
-        ``ExecuteRequest`` envelope) + one binary part (the audio). The
-        worker's response is ``multipart/mixed`` and is parsed the same way
-        as the TTS path.
+        Used by ASR (upstream=extract, predicate=audio/*, field=audio) and
+        TRANSLATION/TTS (upstream=chunk, predicate=application/json, field=chunks).
         """
         plan_job_id = job.job_id.rsplit("-", 1)[0]
         try:
-            extract_outputs = await self._step_cache.load_outputs(plan_job_id, "extract")
+            upstream_outputs = await self._step_cache.load_outputs(plan_job_id, upstream_step)
         except CacheMissError as exc:
-            msg = f"ASR step {job.job_id}: no extract step output for {plan_job_id}"
+            msg = f"{job.job_type.value} step {job.job_id}: no {upstream_step} step output for {plan_job_id}"
             raise WorkerError(msg) from exc
-        audio_out = next(
-            (o for o in extract_outputs if o.content_type.startswith("audio/")),
+        matching = next(
+            (o for o in upstream_outputs if content_type_predicate(o.content_type)),
             None,
         )
-        if audio_out is None:
-            msg = f"ASR step {job.job_id}: no audio file in extract output"
+        if matching is None:
+            msg = f"{job.job_type.value} step {job.job_id}: no matching file in {upstream_step} output"
             raise WorkerError(msg)
-        audio_path = Path(audio_out.path)
-        if not await asyncio.to_thread(audio_path.exists):
-            msg = f"ASR step {job.job_id}: audio file missing: {audio_path}"
+        file_path = Path(matching.path)
+        if not await asyncio.to_thread(file_path.exists):
+            msg = f"{job.job_type.value} step {job.job_id}: file missing: {file_path}"
             raise WorkerError(msg)
 
-        form = {
+        form: dict[str, tuple[str | None, bytes, str]] = {
             "request": (None, json.dumps(_job_to_dict(job)).encode("utf-8"), "application/json"),
-            "audio": (
-                audio_path.name,
-                await asyncio.to_thread(audio_path.read_bytes),
-                audio_out.content_type,
+            form_field: (
+                file_path.name,
+                await asyncio.to_thread(file_path.read_bytes),
+                matching.content_type,
             ),
         }
         resp = await self._post_multipart(form)
@@ -220,7 +239,7 @@ class HttpWorker(Worker):
     async def health(self) -> bool:  # noqa: D102
         try:
             resp = await self._request("GET", "/health")
-        except WorkerError, WorkerUnavailableError:
+        except (WorkerError, WorkerUnavailableError):
             return False
         else:
             return resp.status_code == httpx.codes.OK
