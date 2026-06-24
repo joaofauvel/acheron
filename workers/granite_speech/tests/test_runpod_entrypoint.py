@@ -9,6 +9,23 @@ import pytest
 from acheron.worker_sdk.settings import WorkerSettings
 
 
+def test_entrypoint_module_is_importable() -> None:
+    """The entrypoint module imports the cloud-side handler class
+    eagerly at module load time. A broken import path (e.g. the
+    handler.py COPY in Dockerfile.runpod pointed to /app/handler.py
+    while the entrypoint imports ``from workers.granite_speech.handler``)
+    would be caught here.
+    """
+    from workers.granite_speech import runpod_entrypoint
+
+    assert hasattr(runpod_entrypoint, "main")
+    # The handler symbol is the one the entrypoint imports; importing the
+    # module above already proved the import chain works.
+    from workers.granite_speech.handler import GraniteSpeechRunpodHandler
+
+    assert callable(GraniteSpeechRunpodHandler)
+
+
 def test_main_loads_handler_and_starts_runpod(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

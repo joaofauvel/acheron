@@ -19,16 +19,22 @@ COPY dist/acheron-*.whl /tmp/
 RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
 
 # The handler module is invisible here — the edge resolves it from the worker.yaml
-# `handler:` field via the SDK's config loader at boot. For the qwen3tts edge
-# container, we bundle the handler.py from the workspace package so the import
-# path `workers.qwen3tts.handler:Qwen3TTSRunpodHandler` resolves.
-#
-# Future worker packages (asr, translation) mirror this COPY with their own
-# handler.py.
+# `handler:` field via the SDK's config loader at boot. Every per-worker package
+# ships its own handler.py + worker.edge.yaml; the operator's compose service
+# sets WORKER_NAME to pick the right yaml. The acheron CLI resolves
+# `WORKER_CONFIG` from /app/${WORKER_NAME}.worker.yaml first.
 COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/_shared.py /app/workers/_shared.py
+
+# qwen3tts (8a) — bundled so the import path resolves.
 COPY workers/qwen3tts/__init__.py /app/workers/qwen3tts/__init__.py
 COPY workers/qwen3tts/handler.py /app/workers/qwen3tts/handler.py
 COPY workers/qwen3tts/worker.edge.yaml /app/qwen3tts.worker.yaml
+
+# granite-speech (8b) — bundled so the import path resolves.
+COPY workers/granite_speech/__init__.py /app/workers/granite_speech/__init__.py
+COPY workers/granite_speech/handler.py /app/workers/granite_speech/handler.py
+COPY workers/granite_speech/worker.edge.yaml /app/granite_speech.worker.yaml
 
 ENV WORKER_NAME=qwen3tts \
     PYTHONPATH=/app

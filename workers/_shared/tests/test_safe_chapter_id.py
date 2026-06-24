@@ -17,6 +17,10 @@ class TestSafeChapterId:
         with pytest.raises(WorkerError):
             safe_chapter_id("")
 
+    def test_whitespace_only_raises(self) -> None:
+        with pytest.raises(WorkerError):
+            safe_chapter_id("   ")
+
     def test_nul_byte_raises(self) -> None:
         with pytest.raises(WorkerError):
             safe_chapter_id("ch\x001")

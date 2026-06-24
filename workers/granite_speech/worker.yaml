@@ -4,7 +4,9 @@
 # a granite_speech.worker.yaml override or by setting ACHERON_WORKER_* env vars.
 
 worker_id: "granite-speech-1"
-orchestrator_url: "http://orchestrator:8000"
+# Default to TLS — the orchestrator serves HTTPS in the default compose stack
+# (Layer 7c). The compose service overrides via env at deploy time.
+orchestrator_url: "https://orchestrator:8000"
 listen_port: 8001
 execution_timeout_s: 1800
 

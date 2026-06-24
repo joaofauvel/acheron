@@ -180,14 +180,15 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             buf = io.BytesIO()
             sf.write(buf, wav, sr, format="WAV")
             seq = chunk.get("sequence_id", i)
+            chapter_id = _chunk_chapter_id(chunk)
             artifacts.append(
                 BytesArtifact(
-                    filename=f"{_chunk_chapter_id(chunk)}_{seq:04d}.wav",
+                    filename=f"{chapter_id}_{seq:04d}.wav",
                     content_type="audio/wav",
                     data=buf.getvalue(),
                     metadata={
                         "sequence_id": seq,
-                        "chapter_id": _chunk_chapter_id(chunk),
+                        "chapter_id": chapter_id,
                         "sample_rate": sr,
                     },
                 )

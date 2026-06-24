@@ -5,7 +5,7 @@
 #
 # CI publishes this image to ghcr.io via .github/workflows/build-workers.yml.
 
-FROM python:3.12-slim AS runpod-runtime
+FROM python:3.14-slim AS runpod-runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -38,11 +38,13 @@ RUN pip install --no-cache-dir runpod
 WORKDIR /app
 
 # The worker's deployable assets. The cloud-side handler is entrypoint-only.
-COPY workers/qwen3tts/handler.py /app/handler.py
+# Paths match what runpod_entrypoint.py imports: `from workers.qwen3tts.handler`.
+COPY workers/qwen3tts/handler.py /app/workers/qwen3tts/handler.py
 COPY workers/qwen3tts/runpod_entrypoint.py /app/runpod_entrypoint.py
 COPY workers/qwen3tts/worker.yaml /app/worker.yaml
 COPY workers/__init__.py /app/workers/__init__.py
 COPY workers/qwen3tts/__init__.py /app/workers/qwen3tts/__init__.py
+COPY workers/_shared.py /app/workers/_shared.py
 
 # HF cache lives on the RunPod network volume; offline mode forces the cached snapshot.
 ENV HF_HOME=/runpod-volume/huggingface-cache \

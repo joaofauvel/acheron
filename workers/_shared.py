@@ -10,12 +10,16 @@ MAX_CHAPTER_ID_LEN = 128
 def safe_chapter_id(cid: str) -> str:
     r"""Sanitise a chapter_id for use as a filename component.
 
-    Rejects blank, NUL-byte, newline, tab, path-separator (``/`` / ``\``),
-    absolute-path, and ``..``-component values. The orchestrator's
-    ``_safe_join`` defends the orchestrator boundary; this is
-    defense-in-depth so the worker also fails fast on malicious input.
+    Rejects blank, whitespace-only, NUL-byte, newline, tab,
+    path-separator (``/`` / ``\``), absolute-path, and ``..``-component
+    values. The orchestrator's ``_safe_join`` defends the orchestrator
+    boundary; this is defense-in-depth so the worker also fails fast on
+    malicious input.
     """
-    if not cid or "\x00" in cid or "\n" in cid or "\r" in cid or "\t" in cid:
+    if not cid or not cid.strip():
+        msg = f"chapter_id is blank: {cid!r}"
+        raise WorkerError(msg)
+    if any(c in cid for c in "\x00\n\r\t"):
         msg = f"chapter_id contains illegal whitespace/NUL: {cid!r}"
         raise WorkerError(msg)
     if len(cid) > MAX_CHAPTER_ID_LEN:

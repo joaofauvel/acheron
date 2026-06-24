@@ -5,7 +5,7 @@
 #
 # CI publishes this image to ghcr.io via .github/workflows/build-workers.yml.
 
-FROM python:3.12-slim AS runpod-runtime
+FROM python:3.14-slim AS runpod-runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -47,7 +47,9 @@ RUN pip install --no-cache-dir runpod
 WORKDIR /app
 
 # The worker's deployable assets. The cloud-side handler is entrypoint-only.
-COPY workers/granite_speech/handler.py /app/handler.py
+# Paths match what runpod_entrypoint.py imports:
+#   `from workers.granite_speech.handler import GraniteSpeechRunpodHandler`.
+COPY workers/granite_speech/handler.py /app/workers/granite_speech/handler.py
 COPY workers/granite_speech/runpod_entrypoint.py /app/runpod_entrypoint.py
 COPY workers/granite_speech/worker.yaml /app/worker.yaml
 COPY workers/__init__.py /app/workers/__init__.py
