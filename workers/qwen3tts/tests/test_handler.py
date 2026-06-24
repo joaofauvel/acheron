@@ -149,7 +149,7 @@ class TestHandle:
             captured["speaker"] = speaker
             return [np.zeros(50, dtype=np.float32)], 22050
 
-        h._model.generate_custom_voice = _spy  # type: ignore[method-assign]
+        h._model.generate_custom_voice = _spy
         await h.handle(
             _build_job(target_language="zh"),
             input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "你好"}]),
@@ -171,7 +171,7 @@ class TestHandle:
             captured["speaker"] = speaker
             return [np.zeros(50, dtype=np.float32)], 22050
 
-        h._model.generate_custom_voice = _spy  # type: ignore[method-assign]
+        h._model.generate_custom_voice = _spy
         job = Job(
             job_id="j1",
             job_type=WorkerType.TTS,

@@ -72,12 +72,32 @@ class TestHttpWorkerCapabilities:
 class TestHttpWorkerExecute:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_execute_returns_job_result(self) -> None:
+    async def test_execute_returns_job_result(self, tmp_path: Path) -> None:
+        # TTS now (post-8c) uses the multipart path with chunks.json from the chunk step.
+        from acheron.core.models import OutputFile
+        from acheron.shell.cache import StepCache
+
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(b'[{"chapter_id": "ch1", "sequence_id": 0, "text": "hola"}]')
+        cache = StepCache(tmp_path)
+        await cache.save_outputs(
+            "j-1",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename="chunks.json",
+                    size_bytes=chunks_path.stat().st_size,
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
         respx.post(f"{_BASE_URL}/execute").mock(
             return_value=httpx.Response(
                 200,
                 json={
-                    "job_id": "j-1",
+                    "job_id": "j-1-synthesize",
                     "status": "success",
                     "outputs": [],
                     "metrics": {"duration_seconds": 1.5},
@@ -85,28 +105,66 @@ class TestHttpWorkerExecute:
                 },
             )
         )
-        worker = HttpWorker(_BASE_URL)
-        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola"}, chapter_id="ch1")
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
+        job = Job(job_id="j-1-synthesize", job_type=WorkerType.TTS, payload={"text": "hola"}, chapter_id="ch1")
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
-        assert result.job_id == "j-1"
+        assert result.job_id == "j-1-synthesize"
         assert result.metrics.duration_seconds == 1.5
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_execute_raises_on_server_error(self) -> None:
+    async def test_execute_raises_on_server_error(self, tmp_path: Path) -> None:
+        from acheron.core.models import OutputFile
+        from acheron.shell.cache import StepCache
+
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(b"[{}]")
+        cache = StepCache(tmp_path)
+        await cache.save_outputs(
+            "j-1",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename="chunks.json",
+                    size_bytes=chunks_path.stat().st_size,
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
         respx.post(f"{_BASE_URL}/execute").mock(return_value=httpx.Response(500, text="GPU OOM"))
-        worker = HttpWorker(_BASE_URL)
-        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
+        job = Job(job_id="j-1-synthesize", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
         with pytest.raises(WorkerError, match="500"):
             await worker.execute(job)
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_execute_raises_on_connection_error(self) -> None:
+    async def test_execute_raises_on_connection_error(self, tmp_path: Path) -> None:
+        from acheron.core.models import OutputFile
+        from acheron.shell.cache import StepCache
+
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(b"[{}]")
+        cache = StepCache(tmp_path)
+        await cache.save_outputs(
+            "j-1",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename="chunks.json",
+                    size_bytes=chunks_path.stat().st_size,
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
         respx.post(f"{_BASE_URL}/execute").mock(side_effect=httpx.ConnectError("refused"))
-        worker = HttpWorker(_BASE_URL)
-        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
+        job = Job(job_id="j-1-synthesize", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
         with pytest.raises(WorkerUnavailableError):
             await worker.execute(job)
 
@@ -136,6 +194,25 @@ class TestHttpWorkerExecuteMultipart:
     @respx.mock
     @pytest.mark.asyncio
     async def test_multipart_response_materializes_to_data_dir(self, tmp_path: Path) -> None:
+        from acheron.core.models import OutputFile
+        from acheron.shell.cache import StepCache
+
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(b"[{}]")
+        cache = StepCache(tmp_path)
+        await cache.save_outputs(
+            "job-xyz-synthesize",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename="chunks.json",
+                    size_bytes=chunks_path.stat().st_size,
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
         audio = b"\x00\x01\x02\x03" * 100
         metrics = (
             b'{"duration_seconds":1.5,"gpu_seconds":1.0,"tokens_in":null,'
@@ -149,7 +226,7 @@ class TestHttpWorkerExecuteMultipart:
                 headers={"content-type": f"multipart/mixed; boundary={_BOUNDARY}"},
             )
         )
-        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
         job = Job(
             job_id="job-xyz-synthesize-ch1",
             job_type=WorkerType.TTS,
@@ -171,13 +248,34 @@ class TestHttpWorkerExecuteMultipart:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_legacy_json_response_still_works(self) -> None:
-        # Existing stub emits JSON with OutputFile.path. Ensure backward-compat.
+    async def test_legacy_json_response_still_works(self, tmp_path: Path) -> None:
+        # Existing stub emits JSON with OutputFile.path. The legacy JSON response
+        # path is preserved on the response side (for non-ASR/TRANSLATION/TTS job
+        # types like EXTRACTION/CHUNKING/PACKAGING).
+        from acheron.core.models import OutputFile
+        from acheron.shell.cache import StepCache
+
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(b"[{}]")
+        cache = StepCache(tmp_path)
+        await cache.save_outputs(
+            "j-1",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename="chunks.json",
+                    size_bytes=chunks_path.stat().st_size,
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
         respx.post(f"{_BASE_URL}/execute").mock(
             return_value=httpx.Response(
                 200,
                 json={
-                    "job_id": "j-1",
+                    "job_id": "j-1-synthesize",
                     "status": "success",
                     "outputs": [
                         {
@@ -193,8 +291,8 @@ class TestHttpWorkerExecuteMultipart:
                 },
             )
         )
-        worker = HttpWorker(_BASE_URL)
-        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
+        job = Job(job_id="j-1-synthesize", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
         assert result.outputs[0].filename == "x.wav"
@@ -236,14 +334,30 @@ class TestHttpWorkerStepCache:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_tts_path_uses_json_request(self, tmp_path: Path) -> None:
-        """TTS job (non-ASR) still uses the JSON request path — no multipart.
-
-        The new ASR branch in execute() must not affect the TTS / translation
-        / chunking / packaging path. The wire request is ``application/json``
-        and the response is the legacy ``JobResult`` JSON (or
-        ``multipart/mixed``).
+    async def test_tts_path_uses_multipart_with_chunks(self, tmp_path: Path) -> None:
+        """TTS (post-8c) uses the multipart path; the chunks.json bytes flow as
+        the ``chunks`` form field, alongside the ``request`` envelope.
         """
+        from acheron.core.models import OutputFile
+        from acheron.shell.cache import StepCache
+
+        chunks_body = b'[{"chapter_id": "ch1", "sequence_id": 0, "text": "hola"}]'
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(chunks_body)
+        cache = StepCache(tmp_path)
+        await cache.save_outputs(
+            "j-1",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename="chunks.json",
+                    size_bytes=chunks_path.stat().st_size,
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
         captured: dict = {}
 
         def _capture(request: httpx.Request) -> httpx.Response:
@@ -253,15 +367,17 @@ class TestHttpWorkerStepCache:
                 200,
                 headers={"content-type": "application/json"},
                 content=(
-                    b'{"job_id": "j-1", "status": "success", "outputs": [], '
+                    b'{"job_id": "j-1-synthesize", "status": "success", "outputs": [], '
                     b'"metrics": {"duration_seconds": 1.0}, "error": null}'
                 ),
             )
 
         respx.post(f"{_BASE_URL}/execute").mock(side_effect=_capture)
-        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
-        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
+        job = Job(job_id="j-1-synthesize", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
         result = await worker.execute(job)
-        # TTS path uses application/json, NOT multipart/form-data.
-        assert captured["content_type"].startswith("application/json")
+        # TTS path now (post-8c) uses multipart/form-data with the chunks.json bytes
+        # in the ``chunks`` field.
+        assert captured["content_type"].startswith("multipart/form-data")
+        assert chunks_body in captured["body"]
         assert result.status == JobStatus.SUCCESS
