@@ -1023,14 +1023,14 @@ related: [SEC-015, SEC-017]
 ### SEC-021 — Translategemma worker.edge.yaml default `orchestrator_url` is HTTP — registration token sent in cleartext (new instance of SEC-014/SEC-016)
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 9b4adb6
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: workers/translategemma/worker.edge.yaml
     lines: 7
