@@ -998,17 +998,17 @@ related: [PERF-007]
 ### SEC-020 — Translategemma Dockerfile.runpod runs as root — no USER directive (new instance of SEC-015/SEC-017)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 9b4adb6
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: workers/translategemma/Dockerfile.runpod
-    lines: 1-59
+    lines: 1-61
 related: [SEC-015, SEC-017]
 ```
 
