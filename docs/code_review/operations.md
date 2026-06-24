@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
+last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_staleness_scan:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
 ---
 
 # Operations
@@ -193,7 +193,7 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 195-211
   - path: src/acheron/shell/transports/http.py
-    lines: 143-165
+    lines: 159-181
 related: []
 ```
 
@@ -224,11 +224,11 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 202-210
+    lines: 207-215
   - path: src/acheron/shell/orchestrator.py
-    lines: 253-255
+    lines: 258-260
   - path: src/acheron/shell/orchestrator.py
-    lines: 259-347
+    lines: 264-352
 related: [OBS-004]
 ```
 
@@ -399,7 +399,9 @@ files:
     lines: 166-198
   - path: docker-compose.yml
     lines: 200-231
-related: [SEC-005, SEC-014]
+  - path: docker-compose.yml
+    lines: 233-265
+related: [SEC-005, SEC-014, OBS-009, OBS-010]
 ```
 
 **Issue.** The edge container's POST `/execute` handler (`_edge_http.py:151-194`) has no auth dependency — the only auth in the SDK flow is the registration token on POST `/workers`. `docker-compose.yml:170-171` maps 8004:8001, so any process on the host (or anyone able to reach the host on port 8004) can call `/execute` directly, bypassing the orchestrator's job-submission path. `/execute` accepts an arbitrary `ExecuteRequest` with any job_id and any payload, so a host-side attacker can: (a) consume the edge's RunPod credits by submitting fabricated jobs, (b) probe for the RunPod endpoint to learn the endpoint_id via the timing/exception response, (c) use the edge as a free proxy to the RunPod serverless endpoint with their own payloads. This compounds SEC-005 (orchestrator job routes are also unauthenticated).
@@ -587,7 +589,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 319-345
+    lines: 324-350
 related: [OBS-004, SEC-010, SEC-012]
 ```
 
@@ -721,9 +723,11 @@ files:
     lines: 175
   - path: docker-compose.yml
     lines: 209
+  - path: docker-compose.yml
+    lines: 242
   - path: .env.example
     lines: 7
-related: [SEC-008, SEC-009, DOC-003]
+related: [SEC-008, SEC-009, SEC-022, DOC-003]
 ```
 
 **Issue.** `docker-compose.yml` hardcodes `${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` for orchestrator (line 35) and the worker-side `ACHERON_WORKER__REGISTRATION_TOKEN` (line 175) — if the operator forgets to set `ACHERON_REGISTRATION_TOKEN` in their `.env` (a common mistake on first `docker compose up`), the system falls back to the literal string `dev-registration-token`, which is also in `.env.example` (line 7) and therefore a publicly known value. Any attacker who has read the `.env.example` or the compose file (both committed to the repo) can present `Authorization: Bearer dev-registration-token` to POST `/workers` and register a malicious worker endpoint that will receive every job payload. SEC-002 fixed the fail-open case where the env var is unset in the orchestrator, but the dev default slips a known token through the otherwise-closed check.
@@ -904,12 +908,14 @@ fixed_in: []
 files:
   - path: docker-compose.yml
     lines: 209
-related: [SEC-011]
+  - path: docker-compose.yml
+    lines: 242
+related: [SEC-011, SEC-022]
 ```
 
-**Issue.** `docker-compose.yml:209` sets `ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` for the new `granite-speech-edge` service. If the operator forgets to set `ACHERON_REGISTRATION_TOKEN` in their `.env`, the new service ships with the publicly-known `dev-registration-token`.
+**Issue.** `docker-compose.yml:209` sets `ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` for the new `granite-speech-edge` service. `docker-compose.yml:242` adds the same `:-dev-registration-token` fallback for the new `translategemma-edge` service in 8c. If the operator forgets to set `ACHERON_REGISTRATION_TOKEN` in their `.env`, both new services ship with the publicly-known `dev-registration-token`.
 
-**Why it matters.** Re-introduces the SEC-011 dev-default bypass in a second compose service. Registering a malicious worker against the orchestrator allows an attacker to receive ASR job payloads and to consume the RunPod credits.
+**Why it matters.** Re-introduces the SEC-011 dev-default bypass in a second (now third, via SEC-022) compose service. Registering a malicious worker against the orchestrator allows an attacker to receive ASR + translation job payloads and to consume the RunPod credits.
 
 **Recommendation.** Remove the `:-dev-registration-token` fallback in `docker-compose.yml:209` so the env var is required. Make `.env.example:7` document the variable with a placeholder and a comment instructing the operator to generate one with `openssl rand -hex 32`. The orchestrator's startup should fail closed if the env var is the empty string.
 
@@ -954,12 +960,14 @@ fixed_in: []
 files:
   - path: docker-compose.yml
     lines: 200-231
+  - path: docker-compose.yml
+    lines: 233-265
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 156-163, 167-186, 233-271
-related: [OBS-007]
+related: [OBS-007, OBS-010]
 ```
 
-**Issue.** `docker-compose.yml:204` maps `8008:8001` for `granite-speech-edge`, exposing the edge's unauthenticated POST `/execute` on the host network. Any host-side process can call `/execute` directly, bypassing the orchestrator's job-submission path.
+**Issue.** `docker-compose.yml:204` maps `8008:8001` for `granite-speech-edge`, exposing the edge's unauthenticated POST `/execute` on the host network. 8c adds the same pattern at `docker-compose.yml:238` (translategemma-edge on `8009:8001`) — see OBS-010. Any host-side process can call `/execute` directly, bypassing the orchestrator's job-submission path.
 
 **Why it matters.** The `/execute` endpoint is the entire cost-bearing surface of the RunPod edge — a single host-level access yields a billable surface, a probe for the RunPod endpoint_id via timing/exception response, and a free proxy to the RunPod serverless endpoint.
 
@@ -991,3 +999,159 @@ related: [PERF-007]
 **Recommendation.** Reuse the existing `self._client` injection seam on `_post_multipart` (the `if self._client is not None` branch is already in place at line 151-152). At the `default_worker_factory` level, build a shared `httpx.AsyncClient` per `worker_id` and pass it to the constructed `HttpWorker`.
 
 **Verification.** Run a 10-step ASR plan against a fake edge that records connection setup; assert the counter increments by 1 (one per worker_id), not 20.
+
+## SEC (8c delta)
+
+### SEC-020 — Translategemma Dockerfile.runpod runs as root — no USER directive (new instance of SEC-015/SEC-017)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/Dockerfile.runpod
+    lines: 1-59
+related: [SEC-015, SEC-017]
+```
+
+**Issue.** `workers/translategemma/Dockerfile.runpod` is structurally identical to `workers/qwen3tts/Dockerfile.runpod` and `workers/granite_speech/Dockerfile.runpod`: no `RUN useradd`, no `USER` directive, the final `CMD ["python", "runpod_entrypoint.py"]` runs as uid 0. This is the third image in the fleet to ship root-by-default (qwen3tts, granite-speech, translategemma).
+
+**Why it matters.** Defense-in-depth regression identical to SEC-015/SEC-017. The TranslateGemma 12B model is loaded into VRAM by a process running as root; a malicious or compromised HF checkpoint that triggers arbitrary code execution at `from_pretrained` time (or a transformers deserialization issue) escalates to full host root. With the HF cache volume mounted and `HF_HUB_OFFLINE=1` set, the attack surface is bounded to the pre-baked snapshot, but the container still has root access to the host's network and any shared bind mounts.
+
+**Recommendation.** Add `RUN useradd --create-home --uid 1000 acheron` before `CMD` and `USER acheron` at the bottom of `workers/translategemma/Dockerfile.runpod`. Update `Dockerfile.runpod:43` (`WORKDIR /app`) so the directory is owned by the unprivileged user, or run `chown -R acheron:acheron /app` before the `USER` switch. Update the entrypoint to use `gosu` or `setpriv` if any prior step requires root. Apply the same fix uniformly to the qwen3tts and granite-speech images (SEC-015, SEC-017).
+
+**Verification.** Build the image and `docker run --rm <image> id` — must print `uid=1000(acheron)`. Add a CI gate that runs the same `id` check on all three RunPod images.
+
+### SEC-021 — Translategemma worker.edge.yaml default `orchestrator_url` is HTTP — registration token sent in cleartext (new instance of SEC-014/SEC-016)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/worker.edge.yaml
+    lines: 7
+related: [SEC-014, SEC-016]
+```
+
+**Issue.** `workers/translategemma/worker.edge.yaml:7` sets `orchestrator_url: "http://orchestrator:8000"`. The docker-compose service overrides to https at line 241, but a deployer that runs the acheron-worker-edge image standalone (RunPod pod, different topology) inherits the HTTP default. `registration.py:50` puts the bearer token in the Authorization header, transmitted in cleartext over HTTP. This is the third edge config to ship the HTTP default (qwen3tts, granite-speech, translategemma).
+
+**Why it matters.** Bakes an HTTP fallback into a third image. Standalone deployers inherit the bug. Token sent in cleartext over HTTP allows on-path observers to register a malicious worker endpoint and exfiltrate job payloads (EPUB chapters, chunks.json, translated text) — same downstream impact as SEC-008/009.
+
+**Recommendation.** Default `orchestrator_url` to `https://orchestrator:8000` in `workers/translategemma/worker.edge.yaml:7`. In `settings.py`, log a WARNING at startup if `orchestrator_url` starts with `http://` and `ACHERON_ALLOW_INSECURE_REGISTRATION=1` is not set. Apply the same fix to `workers/qwen3tts/worker.edge.yaml` and `workers/granite_speech/worker.edge.yaml` (SEC-014, SEC-016).
+
+**Verification.** Build the edge image with the default worker.edge.yaml; confirm line 7 reads `https://orchestrator:8000`. Add a startup-test that boots the edge with the HTTP default and asserts a clear warning is logged or the edge refuses to start.
+
+### SEC-022 — `translategemma-edge` compose service hardcodes `${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` fallback (new instance of SEC-011/SEC-018)
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: docker-compose.yml
+    lines: 242
+related: [SEC-011, SEC-018]
+```
+
+**Issue.** `docker-compose.yml:242` sets `ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}` for the new translategemma-edge service. If the operator forgets to set `ACHERON_REGISTRATION_TOKEN` in their `.env`, the new service ships with the publicly-known `dev-registration-token` (documented in .env.example:7). This is the third compose service to use the same dev-default bypass (orchestrator, qwen3tts-edge, granite-speech-edge, translategemma-edge).
+
+**Why it matters.** Re-introduces the SEC-011 dev-default bypass in a fourth compose service. Registering a malicious worker against the orchestrator allows an attacker to receive TRANSLATION job payloads (chunks.json containing chapter text) and to consume the RunPod credits via fabricated /execute calls. The blast radius is now 4 compose services (orchestrator + 3 edge workers) all defaulting to the same publicly-known token.
+
+**Recommendation.** Remove the `:-dev-registration-token` fallback in `docker-compose.yml:242` (and the 3 pre-existing sites at lines 35, 95, 175, 209) so the env var is required. Make `.env.example:7` document the variable with an empty placeholder and a comment instructing the operator to generate one with `openssl rand -hex 32`. The orchestrator's startup should fail closed if the env var is the empty string. Add a CI / startup check that refuses to boot if the token equals `dev-registration-token` or is shorter than 32 chars.
+
+**Verification.** `docker compose --profile runpod-translation up` with no `.env`; assert refusal. Run with `ACHERON_REGISTRATION_TOKEN=dev-registration-token`; assert the same refusal. Run with a freshly generated 32-char token; assert registration succeeds.
+
+### SEC-023 — Translategemma edge `phantom_handler` import path requires `workers/translategemma/handler.py` on PYTHONPATH, but `Dockerfile.edge` does not copy it — edge service is broken by design
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: Dockerfile.edge
+    lines: 26-37
+  - path: workers/translategemma/worker.edge.yaml
+    lines: 12
+related: [DOC-005]
+```
+
+**Issue.** `workers/translategemma/worker.edge.yaml:12` sets `phantom_handler: "workers.translategemma.handler:TranslateGemmaRunpodHandler"`, which the acheron-worker-edge SDK resolves at boot to read the worker's static capabilities. `Dockerfile.edge` (unchanged in this delta, lines 26-37) copies only `workers/qwen3tts/{__init__.py,handler.py,worker.edge.yaml}` and `workers/granite_speech/{__init__.py,handler.py,worker.edge.yaml}` — it does NOT copy `workers/translategemma/handler.py`, `workers/translategemma/__init__.py`, or `workers/translategemma/worker.edge.yaml`. The translategemma-edge compose service (`docker-compose.yml:233`) sets `WORKER_NAME: translategemma`, which makes the CLI look for `/app/translategemma.worker.yaml` (also not bundled). The edge container will fail to start with `ModuleNotFoundError: workers.translategemma.handler` or `FileNotFoundError: translategemma.worker.yaml`.
+
+**Why it matters.** This is a critical availability issue for the new service: the `translategemma-edge` profile is documented in the new README (`workers/translategemma/README.md`) as the deploy path, but the Dockerfile.edge delta was omitted. The SEC concern is that a deployer who follows the README will get a broken service, attempt to debug, and may weaken security (e.g. disable auth, open the port wider) to make it work. Filing under SEC because the broken-by-design state creates pressure to misconfigure the service.
+
+**Recommendation.** Add to `Dockerfile.edge` (between line 37 and the ENV): `COPY workers/translategemma/__init__.py /app/workers/translategemma/__init__.py`, `COPY workers/translategemma/handler.py /app/workers/translategemma/handler.py`, `COPY workers/translategemma/worker.edge.yaml /app/translategemma.worker.yaml`. Update the README deployer guide to confirm the edge image build. Add a CI check that boots the translategemma-edge container and asserts the phantom_handler imports cleanly.
+
+**Verification.** Build the edge image with the Dockerfile.edge update, run `docker compose --profile runpod-translation up translategemma-edge`, and assert the container starts and registers with the orchestrator (curl `/workers` to confirm `translategemma-edge` appears in the list).
+
+## OBS (8c delta)
+
+### OBS-010 — `translategemma-edge` service exposes `/execute` on host port 8009 — unauthenticated (new instance of OBS-007/OBS-009)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: docker-compose.yml
+    lines: 233-265
+related: [OBS-007, OBS-009, SEC-022]
+```
+
+**Issue.** `docker-compose.yml:238` maps `8009:8001` for the new translategemma-edge service, exposing the edge's unauthenticated POST `/execute` on the host network. The new compose service follows the exact pattern OBS-007 (qwen3tts-edge on 8004) and OBS-009 (granite-speech-edge on 8008) flagged: a host-side process can call `/execute` directly, bypassing the orchestrator's job-submission path. Any host-level access yields a billable surface, a probe for the RunPod endpoint_id via timing/exception response, and a free proxy to the RunPod serverless endpoint with the deployer's own API key.
+
+**Why it matters.** This is the third edge service in the fleet to ship with the unauthenticated-host-port anti-pattern. The /execute endpoint is the entire cost-bearing surface of the RunPod edge — a single host-level access to port 8009 yields a RunPod bill. The dev-registration-token fallback (SEC-022) compounds the risk: a misconfigured deployment that ships the default token has the /execute endpoint also reachable from the host network.
+
+**Recommendation.** Require an `Authorization: Bearer <registration_token>` dependency on `/execute` that mirrors the orchestrator's `verify_registration_token`, and gate the port to `expose: [8001]` instead of `ports:` in compose so it is not host-reachable. Apply the same fix to the qwen3tts-edge (8004) and granite-speech-edge (8008) services. Update the worker_sdk._edge_http._run_execute to enforce the auth dependency.
+
+**Verification.** `curl -X POST http://localhost:8009/execute -d '{...}'` from the host should be rejected (401/403). For the auth fix, assert the Authorization header is required and a missing header produces 401. With `expose:` instead of `ports:`, re-run the curl from the host — it should fail with a connection refused.
+
+### OBS-011 — `validate_chunking_fits_workers` runs in `submit_job` with no log on success or failure — operator cannot confirm the plan-time input-budget check ran
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 245-249
+related: [TEST-015, ARCH-019, CFG-009]
+```
+
+**Issue.** The new `validate_chunking_fits_workers(...)` call sits between `compile_plan` (orchestrator.py:244) and `Plan compiled for %s` log (line 251). On success the call is silent; on failure the ChunkingTooLongForWorkerError bubbles up to the FastAPI exception handler with no specific log line at the submit_job level naming the worker type, the chunking max, the max_input_tokens, or the chars_per_token estimate. Operators have no log evidence that the input-budget check ran, and no way to distinguish a chunking-too-long failure from a generic plan compile failure without parsing the API error body.
+
+**Why it matters.** Compounds the existing free-form logging gap flagged in OBS-003. The validation is the primary safety net against the chunking-bigger-than-token-limit misconfiguration (e.g. someone bumps `max_chunk_length` to 10000 without realising the translategemma worker's `max_input_tokens=2048` truncates the rest). When the check fires (rare, but high-stakes), the operator needs to see the worker type and the conflicting config values in the log to diagnose the misconfiguration. A 400 response with the same values is also emitted by the API, but the orchestrator log is the primary record.
+
+**Recommendation.** Wrap the `validate_chunking_fits_workers` call with a `logger.info` on success (`Plan input-budget validated for %s: max_chunk_length=%d, text-input workers checked=%d`, job_id, max_chunk_length, n_workers) and a `logger.warning` on the failure path before re-raising. Alternative: move the validation into `compile_plan` so the existing `Plan compiled for %s` log emits only on full success, and the PlanError propagates with the existing log machinery.
+
+**Verification.** Submit a job with `max_chunk_length=10000` against a translategemma worker (max_input_tokens=2048); assert the orchestrator log contains a line naming `translategemma`, `max_chunk_length=10000`, and `max_input_tokens=2048` before the API returns 400.

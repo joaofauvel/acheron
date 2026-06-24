@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
+last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_staleness_scan:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
 ---
 
 # Code quality
@@ -148,7 +148,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 323-348
+    lines: 328-353
 related: [OBS-004]
 ```
 
@@ -254,7 +254,7 @@ files:
   - path: src/acheron/shell/health_providers.py
     lines: 80
   - path: src/acheron/shell/transports/http.py
-    lines: 223
+    lines: 239
   - path: src/acheron/shell/local_handlers.py
     lines: 296
   - path: src/acheron/shell/executors/streaming.py
@@ -277,17 +277,17 @@ related: []
 ### MAINT-010 — `create_worker_app` has a duplicate docstring — the second is a no-op string literal that survived the rewrite
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: ["eb6849c85d83f2277eb450f18a11e63cae2defd1"]
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 93-98
+    lines: 93-97
 related: [MAINT-011, EXC-004]
 ```
 
@@ -312,7 +312,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 135-143
+    lines: 134-142
 related: [CORR-015, ARCH-012, MAINT-010]
 ```
 
@@ -459,7 +459,7 @@ files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 90-95
   - path: src/acheron/shell/transports/http.py
-    lines: 57-75
+    lines: 66-84
 related: [CORR-014]
 ```
 
@@ -551,7 +551,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 120-126
+    lines: 119-125
 related: [OBS-008, MAINT-010]
 ```
 
@@ -833,7 +833,7 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 13,183,184,192
   - path: src/acheron/worker_sdk/cli.py
-    lines: 20,30,38,62,63
+    lines: 20,31,39,63,64
   - path: src/acheron/worker_sdk/app.py
     lines: 32-52
 related: []
@@ -875,3 +875,144 @@ related: [TYPE-008]
 **Recommendation.** Introduce a minimal Protocol stub for `_ModelProto` and `_ProcessorProto`. Type the fields as `_ModelProto | None` and `_ProcessorProto | None`. Move the heavy imports under `TYPE_CHECKING` for type-checker satisfaction. Delete the 2-line comment — the `TYPE_CHECKING` import explains itself.
 
 **Verification.** `just type-check` (no new `# type: ignore` needed); `grep -n ': Any' workers/granite_speech/handler.py` drops from 2 to 0; `just test`.
+
+## MAINT (8c delta)
+
+### MAINT-016 — `ChunkingTooLongForWorkerError` subclasses `InvalidLanguagePathError` — inheritance used as a type-tag dispatch mechanism
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/core/errors.py
+    lines: 16-22
+  - path: src/acheron/core/planner.py
+    lines: 92-128
+  - path: src/acheron/shell/orchestrator.py
+    lines: 245-249
+related: [ARCH-018]
+```
+
+**Issue.** `ChunkingTooLongForWorkerError` is a subclass of `InvalidLanguagePathError` only so existing `except InvalidLanguagePathError` handlers (in the dashboard / job-rejection code) keep matching. The class docstring admits this verbatim: "Subclass of `InvalidLanguagePathError` so existing handling (job rejection, dashboard) still works." That is exactly the type-tag-dispatch pattern AGENTS.md prohibits ("prefer strict domain separation, avoid string-based dispatch, and use typing in your favor"). The two errors are conceptually unrelated: one is a language-pair capability problem, the other is a chunk-size-budget problem. Once a second caller wants to distinguish "language pair unsupported" from "chunking too long", the inheritance is a trap — `except InvalidLanguagePathError` will now wrongly catch chunking errors, and the subclass chain (AcheronError → PlanError → InvalidLanguagePathError → ChunkingTooLongForWorkerError) misrepresents the domain hierarchy.
+
+**Why it matters.** Pattern-level MAINT/ARCH: the new `submit_job` flow treats `validate_chunking_fits_workers` as a sibling validator to `compile_plan`, but couples their error types via inheritance. The orchestrator's `submit_job` docstring promises "Raises AcheronError if plan compilation fails" — that contract is now satisfied via the inheritance ladder rather than a shared base, and any future caller that catches `InvalidLanguagePathError` will over-match. The 8c layer is the moment to fix the hierarchy before more plan-time validators (token budgets, format constraints, model availability) copy the same pattern.
+
+**Recommendation.** Make `ChunkingTooLongForWorkerError` a sibling of `InvalidLanguagePathError` (both subclass `PlanError`). At the API boundary, catch the shared `PlanError` parent for job-rejection UX. The dashboard's existing `InvalidLanguagePathError` handler will silently stop catching the new error — but the dashboard already catches the broader `PlanError` (or should), so this is the correct separation. If a single catch is required at the call site, use `except PlanError as exc:` and let the `__cause__` distinguish the two.
+
+**Verification.** `grep -rn 'except InvalidLanguagePathError' src/ tests/` should show no call site that needs the subclass; `grep -n 'ChunkingTooLongForWorkerError' src/` confirms a single shared parent; `just type-check`; `just test`; the new `tests/shell/test_orchestrator.py:ChunkingTooLongForWorkerError` test still passes (it catches the new exception directly, not the parent).
+
+### MAINT-017 — chunks.json parsing duplicated byte-for-byte between qwen3tts and translategemma handlers — third instance of the wire-shape drift pattern
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/qwen3tts/handler.py
+    lines: 198-216
+  - path: workers/translategemma/handler.py
+    lines: 187-199
+related: [MAINT-015, MAINT-018, CORR-032]
+```
+
+**Issue.** The 13-line `chunks.json` parsing block is byte-identical in both worker handlers. The translategemma version (lines 187-199) is inline inside `handle()`; the qwen3tts version (lines 198-216) is the `_load_chunks` method. Both do `b''.join([chunk async for chunk in input.stream()])`, both check `if not chunks_json_bytes: return []`, both call `json.loads(chunks_json_bytes.decode('utf-8'))`, both catch `(json.JSONDecodeError, UnicodeDecodeError) as exc: raise WorkerError(msg) from exc`, and both check `isinstance(raw_chunks, list)` with the same error string. Layer 8c is the natural consolidation moment: a third worker that consumes `chunks.json` (a future ASR-via-chunks, an OCR worker, a TTS-via-chunks) will copy this verbatim.
+
+**Why it matters.** Direct parallel to MAINT-015 (inputs.py/artifacts.py structural copy) and MAINT-002 (redis/cache dual serialization). The greenfield rubric flags "two divergent paths for the same wire format" as a fragility hotspot. Each handler-local copy can drift in error messages, validation rules, or stream handling; a single test that fixes a bug in one handler will silently leave the other broken.
+
+**Recommendation.** Extract `parse_chunks_json(input: Input) -> list[dict[str, Any]]` to `workers/_shared.py` (or a new `workers/_shared/chunks.py` if the shared module grows). Both `Qwen3TTSRunpodHandler._load_chunks` and the inline parser in `TranslateGemmaRunpodHandler.handle` collapse to a single one-liner. Move the test cases for malformed-JSON and non-list top-level to the shared helper's test file (under `workers/_shared/tests/`).
+
+**Verification.** `grep -rn 'chunks_json_bytes = b""' workers/` returns one hit (the shared helper); the two call sites both call `parse_chunks_json(input)`; `just test` (both handler test files still pass; the shared helper's test file adds coverage for the malformed-input cases).
+
+### MAINT-018 — Per-chunk field validation duplicated between translategemma (_normalize_chunk) and qwen3tts (_chunk_text / _chunk_chapter_id); shared `Chunk` dataclass would unify them
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 199, 297-315
+  - path: workers/qwen3tts/handler.py
+    lines: 58-67, 70-84, 164, 183
+related: [MAINT-017, MAINT-019]
+```
+
+**Issue.** Translategemma's `_normalize_chunk(c: object) -> dict[str, Any]` (lines 297-315) validates and returns a fresh dict with `chapter_id`/`sequence_id`/`text`. Qwen3TTS splits the same validation into two module-level helpers: `_chunk_text(c) -> str` (lines 58-67) and `_chunk_chapter_id(c) -> str` (lines 70-84). Both validate the same three fields with the same isinstance checks, raise `WorkerError` on the same failure modes, and use the same field names. The translategemma shape (return a normalised dict) is more reusable, but the qwen3tts helpers are inline-callable. The drift risk is that a future chunk schema change (e.g. adding a `metadata` field) touches two files with different shapes.
+
+**Why it matters.** Pattern-level MAINT. AGENTS.md bans "stale-prone comments ... and coupled structures." The handlers diverge in shape but not in intent — one returns a `dict[str, Any]`, the other returns per-field strings. Once a future handler needs `chunk.metadata` or `chunk.instruct` (qwen3tts already reads `chunk.get('instruct', '')` at line 167), the helper will fork into N per-field accessors per handler.
+
+**Recommendation.** Add a `Chunk` dataclass to `workers/_shared.py` (or alongside the suggested `parse_chunks_json` helper) with `chapter_id: str`, `sequence_id: int`, `text: str`, and an optional `instruct: str = ''` field (qwen3tts already reads it). The dataclass has a `from_dict(c: object) -> Chunk` classmethod that performs the validation. The translategemma handler uses `Chunk.from_dict`; the qwen3tts handler uses `Chunk` accessors instead of `_chunk_text`/`_chunk_chapter_id`.
+
+**Verification.** `grep -rn 'chapter_id.*str.*sequence_id.*int\|isinstance.*chapter_id' workers/` returns one hit; the two handlers both consume the shared `Chunk` type; `just test`; the `sequence_id: int` validator now lives in one place.
+
+### MAINT-019 — `TranslateGemmaRunpodHandler.handle` is 54 lines (over 50) and bundles 3 distinct concerns: validation, parsing, inference + artifact building
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 170-223
+related: [CORR-029, MAINT-017, MAINT-018]
+```
+
+**Issue.** `TranslateGemmaRunpodHandler.handle` (lines 170-223) is 54 lines and conflates three responsibilities: (1) precondition validation (model loaded, input present, src/tgt in supported langs) — lines 172-185, (2) chunks.json parsing (lines 187-201) — same body as the qwen3tts `_load_chunks` method, (3) inference call + artifact-building loop (lines 203-223). The function is exactly the same length as `Qwen3TTSRunpodHandler.handle` (53 lines), so this is not a new regression — but the consolidation of the parsing block (MAINT-017) automatically shrinks `handle` to ~38 lines. A pattern-level observation: the handlers' `handle()` methods are converging on the same shape and the same 50-line threshold.
+
+**Why it matters.** Per the brief's function-length >50 line rule. Each handler's `handle()` mixes validation, parsing, and inference at the same level of abstraction, which makes the inference step harder to test in isolation. The artifact-building loop (lines 205-223) is also the only place that depends on `self._settings.model_id` — a small helper would let the test fixture exercise it without the rest of the handler.
+
+**Recommendation.** Once the `parse_chunks_json` helper (MAINT-017) is in place, extract `_validate_job(job: Job) -> tuple[str, str]` (returns src/tgt) and `_build_translation_artifacts(chunks, translated, src, tgt, model_id) -> list[Artifact]` as private methods. `handle` then becomes: validate → parse → call inference → build artifacts, each step a one-liner. Mirrors the qwen3tts `_load_chunks` / `_validate_target_lang` / `_resolve_speaker` decomposition that landed in this delta.
+
+**Verification.** `grep -n 'def handle' workers/translategemma/handler.py` shows a handle method under 30 lines; new test that `_build_translation_artifacts` is reachable directly from the test file; `just test`.
+
+## TYPE (8c delta)
+
+### TYPE-010 — All three RunPod worker handlers type self._model/self._processor as `Any` with a stale-prone impl-phase comment — third instance of TYPE-009
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 118-121
+  - path: workers/qwen3tts/handler.py
+    lines: 97-98, 172
+  - path: workers/granite_speech/handler.py
+    lines: 37-42
+related: [TYPE-009, CORR-033]
+```
+
+**Issue.** The delta adds the third worker package with the same `self._model: Any = None` / `self._processor: Any = None` anti-pattern, plus the same 2-line stale-prone comment ("The model + processor are typed loosely so the workspace tests don't need torch or transformers installed"). Concretely: `TranslateGemmaRunpodHandler.__init__` (translategemma/handler.py:118-121) now types both `_model` and `_processor` as `Any` with the same comment. The pre-existing qwen3tts `Any` typing also surfaces a new `# type: ignore[no-any-return]` marker at line 172 (`return self._model.generate_custom_voice(...)`) introduced in this delta — directly enabled by the `Any` typing. All three handlers carry the same comment text, which is itself a copy-paste smell. The comment references an impl-phase workspace-test detail that has now changed once (and will change again when the workspace test layout is reorganised).
+
+**Why it matters.** AGENTS.md bans `Any` and stale-prone comments. TYPE-009 already tracks granite_speech; this delta extends the same anti-pattern to translategemma and adds a new `# type: ignore` to qwen3tts as a knock-on effect. The worker packages are a new `Any`/`# type: ignore` surface that will multiply the count. A future per-worker fix would touch three files; a Protocol-based fix touches one shared stub.
+
+**Recommendation.** Bundle the three handlers. Introduce a shared `_ModelProto` and `_ProcessorProto` Protocol in `worker_sdk/handler.py` (or a new `worker_sdk/_handler_types.py`) declaring the small subset of attributes the handlers actually use (`.generate`, `.apply_chat_template`, `.tokenizer`, `.decode`). Type the fields as `_ModelProto | None` and `_ProcessorProto | None`. Move the heavy `import torch` / `import transformers` under `TYPE_CHECKING` for type-checker satisfaction. Delete all three 2-line comments — the `TYPE_CHECKING` import explains itself. The qwen3tts `# type: ignore[no-any-return]` at line 172 disappears as a free side effect.
+
+**Verification.** `grep -rn ': Any = None' workers/` returns zero hits; the qwen3tts `# type: ignore[no-any-return]` at line 172 is gone; `just type-check`; `just test` (workspace tests still run because the lazy `import torch` and `import transformers` inside `startup` are unchanged).

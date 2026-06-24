@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
+last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_staleness_scan:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
 ---
 
 # Surface
@@ -194,9 +194,9 @@ related: [DOC-003]
 
 ## DOC — Documentation
 
-**Grade:** A
+**Grade:** B
 
-DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. One new DOC finding: DOC-004 (medium) — README architecture tree (line 76-77), Test paths (line 125), and CI section (line 160-163) all omit the new `granite_speech` workspace member despite the new `build-granite-speech` GHCR job and the new `granite-speech-edge` compose service. The drift is exactly the shape AGENTS.md targets (qwen3tts/granite_speech asymmetry hidden from a README-only reader).
+DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. DOC-004 (medium) widens with the new translategemma worker still absent from the README. Two new DOC findings in 8c: DOC-005 (medium) — `shell/tls.py` back-compat shim docstring violates the greenfield rule [related: ARCH-017]; DOC-006 (low) — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections.
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -315,3 +315,59 @@ related: [DOC-003]
 **Recommendation.** Update README.md:76-77 to add `granite_speech/  # Granite-Speech ASR RunPod + edge worker` under `workers/`. Update README.md:125 to add `workers/granite_speech/tests/`, `workers/_shared/tests/`. Update README.md:160-163 to add `acheron-granite-speech-runpod` to the CI bullet list.
 
 **Verification.** `grep -n 'granite' README.md` returns hits in the architecture tree, test paths, and CI section.
+
+## DOC (8c delta)
+
+### DOC-005 — `shell/tls.py` shim docstring violates greenfield rule; references past move and old import path
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/tls.py
+    lines: 1-24
+  - path: src/acheron/tls.py
+    lines: 1-6
+related: [ARCH-017]
+```
+
+**Issue.** The 24-line `src/acheron/shell/tls.py` is a back-compat shim that re-exports from the new top-level `src/acheron/tls.py`. AGENTS.md says: "Project is greenfield, it should never have legacy code or legacy fallbacks, replace/refactor old paths over adding compatibility fallbacks." The shim has 4 known internal callers — `src/acheron/shell/api/__main__.py:10`, `src/acheron/shell/health.py:18`, `src/acheron/shell/step_handler.py:12`, and `src/acheron/cli.py:20` — that should be updated to import from `acheron.tls` directly and the shim deleted. The docstring compounds the rule violation with stale-prone wording: "live in :mod:`acheron.tls` now" (the "now" is the AGENTS.md red flag), "the helpers were moved" (past-tense move), and "so existing import sites keep working" (references the old API path). All three references will go stale once the old path is gone (or stay stale if it isn't).
+
+**Why it matters.** The greenfield rule is a hard rule in AGENTS.md. A back-compat shim is exactly the "compatibility fallback" the rule prohibits. The 4 callers that should be migrated are all in-tree, so the migration is mechanical. Leaving the shim in place also leaves a stale-prone docstring that violates the timeless-comment rule.
+
+**Recommendation.** Update the 4 callers to `from acheron.tls import ...` and delete `src/acheron/shell/tls.py`. The new top-level `src/acheron/tls.py:1-6` docstring's second paragraph ("Lives at the top level... not under shell") is also borderline stale-prone structural rationale; trim to a 1-line docstring per AGENTS.md's module-docstring convention.
+
+**Verification.** `grep -rn 'acheron.shell.tls' src/ tests/` returns zero hits; `just test` still passes; `grep -rn 'from acheron.shell.tls' .` returns nothing; `python -c 'import acheron.tls; print(acheron.tls.__file__)'` resolves to `src/acheron/tls.py`.
+
+### DOC-006 — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections after the 8c plan-time check
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 216-224
+  - path: src/acheron/core/planner.py
+    lines: 92-111
+related: [ARCH-019, CFG-009]
+```
+
+**Issue.** Two Google-style docstring gaps introduced by the 8c delta. (1) `Orchestrator.submit_job` docstring (orchestrator.py:216-224) says `Raises: AcheronError: If plan compilation fails (e.g. invalid language path).` — but the function now calls `validate_chunking_fits_workers` after `compile_plan` (orchestrator.py:244-249), which raises `ChunkingTooLongForWorkerError` (subclass of `InvalidLanguagePathError`/AcheronError). The `Raises:` section does not name the new exception class. (2) `validate_chunking_fits_workers` docstring (planner.py:92-111) is narrative and has no `Raises:` section at all, even though the function raises `ValueError` (planner.py:112-114) and `ChunkingTooLongForWorkerError` (planner.py:121-128). AGENTS.md: "For function and method docstrings use google style as per ruff config in `pyproject.toml`" — ruff pydocstyle convention is "google" (pyproject.toml:74), which expects `Raises:` to enumerate specific exception types.
+
+**Why it matters.** Google-style docstrings are the documented convention. The missing `Raises:` entries mean a reader cannot tell from the signature+docstring which concrete exception will fire for a given failure mode (e.g. `ValueError` for `chars_per_token <= 0` is invisible to the reader). The new `ChunkingTooLongForWorkerError` is an Acheron subclass, so existing handling still works — but the docstring contract is now misleading: "AcheronError: If plan compilation fails" implies the new exception is a plan-compilation failure, when in fact it is a config-bounds failure raised AFTER successful plan compilation.
+
+**Recommendation.** Rewrite orchestrator.py:219-223 to: `AcheronError: If plan compilation or input-budget validation fails (e.g. invalid language path, chunking exceeds worker max_input_tokens).` Or, more precise, list `InvalidLanguagePathError` and `ChunkingTooLongForWorkerError` separately. Add a `Raises:` section to planner.py:92-111 documenting `ValueError` (chars_per_token <= 0) and `ChunkingTooLongForWorkerError` (chunking_max_length exceeds a worker's max_input_tokens).
+
+**Verification.** Read both docstrings; the `Raises:` sections enumerate every exception the function body can raise. `ruff check --select D .` does not flag them. `python -c 'import inspect; from acheron.core.planner import validate_chunking_fits_workers; print(inspect.getdoc(validate_chunking_fits_workers))'` shows the new section.

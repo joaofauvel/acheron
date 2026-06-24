@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
+last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_staleness_scan:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
 ---
 
 # Architecture
@@ -599,11 +599,17 @@ files:
     lines: 30
   - path: workers/granite_speech/worker.edge.yaml
     lines: 13
+  - path: workers/translategemma/worker.yaml
+    lines: 30
+  - path: workers/translategemma/worker.edge.yaml
+    lines: 13
   - path: workers/qwen3tts/handler.py
     lines: 54-125
   - path: workers/granite_speech/handler.py
     lines: 30-121
-related: [CFG-008]
+  - path: workers/translategemma/handler.py
+    lines: 125, 148, 205
+related: [CFG-008, CFG-010]
 ```
 
 **Issue.** Two new `WorkerSettings` fields are configured but never consumed. (1) `model_id: str | None = None` (settings.py:62) is set in both `workers/qwen3tts/worker.yaml:35` and `workers/qwen3tts/worker.edge.yaml:17`, but `grep -rn '\.model_id' src/ workers/` returns zero matches — no code path reads it. The qwen3tts handler hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` (handler.py:52) and uses that constant directly in `capabilities()` and `startup()`. (2) `output_mode: Literal["multipart", "volume"] = "multipart"` (settings.py:50) is validated in the `_validate_composite` after-validator (settings.py:116-117) to require `output_volume_dir` when `output_mode == "volume"`, but no code consumes the field: `_edge_http.py` always emits `multipart/mixed` (lines 96-117), and `cli.py` does not branch on `output_mode` either. The edge-side `worker.edge.yaml:24-25` even says "Edge transport is always HTTP multipart; the edge never writes to a shared volume." AGENTS.md explicitly calls this out: "config knobs that don't actually control anything" and "silent/unexpected behavior is worse than no control at all."
@@ -627,13 +633,13 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 41-141
+    lines: 90-157
   - path: src/acheron/shell/transports/http.py
-    lines: 101-141
-related: [ARCH-013]
+    lines: 114-157
+related: [ARCH-013, ARCH-020]
 ```
 
-**Issue.** `HttpWorker.execute()` (http.py:90-99) now starts with `if job.job_type == WorkerType.ASR: return await self._execute_asr_multipart(job)` (http.py:91-92), then `_execute_asr_multipart` (http.py:101-141) reads the upstream `extract` step's audio file from `self._step_cache`, builds a `multipart/form-data` body with a JSON envelope + binary audio, posts it, and parses a `multipart/mixed` response. The Worker interface is supposed to be transport-neutral; the transport is now coupled to a specific job type's semantics (the literal `WorkerType.ASR` discriminant, the magic step_id `"extract"` at http.py:113, the audio content-type filter at http.py:118, the multipart form shape).
+**Issue.** `HttpWorker.execute()` (http.py:90-112) is now a `match job.job_type` dispatching ASR, TRANSLATION, TTS, and `_` to a parametric helper `_execute_with_upstream_input(job, *, upstream_step, content_type_predicate, form_field)` (http.py:114-157). The helper reads the upstream step's output from `self._step_cache`, builds a `multipart/form-data` body with a JSON envelope + binary payload, posts it, and parses a `multipart/mixed` response. The Worker interface is supposed to be transport-neutral; the transport is now coupled to a specific job type's semantics (the literal `WorkerType.ASR/TRANSLATION/TTS` discriminants in the `match` arms, the magic step_id literals `"extract"` / `"chunk"` at http.py:97 and http.py:103, the audio content-type filter, the form field name `"audio"` / `"chunks"`). The 8b single-AWorkerType branch widened to a triple-worker-type match with a leaky triple-magic-string helper (see ARCH-020).
 
 **Why it matters.** The `Worker` ABC is the project's transport-neutral boundary. Putting `WorkerType.ASR` knowledge inside the transport implementation inverts the dependency that AGENTS.md's "strict domain separation" rule calls out. Adding a new audio-in step type requires editing HttpWorker; adding a new wire format for ASR requires editing HttpWorker.
 
@@ -725,11 +731,17 @@ files:
     lines: 30
   - path: workers/granite_speech/worker.edge.yaml
     lines: 13
+  - path: workers/translategemma/worker.yaml
+    lines: 30
+  - path: workers/translategemma/worker.edge.yaml
+    lines: 13
   - path: workers/qwen3tts/handler.py
     lines: 54
   - path: workers/granite_speech/handler.py
     lines: 30
-related: [CFG-007]
+  - path: workers/translategemma/handler.py
+    lines: 125, 148, 205
+related: [CFG-007, CFG-010]
 ```
 
 **Issue.** The 8b worker addition widened CFG-007: `WorkerSettings.model_id: str | None` (settings.py:62) is now configured in FOUR YAML files (`workers/qwen3tts/worker.yaml:37`, `workers/qwen3tts/worker.edge.yaml:17`, `workers/granite_speech/worker.yaml:30`, `workers/granite_speech/worker.edge.yaml:13`) and STILL has zero consumers. `workers/qwen3tts/handler.py:54` hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` and uses it in `capabilities()` and `startup()`. `workers/granite_speech/handler.py:30` hard-codes `_MODEL_ID = "ibm-granite/granite-speech-4.1-2b"`.
@@ -739,3 +751,288 @@ related: [CFG-007]
 **Recommendation.** Either (a) implement the wiring: in each handler, replace the module-level `_MODEL_ID` reference inside `startup()` and `capabilities()` with `self._settings.model_id or _MODEL_ID`; or (b) drop the field from `WorkerSettings` and the 4 YAMLs until the wiring is implemented. Per AGENTS.md's greenfield rule, do not keep a named knob that silently behaves like another.
 
 **Verification.** `git grep -n 'model_id' src/ workers/` returns either zero sites (option b) or one definition + one consumer per handler (option a); `just test`; `just lint-strict`; `just type-check`.
+
+## ARCH (8c delta)
+
+### ARCH-017 — `shell/tls.py` is a 24-line back-compat shim re-exporting `acheron.tls` — direct AGENTS.md greenfield violation
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/tls.py
+    lines: 1-24
+  - path: src/acheron/shell/step_handler.py
+    lines: 12
+  - path: src/acheron/shell/health.py
+    lines: 18
+  - path: src/acheron/shell/api/__main__.py
+    lines: 10
+  - path: src/acheron/cli.py
+    lines: 20
+  - path: tests/shell/test_tls.py
+    lines: 10
+  - path: tests/shell/test_grpc_worker.py
+    lines: 271
+related: [DOC-005]
+```
+
+**Issue.** Layer 8c moved the real implementation from `shell/tls.py` to a new top-level `acheron/tls.py` (the only place the import-linter contract lets both `shell` and `worker_sdk`/`workers` consume it). It then LEFT `shell/tls.py` in place as a 24-line re-export shim whose docstring opens with the literal phrase "Backwards-compat shim — TLS helpers live in :mod:`acheron.tls` now." Seven call sites still import from `acheron.shell.tls` (step_handler.py, health.py, shell/api/__main__.py, cli.py, tests/shell/test_tls.py, tests/shell/test_grpc_worker.py, and the shim itself).
+
+**Why it matters.** AGENTS.md hard rule 2 is explicit: "Project is greenfield, it should never have `legacy` code or `legacy` fallbacks, replace/refactor old paths over adding compatibility fallbacks." The shim is a 24-line dead-end module whose only purpose is to preserve old import paths. The new top-level module is the canonical location; the seven remaining `from acheron.shell.tls import ...` lines are simple `sed` targets. Keeping the shim normalises "we add a back-compat shim when we move things" as a pattern, which is exactly what AGENTS.md forbids.
+
+**Recommendation.** Delete `src/acheron/shell/tls.py` outright. Update the seven import sites to `from acheron.tls import ...` (the new top-level location). The migration is mechanical; ruff isort + lint-strict will catch any miss. Per AGENTS.md, no shim is appropriate here — the new path is the only path.
+
+**Verification.** `git grep -n 'acheron\.shell\.tls' src/ tests/` returns zero matches after the migration. `just test` (full 767-test suite). `just lint-strict` confirms no unused import or duplicate-name warnings. `git grep -n 'class tls\|def ' src/acheron/tls.py` shows the canonical location has the only definitions.
+
+### ARCH-018 — `ChunkingTooLongForWorkerError` is a subclass of `InvalidLanguagePathError` for back-compat reasons that don't exist — codifies a documentation-via-runtime-error contract
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/core/errors.py
+    lines: 16-22
+  - path: src/acheron/core/planner.py
+    lines: 128
+  - path: tests/core/test_errors.py
+    lines: 66-68
+related: [MAINT-016]
+```
+
+**Issue.** `ChunkingTooLongForWorkerError(InvalidLanguagePathError)` is defined at `core/errors.py:16-22` with a docstring that justifies the subclass relationship as "Subclass of `InvalidLanguagePathError` so existing handling (job rejection, dashboard) still works." `git grep 'InvalidLanguagePathError' src/ tests/ dashboard/` returns zero `except InvalidLanguagePathError` clauses and zero dashboard consumers — the back-compat justification has no receiver. The test `tests/core/test_errors.py:66-68` even names the contract: `def test_chunking_too_long_caught_as_language_path(self) -> None: with pytest.raises(InvalidLanguagePathError): raise ChunkingTooLongForWorkerError(...)` — codifying that a chunking-too-long error is caught as a language-path error. A "chunking step's max_chunk_length exceeds a text-input worker's max_input_tokens" is not a language-path problem: the source/target language pair is unchanged; the limit is structural (chars vs tokens).
+
+**Why it matters.** AGENTS.md hard rules call for "strict domain separation" and "make illegal states unrepresentable." The class name says one thing, the parent says another. Any future `except InvalidLanguagePathError` handler — in the API's `/submit` route, in the dashboard's job-rejection UI, in a future monitoring alert — will silently swallow chunking-misconfiguration errors as language-path errors, with no log line and no different user message. The misclassification also makes the exception hierarchy harder to reason about: `isinstance(e, InvalidLanguagePathError)` no longer means "no worker speaks this language pair" — it also means "chunking settings are bigger than the worker's token window." AGENTS.md calls this exactly the "documentation-via-runtime-error contract" pattern it warns against.
+
+**Recommendation.** Make `ChunkingTooLongForWorkerError` a sibling of `InvalidLanguagePathError` (both inherit from `PlanError`), or its own sub-category. Drop the `InvalidLanguagePathError` parent. The docstring's back-compat justification can be removed. Update `tests/core/test_errors.py:41` (the parametrised `test_child_inherits_from_parent` case) and the one `tests/shell/test_orchestrator.py:149` `pytest.raises(InvalidLanguagePathError, match='max_input_tokens=10')` to use the new class. Delete the `test_chunking_too_long_caught_as_language_path` test — it documents a contract that should not exist.
+
+**Verification.** `git grep -n 'issubclass.*InvalidLanguagePathError' src/` returns only the legitimate `(InvalidLanguagePathError, PlanError)` case. `git grep -n 'except InvalidLanguagePathError\|pytest.raises(InvalidLanguagePathError)' tests/` shows no test or production handler treats chunking-too-long as a language-path error. `just test` (all 767 tests pass with the corrected hierarchy). `just type-check`.
+
+### ARCH-019 — `validate_chunking_fits_workers` is a post-step in `submit_job` that should be folded into `compile_plan`
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/core/planner.py
+    lines: 19-52
+  - path: src/acheron/core/planner.py
+    lines: 92-128
+  - path: src/acheron/shell/orchestrator.py
+    lines: 243-249
+related: [CFG-009, CORR-026]
+```
+
+**Issue.** `compile_plan` (planner.py:19-52) already runs `compile_plan → _validate_language_path` as one unit. The new `validate_chunking_fits_workers` (planner.py:92-128) is called immediately after, from `submit_job` (orchestrator.py:243-249), passing the same `capabilities` tuple, `self._settings.workers.chunking.max_chunk_length`, and `self._settings.chars_per_token`. The orchestrator now does two validation passes over the same capabilities tuple, threading the chunking settings in from the shell layer to the core layer for the second one.
+
+**Why it matters.** Layer 8c is the first time the shell layer passes orchestrator-side settings into a core validator. The pattern is an inversion of the existing boundary: `compile_plan(request, strategy, capabilities)` is the canonical "validate the plan against the world" entry point; `validate_chunking_fits_workers` should be a private step inside it (or after, inside `compile_plan`'s body), not a public post-step the shell has to call. Adding a new plan-time check (e.g. "translation model max output tokens") will need another `validate_*` call in `submit_job` with another `settings.workers.*` thread-through, growing the seam. The current shape also makes the two validation passes non-atomic: a caller that calls `compile_plan` without `validate_chunking_fits_workers` gets an unchecked plan.
+
+**Recommendation.** Fold `validate_chunking_fits_workers` into `compile_plan`'s body (after `_validate_language_path`). Extend the public signature minimally — either make `max_chunk_length` and `chars_per_token` additional required kwargs of `compile_plan`, or have `compile_plan` accept a `ChunkingSettings`-shaped struct as an optional kwarg. Update `submit_job` to call only `compile_plan(request, strategy, capabilities, chunking=...)`. Drop the standalone public export from `core/planner.py`.
+
+**Verification.** `git grep -n 'validate_chunking_fits_workers' src/` shows only the definition (in `compile_plan`'s body). `git grep -n 'validate_chunking_fits_workers' tests/` shows the existing `tests/core/test_planner.py:181-281` cases pass with the new structure. `just test`; `just type-check`; `just lint-imports` (no boundary regression).
+
+### ARCH-020 — `HttpWorker._execute_with_upstream_input` has a leaky triple-magic-string signature shared by three call sites
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 90-157
+related: [ARCH-014, ARCH-015, CORR-027]
+```
+
+**Issue.** Layer 8c replaced the explicit ASR branch in `HttpWorker.execute()` with a single parametric helper `_execute_with_upstream_input(job, *, upstream_step, content_type_predicate, form_field)` (http.py:90-157), called three times: `("extract", lambda c: c.startswith("audio/"), "audio")` for ASR, `("chunk", lambda c: c == "application/json", "chunks")` for TRANSLATION+TTS. Three of the three arguments are discriminators the caller must supply correctly, and adding a new "upstream input" job type means a fourth site where three more strings must stay in lockstep. The runtime lambda for `content_type_predicate` is also untyped at the call site — basedpyright/mypy will accept any `Callable[[str], bool]` but cannot verify the caller passed the predicate that matches the form field's expected content type.
+
+**Why it matters.** AGENTS.md hard rules call for "strict domain separation" and "use typing in your favor to avoid seas of complex branching that are brittle and hard to maintain and extend." The triple-string signature is the opposite: a runtime-typed dispatch where three magic values must be coordinated at the call site. The 8b ARCH-014 finding flagged a similar inversion (HttpWorker branches on `WorkerType.ASR` to add a transport-specific audio pipeline); 8c widened the branching to three branches sharing one helper, so the magic-string problem is now triplicated. Per `git grep -n 'WorkerType\.ASR\|WorkerType\.TRANSLATION\|WorkerType\.TTS' src/acheron/shell/transports/`, all three enum cases now reach into the transport's data layer for upstream-step semantics.
+
+**Recommendation.** Encode the discriminator as a structured argument. Options: (a) introduce a `WorkerType`-keyed dispatch table `dict[WorkerType, UpstreamInputSpec]` that maps each text-input worker type to its `(upstream_step, content_type_predicate, form_field)` triple, and have `execute()` look up by `job.job_type`; (b) add a `Job.upstream_input_spec` field on the `Job` dataclass so the data flow is explicit and the transport is data-driven; (c) extract an `UpstreamInputHttpWorker(Worker)` subclass per input shape (the original ARCH-014 recommendation). (a) is the smallest change that removes the magic strings without inventing new types.
+
+**Verification.** `git grep -n 'upstream_step=\|form_field=' src/acheron/shell/transports/` returns either zero matches (data-driven dispatch) or one constant per `WorkerType` case. The `Callable[[str], bool]` parameter is replaced by a frozen `UpstreamInputSpec` dataclass. `just test` (existing `test_asr_multipart.py` and `test_http_worker.py` continue to pass with the new dispatch). `just type-check`.
+
+### ARCH-021 — Identical uvicorn+TLS 7-line boilerplate duplicated across 4 entry points after the worker-side TLS rollout
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/__main__.py
+    lines: 19-26
+  - path: src/acheron/worker_sdk/cli.py
+    lines: 76-83
+  - path: stubs/tts_local_stub/main.py
+    lines: 21-28
+  - path: stubs/tts_grpc_stub/main.py
+    lines: 21-28
+related: []
+```
+
+**Issue.** Layer 8c added TLS to the worker-side entry points. All four `__main__` blocks (orchestrator: `shell/api/__main__.py:19-26`; worker-sdk CLI: `worker_sdk/cli.py:76-83`; and the two stubs: `stubs/tts_local_stub/main.py:21-28` + `stubs/tts_grpc_stub/main.py:21-28`) end with the exact same 7-line envelope: `ssl = uvicorn_ssl_kwargs(); uvicorn.run(<app>, host=<h>, port=<p>, ssl_certfile=ssl.get("ssl_certfile"), ssl_keyfile=ssl.get("ssl_keyfile"))`. The orchestrator site was pre-existing; the worker_sdk/cli + 2 stubs sites are new in 8c. Each was written separately; the 3 new ones are textually identical to the orchestrator site.
+
+**Why it matters.** Three of the four sites are NEW in this delta. The pattern was set by the orchestrator's existing 7-line block; the new sites are copy-paste, not derivation from a helper. Per AGENTS.md hard rule 2, this is the same DRY/sprawl pattern that CFG-006 already tracks for env-var reads: the canonical function is `uvicorn_ssl_kwargs()`, but its *consumer* (the `uvicorn.run(...)` 5-arg envelope) is the recurring copy. A future TLS configuration addition (e.g. `ssl_ca_certs=`, `ssl_keyfile_password=`) would need four lockstep edits. The third copy is the moment DRY should win.
+
+**Recommendation.** Add a `run_with_tls(app: ASGIApp, host: str, port: int) -> None` helper to `acheron/tls.py` (or a `run_worker_app` helper in `worker_sdk/app.py` if you prefer not to live in the TLS module). The helper does the `ssl = uvicorn_ssl_kwargs(); uvicorn.run(...)` envelope in one call. Update the four sites to call the helper. The orchestrator's site is unchanged in behaviour; the new sites gain shared semantics for free.
+
+**Verification.** `git grep -n 'ssl_certfile=ssl.get\|ssl_keyfile=ssl.get' src/ stubs/` returns at most one match (inside the new helper). `just test` (existing 767-test suite + the 3 un-xfailed TLS integration tests continue to pass with the consolidated helper). `just lint-strict`; `just type-check`.
+
+### ARCH-022 — `HttpWorker._post_multipart` is a near-byte-duplicate of `HttpWorker._request` — should be a one-liner wrapper
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 66-84
+  - path: src/acheron/shell/transports/http.py
+    lines: 159-181
+related: [ARCH-021, PERF-007]
+```
+
+**Issue.** `_post_multipart` (http.py:159-181) reproduces the same try/except/raise-status/ConnectError→WorkerUnavailableError/StatusError→WorkerError envelope as `_request` (http.py:66-84), with only two differences: the method is hardcoded to POST, the path to `/execute`, and the parameter is `files=form` instead of a kwarg passthrough. The 23-line helper is functionally a one-liner: `return await self._request("POST", "/execute", files=form)`.
+
+**Why it matters.** Two near-identical request methods in the same class is a clear DRY hazard: any future change to the error-conversion contract (e.g. add retry, add a request-id header) must be applied to both. The two also differ subtly — `_request` accepts arbitrary kwargs, `_post_multipart` accepts only `form: Mapping[str, tuple[...]]`, so a future caller that wants both `files=form` and `headers={...}` will reach for `_request` directly, defeating the encapsulation. The helper exists for one specific call site, which is a code smell.
+
+**Recommendation.** Delete `_post_multipart`. Replace the call at `http.py:153` with `resp = await self._request("POST", "/execute", files=form)`. Drop the `Mapping` TYPE_CHECKING import (no other user). If the form-typing guidance is worth keeping, type `_request` with an overload that pins `files` to `Mapping[str, tuple[str | None, bytes, str]]` when present — but the unpacking is already structurally obvious from the only call site.
+
+**Verification.** `git grep -n '_post_multipart' src/acheron/shell/transports/` returns zero matches. `git grep -n 'def _post_multipart\|def _request' src/acheron/shell/transports/http.py` returns only one definition. `just test` (the existing `test_asr_multipart.py` cases continue to pass; the request still uses the same client / no-client branch). `just lint-strict`; `just type-check`.
+
+## CFG (8c delta)
+
+### CFG-009 — `Settings.chars_per_token` is a top-level knob consumed by exactly one function and duplicated in two defaults
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/config.py
+    lines: 141
+  - path: src/acheron/core/planner.py
+    lines: 92-128
+  - path: src/acheron/shell/orchestrator.py
+    lines: 245-249
+  - path: acheron.yaml.example
+    lines: 1-65
+related: [ARCH-019, CORR-026]
+```
+
+**Issue.** `Settings.chars_per_token: int = Field(default=4)` is declared at the top level of `Settings` (`shell/config.py:141`) with the only consumer being `validate_chunking_fits_workers` — invoked from exactly one call site (`orchestrator.py:245-249`). The default `4` is duplicated at the function signature: `def validate_chunking_fits_workers(..., chars_per_token: int = 4)`. The YAML example (`acheron.yaml.example:1-65`) does not document the field. AGENTS.md explicitly warns: "Avoid config knobs that don't actually control anything, unless there is reasonable expectation that a new behavior is going to be added soon (YAGNI); prefer a concise comment instead."
+
+**Why it matters.** A top-level Settings field with a single consumer is a knob that has to be carried through the full env / YAML / `_EnvAliasSettingsSource` / pydantic validation surface for a 1-call-site use. The default lives in two places that must stay in sync (Settings and function signature). The YAML example doesn't mention the field, so an operator who discovers it via `Settings` schema introspection will set it without guidance. The cost of a single orchestrator-only constant is one extra import in tests, no env-var plumbing, no schema-validator maintenance, and one fewer field for AGENTS.md's "YAGNI" to flag.
+
+**Recommendation.** Drop `Settings.chars_per_token` entirely. Either (a) hard-code the constant in `core/planner.py` as `_DEFAULT_CHARS_PER_TOKEN = 4` next to the function and remove the parameter; or (b) keep the parameter but default it from the function signature only, and have `submit_job` pass `chars_per_token=settings.workers.chunking.chars_per_token` only if a new `ChunkingSettings.chars_per_token` field is added (which is a structural decision, not a single-knob one). (a) is the smallest change; (b) keeps the operator-facing knob if a near-future tokenizer-based estimator is on the roadmap. Either way, drop the YAML example entry (currently absent) and document the chosen shape in a single comment near the constant.
+
+**Verification.** `git grep -n 'chars_per_token' src/` returns either zero sites (option a) or one constant + one consumer (option b). `just test` (the `test_smaller_chars_per_token_triggers_earlier` and `test_invalid_chars_per_token_raises` cases in `tests/core/test_planner.py:249-271` continue to work by passing the kwarg directly). `just type-check`; `just lint-strict`.
+
+### CFG-010 — `WorkerSettings.model_id` is now consumed only by `translategemma` — qwen3tts and granite_speech still hard-code the value, widening the CFG-007/008 silence from 4 YAMLs to 6
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/qwen3tts/handler.py
+    lines: 55, 100-117, 119-133
+  - path: workers/qwen3tts/worker.yaml
+    lines: 37
+  - path: workers/qwen3tts/worker.edge.yaml
+    lines: 17
+  - path: workers/granite_speech/handler.py
+    lines: 30, 44-60, 62-78, 121
+  - path: workers/granite_speech/worker.yaml
+    lines: 30
+  - path: workers/granite_speech/worker.edge.yaml
+    lines: 13
+  - path: workers/translategemma/handler.py
+    lines: 29, 125, 148, 205
+  - path: workers/translategemma/worker.yaml
+    lines: 30
+  - path: workers/translategemma/worker.edge.yaml
+    lines: 13
+related: [CFG-007, CFG-008]
+```
+
+**Issue.** Layer 8c adds a new worker package, `workers/translategemma/`, that CONSUMES `WorkerSettings.model_id` correctly: `model_id = self._settings.model_id or _MODEL_ID_DEFAULT` (translategemma/handler.py:125, 148, 205). It also sets `model_id: "google/translategemma-12b-it"` in both `worker.yaml:30` and `worker.edge.yaml:13`. The two pre-existing workers (qwen3tts, granite_speech) do NOT consume the field: qwen3tts/handler.py hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` and uses it in `capabilities()` (line 115) and `startup()` (line 127); granite_speech/handler.py hard-codes `_MODEL_ID = "ibm-granite/granite-speech-4.1-2b"` and uses it in `capabilities()` (line 58), `startup()` (line 72), and the artifact metadata (line 121). The 8c delta therefore widened the CFG-007/008 silence from 4 YAMLs (2 worker.yaml + 2 worker.edge.yaml) to 6 YAMLs (2+2+2), while introducing the FIRST worker that actually consumes the field.
+
+**Why it matters.** AGENTS.md hard rule 2 explicitly calls this out: "config knobs that don't actually control anything ... silent/unexpected behavior is worse than no control at all." An operator who edits `model_id` in `workers/qwen3tts/worker.yaml:37` to point at a different Qwen3-TTS revision will silently get the hard-coded model — the YAML and the code disagree, and the YAML is documented-but-ignored. The 8c translategemma work proved the wiring is feasible (a 3-line change in 3 places); the asymmetry between the 3 worker packages is now a 1-of-3 implementation. CFG-007/008 remains the same story, but the surface has grown: 6 YAMLs, 4 silent, 2 effective.
+
+**Recommendation.** Apply the same `self._settings.model_id or _DEFAULT` pattern to qwen3tts and granite_speech (the three call sites each: `capabilities()`, `startup()`, and any artifact metadata). If a 4th worker is added, the pattern is now obviously the convention; if not, the option is to drop the field from the 4 silent YAMLs and from `WorkerSettings.model_id` (per the AGENTS.md YAGNI guidance, until the wiring exists). Either path closes the CFG-007/008 finding; the wiring path matches what translategemma already does.
+
+**Verification.** `git grep -n 'model_id' src/acheron/worker_sdk/settings.py workers/` shows either zero consumers (option b) or one definition + three workers with `self._settings.model_id or _DEFAULT` (option a). `just test` (existing `test_capabilities.py` for each worker continues to pass with the field read from settings). `just type-check`; `just lint-strict`.
+
+### CFG-011 — `WorkerCapabilities.max_input_tokens` is published in capabilities() by 2 workers but only consumed in 1 place (the planner) — value is hard-coded in handlers, not configurable via WorkerSettings
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/core/models.py
+    lines: 89
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 50-118
+  - path: workers/qwen3tts/handler.py
+    lines: 114
+  - path: workers/translategemma/handler.py
+    lines: 30, 134
+related: [CFG-009, CFG-010]
+```
+
+**Issue.** `WorkerCapabilities.max_input_tokens: int | None = None` is a new field on the `core/models.py` dataclass (line 89). The orchestrator's `validate_chunking_fits_workers` (planner.py:118, 121, 124, 125) is the only consumer. Two workers publish it: qwen3tts/handler.py:114 with the literal `2048`; translategemma/handler.py:134 with `_MAX_INPUT_TOKENS = 2048` (a module-level constant). There is no `WorkerSettings.max_input_tokens` field (per `git grep -n 'max_input_tokens' src/acheron/worker_sdk/`). Granite-speech doesn't publish it (correct — it's ASR, not text-input). The 2048 value is therefore baked into the handler source, not the YAML.
+
+**Why it matters.** The field is half-configurable: a `Settings.chars_per_token` user can tune the orchestrator's check (CFGs side), but the worker-side cap that the check is measured against is a hard-coded constant per handler. An operator who wants to deploy a worker with a 4096-token model cannot do so without editing the handler. The asymmetry with translategemma's `model_id` (consumed from `WorkerSettings`) is visible at the same call site: `max_input_tokens=_MAX_INPUT_TOKENS` is hard-coded, `model_source=f"huggingface:{model_id}"` reads from settings.
+
+**Recommendation.** Add `max_input_tokens: int | None = None` to `WorkerSettings`. In each worker that publishes a `max_input_tokens`, read it: `max_input_tokens=self._settings.max_input_tokens or _DEFAULT_MAX_INPUT_TOKENS`. Document the field in the worker YAML files. This is the same one-line wiring the translategemma worker already does for `model_id`; applying it to `max_input_tokens` is the natural symmetry.
+
+**Verification.** `git grep -n 'max_input_tokens' src/acheron/worker_sdk/settings.py` returns one definition. `git grep -n 'max_input_tokens=_MAX\|max_input_tokens=2048' workers/` returns either zero matches (option: drop the field until wiring exists) or one default-and-consume pattern per text-input worker. `just test` (existing `test_capabilities.py` for qwen3tts and translategemma continues to pass with the default). `just type-check`; `just lint-strict`.

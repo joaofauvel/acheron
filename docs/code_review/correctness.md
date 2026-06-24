@@ -1,17 +1,17 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
+last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_staleness_scan:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
 ---
 
 # Correctness
 
 ## CORR — Correctness
 
-**Grade:** B
+**Grade:** C
 
 Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified.
 
@@ -343,13 +343,13 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 167-218
+    lines: 183-234
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 188-231
 related: []
 ```
 
-**Issue.** `_parse_multipart` iterates the multipart parts and materializes each binary part via `_materialize_artifact`. The orchestrator's per-part header parser reads `X-Acheron-Metadata` (line 130) and immediately discards the value (`_ = part.get("X-Acheron-Metadata")`). The SDK edge (`_edge_http.py:103`) emits this header carrying per-artifact metadata (sequence_id, chapter_id, sample_rate) that downstream stages need to reconstruct chunk ordering — the orchestrator throws it away, leaving `OutputFile` with only filename/size/checksum/content_type. No other path carries the per-artifact metadata forward.
+**Issue.** `_parse_multipart` iterates the multipart parts and materializes each binary part via `_materialize_artifact`. The orchestrator's per-part header parser reads `X-Acheron-Metadata` (line 224) and immediately discards the value (`_ = part.get("X-Acheron-Metadata")`). The SDK edge (`_edge_http.py:103`) emits this header carrying per-artifact metadata (sequence_id, chapter_id, sample_rate) that downstream stages need to reconstruct chunk ordering — the orchestrator throws it away, leaving `OutputFile` with only filename/size/checksum/content_type. No other path carries the per-artifact metadata forward.
 
 **Why it matters.** The metadata header is the only way to associate an emitted `OutputFile` with its chapter and sequence position. The proto `Artifact` message carries an equivalent `metadata` field (synthesis.proto:35) but the HTTP transport's data path does not propagate it. Downstream consumers can't reconstruct the chunk ordering or chapter boundaries from the `OutputFile` list alone; per-chunk ordering is silently lost. Particularly impactful for TTS where chunks must be played in `sequence_id` order — the orchestrator's response can no longer tell the caller which WAV belongs to which sentence.
 
@@ -472,11 +472,11 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 129-136
+    lines: 140-153
 related: []
 ```
 
-**Issue.** `HttpWorker._execute_asr_multipart` (http.py:133) reads the entire audio file via `await asyncio.to_thread(audio_path.read_bytes)` and embeds the resulting `bytes` object in the httpx `files=` form tuple. For an audiobook chapter that is tens or hundreds of MB this is a hard memory cliff: the orchestrator holds the file in RAM and the httpx client serialises it into a second buffer while building the multipart body, so peak orchestrator RSS for a single ASR step can be ~3-4x the audio size. The same anti-pattern is being closed in the response path (CORR-017) but is being introduced in the request path here.
+**Issue.** `HttpWorker._execute_with_upstream_input` (http.py:114-157, the unified helper that replaced the prior `_execute_asr_multipart` in 8c) reads the entire audio file via `await asyncio.to_thread(file_path.read_bytes)` (line 149) and embeds the resulting `bytes` object in the httpx `files=` form tuple. For an audiobook chapter that is tens or hundreds of MB this is a hard memory cliff: the orchestrator holds the file in RAM and the httpx client serialises it into a second buffer while building the multipart body, so peak orchestrator RSS for a single ASR step can be ~3-4x the audio size. The same anti-pattern is being closed in the response path (CORR-017) but is being introduced in the request path here.
 
 **Why it matters.** The Layer 8b design intent (per the new `Input` Protocol and its `StreamInput` / `FileInput` variants in `worker_sdk/inputs.py`) is that audio flows without buffering. The orchestrator side silently violates that contract for ASR jobs. A long chapter could OOM the orchestrator on what is, by design, a streaming workload.
 
@@ -670,3 +670,209 @@ No ML-specific findings. The codebase is not an ML training pipeline.
 **Grade:** A
 
 No numerical correctness findings. Cost/duration aggregation is simple addition with no precision concerns. No divide-by-zero, NaN propagation, or float-comparison issues found.
+
+## CORR (8c delta)
+
+### CORR-026 — `chars_per_token=4` default under-estimates CJK tokens; docstring claim is inverted
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/core/planner.py
+    lines: 92-128
+  - path: src/acheron/shell/config.py
+    lines: 141
+related: [CFG-009, CORR-029]
+```
+
+**Issue.** The docstring on `validate_chunking_fits_workers` (planner.py:105-107) calls the `chars_per_token=4` default "conservative" because it "overestimates tokens for CJK languages". This is the inverse of the actual behavior. Latin-script text averages ~4 chars/token, but CJK averages ~1 char/token, so `estimated_tokens = chunking_max_length // 4` is a Latin-conservative estimate that *under*-estimates CJK by ~4x. The check `if estimated_tokens > c.max_input_tokens` therefore *passes* a CJK chunk that exceeds the worker's actual budget. The default config (max_chunk_length=250, max_input_tokens=2048) is safe (250 chars < 2048 tokens in both scripts), so the bug is latent. With a user-configured max_chunk_length=4000 and a CJK source the check passes (4000/4=1000 < 2048) but the worker receives 4000-token chunks and may OOM or fail to translate.
+
+**Why it matters.** The plan-time check is the primary safety net against misconfigured chunking, meant to fail fast before any GPU time is spent. The docstring's "conservative" claim is the only document-level justification for the hard-coded `4` default. An operator who reads the docstring, sets a larger `max_chunk_length` for a long chapter, and feeds CJK content will see a passing plan and a runtime failure deep inside the worker's `model.generate` call — after warm-up + cold-start cost. The error is opaque ("tokenizer error", "shape mismatch") and not a `ChunkingTooLongForWorkerError`.
+
+**Recommendation.** Either (a) drop the docstring's "conservative" claim and document the limitation explicitly ("4 chars/token is the Latin ratio; for CJK content the check is non-conservative and the operator must lower max_chunk_length manually"), or (b) pick a smaller default (e.g. `1 char/token`) that is conservative across all scripts and document the cost in token-budget slack. Add a test that exercises a CJK `max_chunk_length` above `chars_per_token * max_input_tokens` and asserts the check raises.
+
+**Verification.** Add a test in `tests/core/test_planner.py` with `chars_per_token=4, chunking_max_length=4000, max_input_tokens=2048` and assert `ChunkingTooLongForWorkerError` is raised (current behavior would pass — that's the bug). Also add a test with CJK-character chunking max_length=1000 and assert the check still triggers the conservative bound (chars_per_token=1).
+
+### CORR-027 — `_execute_with_upstream_input` only POSTs the first matching file; multi-file upstream outputs are silently truncated
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 133-143
+related: [ARCH-020]
+```
+
+**Issue.** `_execute_with_upstream_input` (http.py:133-136) uses `next((o for o in upstream_outputs if content_type_predicate(o.content_type)), None)` and returns at the first match. If the upstream step emits multiple files matching the predicate (e.g. an extract step that produces per-chapter audio files, or a chunk step that splits chunks.json into per-chapter files), only the first is sent to the worker; the rest are silently dropped. The current ASR path is single-audio in the stubs, so this is latent. The TTS/TRANSLATION path passes the single chunks.json from the chunk step, so it is also latent. But the data path is now designed around "one upstream output per step", which couples the orchestrator to the current step output shapes.
+
+**Why it matters.** A future refactor that splits extract into per-chapter audio outputs (natural for parallelism), or that introduces an alternative chunking strategy emitting per-chapter chunks.json, will silently lose all but the first output. The user would see a successful job with truncated input — a TTS chunk step with 50 chapters would produce TTS audio for chapter 1 only. The bug is silent because the response from the worker is still SUCCESS.
+
+**Recommendation.** Document explicitly that the current contract is "one file per step per predicate". Add a `match` arm on the content_type in the case statement that picks the first matching file by design. Alternatively, change `next()` to raise `WorkerError(f"Multiple matching files in {upstream_step} output; orchestrator does not support multi-file dispatch")` so the gap is loud. Either way, the coupling is now visible in the code rather than implicit.
+
+**Verification.** Add a test in `tests/shell/test_http_worker.py` that seeds the extract step with two audio/* output files for the same plan_job_id; assert the call to the worker POSTs only one of them (and document this as the contract).
+
+### CORR-028 — `_parse_multipart` boundary extraction raises IndexError on response missing `boundary=`
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 183-198
+related: [CORR-013, DATA-006, DATA-008]
+```
+
+**Issue.** Line 187: `boundary_part = ctype.split('boundary=', 1)[1]` raises `IndexError` when the response's Content-Type is `multipart/mixed` but lacks a `boundary=` parameter (e.g. `multipart/mixed; charset=utf-8`). The orchestrator's `HttpWorker.execute()` calls `_parse_multipart` and would propagate the IndexError up. The JobResult-shaping contract on the wire (a `JobResult` JSON body on failure) is not met — the orchestrator's exception bubbles up to the executor, which logs an opaque IndexError, not a clean `WorkerError`. The edge's `_parse_multipart_request` validates `boundary=` defensively (line 191) and raises a `WorkerError`; the orchestrator should mirror that pattern for symmetry.
+
+**Why it matters.** A worker that returns a malformed multipart Content-Type (a misbehaving edge implementation, a proxy that strips the boundary, or a future content-type like `multipart/mixed; charset=utf-8`) triggers an opaque IndexError in the orchestrator. The streaming/async/sequential executors catch the exception but the PlanResult's `errors` tuple is a single non-WorkerError exception string, not the structured `WorkerError` with a "Multipart body is missing boundary" message that the operator can act on. The edge side already has the right defensive check — the orchestrator-side gap is asymmetric.
+
+**Recommendation.** Mirror the edge's defensive check: `if 'boundary=' not in ctype: raise WorkerError('Multipart/mixed response missing boundary')` before the split. Add a unit test in `tests/shell/test_http_worker.py` that returns a `multipart/mixed; charset=utf-8` body and asserts the orchestrator raises `WorkerError` with a useful message.
+
+**Verification.** Add a test in `tests/shell/test_http_worker.py` (or `test_asr_multipart.py`) that uses respx to mock a 200 response with `content-type: multipart/mixed; charset=utf-8` and a body that looks multipart; assert `WorkerError` is raised with 'boundary' in the message.
+
+### CORR-029 — `TranslateGemmaRunpodHandler._translate_batch` has no partial-success handling; mid-batch failure discards all completed work
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 170-235
+  - path: workers/translategemma/handler.py
+    lines: 225-236
+related: [CORR-026, MAINT-019]
+```
+
+**Issue.** `_translate_batch` runs a single `self._model.generate(...)` per batch. If the 3rd of 10 batches (chunks 9-12 of 40) raises (OOM mid-batch, GPU fault, NaN/inf in input_ids), the `try/except` in `handle` (lines 203+ `await asyncio.to_thread(self._translate_all, ...)`) propagates the exception, and the orchestrator's `/execute` returns a 500 `JobResult` with all 8 previously translated batches discarded. The 32 chunks that were already on the GPU and translated are lost; the operator pays the warm-up cost again on the next attempt. The handler does not emit partial artifacts and does not surface the per-batch progress in the error message.
+
+**Why it matters.** TranslateGemma-12b is 24 GB at BF16 — OOM mid-batch is a real risk for long chapters. The batched inference design (4 chunks per generate call) is supposed to amortize warm-up; the lack of partial-success handling means a single bad batch costs the operator the whole inference run. The make_runpod_handler returns a single `JobResult` per /run, so a retry re-does all the work from scratch. This is the same shape as the streaming executor CORR-008 fix (preserve cost on failure), but on the worker side.
+
+**Recommendation.** Wrap each batch in its own try/except in `_translate_all`. Collect successful translations in `out: list[Optional[str]]` (None for failed batches). After the loop, raise a `WorkerError` listing the failed batch indices AND return the partial translations (e.g. by yielding them as artifacts in a second pass, or by writing them to a manifest the next retry can pick up). At minimum, log the count of successfully translated chunks before raising. A future maintainer can then design an idempotent retry that resumes from the last-successful batch.
+
+**Verification.** Add a test in `workers/translategemma/tests/test_handler.py` that monkeypatches `_translate_batch` to raise on the 2nd call but succeed on the 1st and 3rd; assert the handler raises WorkerError AND assert a side-channel (e.g. a list passed in the test fixture) records that 1 batch's worth of chunks were processed before the failure.
+
+### CORR-030 — `_parse_multipart` takes the first `application/json` part as metrics; a sidecar JSON part would be silently overwritten
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 209-219
+related: [CORR-013, DATA-006, DATA-008]
+```
+
+**Issue.** Lines 215-219: `if part_ctype == 'application/json': ... metrics = _metrics_adapter.validate_json(...) ; continue`. The condition has no guard against duplicate JSON parts; whichever JSON part appears first in the multipart body becomes the `JobMetrics`. The SDK edge's `_build_multipart_response` (line 115) appends the metrics part LAST, so a well-behaved edge produces one artifact parts + one trailing metrics part. But a future edge that adds a sidecar `application/json` part (e.g. for per-job metadata) BEFORE the metrics would have the metadata parsed as JobMetrics and the real metrics discarded. The orchestrator would get a `metrics=JobMetrics(...)` parsed from the metadata dict, which would fail `validate_json` with a ValidationError, which is not caught and bubbles up as an opaque exception.
+
+**Why it matters.** The wire contract is implicit (metrics is always last). The orchestrator's parser is silent on ordering. A future sidecar part would convert a structured wire change into a confused orchestrator. The cost of being explicit (one assert) is small.
+
+**Recommendation.** Either (a) document the contract in the docstring of `_parse_multipart` ("Metrics part is the last `application/json` part"), or (b) assert the metrics part is the LAST part of the body: track `is_last = part is parts[-1]` and raise `WorkerError('application/json part is not the last part')` if a JSON part appears before a non-JSON part. The latter is defensive; the former matches the existing implicit contract.
+
+**Verification.** Add a test in `tests/shell/test_http_worker.py` that builds a multipart body with `part1 (audio) + part2 (json non-metrics) + part3 (json metrics)`; assert the orchestrator either raises a clean WorkerError or, after the fix, uses the LAST json part as metrics.
+
+### CORR-031 — `HttpWorker.health` uses deprecated Python 2 `except E1, E2:` syntax
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 236-242
+related: [MAINT-009, CORR-013]
+```
+
+**Issue.** Line 239: `except WorkerError, WorkerUnavailableError:`. This is Python 2 syntax; in Python 3 it parses as a tuple of exception classes and functions correctly today, but it has been a `SyntaxWarning` since 3.0 and is planned for removal in a future Python release. The `pyproject.toml` does not enable `-W error::SyntaxWarning`, so the warning is silent. The pattern is asymmetric with the other two except blocks in the same file (lines 78-82 and 173-179), which use the correct `except (X, Y):` parenthesised form.
+
+**Why it matters.** Style inconsistency. Future Python versions may remove the comma form. A new contributor reading the file would copy the pattern, perpetuating the deprecation. A linter configured to flag `SyntaxWarning` (e.g. `ruff` rule `E999`-adjacent or `B033` for the bare-except-`BaseException` family) would not catch this without `-W error`. The code works today; the cost of fixing is one pair of parentheses.
+
+**Recommendation.** Change `except WorkerError, WorkerUnavailableError:` to `except (WorkerError, WorkerUnavailableError):` for consistency with the two other except blocks in the same file (lines 78-82 and 173-179). Add a one-line `noqa` comment if the linter still flags it, or suppress the SyntaxWarning via a project-wide `# ruff: noqa: E999` directive in `pyproject.toml`.
+
+**Verification.** After the fix, run `python3 -W error -c 'from acheron.shell.transports.http import HttpWorker'` and confirm no SyntaxWarning is raised. Run `just type-check` and `just test` to confirm no regression.
+
+### CORR-032 — `TranslateGemmaRunpodHandler.handle` materializes the entire chunks.json in memory before validation
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 187-191
+related: [CORR-017, CORR-018, CORR-019, MAINT-017]
+```
+
+**Issue.** Line 187: `chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])`. This loads the full chunks.json into RAM before validation. For a long chapter (e.g. 5000 chunks × 200 chars each = 1 MB JSON, or 20000 chunks × 250 chars = 5 MB), the handler holds the full JSON in memory plus the parsed list plus the validated chunks dict. The same anti-pattern exists on the orchestrator's request side (CORR-018) and the SDK's request parser (CORR-019), but the cloud handler is a third instance of the same shape. The Input Protocol has a `StreamInput` variant specifically to avoid this buffering, but `make_runpod_handler` always wraps in a `BytesInput` (cloud.py:54-58), so the cloud handler never sees a StreamInput from the RunPod forwarder.
+
+**Why it matters.** For a 12B model the VRAM budget is the constraint, not host RAM. The 5-10 MB chunks.json is small relative to the model's 24 GB footprint, so the host-RAM doubling is not catastrophic. But the cloud handler is the only place that has access to a streaming chunked input (a future FileInput over a shared volume) — encoding the assumption "input is small JSON" in the handler shape couples it to the RunPod forwarder's base64 wrapper. A future multi-MB chapter would force the cloud handler to be rewritten.
+
+**Recommendation.** Document the assumption (chunks.json < 10 MB) in the handler docstring. The Input Protocol's three variants (Bytes/Stream/File) are present but unused; if a future deployment shares a volume, the handler can switch to a streaming `json.loads` (one chunk at a time). For now, the simplest fix is a docstring note: "The RunPod forwarder always delivers chunks.json as a BytesInput; for very long chapters switch to a shared-volume FileInput."
+
+**Verification.** Add a docstring note. The existing tests at 1-10 chunks are far below any memory cliff; no test change needed for the latent case. If the project ever moves to multi-MB chapters, the docstring becomes the contract.
+
+### CORR-033 — `TranslateGemmaRunpodHandler._translate_batch` mutates the shared processor's tokenizer in-place
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 267-269
+related: [TYPE-010]
+```
+
+**Issue.** Lines 267-269: `if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None: tokenizer.pad_token_id = tokenizer.eos_token_id`. The processor is a stateful object loaded once at `startup()` and held on `self._processor`. The assignment mutates the tokenizer's state in-place and persists across all subsequent `handle()` calls. For the single-handler single-process RunPod serverless case this is benign (the mutation happens once at boot). But: (1) if a future maintainer ever instantiates two handlers against the same processor (e.g. for load testing, or for a future model-rotation pattern), the second inherits the mutated state and the first's intentional non-mutation is lost. (2) If the processor is ever replaced via a hot-reload, the new processor's tokenizer starts un-mutated but the first call sets it. The mutation is correct but a side-effect on shared state.
+
+**Why it matters.** Side effects on shared state are the same class of bug the codebase avoids in other modules (e.g. `WorkerCapabilities` is frozen). The mutation is hidden inside `_translate_batch` so a reader cannot tell from the function signature that calling it changes persistent state. The bug is latent because RunPod serverless is single-process, but the pattern would not survive a multi-worker orchestrator or a model hot-reload.
+
+**Recommendation.** Move the pad_token_id check into `startup()` (after `_load()`): `if self._processor.tokenizer.pad_token_id is None and self._processor.tokenizer.eos_token_id is not None: self._processor.tokenizer.pad_token_id = self._processor.tokenizer.eos_token_id`. This makes the mutation explicit and one-time. Add a comment that this is a one-shot init, not a per-call side effect.
+
+**Verification.** Add a test in `workers/translategemma/tests/test_handler.py` that calls `_translate_batch` twice and asserts `self._processor.tokenizer.pad_token_id` is set only after `startup()`, not changed between calls. A simple way: assert the assignment is not in `_translate_batch`'s body via `inspect.getsource`.

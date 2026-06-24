@@ -1,10 +1,10 @@
 ---
 branch: chore/code-review-update
 initial_review_commit: 23c29e1
-last_updated_commit: e54458416e9bfe890a473dd9d542978d205b40a1
+last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_staleness_scan:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
 ---
 
 # Verification
@@ -466,12 +466,12 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 167-218
+    lines: 183-234
   - path: tests/shell/transports/test_asr_multipart.py
     lines: 1-233
   - path: tests/shell/test_http_worker.py
     lines: 1-200, 203-267
-related: [CORR-013]
+related: [CORR-013, CORR-028, CORR-031]
 ```
 
 **Issue.** `HttpWorker._parse_multipart` (http.py:89-140) has three defensive paths that no test exercises: (1) when the worker omits the trailing application/json part, the parser falls through to `metrics = JobMetrics(duration_seconds=0.0)` (line 138-139) — `test_multipart.py`'s `TestBuildResult` and `test_http_worker.py`'s `TestHttpWorkerExecuteMultipart` both build complete bodies; (2) when content-type lacks a `boundary=` parameter, `ctype.split('boundary=', 1)[1]` raises IndexError (line 93); (3) when the body is not actually multipart (e.g. content-type: multipart/mixed but body is plain text), the parser's `is_multipart()` check (line 102-104) raises WorkerError. `test_multipart.py` covers the shared `_multipart` helpers (materialize/safe_join) but not the orchestrator's parser; `test_http_worker.py` covers success + legacy JSON but not these failure paths.
@@ -661,12 +661,12 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 167-218
+    lines: 183-234
   - path: tests/shell/transports/test_asr_multipart.py
     lines: 1-233
   - path: tests/shell/test_http_worker.py
     lines: 135-200, 203-267
-related: [DATA-006, CORR-013]
+related: [DATA-006, CORR-013, CORR-028, CORR-031]
 ```
 
 **Issue.** The new `test_asr_multipart.py` covers the ASR REQUEST side (orchestrator → worker) but NOT the response parser (`_parse_multipart`, http.py:167-218): (1) trailing `application/json` part missing → defaults to `JobMetrics(duration_seconds=0.0)` (line 217); (2) content-type lacks `boundary=` → `ctype.split('boundary=', 1)[1]` raises `IndexError` (line 171); (3) body is not actually multipart → `is_multipart()` returns False → `WorkerError` raised (lines 180-182).
@@ -676,4 +676,139 @@ related: [DATA-006, CORR-013]
 **Recommendation.** Add 3 tests: `test_no_metrics_part_yields_zero_duration`; `test_missing_boundary_raises_indexerror` (or change impl to raise `WorkerError`); `test_non_multipart_body_raises_worker_error`.
 
 **Verification.** `just test tests/shell/test_http_worker.py`; coverage of `_parse_multipart` reaches 100%.
+
+## TEST (8c delta)
+
+### TEST-014 — `workers/translategemma/tests/test_handler.py` does not cover the model.generate error path, partial-success, or pad_token_id init
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/tests/test_handler.py
+    lines: 1-269
+  - path: workers/translategemma/handler.py
+    lines: 170-285
+related: [CORR-029, CORR-033, MAINT-019]
+```
+
+**Issue.** test_handler.py (269 lines) covers the validation surface (11 `test_handle_with_*_raises` tests), happy path (single chunk, multi-chunk, empty chunks, empty body), and batched dispatch (10 chunks → 3 batches of [4,4,2]). The handler's GPU-side failure surface is not tested at all: (1) the production line 203 `translated = await asyncio.to_thread(self._translate_all, chunks, src, tgt)` has no try/except — when `_translate_batch` raises (CUDA OOM, NaN/inf in input_ids, processor shape mismatch, etc.) the exception propagates raw to the RunPod runtime; no test asserts that handle() either re-raises as `WorkerError` or wraps with chain. (2) When batch 1 succeeds and batch 2 fails, the handler currently aborts mid-stream, dropping batch 1's translations and producing no partial output — a regression that switched to per-batch exception capture (e.g. to surface partial-success) would be invisible. (3) The tokenizer boot path at handler.py:268-269 `if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None: tokenizer.pad_token_id = tokenizer.eos_token_id` is a one-shot init; no test exercises it because the test uses `_spy_translate_all` and never builds a real processor. (4) `_translate_all` is fed raw `chunks` whose `text` field is user-controlled ePUB text; a test that proves `text=None` (not str) is rejected by `_normalize_chunk` would be a useful guard.
+
+**Why it matters.** This handler runs in the RunPod serverless runtime — every uncaught exception translates to a billable cold-start. The token-billing and the silent-drop-batch-1 cases are the most operationally expensive untested paths in the new worker layer. A regression that allowed `text` to be a non-str (e.g. a dict the ePUB parser handed back) would crash inside `tokenizer(text=...)` deep in the model.generate call.
+
+**Recommendation.** Add 4 tests: (1) `test_handle_translate_batch_raises_propagates_as_workererror` — patch `_translate_batch` to raise `RuntimeError("CUDA OOM")`; assert `WorkerError` (or `RuntimeError`) propagates and no artifact is built; (2) `test_handle_partial_batch_failure_does_not_drop_successful_batch` — patch `_translate_batch` to raise on the second call only; assert behavior matches the chosen contract (re-raise or partial-output); (3) `test_translate_batch_initializes_pad_token_id_when_none` — instantiate a fake processor whose `tokenizer.pad_token_id is None` and `tokenizer.eos_token_id = 0`; call `_translate_batch` with a tiny batch; assert `tokenizer.pad_token_id == 0` after the call; (4) `test_handle_chunk_text_not_str_raises` — pass `chunks=[{"chapter_id":"ch1","sequence_id":0,"text":None}]`; assert `WorkerError` with 'text is required' (or whichever message the existing `_normalize_chunk` emits).
+
+**Verification.** Run `just test workers/translategemma/tests/test_handler.py`; the 4 new tests should pass without torch/transformers installed (use mock processor / spy).
+
+### TEST-015 — `src/acheron/tls.py` (new top-level module, 114 lines) has no direct unit tests — only subprocess happy-path coverage
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: src/acheron/tls.py
+    lines: 1-114
+  - path: tests/integration/test_tls.py
+    lines: 176-205
+related: [SEC-011, OBS-011]
+```
+
+**Issue.** The new top-level `src/acheron/tls.py` module is the single source of TLS configuration for both the orchestrator and the worker SDK (per the moved-out-of-shell import-linter comment at line 1-6). It exports 5 public functions: `uvicorn_ssl_kwargs`, `grpc_server_credentials`, `resolve_ca_path`, `grpc_channel_credentials`, `grpc_channel`, plus the private `_require_pair` and `_allow_insecure` helpers. The 3 tests in `tests/integration/test_tls.py` (now unblocked in this delta — `test_orchestrator_health_over_https`, `test_http_worker_registers_over_https`, `test_grpc_worker_registers`) spawn orchestrator + 2 stub subprocesses with a real CA bundle from `scripts/generate_dev_certs.py` and only assert the happy path: 200 on `/health`, worker ID present in `/workers`. They do NOT exercise: (1) `_require_pair` raising `AcheronError` when only `ACHERON_TLS_CERT_FILE` is set without the key, or vice versa (tls.py:35-37); (2) `uvicorn_ssl_kwargs` logging the WARNING when both env vars are unset and `ACHERON_ALLOW_INSECURE != "1"` (tls.py:50-54); (3) `uvicorn_ssl_kwargs` returning `{}` silently when both are unset and `ACHERON_ALLOW_INSECURE=1`; (4) `resolve_ca_path` falling back from `ACHERON_TLS_CA_FILE` to `SSL_CERT_FILE` (tls.py:79); (5) `grpc_server_credentials` / `grpc_channel_credentials` reading a malformed PEM (e.g. truncated, or a public-key file passed where a cert is expected); (6) `grpc_channel` logging the insecure-fallback WARNING (tls.py:107-112). A regression that dropped the `_allow_insecure()` guard, the warning message, or the SSL_CERT_FILE fallback would be invisible to the integration tests because they always set `ACHERON_ALLOW_INSECURE=1` (test_tls.py:95).
+
+**Why it matters.** This module is a security boundary: SEC-014 / SEC-016 (registration token in cleartext) and SEC-011 (dev-default registration token) are all wired through `orchestrator_url` which the worker connects to over `grpc_channel()`. If a future refactor removes the warning log on insecure fallback, a production deploy with `ACHERON_TLS_CA_FILE` unset would silently send the auto-generated 32-char hex registration token in cleartext (SEC-008 widens). The `_require_pair` symmetric-raise is the only thing preventing a half-configured TLS server from booting with a cert and no key (or vice versa).
+
+**Recommendation.** Add `tests/worker_sdk/test_tls.py` (or a new `tests/core/test_tls.py`) with 8 small tests using `monkeypatch.setenv` and `tmp_path` PEM fixtures: (1) `test_require_pair_raises_when_only_cert_set`; (2) `test_require_pair_raises_when_only_key_set`; (3) `test_require_pair_returns_none_when_both_unset`; (4) `test_uvicorn_ssl_kwargs_returns_empty_dict_with_warning_when_insecure`; (5) `test_uvicorn_ssl_kwargs_returns_empty_dict_silently_when_allow_insecure`; (6) `test_resolve_ca_path_falls_back_from_acheron_tls_ca_file_to_ssl_cert_file`; (7) `test_grpc_server_credentials_raises_on_malformed_pem`; (8) `test_grpc_channel_logs_warning_when_no_ca_and_no_allow_insecure`. For the `caplog` based tests use pytest's `caplog` fixture.
+
+**Verification.** Run `just test tests/worker_sdk/test_tls.py` (or wherever the new file lives); the 8 tests should pass without requiring the gRPC runtime to be exercised (use `caplog.records` to assert warning messages and `monkeypatch.setenv("ACHERON_TLS_CA_FILE", str(bad_pem))` for the malformed-PEM case).
+
+### TEST-016 — `workers/translategemma/tests/test_handler.py:235-241` class-level mutation anti-pattern — second instance of open TEST-012
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: workers/translategemma/tests/test_handler.py
+    lines: 223-269
+related: [TEST-012]
+```
+
+**Issue.** `TestTranslateAll.test_translate_all_chunks_into_batches_of_max_batch_size` and the next test do `original = TranslateGemmaRunpodHandler._translate_batch; TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]` BEFORE the try block. If pytest-xdist worker crashes or the test is interrupted between the assignment and the `try`, the class's `_translate_batch` is left pointing at the test's spy. The `try/finally` only covers the `h._translate_all(...)` call, not the assignment. This is the same anti-pattern documented in open TEST-012 (tests/shell/test_step_handler.py:336-369) for `default_worker_factory` — second instance. The same test file's `_spy_translate_all` helper at line 60-70 already uses the correct `monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_all", _spy)` pattern, so the inconsistency is also a clarity issue within the same file.
+
+**Why it matters.** Class-level state mutation in tests is the most common pytest-xdist silent-leak pattern. A crash in any of the 2 affected tests leaves the handler class broken for every subsequent test in the same process. The `monkeypatch.setattr` pattern (used elsewhere in the same file) is the documented project standard and auto-restores on test teardown.
+
+**Recommendation.** Replace the manual class-level mutation with `monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_batch", _spy)` (where `handler_module = workers.translategemma.handler`). Drop the `# type: ignore[method-assign]` comments. Optionally accept `monkeypatch` as a test parameter to get the auto-restore.
+
+**Verification.** Run `just test workers/translategemma/tests/test_handler.py::TestTranslateAll` repeatedly under load (e.g. `pytest --count=20 -x`) to confirm no class state leak; observe that the `try/finally` block can be deleted.
+
+### TEST-017 — `tests/integration/test_tls.py` hardcodes 3 repo-relative paths via `Path(__file__).resolve().parents[2]` — new brittleness introduced in this delta
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: tests/integration/test_tls.py
+    lines: 73, 97-99, 109, 112, 121
+related: [TEST-004, DOC-005]
+```
+
+**Issue.** The delta rewires the test_tls.py subprocess env vars from `WORKER_TYPE`/`WORKER_ENDPOINT`/`ORCHESTRATOR_URL`/`WORKER_PORT` (env-only, no filesystem dependence) to `WORKER_CONFIG=str(repo_root / "stubs" / "tts_local_stub" / "worker.yaml")` and the parallel line 121 path for `tts_grpc_stub`. `repo_root` is computed at line 109 as `Path(__file__).resolve().parents[2]` — a hardcoded 2-level parent traversal. The same file also references `scripts/generate_dev_certs.py` (line 73) and `src`/`stubs` for `PYTHONPATH` (lines 97-99) the same way. AGENTS.md hard rule: "Tests shouldn't use repo configuration files or depend on hardcoded project paths, as that makes for brittle tests. Use fixtures (such as conftest modules) and parameterization." Moving `tests/integration/test_tls.py` to a subdirectory (e.g. `tests/integration/tls/`) or moving `stubs/tts_*_stub/worker.yaml` to a shared fixtures dir would silently break the test at the subprocess Popen call. The pre-delta xfailed version had no such file-path dependencies (env vars only).
+
+**Why it matters.** This is the only test in `tests/integration/` that hardcodes repo paths to specific worker.yaml files (verified by `grep -rn 'repo_root\|Path(__file__).resolve().parents' tests/integration/`). It widens the brittleness pattern from one env-config-dependent test family (test_data_dir.py, test_main.py) into a path-dependent test family that breaks on stub relocation. The pattern is exactly what AGENTS.md forbids.
+
+**Recommendation.** Move the `repo_root` computation into a `tests/integration/conftest.py` fixture (`@pytest.fixture(scope="session") def repo_root() -> Path: ...`) so a single fixture source of truth is used. Better: copy `stubs/tts_*_stub/worker.yaml` into `tmp_path` per-test and point `WORKER_CONFIG` at the copy, so the test is hermetic. At minimum, add a comment at line 109 explaining the parent-traversal invariant so future refactors don't silently break it.
+
+**Verification.** Run `just test tests/integration/test_tls.py`; then move `tests/integration/test_tls.py` to `tests/integration/tls/test_orchestrator_health_over_https.py` and observe the fixture-dependent version still passes while the path-hardcoded version would break.
+
+## DATA (8c delta)
+
+### DATA-009 — `tests/core/test_planner.py:TestValidateChunkingFitsWorkers` has no boundary-condition test (==, one-over, max_input_tokens=0, empty caps)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_verified_at:
+  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  date: 2026-06-24
+fixed_in: []
+files:
+  - path: tests/core/test_planner.py
+    lines: 209-280
+  - path: src/acheron/core/planner.py
+    lines: 92-128
+related: [CORR-026, ARCH-019, CFG-009]
+```
+
+**Issue.** The 9 new tests in `TestValidateChunkingFitsWorkers` cover the function's interior well (within-limit, exceeds-limit for TTS and TRANSLATION, unbounded workers, non-text workers, chars_per_token variants, error-message contents, invalid chars_per_token=0 ValueError, multi-worker check). The 4 most production-relevant boundary cases are missing: (1) the equality case `chunking_max_length == max_input_tokens * chars_per_token` — at `max_input_tokens=2048, chars_per_token=4` this is `chunking_max_length=8192` which yields `estimated_tokens=2048`, the comparison `2048 > 2048` is False, so the function should NOT raise. (2) the first-failing-over case: at the same params, `chunking_max_length=8196` yields `2049 > 2048` and SHOULD raise. (3) `max_input_tokens=0` is a degenerate semantic: with `chunking_max_length < chars_per_token`, `estimated_tokens=0`, `0 > 0` is False, so the function silently permits any non-trivial input against a 0-token worker. (4) empty capabilities tuple `caps=()` — the function iterates zero times and returns without raising; semantically correct but not asserted. None of these are covered. The current tests use `max_input_tokens=2048` and `chunking_max_length=9000` (far over the limit) and never probe the boundary.
+
+**Why it matters.** The boundary is the most common production hit: an operator sets `chunking_max_length=8192` to match `max_input_tokens=2048 * chars_per_token=4` thinking it's safe, and the function returns OK. The first-failing value is 8196 (integer-division floor), not 8193 — a regression that switched the comparison to `>=` would fail at 8192 instead of 8196, breaking the boundary contract. The `max_input_tokens=0` case is a misconfiguration that a future tightening of the function (e.g. `if max_input_tokens <= 0: raise`) would silently change the production reject-set.
+
+**Recommendation.** Add 4 tests in `TestValidateChunkingFitsWorkers`: (1) `test_passes_at_exact_equality_boundary` — caps `(max_input_tokens=2048,)`, `chunking_max_length=8192, chars_per_token=4` → no raise; (2) `test_raises_one_over_boundary` — same caps, `chunking_max_length=8196, chars_per_token=4` → `ChunkingTooLongForWorkerError`; (3) `test_zero_max_input_tokens_silently_permits_small_input` — caps `(max_input_tokens=0,)`, `chunking_max_length=1, chars_per_token=4` → no raise (documents the degenerate semantic); (4) `test_empty_capabilities_is_noop` — caps `()`, `chunking_max_length=10_000_000` → no raise.
+
+**Verification.** Run `just test tests/core/test_planner.py::TestValidateChunkingFitsWorkers`; the 4 new tests pass with the current implementation. The first two would catch a regression that changes `>` to `>=` in planner.py:121.
 
