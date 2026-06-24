@@ -193,7 +193,7 @@ class Orchestrator:
                 self._settings.orchestrator.registration_token = token
                 try:
                     token_file.write_text(token, encoding="utf-8")
-                    logger.info("Generated and persisted registration token: %s", token)
+                    logger.info("Generated and persisted registration token to %s", token_file)
                 except OSError as exc:
                     logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
 

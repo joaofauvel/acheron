@@ -506,6 +506,29 @@ class TestOrchestrator:
         await orch.close()
         await orch.shutdown()
 
+    @pytest.mark.asyncio
+    async def test_orchestrator_does_not_log_registration_token(self, tmp_path, caplog) -> None:  # type: ignore[no-untyped-def]
+        """SEC-008: the auto-generated registration token must not appear in any log line."""
+        import logging
+
+        from acheron.shell.config import OrchestratorSettings
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+
+        with caplog.at_level(logging.INFO, logger="acheron.shell.orchestrator"):
+            await orch.start()
+
+        token = orch.settings.orchestrator.registration_token
+        assert token is not None
+        for record in caplog.records:
+            assert token not in record.getMessage(), (
+                f"registration token leaked in log at {record.levelname}: {record.getMessage()}"
+            )
+
+        await orch.close()
+        await orch.shutdown()
+
 
 @pytest.mark.asyncio
 async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) -> None:  # type: ignore[no-untyped-def]
