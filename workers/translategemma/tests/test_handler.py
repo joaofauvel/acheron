@@ -59,7 +59,7 @@ def _mark_loaded(h: Any) -> None:
 
 def _spy_translate_all(monkeypatch: pytest.MonkeyPatch, translations: list[str]) -> None:
     """Patch _translate_all on a handler instance to return canned translations."""
-    from workers import translategemma
+    from workers.translategemma import handler as handler_module
 
     def _spy(self: Any, chunks: list[dict[str, Any]], src: str, tgt: str) -> list[str]:
         if len(translations) != len(chunks):
@@ -67,7 +67,7 @@ def _spy_translate_all(monkeypatch: pytest.MonkeyPatch, translations: list[str])
             raise AssertionError(msg)
         return list(translations)
 
-    monkeypatch.setattr(translategemma.handler.TranslateGemmaRunpodHandler, "_translate_all", _spy)
+    monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_all", _spy)
 
 
 class TestHandleValidation:
@@ -115,9 +115,7 @@ class TestHandleValidation:
         h = _handler()
         _mark_loaded(h)
         chunks = [{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]
-        job = Job(
-            job_id="j", job_type=WorkerType.TRANSLATION, payload={"target_language": "es"}, chapter_id="ch1"
-        )
+        job = Job(job_id="j", job_type=WorkerType.TRANSLATION, payload={"target_language": "es"}, chapter_id="ch1")
         with pytest.raises(WorkerError, match="source_language is required"):
             await h.handle(job, input=_build_input(chunks))
 
@@ -189,9 +187,7 @@ class TestHandleHappyPath:
         assert out == []
 
     @pytest.mark.asyncio
-    async def test_handle_single_chunk_produces_one_artifact(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_handle_single_chunk_produces_one_artifact(self, monkeypatch: pytest.MonkeyPatch) -> None:
         h = _handler()
         _mark_loaded(h)
         _spy_translate_all(monkeypatch, ["hola"])
@@ -239,9 +235,7 @@ class TestTranslateAll:
         original = TranslateGemmaRunpodHandler._translate_batch
         TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
         try:
-            chunks = [
-                {"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(10)
-            ]
+            chunks = [{"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(10)]
             out = h._translate_all(chunks, "en", "es")
         finally:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
@@ -267,9 +261,7 @@ class TestTranslateAll:
         original = TranslateGemmaRunpodHandler._translate_batch
         TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
         try:
-            chunks = [
-                {"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(3)
-            ]
+            chunks = [{"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(3)]
             out = h._translate_all(chunks, "en", "es")
         finally:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
