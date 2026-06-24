@@ -116,6 +116,66 @@ class TestOrchestrator:
             await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
     @pytest.mark.asyncio
+    async def test_submit_job_chunking_too_long_raises(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """When chunking max_chunk_length exceeds a worker's max_input_tokens, fail fast.
+
+        Uses a tts_caps variant with max_input_tokens=10; with chars_per_token=1 and
+        max_chunk_length=100, 100 > 10 must raise.
+        """
+        from acheron.core.models import WorkerCapabilities, WorkerType
+        from tests.shell.conftest import translation_caps
+
+        bounded_caps = WorkerCapabilities(
+            worker_type=WorkerType.TTS,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"en"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+            max_input_tokens=10,
+        )
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-bounded", "http://127.0.0.1:1", "http", bounded_caps)
+        await reg.register(
+            "trans-1", "http://127.0.0.1:2", "http", translation_caps()
+        )
+        settings = Settings(chars_per_token=1)
+        settings.workers.chunking.max_chunk_length = 100
+        settings.orchestrator.data_dir = tmp_path
+        orch = Orchestrator(
+            reg, PlanCache(tmp_path), _success_handler, settings=settings
+        )
+        await orch.start()
+
+        request = EpubRequest(
+            source_path="/input/book.epub", source_language="en", target_language="en"
+        )
+        with pytest.raises(InvalidLanguagePathError, match="max_input_tokens=10"):
+            await orch.submit_job(request, ExecutorStrategy.STREAMING)
+
+    @pytest.mark.asyncio
+    async def test_submit_job_chunking_fits(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """When the chunking length fits, submit_job succeeds."""
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        settings = Settings(chars_per_token=4)
+        settings.workers.chunking.max_chunk_length = 250
+        settings.orchestrator.data_dir = tmp_path
+        orch = Orchestrator(
+            reg, PlanCache(tmp_path), _success_handler, settings=settings
+        )
+        await orch.start()
+
+        request = EpubRequest(
+            source_path="/input/book.epub", source_language="en", target_language="es"
+        )
+        tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
+        assert tracked.plan is not None
+
+    @pytest.mark.asyncio
     async def test_get_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
