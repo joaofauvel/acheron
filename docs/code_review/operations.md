@@ -219,16 +219,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: b1d1d05
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 207-215
+    lines: 206-214, 262-264, 268-356
   - path: src/acheron/shell/orchestrator.py
-    lines: 258-260
+    lines: 206-214, 262-264, 268-356
   - path: src/acheron/shell/orchestrator.py
-    lines: 264-352
+    lines: 206-214, 262-264, 268-356
 related: [OBS-004]
 ```
 
@@ -274,8 +274,8 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: b1d1d05
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -584,12 +584,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: b1d1d05
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 324-350
+    lines: 328-353
 related: [OBS-004, SEC-010, SEC-012]
 ```
 
@@ -629,14 +629,14 @@ related: []
 ### SEC-008 — Auto-generated registration token is logged in plaintext at startup
 
 ```yaml
-status: fixed
+status: verified
 severity: critical
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: b1d1d05
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: [b1d1d05]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 196
@@ -659,12 +659,12 @@ severity: high
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: b1d1d05
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 182-198
+    lines: 181-198
 related: [SEC-001, SEC-008, SEC-011]
 ```
 
@@ -1139,12 +1139,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: b1d1d05
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 245-249
+    lines: 244-251
 related: [TEST-015, ARCH-019, CFG-009]
 ```
 

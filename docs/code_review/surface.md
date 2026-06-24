@@ -353,7 +353,7 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: b1d1d05
   date: 2026-06-24
 fixed_in: []
 files:

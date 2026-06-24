@@ -143,8 +143,8 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: b1d1d05
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -168,8 +168,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: b1d1d05
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -886,7 +886,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: b1d1d05
   date: 2026-06-24
 fixed_in: []
 files:
