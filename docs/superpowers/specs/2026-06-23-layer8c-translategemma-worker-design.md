@@ -263,6 +263,11 @@ def validate_chunking_fits_workers(
     Pure: no I/O, no global state. The caller is responsible for passing fresh
     ``capabilities`` and the chunking step's config.
     """
+    from acheron.core.errors import ChunkingTooLongForWorkerError  # noqa: PLC0415
+
+    if chars_per_token <= 0:
+        msg = f"chars_per_token must be > 0, got {chars_per_token}"
+        raise ValueError(msg)
     text_input_types = (WorkerType.TRANSLATION, WorkerType.TTS)
     for step_type in text_input_types:
         for c in capabilities:
@@ -277,7 +282,6 @@ def validate_chunking_fits_workers(
                     f"at chars_per_token={chars_per_token})"
                 )
                 raise ChunkingTooLongForWorkerError(msg)
-            break
 ```
 
 `compile_plan` keeps its existing shape — no `chunking_max_length`
@@ -292,15 +296,16 @@ def submit_job(request, ...):
     plan = compile_plan(request, strategy, caps)            # language path
     validate_chunking_fits_workers(                         # length budget
         caps,
-        chunking_max_length=settings.chunking.max_chunk_length,
-        chars_per_token=settings.chars_per_token,
+        chunking_max_length=self._settings.workers.chunking.max_chunk_length,
+        chars_per_token=self._settings.chars_per_token,
     )
     # ... persist + dispatch ...
 ```
 
-`Settings.chars_per_token: int = 4` defaults to 4. The
-`chunking.max_chunk_length` already exists on the chunking local-handler
-config — the orchestrator reads it from there.
+`Settings.chars_per_token: int = 4` defaults to 4 and lives at the top
+level of `Settings`. The `chunking.max_chunk_length` already exists
+on the chunking local-handler config (`settings.workers.chunking.`) —
+the orchestrator reads it from there.
 
 ### `HttpWorker.execute()` — match-based dispatch
 
@@ -334,6 +339,10 @@ The new helper `_execute_with_upstream_input` factors out the ASR /
 TRANSLATION / TTS arms:
 
 ```python
+# `Callable` import added in 8c for `_execute_with_upstream_input`.
+from collections.abc import Callable
+
+
 async def _execute_with_upstream_input(
     self,
     job: Job,
@@ -535,8 +544,6 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         model_id = self._settings.model_id or _MODEL_ID_DEFAULT
         metadata: dict[str, JsonValue] = {
             "health_provider": "runpod",
-            "max_input_tokens": _MAX_INPUT_TOKENS,
-            "max_batch_size": _MAX_BATCH_SIZE,
         }
         return WorkerCapabilities(
             worker_type=WorkerType.TRANSLATION,
@@ -602,8 +609,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
 
         chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])
         if not chunks_json_bytes:
-            msg = "Empty chunks.json input"
-            raise WorkerError(msg)
+            return []
         try:
             chunks_raw = json.loads(chunks_json_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -613,7 +619,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             msg = "chunks.json must be a JSON array of chunk dicts"
             raise WorkerError(msg)
 
-        chunks = [_normalize_chunk(c, src, tgt) for c in chunks_raw]
+        chunks = [_normalize_chunk(c) for c in chunks_raw]
         if not chunks:
             return []
 
@@ -681,6 +687,10 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             self._processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
             for m in messages_per_chunk
         ]
+        # Gemma 3 variants don't always set pad_token_id; fall back to eos.
+        tokenizer = self._processor.tokenizer
+        if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+            tokenizer.pad_token_id = tokenizer.eos_token_id
         inputs = self._processor(
             text=prompts,
             return_tensors="pt",
@@ -705,12 +715,12 @@ def _require_str(payload: dict[str, JsonValue], key: str) -> str:
     """Read a required string field from a job payload; raise WorkerError on missing/wrong type."""
     v = payload.get(key)
     if not isinstance(v, str):
-        msg = f"{key} is required and must be a str (got {type(v).__name__ if v is not None else 'missing'})"
+        msg = f"{key} is required and must be a str (got {type(v).__name__})"
         raise WorkerError(msg)
     return v
 
 
-def _normalize_chunk(c: object, src: str, tgt: str) -> dict[str, Any]:
+def _normalize_chunk(c: object) -> dict[str, Any]:
     """Validate and normalise a single chunk dict from chunks.json.
 
     Requires: ``chapter_id`` (str), ``sequence_id`` (int), ``text`` (str).
@@ -728,7 +738,6 @@ def _normalize_chunk(c: object, src: str, tgt: str) -> dict[str, Any]:
     if "text" not in c or not isinstance(c["text"], str):
         msg = "chunk.text is required (str)"
         raise WorkerError(msg)
-    _ = src, tgt  # reserved for future per-chunk overrides
     return {"chapter_id": c["chapter_id"], "sequence_id": c["sequence_id"], "text": c["text"]}
 ```
 
@@ -1317,9 +1326,14 @@ jobs:
     (4 + 4 + 2).
   - Per-chunk chapter_id sanitisation (delegates to `safe_chapter_id`;
     rejects `..`, `/`, `\`, NUL).
-  - `do_sample=False` is asserted (greedy decoding).
+  - `do_sample=False` is asserted (greedy decoding): spy on
+    `model.generate` and assert the kwargs.
   - `_translate_batch` properly truncates over-length inputs (mock the
-    processor's `max_length` enforcement).
+    processor's `max_length` enforcement): assert a chunk with
+    `text` longer than `_MAX_INPUT_TOKENS` is truncated, not errored.
+  - `pad_token_id` fallback: when the processor's tokenizer has
+    `pad_token_id is None`, the handler sets it to `eos_token_id` and
+    the call succeeds.
 - **`test_runpod_entrypoint.py`** — boot smoke test (mirrors 8b's).
 - **`test_normalize_chunk.py`** (if `_normalize_chunk` is private
   but tested) — boundary cases for missing fields.
@@ -1328,8 +1342,10 @@ jobs:
 
 - **`tests/worker_sdk/test_cloud.py`** — extend:
   - `RunPodForwarderHandler` forwards `Input` for translation jobs
-    (mirrors ASR test from 8b). Asserts the base64-encoded
-    `input_chunks` is on the RunPod `/run` wire.
+    (mirrors ASR test from 8b). Asserts the base64-encoded `Input`
+    bytes are on the RunPod `/run` wire (the existing 8b wire key
+    `input_audio` is reused for the 8c `BytesInput`; the field is
+    content-type agnostic at the wire level).
   - `make_runpod_handler` reconstructs `Input` from the runpod wire
     JSON and passes it to `TranslateGemmaRunpodHandler.handle()`.
 
