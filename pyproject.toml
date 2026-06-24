@@ -135,8 +135,9 @@ reportMissingImports = false
 
 [tool.pytest.ini_options]
 xfail_strict = true
-addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80 --dist=loadgroup -n auto"
+addopts = "--strict-markers --cov=acheron --cov-report=term-missing --cov-fail-under=80 --dist=loadgroup -n auto --import-mode=importlib"
 testpaths = ["tests", "stubs/tests", "dashboard/tests", "workers/qwen3tts/tests", "workers/granite_speech/tests", "workers/_shared/tests"]
+pythonpath = ["."]
 filterwarnings = [
     "ignore::DeprecationWarning:websockets.legacy",
     "ignore::DeprecationWarning:uvicorn.protocols.websockets",
