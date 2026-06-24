@@ -5,7 +5,7 @@
 
 worker_id: "translategemma-edge"
 orchestrator_url: "http://orchestrator:8000"
-listen_port: 8009
+listen_port: 8001
 execution_timeout_s: 1800
 
 handler: "acheron.worker_sdk.cloud:RunPodForwarderHandler"

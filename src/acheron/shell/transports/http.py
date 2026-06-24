@@ -31,9 +31,6 @@ from acheron.core.models import (
 from acheron.shell.cache import StepCache
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
 _metrics_adapter = TypeAdapter(JobMetrics)

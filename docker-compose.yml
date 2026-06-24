@@ -235,7 +235,7 @@ services:
       context: .
       dockerfile: Dockerfile.edge
     ports:
-      - "8009:8009"
+      - "8009:8001"
     environment:
       WORKER_NAME: translategemma
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
@@ -244,7 +244,7 @@ services:
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID:-}
       ACHERON_WORKER__PRICE_SOURCE: ${TRANSLATEGEMMA_PRICE_SOURCE:-runpod}
       ACHERON_WORKER__SECURE_CLOUD: "false"
-      ACHERON_WORKER__LISTEN_PORT: "8009"
+      ACHERON_WORKER__LISTEN_PORT: "8001"
       ACHERON_WORKER__MODEL_ID: ${TRANSLATEGEMMA_MODEL_ID:-google/translategemma-12b-it}
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
@@ -254,7 +254,7 @@ services:
         - "CMD-SHELL"
         - "python"
         - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8009/health').read()"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()"
       interval: 30s
       timeout: 5s
       retries: 3

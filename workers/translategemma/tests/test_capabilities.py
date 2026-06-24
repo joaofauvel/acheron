@@ -26,7 +26,7 @@ def handler() -> Any:
     )
 
 
-_LANGS_55 = frozenset(
+_LANGS_69 = frozenset(
     {
         "af",
         "am",
@@ -105,10 +105,10 @@ def test_capabilities_worker_type_is_translation(handler: Any) -> None:
     assert handler.capabilities().worker_type == WorkerType.TRANSLATION
 
 
-def test_capabilities_supported_languages_55(handler: Any) -> None:
+def test_capabilities_supported_languages_69(handler: Any) -> None:
     caps = handler.capabilities()
-    assert caps.supported_languages_in == _LANGS_55
-    assert caps.supported_languages_out == _LANGS_55
+    assert caps.supported_languages_in == _LANGS_69
+    assert caps.supported_languages_out == _LANGS_69
 
 
 def test_capabilities_supported_formats(handler: Any) -> None:
@@ -130,9 +130,12 @@ def test_capabilities_model_source(handler: Any) -> None:
     assert caps.model_source == "huggingface:google/translategemma-12b-it"
 
 
-def test_capabilities_metadata(handler: Any) -> None:
-    caps = handler.capabilities()
-    assert caps.metadata["health_provider"] == "runpod"
+def test_capabilities_metadata_defaults_empty(handler: Any) -> None:
+    """Static capabilities() does not include health_provider; the SDK's
+    `_registration_caps` enriches it from settings at registration time
+    (matches the qwen3tts pattern).
+    """
+    assert handler.capabilities().metadata == {}
 
 
 def test_capabilities_custom_model_id() -> None:

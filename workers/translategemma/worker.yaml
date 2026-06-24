@@ -7,7 +7,7 @@ worker_id: "translategemma-1"
 # Default to TLS — the orchestrator serves HTTPS in the default compose stack
 # (Layer 7c). The compose service overrides via env at deploy time.
 orchestrator_url: "https://orchestrator:8000"
-listen_port: 8009
+listen_port: 8001
 execution_timeout_s: 1800
 
 # Pricing — RunPod GraphQL API is the default. The GPU type is NOT a config

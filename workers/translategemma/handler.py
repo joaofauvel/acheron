@@ -123,9 +123,6 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static description. No I/O — sync."""
         model_id = self._settings.model_id or _MODEL_ID_DEFAULT
-        metadata: dict[str, JsonValue] = {
-            "health_provider": "runpod",
-        }
         return WorkerCapabilities(
             worker_type=WorkerType.TRANSLATION,
             supported_languages_in=_SUPPORTED_LANGS,
@@ -136,7 +133,6 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             batch_capable=True,
             max_input_tokens=_MAX_INPUT_TOKENS,
             model_source=f"huggingface:{model_id}",
-            metadata=metadata,
         )
 
     async def startup(self) -> None:
@@ -279,9 +275,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             max_length=_MAX_INPUT_TOKENS,
         ).to("cuda:0")
         with torch.inference_mode():
-            outputs = self._model.generate(
-                **inputs, max_new_tokens=_MAX_NEW_TOKENS, do_sample=False
-            )
+            outputs = self._model.generate(**inputs, max_new_tokens=_MAX_NEW_TOKENS, do_sample=False)
         decoded: list[str] = []
         for i in range(len(batch)):
             prompt_len = int(inputs["attention_mask"][i].sum())

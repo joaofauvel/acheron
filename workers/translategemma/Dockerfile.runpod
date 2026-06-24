@@ -12,12 +12,11 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 
-# OS deps: git + build-essential (for accelerate's optional bits), curl is in
-# the slim base already. No libsndfile / ffmpeg needed: TranslateGemma is
-# text-only.
+# OS deps: git (for HF hub snapshot fallback) only. No libsndfile / ffmpeg /
+# build-essential needed: TranslateGemma is text-only; accelerate and
+# transformers are pure-Python wheels.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
-        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # PyTorch first — matches the CUDA version the host passes via --gpus.

@@ -9,7 +9,7 @@ lint-strict:
 
 # Run static type analysis
 type-check:
-    uv run mypy src/ tests/ workers/qwen3tts/ workers/granite_speech/ workers/_shared/
+    uv run mypy src/ tests/ workers/qwen3tts/ workers/granite_speech/ workers/translategemma/ workers/_shared/
 
 # Run Python unit tests
 test:

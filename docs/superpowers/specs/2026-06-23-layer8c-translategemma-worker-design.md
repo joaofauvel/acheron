@@ -349,6 +349,7 @@ async def _execute_with_upstream_input(
     *,
     upstream_step: str,
     content_type_predicate: Callable[[str], bool],
+    form_field: str,
 ) -> JobResult:
     """Load the upstream step's outputs from StepCache and POST multipart to the worker.
 
@@ -356,8 +357,19 @@ async def _execute_with_upstream_input(
     outputs. We find the first ``OutputFile`` whose ``content_type`` matches
     ``content_type_predicate`` and POST ``multipart/form-data`` with one
     ``application/json`` part (the ``ExecuteRequest`` envelope) + one binary
-    part (the upstream artifact). The worker's response is ``multipart/mixed``
-    and is parsed the same way as the legacy JSON path.
+    part (the upstream artifact) under ``form_field``. The worker's response
+    is ``multipart/mixed`` and is parsed the same way as the legacy JSON path.
+
+    ASR uses ``upstream_step="extract"``,
+    ``content_type_predicate=lambda c: c.startswith("audio/")``, and
+    ``form_field="audio"``. TRANSLATION and TTS use
+    ``upstream_step="chunk"``,
+    ``content_type_predicate=lambda c: c == "application/json"``, and
+    ``form_field="chunks"``. The form field name is documented for
+    symmetry with the worker's `multipart/form-data` part name; the
+    SDK's multipart request parser keys off ``content_type``, not
+    field name, so the field name is a convention rather than a
+    contract.
     """
     plan_job_id = job.job_id.rsplit("-", 1)[0]
     try:
@@ -385,7 +397,7 @@ async def _execute_with_upstream_input(
 
     form = {
         "request": (None, json.dumps(_job_to_dict(job)).encode("utf-8"), "application/json"),
-        "input": (
+        form_field: (
             artifact_path.name,
             await asyncio.to_thread(artifact_path.read_bytes),
             artifact.content_type,
@@ -449,8 +461,9 @@ per-step `cost_estimate` (RunPod-derived) + `cost_basis` exactly like
 safetensors, Gemma terms).
 
 - Built on Gemma 3, fine-tuned for translation via SFT + RL
-  distillation from Gemini. 55 languages (ISO 639-1 alpha-2 or
-  regionalized `en_US` / `de-DE`).
+  distillation from Gemini. 69 languages (ISO 639-1 alpha-2; the
+  full set in the v1 implementation is listed in
+  `workers/translategemma/handler.py:_SUPPORTED_LANGS`).
 - Model class: `AutoModelForImageTextToText` (it's a VLM in HF
   taxonomy, not pure causal LM). Processor: `AutoProcessor`.
 - 2K-token input context (hardcoded; the model's stated limit).
@@ -514,7 +527,7 @@ _MODEL_ID_DEFAULT = "google/translategemma-12b-it"
 _MAX_INPUT_TOKENS = 2048
 _MAX_BATCH_SIZE = 4
 _MAX_NEW_TOKENS = 1024
-# All 55 ISO 639-1 alpha-2 codes TranslateGemma supports. v1 advertises
+# All 69 ISO 639-1 alpha-2 codes TranslateGemma supports. v1 advertises
 # the full set so the orchestrator can plan any pair; language-path
 # validation at plan compile time still rejects pairs outside
 # SUPPORTED_LANGUAGES.
@@ -945,9 +958,7 @@ offline (`HF_HUB_OFFLINE=1`) and never re-downloads.
     "batch_capable": true,
     "max_input_tokens": 2048,
     "model_source": "huggingface:google/translategemma-12b-it",
-    "metadata": {
-      "health_provider": "runpod"
-    }
+    "metadata": {}
   }
 }
 ```
@@ -955,11 +966,12 @@ offline (`HF_HUB_OFFLINE=1`) and never re-downloads.
 `max_input_tokens` is a first-class field on `WorkerCapabilities` (8c);
 `max_batch_size` is intentionally NOT a config knob or metadata field
 (YAGNI — the deployer never overrides the hardcoded `_MAX_BATCH_SIZE = 4`).
-`health_endpoint_id` is added by the SDK layer at registration time
-(`app._registration_caps`) from `settings.runpod_endpoint_id`; the
-worker's static `capabilities()` does not include it.
+`health_provider` and `health_endpoint_id` are added by the SDK layer
+at registration time (`app._registration_caps`) from settings; the
+worker's static `capabilities()` does not include them (matches the
+qwen3tts pattern).
 
-The full 55-language set is advertised so the orchestrator can plan any
+The full 69-language set is advertised so the orchestrator can plan any
 pair; language-path validation at plan compile time still rejects
 pairs outside `SUPPORTED_LANGUAGES = {en, es, fr, de}` (the
 orchestrator's current set). The `max_input_tokens` field surfaces
@@ -974,7 +986,7 @@ be one of the orchestrator's `SUPPORTED_LANGUAGES = {en, es, fr, de}`
 set (e.g., `zh → en` translation) are rejected at plan compilation
 with the existing `InvalidLanguagePathError` — no GPU time is spent,
 per the design spec's "Invalid language path" row in the
-error-handling table. The worker's 55-language capability is latent
+error-handling table. The worker's 69-language capability is latent
 and unused in v1.
 
 ## The Qwen3TTS Patch (8c retroactive)
@@ -1304,12 +1316,15 @@ jobs:
 
 - **`test_capabilities.py`** — `capabilities()` shape:
   `worker_type=TRANSLATION`;
-  `supported_languages_in == supported_languages_out == 55-language
+  `supported_languages_in == supported_languages_out == 69-language
   set`; `supported_formats_in == {text}`;
   `supported_formats_out == {text}`;
   `max_input_tokens == 2048`; `batch_capable=True`;
   `model_source="huggingface:google/translategemma-12b-it"`;
-  `metadata["health_provider"] == "runpod"`.
+  `metadata == {}` (the SDK's `_registration_caps` adds
+  `health_provider` + `health_endpoint_id` at registration time, so
+  the static capabilities don't carry them — matches the qwen3tts
+  pattern).
   - Custom `model_id` setting: `capabilities().model_source` reflects
     the override.
 - **`test_handler.py`** — `handle()` with a fake processor + fake
