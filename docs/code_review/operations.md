@@ -1073,19 +1073,17 @@ related: [SEC-011, SEC-018]
 ### SEC-023 — Translategemma edge `phantom_handler` import path requires `workers/translategemma/handler.py` on PYTHONPATH, but `Dockerfile.edge` does not copy it — edge service is broken by design
 
 ```yaml
-status: open
+status: fixed
 severity: high
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: Dockerfile.edge
-    lines: 26-37
-  - path: workers/translategemma/worker.edge.yaml
-    lines: 12
+    lines: 39-41
 related: [DOC-005]
 ```
 

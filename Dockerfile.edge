@@ -36,6 +36,11 @@ COPY workers/granite_speech/__init__.py /app/workers/granite_speech/__init__.py
 COPY workers/granite_speech/handler.py /app/workers/granite_speech/handler.py
 COPY workers/granite_speech/worker.edge.yaml /app/granite_speech.worker.yaml
 
+# translategemma (8c) — bundled so the import path resolves.
+COPY workers/translategemma/__init__.py /app/workers/translategemma/__init__.py
+COPY workers/translategemma/handler.py /app/workers/translategemma/handler.py
+COPY workers/translategemma/worker.edge.yaml /app/translategemma.worker.yaml
+
 ENV WORKER_NAME=qwen3tts \
     PYTHONPATH=/app
 
