@@ -13,6 +13,16 @@ def test_default_settings() -> None:
     assert settings.workers.chunking.max_chunk_length == 250
     assert settings.workers.packaging.bitrate == "128k"
     assert settings.workers.packaging.max_fmt_chunk_length == 65536
+    assert settings.chars_per_token == 4
+
+
+def test_chars_per_token_override_from_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    yaml_content = "chars_per_token: 3\n"
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.chars_per_token == 3
 
 
 def test_load_settings_from_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
