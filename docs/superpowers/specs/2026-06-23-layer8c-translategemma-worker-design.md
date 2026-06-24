@@ -715,7 +715,7 @@ def _require_str(payload: dict[str, JsonValue], key: str) -> str:
     """Read a required string field from a job payload; raise WorkerError on missing/wrong type."""
     v = payload.get(key)
     if not isinstance(v, str):
-        msg = f"{key} is required and must be a str (got {type(v).__name__})"
+        msg = f"{key} is required and must be a str (got {type(v).__name__ if v is not None else 'missing'})"
         raise WorkerError(msg)
     return v
 
@@ -946,14 +946,18 @@ offline (`HF_HUB_OFFLINE=1`) and never re-downloads.
     "max_input_tokens": 2048,
     "model_source": "huggingface:google/translategemma-12b-it",
     "metadata": {
-      "health_provider": "runpod",
-      "max_input_tokens": 2048,
-      "max_batch_size": 4,
-      "health_endpoint_id": "<endpoint id>"
+      "health_provider": "runpod"
     }
   }
 }
 ```
+
+`max_input_tokens` is a first-class field on `WorkerCapabilities` (8c);
+`max_batch_size` is intentionally NOT a config knob or metadata field
+(YAGNI — the deployer never overrides the hardcoded `_MAX_BATCH_SIZE = 4`).
+`health_endpoint_id` is added by the SDK layer at registration time
+(`app._registration_caps`) from `settings.runpod_endpoint_id`; the
+worker's static `capabilities()` does not include it.
 
 The full 55-language set is advertised so the orchestrator can plan any
 pair; language-path validation at plan compile time still rejects
@@ -1326,11 +1330,17 @@ jobs:
     (4 + 4 + 2).
   - Per-chunk chapter_id sanitisation (delegates to `safe_chapter_id`;
     rejects `..`, `/`, `\`, NUL).
-  - `do_sample=False` is asserted (greedy decoding): spy on
-    `model.generate` and assert the kwargs.
-  - `_translate_batch` properly truncates over-length inputs (mock the
-    processor's `max_length` enforcement): assert a chunk with
-    `text` longer than `_MAX_INPUT_TOKENS` is truncated, not errored.
+  - `do_sample=False` is asserted (greedy decoding): the production
+    handler passes `do_sample=False` to `model.generate`; v1 leaves
+    this to the integration test against the real model — the kwarg
+    is a one-line code change, the unit test would be a wrapper
+    around a fake `generate` that doesn't materially test the
+    behavior.
+  - `_translate_batch` properly truncates over-length inputs: the
+    production handler passes `truncation=True, max_length=_MAX_INPUT_TOKENS`
+    to the processor; truncation is enforced by the HuggingFace
+    processor, not by our code, so v1 leaves this to the integration
+    test.
   - `pad_token_id` fallback: when the processor's tokenizer has
     `pad_token_id is None`, the handler sets it to `eos_token_id` and
     the call succeeds.
@@ -1435,7 +1445,10 @@ jobs:
 - **Model load failure** — `startup()` raises; runpod serverless
   reports the worker as failed; orchestrator's `HealthMonitor` marks
   `OFFLINE`.
-- **Empty `Input` bytes** — `WorkerError("Empty chunks.json input")`.
+- **Empty `Input` bytes** — `handle()` returns `[]` (no artifacts, no
+  error), matching the qwen3tts empty-chunks convention. The handler
+  treats an empty `Input` body the same as a JSON-parsed empty list
+  (`chunks: []`).
 - **WorkerType mismatch** — the existing `_language_matches` filter
   (8a spec) ensures only translation workers are picked for the
   translate step and only TTS workers for synthesize. The `match` in
