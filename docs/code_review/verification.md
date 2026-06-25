@@ -209,14 +209,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 32-52, 60-84
-  - path: tests/worker_sdk/test_app.py
-    lines: 56-88
+- path: src/acheron/worker_sdk/app.py
+  lines: 31-51
+- path: tests/worker_sdk/test_app.py
+  lines: 56-88
 related: []
 ```
 
@@ -242,16 +242,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/stores/redis.py
-    lines: 332-341
-  - path: src/acheron/shell/step_handler.py
-    lines: 86-128
-  - path: tests/integration/test_worker_integration.py
-    lines: 280-294
+- path: src/acheron/shell/stores/redis.py
+  lines: 332-341
+- path: src/acheron/shell/step_handler.py
+  lines: 113-153
+- path: tests/integration/test_worker_integration.py
+  lines: 280-294
 related: []
 ```
 
@@ -584,14 +584,14 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 44-58
-  - path: tests/worker_sdk/test_cloud_audio.py
-    lines: 1-192
+- path: src/acheron/worker_sdk/cloud.py
+  lines: 49, 53, 57
+- path: tests/worker_sdk/test_cloud_audio.py
+  lines: 1-192
 related: []
 ```
 

@@ -236,12 +236,12 @@ severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/step_handler.py
-    lines: 102-143
+- path: src/acheron/shell/step_handler.py
+  lines: 113-153
 related: []
 ```
 
@@ -256,20 +256,23 @@ related: []
 ### CORR-010 — `${VAR}` env-var expansion silently substitutes missing variables with empty string
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
-fixed_in: []
+  commit: 7d4754a
+  date: '2026-06-24'
+fixed_in:
+- 7d4754a
 files:
-  - path: src/acheron/shell/config.py
-    lines: 15-26
-  - path: src/acheron/shell/health_providers.py
-    lines: 110-114
-related: [CFG-005, SEC-010]
+- path: src/acheron/shell/config.py
+  lines: 15-26
+- path: src/acheron/shell/health_providers.py
+  lines: 110-114
+related:
+- CFG-005
+- SEC-010
 ```
 
 **Issue.** `_expand_env_vars` (config.py:15-26) does `os.environ.get(m.group(1), "")` to resolve `${VAR}` references. An unset env var is silently replaced with the empty string rather than raising. For example, `api_key: ${HF_API_KEY}` with `HF_API_KEY` unset becomes `api_key: ""` and is accepted as a valid string. `create_health_providers` (health_providers.py:110-114) then checks `if settings.providers.<name>.api_key:`, so the empty string is falsy and the provider is silently dropped.
@@ -283,18 +286,21 @@ related: [CFG-005, SEC-010]
 ### CORR-011 — Env-var expansion pattern only matches uppercase variable names
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
-fixed_in: []
+  commit: 7d4754a
+  date: '2026-06-24'
+fixed_in:
+- 7d4754a
 files:
-  - path: src/acheron/shell/config.py
-    lines: 15
-related: [CORR-010, CFG-005]
+- path: src/acheron/shell/config.py
+  lines: 15
+related:
+- CORR-010
+- CFG-005
 ```
 
 **Issue.** `_ENV_VAR_PATTERN` is `r"\$\{([A-Z0-9_]+)\}"` — uppercase letters, digits, underscores only. A YAML entry like `path: ${home_dir}` (lowercase) is silently left unchanged as the literal string `"${home_dir}"`, which then fails downstream type validation (e.g. pydantic rejecting a non-Path string for a Path field).
@@ -398,13 +404,15 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 99-143
-related: [ARCH-012, MAINT-011]
+- path: src/acheron/worker_sdk/app.py
+  lines: 139-146
+related:
+- ARCH-012
+- MAINT-011
 ```
 
 **Issue.** `create_worker_app` builds an `inner = EdgeApp(...)` (which constructs its own FastAPI app with routes + lifespan) then constructs an outer `app` and copies routes via a hardcoded whitelist `inner_paths = {"/health", "/capabilities", "/execute"}`. If a new route is added to `EdgeApp` (e.g., `/metrics` for Prometheus, `/ready` for k8s readiness, `/version`), the outer `create_worker_app` silently drops it — the endpoint returns 404 from uvicorn. The duplicated construction also runs `EdgeApp`'s lifespan definition (`handler.startup()` + `handler.shutdown()`) as dead code that is never executed.
@@ -475,12 +483,12 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 149-156
+- path: src/acheron/shell/transports/http.py
+  lines: 152-156
 related: []
 ```
 
@@ -525,12 +533,12 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 42-65
+- path: src/acheron/worker_sdk/cloud.py
+  lines: '49'
 related: []
 ```
 
@@ -826,13 +834,15 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 185-191
-related: [MAINT-009, CORR-013]
+- path: src/acheron/shell/transports/http.py
+  lines: '189'
+related:
+- MAINT-009
+- CORR-013
 ```
 
 **Issue.** Line 239: `except WorkerError, WorkerUnavailableError:`. This is Python 2 syntax; in Python 3 it parses as a tuple of exception classes and functions correctly today, but it has been a `SyntaxWarning` since 3.0 and is planned for removal in a future Python release. The `pyproject.toml` does not enable `-W error::SyntaxWarning`, so the warning is silent. The pattern is asymmetric with the other two except blocks in the same file (lines 78-82 and 173-179), which use the correct `except (X, Y):` parenthesised form.

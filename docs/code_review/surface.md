@@ -260,23 +260,26 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: .env.example
-    lines: 9-46
-  - path: .env.example
-    lines: 9-46
-  - path: README.md
-    lines: 182-193
-  - path: dashboard/app.py
-    lines: 58
-  - path: src/acheron/shell/api/deps.py
-    lines: 33
-  - path: docker-compose.yml
-    lines: 203-213
-related: [DX-002, SEC-011, PKG-003]
+- path: .env.example
+  lines: 9-46
+- path: .env.example
+  lines: 9-46
+- path: README.md
+  lines: 182-193
+- path: dashboard/app.py
+  lines: 58
+- path: src/acheron/shell/api/deps.py
+  lines: 26-32
+- path: docker-compose.yml
+  lines: 203-213
+related:
+- DX-002
+- SEC-011
+- PKG-003
 ```
 
 **Issue.** The Layer 10 registration-token affordances shipped across three places that drifted, and the new dev-token default (SEC-011) widens the gap. (1) `.env.example:7` still ships `ACHERON_REGISTRATION_TOKEN=dev-registration-token` — a publicly known value per SEC-011; it should be replaced with an empty placeholder and a generation hint. (2) `README.md:139` (Configuration table) was rewritten in the prior review delta to describe the auto-generated token correctly — **FIXED**. (3) `.env.example:9-27` added a RunPod Serverless block but did NOT add `ACHERON_TRUST_REVERSE_PROXY`; `dashboard/app.py:58` still reads it (`os.environ.get('ACHERON_TRUST_REVERSE_PROXY') == '1'`) and it remains undocumented in both README and `.env.example`. (4) `ACHERON_OPEN_REGISTRATION` is still read directly in `deps.py:33` outside the new Settings loader — still deferred to CFG-003.
@@ -353,15 +356,17 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 246-253
-  - path: src/acheron/core/planner.py
-    lines: 92-111
-related: [ARCH-019, CFG-009]
+- path: src/acheron/shell/orchestrator.py
+  lines: 246-253
+- path: src/acheron/core/planner.py
+  lines: 92-111
+related:
+- ARCH-019
+- CFG-009
 ```
 
 **Issue.** Two Google-style docstring gaps introduced by the 8c delta. (1) `Orchestrator.submit_job` docstring (orchestrator.py:216-224) says `Raises: AcheronError: If plan compilation fails (e.g. invalid language path).` — but the function now calls `validate_chunking_fits_workers` after `compile_plan` (orchestrator.py:244-249), which raises `ChunkingTooLongForWorkerError` (subclass of `InvalidLanguagePathError`/AcheronError). The `Raises:` section does not name the new exception class. (2) `validate_chunking_fits_workers` docstring (planner.py:92-111) is narrative and has no `Raises:` section at all, even though the function raises `ValueError` (planner.py:112-114) and `ChunkingTooLongForWorkerError` (planner.py:121-128). AGENTS.md: "For function and method docstrings use google style as per ruff config in `pyproject.toml`" — ruff pydocstyle convention is "google" (pyproject.toml:74), which expects `Raises:` to enumerate specific exception types.

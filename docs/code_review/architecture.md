@@ -220,20 +220,22 @@ related: [CORR-008]
 ### ARCH-008 — Orchestrator.__init__ still derives default StepCache from PlanCache.data_dir
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 75-108
-  - path: src/acheron/shell/api/app.py
-    lines: 46-49
-related: [ARCH-006, CFG-004]
+- path: src/acheron/shell/orchestrator.py
+  lines: 75-108
+- path: src/acheron/shell/api/app.py
+  lines: 46-49
+related:
+- ARCH-006
+- CFG-004
 ```
 
 **Issue.** The ARCH-006 fix moved the writable-data-dir probe into `start()`, but the constructor path still builds `StepCache(self._settings.orchestrator.data_dir)` (orchestrator.py:68) and, when no `settings` is injected, mutates `self._settings.orchestrator.data_dir = cache.data_dir` (orchestrator.py:65) to align the two. The `cache` parameter is still required, and the in-place mutation of the settings object conflates the YAML/algorithm-input shape with the runtime cache. `create_app` (app.py:46-49) performs the same mutation: `if data_dir is not None: settings.orchestrator.data_dir = Path(data_dir)`.
@@ -279,16 +281,16 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health_providers.py
-    lines: 97-115
-  - path: src/acheron/shell/health.py
-    lines: 77-91
-  - path: src/acheron/shell/orchestrator.py
-    lines: 103-108
+- path: src/acheron/shell/health_providers.py
+  lines: 97-115
+- path: src/acheron/shell/health.py
+  lines: 77-91
+- path: src/acheron/shell/orchestrator.py
+  lines: 103-108
 related: []
 ```
 
@@ -308,19 +310,20 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/__init__.py
-    lines: 10-12, 22-27
-  - path: src/acheron/worker_sdk/__init__.py
-    lines: 10-12, 22-27
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 22-27
-  - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 21
-related: [CORR-016]
+- path: src/acheron/worker_sdk/__init__.py
+  lines: 1-8
+- path: src/acheron/worker_sdk/__init__.py
+  lines: 10-12, 22-27
+- path: src/acheron/worker_sdk/cloud.py
+  lines: 22-27
+- path: src/acheron/worker_sdk/_runpod_client.py
+  lines: 21
+related:
+- CORR-016
 ```
 
 **Issue.** The module docstring states "intentionally GPU-SDK free at import time: importing acheron.worker_sdk does not transitively load runpod (that import lives in `_runpod_client`, which is not part of the public re-exports)." The statement is false. The public re-exports at `__init__.py:10-12` include `from acheron.worker_sdk.cloud import RunPodForwarderHandler, make_runpod_handler` and `cloud.py:24` does `from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult` and `_runpod_client.py:21` does `import runpod` at module top. Any test or downstream consumer that imports `acheron.worker_sdk` (e.g. to use `WorkerHandler`, `Artifact`, `WorkerSettings`, `create_worker_app`) transitively loads the runpod SDK — the dependency the docstring claims is opt-in.
@@ -339,15 +342,17 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 87-144
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 124-271
-related: [CORR-015, MAINT-011]
+- path: src/acheron/worker_sdk/app.py
+  lines: 139-146
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 124-271
+related:
+- CORR-015
+- MAINT-011
 ```
 
 **Issue.** `create_worker_app` (app.py:87-144) constructs an `EdgeApp` (line 101) to get a route source, then builds a *separate* `FastAPI` app (line 135) with its own lifespan, and copies the inner app's routes into the outer app via a hardcoded set: `inner_paths = {"/health", "/capabilities", "/execute"}` (line 139) plus a path-attribute loop (lines 140-143). The inner `EdgeApp.app` instance is otherwise discarded — the docstring on line 137-138 explicitly says "the inner `EdgeApp` is built only as a route source — its lifespan is dead code that this outer `lifespan` supersedes." The construction-then-cherry-pick pattern is structural: if `EdgeApp` adds a route (e.g. `/metrics`, `/readyz`), `create_worker_app` silently drops it; if `EdgeApp` renames a route, the hardcoded set carries a dead entry.
@@ -361,20 +366,21 @@ related: [CORR-015, MAINT-011]
 ### ARCH-013 — `transports/grpc.py` and `transports/http.py` both duplicate the `data_dir` env-var fallback to `ACHERON_DATA_DIR`
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 42-53
-  - path: src/acheron/shell/transports/http.py
-    lines: 60-62
-related: [CFG-006]
+- path: src/acheron/shell/transports/grpc.py
+  lines: 42-53
+- path: src/acheron/shell/transports/http.py
+  lines: 60-62
+related:
+- CFG-006
 ```
 
 **Issue.** Both transports now accept a `data_dir: Path | str | None = None` constructor arg and, when None, default it from `os.environ.get('ACHERON_DATA_DIR', '/data/jobs')` (grpc.py:52, http.py:54). The new `src/acheron/shell/transports/_multipart.py` correctly extracted the shared artifact-materialization logic, but the `data_dir` env-var fallback is duplicated verbatim. The hardcoded default path `/data/jobs` and the env-var name now live in two files in lockstep — adding a new transport (e.g. an S3-backed worker) would require a third copy of the same three lines.
@@ -456,18 +462,20 @@ related: [SEC-003]
 ### CFG-003 — `ACHERON_OPEN_REGISTRATION` read directly in deps.py, bypassing the new settings loader
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: 7d4754a
+  date: '2026-06-24'
+fixed_in:
+- 7d4754a
 files:
-  - path: src/acheron/shell/api/deps.py
-    lines: 22-49
-related: [CFG-006]
+- path: src/acheron/shell/api/deps.py
+  lines: 22-49
+related:
+- CFG-006
 ```
 
 **Issue.** The new `Settings`/`load_settings` system (config.py:111-130) introduces pydantic-settings with `env_prefix='ACHERON_'` and `env_nested_delimiter='__'`, plus a custom `_EnvAliasSettingsSource` that maps `ACHERON_DATA_DIR` and `ACHERON_REGISTRATION_TOKEN` onto their nested keys. `ACHERON_OPEN_REGISTRATION` (a new env var documented in README.md and acheron.yaml.example) is read directly in `verify_registration_token` via `os.environ.get('ACHERON_OPEN_REGISTRATION') == '1'` (deps.py:33) — outside the loader. Other env-var reads (`ACHERON_URL`, `ACHERON_TLS_*`, `ACHERON_STORE_BACKEND`, `REDIS_URL`) are also outside the loader, but they predate this diff; `ACHERON_OPEN_REGISTRATION` is new and joins the sprawl pattern that the same diff is trying to fix for other vars.
@@ -481,20 +489,23 @@ related: [CFG-006]
 ### CFG-004 — Orchestrator mutates `Settings.orchestrator.data_dir` in-place from two call sites
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
-fixed_in: []
+  commit: 7d4754a
+  date: '2026-06-24'
+fixed_in:
+- 7d4754a
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 75-96
-  - path: src/acheron/shell/api/app.py
-    lines: 46-49
-related: [ARCH-008, CFG-006]
+- path: src/acheron/shell/orchestrator.py
+  lines: 75-96
+- path: src/acheron/shell/api/app.py
+  lines: 46-49
+related:
+- ARCH-008
+- CFG-006
 ```
 
 **Issue.** AGENTS.md requires a strict YAML-vs-core dataclass split: YAML shapes are user-authored, core dataclasses are algorithm inputs. The new `Settings` model (config.py) is the YAML/algorithm-input shape. `Orchestrator.__init__` (orchestrator.py:63-68) does:
@@ -516,22 +527,26 @@ if settings is None:
 ### CFG-005 — `${VAR}` env-var expansion silently substitutes unset env vars as empty strings, disabling providers
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
-fixed_in: []
+  commit: 7d4754a
+  date: '2026-06-24'
+fixed_in:
+- 7d4754a
 files:
-  - path: src/acheron/shell/config.py
-    lines: 15-26
-  - path: acheron.yaml.example
-    lines: 47-53
-  - path: src/acheron/shell/health_providers.py
-    lines: 108-115
-related: [CORR-010, CORR-011, CFG-006]
+- path: src/acheron/shell/config.py
+  lines: 15-26
+- path: acheron.yaml.example
+  lines: 47-53
+- path: src/acheron/shell/health_providers.py
+  lines: 108-115
+related:
+- CORR-010
+- CORR-011
+- CFG-006
 ```
 
 **Issue.** `_expand_env_vars` (config.py:15-26) does `_ENV_VAR_PATTERN.sub(lambda m: os.environ.get(m.group(1), ''), value)`. An unset env var becomes the empty string. The example YAML uses this for `api_key: "${RUNPOD_API_KEY}"` and `api_key: "${HF_API_KEY}"` (acheron.yaml.example:47-52). `create_health_providers` (health_providers.py:110-114) checks `if settings.providers.<name>.api_key:`, so an empty string is falsy and the provider is silently dropped. AGENTS.md flags this pattern explicitly: "silent/unexpected behavior is worse than no control at all."
@@ -545,26 +560,31 @@ related: [CORR-010, CORR-011, CFG-006]
 ### CFG-006 — Env vars read outside the project's settings loaders — 5 new sites in transports and worker_sdk
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
-fixed_in: []
+  commit: 7d4754a
+  date: '2026-06-24'
+fixed_in:
+- 7d4754a
 files:
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 52
-  - path: src/acheron/shell/transports/http.py
-    lines: 60-62
-  - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 45-51
-  - path: src/acheron/worker_sdk/app.py
-    lines: 57
-  - path: src/acheron/worker_sdk/cli.py
-    lines: 72
-related: [CFG-003, CFG-004, CFG-005, ARCH-013]
+- path: src/acheron/shell/transports/grpc.py
+  lines: 52
+- path: src/acheron/shell/transports/http.py
+  lines: 60-62
+- path: src/acheron/worker_sdk/_runpod_client.py
+  lines: 45-51
+- path: src/acheron/worker_sdk/app.py
+  lines: 57
+- path: src/acheron/worker_sdk/cli.py
+  lines: 72
+related:
+- CFG-003
+- CFG-004
+- CFG-005
+- ARCH-013
 ```
 
 **Issue.** Five env-var reads sit outside the project's settings loaders, perpetuating the sprawl pattern that CFG-003, CFG-004, and CFG-005 already flag. (1) `grpc.py:52` reads `ACHERON_DATA_DIR` (the same env var the new `Settings` loader maps to `orchestrator.data_dir` via `_EnvAliasSettingsSource`). (2) `http.py:54` reads the same env var. (3) `_runpod_client.py:45` reads `ACHERON_WORKER__RUNPOD_BASE_URL` — the `WorkerSettings` env prefix is `ACHERON_WORKER__` and `extra="forbid"` means the field is invisible to `WorkerSettings`, so the SDK reaches around its own settings system. (4) `app.py:57` reads `WORKER_HOST` outside any settings namespace. (5) `cli.py:72` reads `ACHERON_WORKER__LOG_LEVEL` outside `WorkerSettings` (`extra=forbid` again). The same antipattern recurs in both the orchestrator and the worker_sdk: env vars read in the deep implementation, with no single source of truth for what is configurable and how.
@@ -583,33 +603,35 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/settings.py
-    lines: 50-51
-  - path: src/acheron/worker_sdk/settings.py
-    lines: 62-63
-  - path: workers/qwen3tts/worker.yaml
-    lines: 37
-  - path: workers/qwen3tts/worker.edge.yaml
-    lines: 17
-  - path: workers/granite_speech/worker.yaml
-    lines: 30
-  - path: workers/granite_speech/worker.edge.yaml
-    lines: 13
-  - path: workers/translategemma/worker.yaml
-    lines: 30
-  - path: workers/translategemma/worker.edge.yaml
-    lines: 13
-  - path: workers/qwen3tts/handler.py
-    lines: 54-125
-  - path: workers/granite_speech/handler.py
-    lines: 30-121
-  - path: workers/translategemma/handler.py
-    lines: 125, 148, 205
-related: [CFG-008, CFG-010]
+- path: src/acheron/worker_sdk/settings.py
+  lines: 50-51, 62-63
+- path: src/acheron/worker_sdk/settings.py
+  lines: 62-63
+- path: workers/qwen3tts/worker.yaml
+  lines: 37
+- path: workers/qwen3tts/worker.edge.yaml
+  lines: 17
+- path: workers/granite_speech/worker.yaml
+  lines: 30
+- path: workers/granite_speech/worker.edge.yaml
+  lines: 13
+- path: workers/translategemma/worker.yaml
+  lines: 30
+- path: workers/translategemma/worker.edge.yaml
+  lines: 13
+- path: workers/qwen3tts/handler.py
+  lines: 54-125
+- path: workers/granite_speech/handler.py
+  lines: 30-121
+- path: workers/translategemma/handler.py
+  lines: 125, 148, 205
+related:
+- CFG-008
+- CFG-010
 ```
 
 **Issue.** Two new `WorkerSettings` fields are configured but never consumed. (1) `model_id: str | None = None` (settings.py:62) is set in both `workers/qwen3tts/worker.yaml:35` and `workers/qwen3tts/worker.edge.yaml:17`, but `grep -rn '\.model_id' src/ workers/` returns zero matches — no code path reads it. The qwen3tts handler hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` (handler.py:52) and uses that constant directly in `capabilities()` and `startup()`. (2) `output_mode: Literal["multipart", "volume"] = "multipart"` (settings.py:50) is validated in the `_validate_composite` after-validator (settings.py:116-117) to require `output_volume_dir` when `output_mode == "volume"`, but no code consumes the field: `_edge_http.py` always emits `multipart/mixed` (lines 96-117), and `cli.py` does not branch on `output_mode` either. The edge-side `worker.edge.yaml:24-25` even says "Edge transport is always HTTP multipart; the edge never writes to a shared volume." AGENTS.md explicitly calls this out: "config knobs that don't actually control anything" and "silent/unexpected behavior is worse than no control at all."
@@ -628,15 +650,17 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 89-161
-  - path: src/acheron/shell/transports/http.py
-    lines: 89-161
-related: [ARCH-013, ARCH-020]
+- path: src/acheron/shell/transports/http.py
+  lines: 90-105
+- path: src/acheron/shell/transports/http.py
+  lines: 89-161
+related:
+- ARCH-013
+- ARCH-020
 ```
 
 **Issue.** `HttpWorker.execute()` (http.py:90-112) is now a `match job.job_type` dispatching ASR, TRANSLATION, TTS, and `_` to a parametric helper `_execute_with_upstream_input(job, *, upstream_step, content_type_predicate, form_field)` (http.py:114-157). The helper reads the upstream step's output from `self._step_cache`, builds a `multipart/form-data` body with a JSON envelope + binary payload, posts it, and parses a `multipart/mixed` response. The Worker interface is supposed to be transport-neutral; the transport is now coupled to a specific job type's semantics (the literal `WorkerType.ASR/TRANSLATION/TTS` discriminants in the `match` arms, the magic step_id literals `"extract"` / `"chunk"` at http.py:97 and http.py:103, the audio content-type filter, the form field name `"audio"` / `"chunks"`). The 8b single-AWorkerType branch widened to a triple-worker-type match with a leaky triple-magic-string helper (see ARCH-020).
@@ -655,19 +679,20 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/step_handler.py
-    lines: 29-64
-  - path: src/acheron/shell/step_handler.py
-    lines: 80-101
-  - path: src/acheron/shell/orchestrator.py
-    lines: 85-95
-  - path: src/acheron/shell/transports/http.py
-    lines: 55-63
-related: [ARCH-014]
+- path: src/acheron/shell/step_handler.py
+  lines: 31-69
+- path: src/acheron/shell/step_handler.py
+  lines: 80-101
+- path: src/acheron/shell/orchestrator.py
+  lines: 85-95
+- path: src/acheron/shell/transports/http.py
+  lines: 55-63
+related:
+- ARCH-014
 ```
 
 **Issue.** `create_step_handler` (step_handler.py:80) and `default_worker_factory` (step_handler.py:29) now take a `step_cache: StepCache | None = None` keyword. `Orchestrator.__init__` constructs the cache and passes it in. The cache flows through the factory's `case "grpc"` and `case "local"` branches untouched and is only consumed at `case _: return HttpWorker(registered.endpoint, step_cache=step_cache)` (step_handler.py:64).
@@ -717,31 +742,33 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/settings.py
-    lines: 62-63
-  - path: workers/qwen3tts/worker.yaml
-    lines: 37
-  - path: workers/qwen3tts/worker.edge.yaml
-    lines: 17
-  - path: workers/granite_speech/worker.yaml
-    lines: 30
-  - path: workers/granite_speech/worker.edge.yaml
-    lines: 13
-  - path: workers/translategemma/worker.yaml
-    lines: 30
-  - path: workers/translategemma/worker.edge.yaml
-    lines: 13
-  - path: workers/qwen3tts/handler.py
-    lines: 54
-  - path: workers/granite_speech/handler.py
-    lines: 30
-  - path: workers/translategemma/handler.py
-    lines: 125, 148, 205
-related: [CFG-007, CFG-010]
+- path: src/acheron/worker_sdk/settings.py
+  lines: 62-63
+- path: workers/qwen3tts/worker.yaml
+  lines: 37
+- path: workers/qwen3tts/worker.edge.yaml
+  lines: 17
+- path: workers/granite_speech/worker.yaml
+  lines: 30
+- path: workers/granite_speech/worker.edge.yaml
+  lines: 13
+- path: workers/translategemma/worker.yaml
+  lines: 30
+- path: workers/translategemma/worker.edge.yaml
+  lines: 13
+- path: workers/qwen3tts/handler.py
+  lines: 54
+- path: workers/granite_speech/handler.py
+  lines: 30
+- path: workers/translategemma/handler.py
+  lines: 125, 148, 205
+related:
+- CFG-007
+- CFG-010
 ```
 
 **Issue.** The 8b worker addition widened CFG-007: `WorkerSettings.model_id: str | None` (settings.py:62) is now configured in FOUR YAML files (`workers/qwen3tts/worker.yaml:37`, `workers/qwen3tts/worker.edge.yaml:17`, `workers/granite_speech/worker.yaml:30`, `workers/granite_speech/worker.edge.yaml:13`) and STILL has zero consumers. `workers/qwen3tts/handler.py:54` hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` and uses it in `capabilities()` and `startup()`. `workers/granite_speech/handler.py:30` hard-codes `_MODEL_ID = "ibm-granite/granite-speech-4.1-2b"`.
@@ -828,17 +855,19 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/core/planner.py
-    lines: 19-52
-  - path: src/acheron/core/planner.py
-    lines: 92-128
-  - path: src/acheron/shell/orchestrator.py
-    lines: 274-278
-related: [CFG-009, CORR-026]
+- path: src/acheron/core/planner.py
+  lines: 19-52
+- path: src/acheron/core/planner.py
+  lines: 92-128
+- path: src/acheron/shell/orchestrator.py
+  lines: 276-281
+related:
+- CFG-009
+- CORR-026
 ```
 
 **Issue.** `compile_plan` (planner.py:19-52) already runs `compile_plan → _validate_language_path` as one unit. The new `validate_chunking_fits_workers` (planner.py:92-128) is called immediately after, from `submit_job` (orchestrator.py:243-249), passing the same `capabilities` tuple, `self._settings.workers.chunking.max_chunk_length`, and `self._settings.chars_per_token`. The orchestrator now does two validation passes over the same capabilities tuple, threading the chunking settings in from the shell layer to the core layer for the second one.
@@ -857,13 +886,16 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 89-104
-related: [ARCH-014, ARCH-015, CORR-027]
+- path: src/acheron/shell/transports/http.py
+  lines: 114-162
+related:
+- ARCH-014
+- ARCH-015
+- CORR-027
 ```
 
 **Issue.** Layer 8c replaced the explicit ASR branch in `HttpWorker.execute()` with a single parametric helper `_execute_with_upstream_input(job, *, upstream_step, content_type_predicate, form_field)` (http.py:90-157), called three times: `("extract", lambda c: c.startswith("audio/"), "audio")` for ASR, `("chunk", lambda c: c == "application/json", "chunks")` for TRANSLATION+TTS. Three of the three arguments are discriminators the caller must supply correctly, and adding a new "upstream input" job type means a fourth site where three more strings must stay in lockstep. The runtime lambda for `content_type_predicate` is also untyped at the call site — basedpyright/mypy will accept any `Callable[[str], bool]` but cannot verify the caller passed the predicate that matches the form field's expected content type.
@@ -882,18 +914,18 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/api/__main__.py
-    lines: 19-26
-  - path: src/acheron/worker_sdk/cli.py
-    lines: 76-83
-  - path: stubs/tts_local_stub/main.py
-    lines: 21-28
-  - path: stubs/tts_grpc_stub/main.py
-    lines: 21-28
+- path: src/acheron/shell/api/__main__.py
+  lines: 19-26
+- path: src/acheron/worker_sdk/cli.py
+  lines: 76-83
+- path: stubs/tts_local_stub/main.py
+  lines: 21-28
+- path: stubs/tts_grpc_stub/main.py
+  lines: 21-28
 related: []
 ```
 
@@ -940,19 +972,21 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/config.py
-    lines: 141-143
-  - path: src/acheron/core/planner.py
-    lines: 92-128
-  - path: src/acheron/shell/orchestrator.py
-    lines: 274-278
-  - path: acheron.yaml.example
-    lines: 1-65
-related: [ARCH-019, CORR-026]
+- path: src/acheron/shell/config.py
+  lines: 167-169
+- path: src/acheron/core/planner.py
+  lines: 92-128
+- path: src/acheron/shell/orchestrator.py
+  lines: 274-278
+- path: acheron.yaml.example
+  lines: 1-65
+related:
+- ARCH-019
+- CORR-026
 ```
 
 **Issue.** `Settings.chars_per_token: int = Field(default=4)` is declared at the top level of `Settings` (`shell/config.py:141`) with the only consumer being `validate_chunking_fits_workers` — invoked from exactly one call site (`orchestrator.py:245-249`). The default `4` is duplicated at the function signature: `def validate_chunking_fits_workers(..., chars_per_token: int = 4)`. The YAML example (`acheron.yaml.example:1-65`) does not document the field. AGENTS.md explicitly warns: "Avoid config knobs that don't actually control anything, unless there is reasonable expectation that a new behavior is going to be added soon (YAGNI); prefer a concise comment instead."
@@ -1012,19 +1046,21 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/core/models.py
-    lines: 86-90
-  - path: src/acheron/worker_sdk/settings.py
-    lines: 50-118
-  - path: workers/qwen3tts/handler.py
-    lines: 114
-  - path: workers/translategemma/handler.py
-    lines: 30, 134
-related: [CFG-009, CFG-010]
+- path: src/acheron/core/models.py
+  lines: 86-90
+- path: src/acheron/worker_sdk/settings.py
+  lines: 50-118
+- path: workers/qwen3tts/handler.py
+  lines: 114
+- path: workers/translategemma/handler.py
+  lines: 30, 134
+related:
+- CFG-009
+- CFG-010
 ```
 
 **Issue.** `WorkerCapabilities.max_input_tokens: int | None = None` is a new field on the `core/models.py` dataclass (line 89). The orchestrator's `validate_chunking_fits_workers` (planner.py:118, 121, 124, 125) is the only consumer. Two workers publish it: qwen3tts/handler.py:114 with the literal `2048`; translategemma/handler.py:134 with `_MAX_INPUT_TOKENS = 2048` (a module-level constant). There is no `WorkerSettings.max_input_tokens` field (per `git grep -n 'max_input_tokens' src/acheron/worker_sdk/`). Granite-speech doesn't publish it (correct — it's ASR, not text-input). The 2048 value is therefore baked into the handler source, not the YAML.

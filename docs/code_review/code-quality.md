@@ -143,13 +143,14 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 357-382
-related: [OBS-004]
+- path: src/acheron/shell/orchestrator.py
+  lines: 360-385
+related:
+- OBS-004
 ```
 
 **Issue.** `Orchestrator._execute` duplicates the same 9-field `PlanResult` constructor in its `except AcheronError` and `except Exception` blocks. The two blocks differ only in their log messages; the failure result is identical.
@@ -168,13 +169,15 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 207-225
-related: [SEC-008, MAINT-007]
+- path: src/acheron/shell/orchestrator.py
+  lines: 196-234
+related:
+- SEC-008
+- MAINT-007
 ```
 
 **Issue.** `Orchestrator.start()` (orchestrator.py:177-194) embeds a 17-line block that loads or generates the registration token, reads/writes a side file at `<data_dir>/.registration_token`, and logs the result. The block interleaves two concerns — orchestrator lifecycle wiring and credentials management — and `start()` is now 34 lines where a 5-line declarative method that calls a helper would be clearer. The block is also the largest single responsibility creep inside `start()` since the `HealthProviders` wiring at lines 77-82. Separately, the log message at orchestrator.py:192 emits the freshly generated token at INFO level — see SEC-008 for the security side.
@@ -245,24 +248,24 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health_providers.py
-    lines: 49
-  - path: src/acheron/shell/health_providers.py
-    lines: 80
-  - path: src/acheron/shell/transports/http.py
-    lines: 185-191
-  - path: src/acheron/shell/local_handlers.py
-    lines: 317
-  - path: src/acheron/shell/executors/streaming.py
-    lines: 155
-  - path: src/acheron/worker_sdk/pricing.py
-    lines: 143
-  - path: src/acheron/shell/cache.py
-    lines: 115
+- path: src/acheron/shell/health_providers.py
+  lines: 49
+- path: src/acheron/shell/health_providers.py
+  lines: 80
+- path: src/acheron/shell/transports/http.py
+  lines: '189'
+- path: src/acheron/shell/local_handlers.py
+  lines: 317
+- path: src/acheron/shell/executors/streaming.py
+  lines: 155
+- path: src/acheron/worker_sdk/pricing.py
+  lines: 143
+- path: src/acheron/shell/cache.py
+  lines: 115
 related: []
 ```
 
@@ -307,13 +310,16 @@ severity: medium
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 134-142
-related: [CORR-015, ARCH-012, MAINT-010]
+- path: src/acheron/worker_sdk/app.py
+  lines: 99-146
+related:
+- CORR-015
+- ARCH-012
+- MAINT-010
 ```
 
 **Issue.** The outer `lifespan` (lines 115-133) is the only one that runs; the inner `EdgeApp` built at line 101 is discarded, and its `app.routes` is harvested by the loop at lines 139-143: `for route in inner.app.routes: path = getattr(route, 'path', None); if path in inner_paths: app.routes.append(route)`. This (a) bypasses FastAPI's `APIRouter.include_router` / `app.mount` machinery, (b) hard-codes the path set `{'/health', '/capabilities', '/execute'}` so adding a 4th inner route silently breaks the outer app (no error, just a missing endpoint), and (c) directly mutates the outer `app.routes` list which FastAPI doesn't guarantee as a stable contract. The comment on lines 136-138 admits the inner `lifespan` is dead code that the outer one supersedes — that admission should drive the refactor, not stay as a warning.
@@ -332,13 +338,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 60-84
-related: [MAINT-013]
+- path: src/acheron/worker_sdk/app.py
+  lines: 70-83
+related:
+- MAINT-013
 ```
 
 **Issue.** `_registration_caps` (lines 60-84) returns a new `WorkerCapabilities` with the same 9 fields as `caps`, differing only in `metadata` (now `enriched`). The function literally retypes every field by name. `WorkerCapabilities` is a `@dataclass(frozen=True)` (models.py:77-89) so `dataclasses.replace(caps, metadata=enriched)` produces the same result in 2 lines.
@@ -446,21 +453,22 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: pyproject.toml
-    lines: 23
-  - path: src/acheron/core/errors.py
-    lines: 27-28, 39-40
-  - path: src/acheron/shell/executors/streaming.py
-    lines: 246-248
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 90-95
-  - path: src/acheron/shell/transports/http.py
-    lines: 65-83
-related: [CORR-014]
+- path: pyproject.toml
+  lines: 23
+- path: src/acheron/core/errors.py
+  lines: 27-28, 39-40
+- path: src/acheron/shell/executors/streaming.py
+  lines: 246-248
+- path: src/acheron/shell/transports/grpc.py
+  lines: 90-95
+- path: src/acheron/shell/transports/http.py
+  lines: 66-84
+related:
+- CORR-014
 ```
 
 **Issue.** `tenacity~=9.1` is a production dependency (pyproject.toml:20) with zero imports across src/ and tests/. No network call is retried: GrpcWorker.execute (a streaming RPC, grpc.py:67-75) and HttpWorker._request (http.py:44-59) raise on the first transient failure; Redis store ops have no retry. `WorkerTimeoutError` (errors.py:28) is defined and exported but never raised — streaming.py:213 catches `TimeoutError` and raises plain `WorkerError`, discarding the more specific type. `PlanValidationError` (errors.py:16) is likewise defined/exported but never raised. New error path: `_runpod_client.py:84-86` raises bare `TimeoutError` from inside a worker (could/should be `WorkerTimeoutError`).
@@ -546,13 +554,15 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 119-125
-related: [OBS-008, MAINT-010]
+- path: src/acheron/worker_sdk/app.py
+  lines: 123-129
+related:
+- OBS-008
+- MAINT-010
 ```
 
 **Issue.** The price refresh at startup is wrapped in `try: ... except BaseException:  # noqa: BLE001: logger.warning(...)`. The intent (per the inline comment "fault-tolerant, never blocks") is to allow a transient pricing API failure to not block container startup. But `BaseException` is broader than what the comment justifies — it also catches `KeyboardInterrupt` (Ctrl-C during startup), `SystemExit` (an operator's `docker stop`), and `asyncio.CancelledError` (the FastAPI lifespan being cancelled by uvicorn). All three should propagate to the operator; swallowing them turns a clean shutdown into a hanging container. The `app.py:122` `# noqa: BLE001` only suppresses the *lint* complaint; it doesn't argue the *correctness* of catching `BaseException`.
@@ -764,20 +774,20 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 49
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 72
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 80
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 107
-  - path: src/acheron/shell/transports/grpc.py
-    lines: 152
+- path: src/acheron/shell/transports/grpc.py
+  lines: 52, 73, 81, 108, 153
+- path: src/acheron/shell/transports/grpc.py
+  lines: 72
+- path: src/acheron/shell/transports/grpc.py
+  lines: 80
+- path: src/acheron/shell/transports/grpc.py
+  lines: 107
+- path: src/acheron/shell/transports/grpc.py
+  lines: 152
 related: []
 ```
 
@@ -797,12 +807,12 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 164-168
+- path: src/acheron/worker_sdk/cloud.py
+  lines: '175'
 related: []
 ```
 
@@ -822,20 +832,20 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 20, 39, 42, 74, 78, 84, 94, 100
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 22,49,73,77,84,153
-  - path: src/acheron/worker_sdk/pricing.py
-    lines: 13,183,184,192
-  - path: src/acheron/worker_sdk/cli.py
-    lines: 20,31,39,63,64
-  - path: src/acheron/worker_sdk/app.py
-    lines: 32-52
+- path: src/acheron/worker_sdk/cloud.py
+  lines: 20, 38-39, 42
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 22,49,73,77,84,153
+- path: src/acheron/worker_sdk/pricing.py
+  lines: 13,183,184,192
+- path: src/acheron/worker_sdk/cli.py
+  lines: 20,31,39,63,64
+- path: src/acheron/worker_sdk/app.py
+  lines: 32-52
 related: []
 ```
 

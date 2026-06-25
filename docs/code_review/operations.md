@@ -182,18 +182,18 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health.py
-    lines: 44-52
-  - path: src/acheron/worker_sdk/pricing.py
-    lines: 125-147
-  - path: src/acheron/worker_sdk/pricing.py
-    lines: 195-211
-  - path: src/acheron/shell/transports/http.py
-    lines: 65-83
+- path: src/acheron/shell/health.py
+  lines: 44-52
+- path: src/acheron/worker_sdk/pricing.py
+  lines: 125-147
+- path: src/acheron/worker_sdk/pricing.py
+  lines: 195-211
+- path: src/acheron/shell/transports/http.py
+  lines: 69-74
 related: []
 ```
 
@@ -219,17 +219,18 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 235-243, 291-293, 297-385
-  - path: src/acheron/shell/orchestrator.py
-    lines: 235-243, 291-293, 297-385
-  - path: src/acheron/shell/orchestrator.py
-    lines: 235-243, 291-293, 297-385
-related: [OBS-004]
+- path: src/acheron/shell/orchestrator.py
+  lines: 297-385
+- path: src/acheron/shell/orchestrator.py
+  lines: 235-243, 291-293, 297-385
+- path: src/acheron/shell/orchestrator.py
+  lines: 235-243, 291-293, 297-385
+related:
+- OBS-004
 ```
 
 **Issue.** `Orchestrator.shutdown()` stops only the health monitor; it never cancels or awaits the `_execute` tasks tracked in `self._tasks` (populated at `submit_job`). The FastAPI lifespan then calls `close()` which tears down the Redis pool. When the loop tears down, in-flight `_execute` tasks are cancelled mid-run; `CancelledError` is a `BaseException` so the `except AcheronError`/`except Exception` guards at the end of `_execute` don't catch it, and the final `await self._job_store.put(tracked)` sits outside any `finally`, so it is skipped. The job is left persisted with `status="running"` and never updated.
@@ -274,18 +275,18 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 263-270
-  - path: src/acheron/shell/health.py
-    lines: 113-152
-  - path: src/acheron/shell/step_handler.py
-    lines: 138
-  - path: dashboard/app.py
-    lines: 27
+- path: src/acheron/shell/orchestrator.py
+  lines: 263-270
+- path: src/acheron/shell/health.py
+  lines: 113-152
+- path: src/acheron/shell/step_handler.py
+  lines: '138'
+- path: dashboard/app.py
+  lines: 27
 related: []
 ```
 
@@ -429,13 +430,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: fa87bc6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/app.py
-    lines: 119-138
-related: [EXC-004]
+- path: src/acheron/worker_sdk/app.py
+  lines: 123-129
+related:
+- EXC-004
 ```
 
 **Issue.** The outer lifespan in `create_worker_app` (app.py:115-133) wraps `await price_source.refresh()` in `except BaseException: ... logger.warning(...)`. The `# noqa: BLE001` annotation marks the broad catch, but a `BaseException` handler swallows `CancelledError`, `KeyboardInterrupt`, `SystemExit`, and `asyncio.InvalidStateError` in addition to legitimate exceptions. During container shutdown the orchestrator's signal handler cancels the lifespan task; the cancellation passes through the price refresh, hits the `BaseException` handler, and the worker logs a misleading `Price refresh raised at startup; worker will register anyway` warning. Registration then runs (the registration retry loop is not in this try block, so it is not actually affected), but the operator sees a spurious 'price refresh raised' warning on every clean shutdown. The same `BaseException`-catch pattern in `_edge_http._run_execute` (line 162) is intentional (to return a JSON failure to the orchestrator) but is also brittle — a `CancelledError` that arrives between the start time and the `except BaseException` will be converted to a 500 response instead of propagating, masking shutdown.
@@ -593,13 +595,16 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 357-382
-related: [OBS-004, SEC-010, SEC-012]
+- path: src/acheron/shell/orchestrator.py
+  lines: 360-385
+related:
+- OBS-004
+- SEC-010
+- SEC-012
 ```
 
 **Issue.** The OBS-004 fix persists raw `str(exc)` from the top-level `except Exception` handler directly into `tracked.result.errors`. Unexpected exceptions may contain worker endpoints, file paths, library internals, or other implementation details that are now returned by `GET /jobs/{id}`.
@@ -1141,13 +1146,16 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 7d4754a
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/orchestrator.py
-    lines: 274-278
-related: [TEST-015, ARCH-019, CFG-009]
+- path: src/acheron/shell/orchestrator.py
+  lines: 277-281
+related:
+- TEST-015
+- ARCH-019
+- CFG-009
 ```
 
 **Issue.** The new `validate_chunking_fits_workers(...)` call sits between `compile_plan` (orchestrator.py:244) and `Plan compiled for %s` log (line 251). On success the call is silent; on failure the ChunkingTooLongForWorkerError bubbles up to the FastAPI exception handler with no specific log line at the submit_job level naming the worker type, the chunking max, the max_input_tokens, or the chars_per_token estimate. Operators have no log evidence that the input-budget check ran, and no way to distinguish a chunking-too-long failure from a generic plan compile failure without parsing the API error body.
