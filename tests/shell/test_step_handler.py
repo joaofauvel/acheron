@@ -291,15 +291,14 @@ class TestStepHandler:
         plan = _make_plan()
         step = plan.steps[0]
         await handler(step, plan)
-        assert "tts-1" in handler._worker_instances  # noqa: SLF001
-        assert handler._cached_workers is not None  # noqa: SLF001
         assert len(factory_calls) == 1
 
+        # CORR-009 behavior: after invalidation, the next call must re-fetch
+        # the worker list (factory invoked again, fresh instance pool built).
         handler._invalidate_worker_cache()  # noqa: SLF001
-        assert handler._cached_workers is None  # noqa: SLF001
-        assert handler._cached_plan_id is None  # noqa: SLF001
-        assert handler._worker_instances == {}  # noqa: SLF001
-        assert len(factory_calls) == 1
+        await handler(step, plan)
+        assert len(factory_calls) == 2
+        assert "tts-1" in handler._worker_instances  # noqa: SLF001
 
 
 class TestHttpWorkerStepCache:

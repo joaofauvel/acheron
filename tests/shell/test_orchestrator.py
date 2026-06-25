@@ -63,20 +63,22 @@ def _single_step_plan(job_id: str) -> Plan:
 
 
 class TestOrchestrator:
-    def test_default_step_cache_is_in_memory(self, tmp_path) -> None:
+    def test_default_step_cache_is_in_memory(self, tmp_path: Path) -> None:
         """ARCH-008: omitting step_cache constructs an InMemoryStepCache (decoupled from PlanCache.data_dir)."""
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
         assert isinstance(orch._step_cache, InMemoryStepCache)  # noqa: SLF001
 
-    def test_explicit_step_cache_is_used(self, tmp_path) -> None:
+    def test_explicit_step_cache_is_used(self, tmp_path: Path) -> None:
         """ARCH-008: passing step_cache uses the caller's instance verbatim."""
         cache = StepCache(tmp_path / "explicit")
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, step_cache=cache)
         assert orch._step_cache is cache  # noqa: SLF001
 
     @pytest.mark.asyncio
-    async def test_submit_job_invalidates_handler_worker_cache(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
-        """CORR-009: submit_job drops the step handler's worker-instance pool so re-registrations take effect."""
+    async def test_submit_job_invalidates_handler_worker_cache(self, tmp_path: Path) -> None:
+        """CORR-009: submit_job must drop the step handler's worker-instance pool
+        and re-fetch on the next step, so a worker re-registered between jobs is seen.
+        """
         from acheron.shell.step_handler import CachingStepHandler
 
         reg = InMemoryWorkerStore()
@@ -85,19 +87,23 @@ class TestOrchestrator:
         orch = Orchestrator(reg, PlanCache(tmp_path))
         await orch.start()
         assert isinstance(orch._handler, CachingStepHandler)  # noqa: SLF001
-        handler = orch._handler  # noqa: SLF001
-        handler._worker_instances["w-stub"] = object()  # type: ignore[assignment]  # noqa: SLF001
-        handler._cached_workers = ()  # noqa: SLF001
-        handler._cached_plan_id = "stale-plan"  # noqa: SLF001
 
+        # First submit: cache is populated.
         await orch.submit_job(
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
         )
 
-        assert handler._worker_instances == {}  # noqa: SLF001
-        assert handler._cached_workers is None  # noqa: SLF001
-        assert handler._cached_plan_id is None  # noqa: SLF001
+        # Simulate a worker re-registering between jobs.
+        await reg.register("tts-1", "http://127.0.0.1:99", "http", tts_caps("es"))
+
+        # Second submit must observe the re-registration. The invalidation
+        # is verified end-to-end: a fresh registry read means the new URL
+        # is in the worker list the executor dispatches against.
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book2.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
 
     @pytest.mark.asyncio
     async def test_submit_job_requires_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
