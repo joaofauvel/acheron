@@ -597,14 +597,15 @@ related: [OBS-007]
 ### SEC-006 — Raw exception strings exposed in PlanResult.errors via OBS-004 fix
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 362-384

@@ -11,7 +11,12 @@ import uuid
 import weakref
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.errors import (
+    AcheronError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+    sanitise_exc_message,
+)
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -372,7 +377,7 @@ class Orchestrator:
                     outputs=(),
                     total_cost=0.0,
                     total_duration_seconds=0.0,
-                    errors=(str(exc),),
+                    errors=(sanitise_exc_message(exc),),
                 )
             except Exception as exc:
                 logger.exception("Unexpected error executing %s", tracked.job_id)
@@ -385,7 +390,7 @@ class Orchestrator:
                     outputs=(),
                     total_cost=0.0,
                     total_duration_seconds=0.0,
-                    errors=(str(exc),),
+                    errors=(sanitise_exc_message(exc),),
                 )
             await self._job_store.put(tracked)
         finally:

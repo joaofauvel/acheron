@@ -75,3 +75,29 @@ class JobNotFoundError(JobError):
 
 class JobAlreadyRunningError(JobError):
     """Requested tracked job is already active in this orchestrator."""
+
+
+def sanitise_exc_message(exc: BaseException) -> str:
+    """Return a public-safe ``"<ClassName>: <first line>"`` summary of ``exc``.
+
+    The raw ``str(exc)`` may embed file paths, internal URLs, library
+    internals, or user-submitted text. For API/response surfaces we keep the
+    exception class so operators can still distinguish a ``WorkerError`` from
+    a generic ``RuntimeError`` while stripping the message body. Traceback
+    fragments (``File ...`` / ``Traceback (most recent call last):``) are
+    also stripped — those belong in ``logger.exception`` output, not in
+    machine-readable error fields.
+    """
+    raw = str(exc)
+    first_line = ""
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("File ", "Traceback")):
+            continue
+        first_line = stripped
+        break
+    if not first_line:
+        first_line = "<no message>"
+    return f"{type(exc).__name__}: {first_line}"
