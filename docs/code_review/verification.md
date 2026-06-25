@@ -606,17 +606,17 @@ related: []
 ### TEST-012 — `test_step_handler.py` mutates module-level `default_worker_factory` instead of using `monkeypatch`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: tests/shell/test_step_handler.py
-  lines: 293-325
+  lines: 293-326
 related: []
 ```
 

@@ -290,7 +290,9 @@ class TestHttpWorkerStepCache:
         assert worker._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
 
     @pytest.mark.asyncio
-    async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(self) -> None:
+    async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The default factory lambda in ``create_step_handler`` (no
         ``worker_factory`` arg) must produce an ``HttpWorker`` whose
         ``_step_cache`` is the worker's own default (constructed from
@@ -315,11 +317,10 @@ class TestHttpWorkerStepCache:
             worker.execute = _echo_job_result  # type: ignore[method-assign]
             return worker
 
-        sh.default_worker_factory = _capturing_default  # type: ignore[assignment]
-        try:
-            await handler(_make_plan().steps[0], _make_plan())
-        finally:
-            sh.default_worker_factory = original_default
+        monkeypatch.setattr(sh, "default_worker_factory", _capturing_default)
+        await handler(_make_plan().steps[0], _make_plan())
         assert isinstance(captured["worker"], HttpWorker)
         assert isinstance(captured["worker"]._step_cache, StepCache)  # noqa: SLF001
+        assert sh.default_worker_factory is _capturing_default
+        # monkeypatch restores the module-level original on test teardown.
         assert captured["worker"]._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
