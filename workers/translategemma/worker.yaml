@@ -24,3 +24,4 @@ secure_cloud: false
 # runpod_entrypoint.py in the RunPod runtime image uses the import directly.
 handler: "workers.translategemma.handler:TranslateGemmaRunpodHandler"
 model_id: "google/translategemma-12b-it"
+max_input_tokens: 2048

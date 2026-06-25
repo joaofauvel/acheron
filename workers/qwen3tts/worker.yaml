@@ -32,3 +32,4 @@ per_language_defaults:
 # runpod_entrypoint.py in the RunPod runtime image uses the import directly.
 handler: "workers.qwen3tts.handler:Qwen3TTSRunpodHandler"
 model_id: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+max_input_tokens: 2048

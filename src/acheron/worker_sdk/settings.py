@@ -58,6 +58,7 @@ class WorkerSettings(BaseSettings):
     handler: str = ""
     model_id: str | None = None
     phantom_handler: str | None = None
+    max_input_tokens: int | None = None
 
     worker_host: str | None = Field(
         default=None,

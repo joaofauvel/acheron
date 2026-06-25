@@ -125,6 +125,23 @@ def test_capabilities_max_input_tokens(handler: Any) -> None:
     assert handler.capabilities().max_input_tokens == 2048
 
 
+def test_capabilities_custom_max_input_tokens_from_settings() -> None:
+    """A custom max_input_tokens setting flows through to the published cap (CFG-011)."""
+    from acheron.worker_sdk.settings import WorkerSettings
+    from workers.translategemma.handler import TranslateGemmaRunpodHandler
+
+    h = TranslateGemmaRunpodHandler(
+        WorkerSettings(
+            worker_id="t",
+            orchestrator_url="http://o:8000",
+            price_source="zero",
+            model_id="google/translategemma-12b-it",
+            max_input_tokens=4096,
+        )
+    )
+    assert h.capabilities().max_input_tokens == 4096
+
+
 def test_capabilities_model_source(handler: Any) -> None:
     caps = handler.capabilities()
     assert caps.model_source == "huggingface:google/translategemma-12b-it"

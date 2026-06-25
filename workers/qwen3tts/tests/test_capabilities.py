@@ -59,6 +59,14 @@ def test_capabilities_custom_model_id_from_settings() -> None:
     assert h.capabilities().model_source == "huggingface:Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice-v2"
 
 
+def test_capabilities_max_input_tokens_from_settings() -> None:
+    """A custom max_input_tokens setting flows through to the published cap (CFG-011)."""
+    from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+    h = Qwen3TTSRunpodHandler(_settings(max_input_tokens=4096))
+    assert h.capabilities().max_input_tokens == 4096
+
+
 def test_handler_inherits_worker_handler() -> None:
     from acheron.worker_sdk.handler import WorkerHandler
     from workers.qwen3tts.handler import Qwen3TTSRunpodHandler

@@ -53,6 +53,7 @@ _ALL_SPEAKERS = frozenset(
     }
 )
 _MODEL_ID_DEFAULT = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+_MAX_INPUT_TOKENS_DEFAULT = 2048
 
 
 def _chunk_text(c: dict[str, Any]) -> str:
@@ -100,6 +101,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static capabilities (no I/O, sync)."""
         model_id = self._settings.model_id or _MODEL_ID_DEFAULT
+        max_input_tokens = self._settings.max_input_tokens or _MAX_INPUT_TOKENS_DEFAULT
         metadata: dict[str, JsonValue] = {
             "speakers": cast("list[JsonValue]", sorted(_ALL_SPEAKERS)),
             "default_speaker": self._settings.default_speaker,
@@ -112,7 +114,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             supported_formats_out=frozenset({"wav"}),
             max_payload_bytes=None,
             batch_capable=True,
-            max_input_tokens=2048,
+            max_input_tokens=max_input_tokens,
             model_source=f"huggingface:{model_id}",
             metadata=metadata,
         )

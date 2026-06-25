@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from acheron.worker_sdk.settings import WorkerSettings
 
 _MODEL_ID_DEFAULT = "google/translategemma-12b-it"
-_MAX_INPUT_TOKENS = 2048
+_MAX_INPUT_TOKENS_DEFAULT = 2048
 _MAX_BATCH_SIZE = 4
 _MAX_NEW_TOKENS = 1024
 
@@ -123,6 +123,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static description. No I/O — sync."""
         model_id = self._settings.model_id or _MODEL_ID_DEFAULT
+        max_input_tokens = self._settings.max_input_tokens or _MAX_INPUT_TOKENS_DEFAULT
         return WorkerCapabilities(
             worker_type=WorkerType.TRANSLATION,
             supported_languages_in=_SUPPORTED_LANGS,
@@ -131,7 +132,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             supported_formats_out=frozenset({"text"}),
             max_payload_bytes=None,
             batch_capable=True,
-            max_input_tokens=_MAX_INPUT_TOKENS,
+            max_input_tokens=max_input_tokens,
             model_source=f"huggingface:{model_id}",
         )
 
@@ -244,6 +245,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         """Translate one batch (up to _MAX_BATCH_SIZE chunks) in a single model.generate call."""
         import torch
 
+        max_input_tokens = self._settings.max_input_tokens or _MAX_INPUT_TOKENS_DEFAULT
         messages_per_chunk = [
             [
                 {
@@ -272,7 +274,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=_MAX_INPUT_TOKENS,
+            max_length=max_input_tokens,
         ).to("cuda:0")
         with torch.inference_mode():
             outputs = self._model.generate(**inputs, max_new_tokens=_MAX_NEW_TOKENS, do_sample=False)

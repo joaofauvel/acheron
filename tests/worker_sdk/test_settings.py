@@ -32,8 +32,24 @@ class TestDefaults:
             WorkerSettings(  # type: ignore[call-arg]
                 worker_id="w",
                 orchestrator_url="http://o:8000",
-                output_mode="multipart",
+                output_mode="multipart",  # pyright: ignore[reportCallIssue]
             )
+
+    def test_max_input_tokens_default_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`max_input_tokens` defaults to None; workers that publish a
+        per-chunk cap read it via ``or _DEFAULT_MAX_INPUT_TOKENS`` (CFG-011)."""
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        s = WorkerSettings()  # type: ignore[call-arg]
+        assert s.max_input_tokens is None
+
+    def test_max_input_tokens_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ACHERON_WORKER__MAX_INPUT_TOKENS maps to max_input_tokens."""
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__MAX_INPUT_TOKENS", "4096")
+        s = WorkerSettings()  # type: ignore[call-arg]
+        assert s.max_input_tokens == 4096
 
     def test_per_language_defaults_empty_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
