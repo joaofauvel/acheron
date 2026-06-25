@@ -429,19 +429,19 @@ related: ['DATA-003']
 ### DATA-005 — RedisWorkerStore._deserialize_worker invalid status field has no corruption test
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 101-106
   - path: tests/shell/stores/test_redis_worker_store.py
-    lines: 100-116
+    lines: 100-116, 118-167
 related: [DATA-002]
 ```
 
