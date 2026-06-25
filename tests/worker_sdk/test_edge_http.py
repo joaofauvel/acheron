@@ -90,6 +90,7 @@ class TestEdgeRoutes:
         self,
         app_handler: tuple[FastAPI, _Stub],
         monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """On handler error, the body is a ``JobResult`` JSON (status=failed,
         job_id echoed, error populated, no outputs) so the orchestrator's
@@ -102,11 +103,12 @@ class TestEdgeRoutes:
 
         monkeypatch.setattr(h, "handle", _boom)
         transport = ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-            r = await c.post(
-                "/execute",
-                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
-            )
+        with caplog.at_level("ERROR", logger="acheron.worker_sdk._edge_http"):
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                r = await c.post(
+                    "/execute",
+                    json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+                )
         assert r.status_code == 500
         body = r.json()
         assert body["job_id"] == "j1"
@@ -115,6 +117,32 @@ class TestEdgeRoutes:
         assert "OOM" in body["error"]
         assert body["metrics"]["duration_seconds"] >= 0.0
         assert body["metrics"]["cost_basis"] is None
+        assert any("handler failed" in r.message and "_Stub" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_dispatch_propagates_keyboard_interrupt(
+        self,
+        app_handler: tuple[FastAPI, _Stub],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``KeyboardInterrupt`` from the handler propagates out of the
+        ``/execute`` route (and ``_dispatch``) rather than being wrapped in a
+        500 — the operator's Ctrl-C during a long handler must reach uvicorn's
+        signal handler rather than being logged as a normal job failure.
+        """
+        app, h = app_handler
+
+        async def _interrupt(job: Job, input: Input | None = None) -> list[BytesArtifact]:  # noqa: A002
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(h, "handle", _interrupt)
+        transport = ASGITransport(app=app, raise_app_exceptions=True)
+        with pytest.raises(KeyboardInterrupt):
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                await c.post(
+                    "/execute",
+                    json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+                )
 
     @pytest.mark.asyncio
     async def test_execute_metrics_part_emits_null_cost_basis(self, app_handler: tuple[FastAPI, _Stub]) -> None:

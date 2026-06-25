@@ -288,9 +288,9 @@ class EdgeApp:
         start = time.monotonic()
         try:
             artifacts: list[Artifact] = await self.handler.handle(job, input_obj)
-        except BaseException as exc:
+        except Exception as exc:
             duration = time.monotonic() - start
-            logger.exception("Handler failed for job %s", job.job_id)
+            logger.exception("%s handler failed for job %s", type(self.handler).__name__, job.job_id)
             result = JobResult(
                 job_id=job.job_id,
                 status=JobStatus.FAILED,
