@@ -361,6 +361,15 @@ last_verified_at:
   commit: dbec2be
   date: 2026-06-23
 fixed_in: []
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: pending
+  date: 2026-06-24
+fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 75-93

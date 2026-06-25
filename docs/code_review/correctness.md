@@ -360,17 +360,19 @@ related: []
 ### CORR-014 — `RunPodClient.run` silently treats a FAILED RunPod job as a successful empty result
 
 ```yaml
-status: open
+status: verified
 severity: high
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: 4863597
+  date: 2026-06-24
+fixed_in: [4863597]
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 75-94
+    lines: 75-102
+  - path: tests/worker_sdk/test_runpod_client.py
+    lines: 81-100
 related: [EXC-001]
 ```
 

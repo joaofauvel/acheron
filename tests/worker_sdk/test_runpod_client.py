@@ -78,3 +78,23 @@ class TestRunPodClient:
         client = RunPodClient(api_key="rk_secret", endpoint_id="eid", execution_timeout_s=60.0)
         await client.run(payload={})
         assert seen_args == {"endpoint_id": "eid", "api_key": "rk_secret"}
+
+    @pytest.mark.asyncio
+    async def test_failed_status_raises_worker_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from acheron.core.errors import WorkerError
+
+        fake = _FakeEndpoints(output={"status": "FAILED", "error": "GPU OOM"})
+        _patch_endpoint(monkeypatch, fake)
+        client = RunPodClient(api_key="k", endpoint_id="eid", execution_timeout_s=60.0)
+        with pytest.raises(WorkerError, match="GPU OOM"):
+            await client.run(payload={})
+
+    @pytest.mark.asyncio
+    async def test_cancelled_status_raises_worker_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from acheron.core.errors import WorkerError
+
+        fake = _FakeEndpoints(output={"status": "CANCELLED"})
+        _patch_endpoint(monkeypatch, fake)
+        client = RunPodClient(api_key="k", endpoint_id="eid", execution_timeout_s=60.0)
+        with pytest.raises(WorkerError, match="CANCELLED"):
+            await client.run(payload={})

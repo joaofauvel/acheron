@@ -87,6 +87,14 @@ class RunPodClient:
 
         gpu_seconds = time.monotonic() - start
         output_dict = output if isinstance(output, dict) else {"artifacts": output}
+        status = output_dict.get("status")
+        if status is not None and status != "COMPLETED":
+            err = output_dict.get("error")
+            msg = f"RunPod job did not complete (status={status}"
+            if err:
+                msg += f", error={err}"
+            msg += f", endpoint={self._endpoint_id})"
+            raise WorkerError(msg)
         artifacts = output_dict.get("artifacts", [])
         if not isinstance(artifacts, list):
             msg = f"RunPod output.artifacts must be a list, got {type(artifacts).__name__}"

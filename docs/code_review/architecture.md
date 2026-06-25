@@ -308,8 +308,8 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: pending
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
@@ -550,8 +550,8 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: pending
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/grpc.py

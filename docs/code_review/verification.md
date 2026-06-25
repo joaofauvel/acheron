@@ -493,13 +493,22 @@ last_verified_at:
   commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
 fixed_in: []
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: pending
+  date: 2026-06-24
+fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 89-93
+    lines: 98-101
   - path: src/acheron/worker_sdk/artifacts.py
     lines: 71-77
   - path: tests/worker_sdk/test_runpod_client.py
-    lines: 1-80
+    lines: 1-100
   - path: tests/worker_sdk/test_artifacts.py
     lines: 45-52
 related: [CORR-014]
