@@ -613,7 +613,7 @@ related: [OBS-004, SEC-010, SEC-012]
 ### SEC-007 — Host Path Traversal & Arbitrary Local File Read in ExtractionHandler
 
 ```yaml
-status: fixed
+status: verified
 severity: high
 effort: M
 reviewed_at: d9dc740
