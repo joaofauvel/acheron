@@ -3,7 +3,9 @@
 from pydantic import BaseModel, ConfigDict
 
 from acheron.core.models import (
+    CostBasis,
     JsonValue,
+    PlanStatus,
     WorkerStatus,
 )
 
@@ -29,13 +31,13 @@ class JobResponse(BaseModel):
     """Response for a single job."""
 
     job_id: str
-    status: str
+    status: PlanStatus
     plan_id: str | None = None
     completed_steps: int = 0
     total_steps: int = 0
     total_cost: float = 0.0
     total_duration_seconds: float = 0.0
-    total_cost_basis: str | None = None
+    total_cost_basis: CostBasis | None = None
     errors: list[str] = []
 
 

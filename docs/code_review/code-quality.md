@@ -746,19 +746,19 @@ related: [TYPE-005]
 ### TYPE-005 — `JobResponse.status` and `JobResponse.total_cost_basis` are stringly-typed despite `PlanStatus` and `CostBasis` enums existing at `core/models.py`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 29
+    lines: 31
   - path: src/acheron/shell/api/schemas.py
-    lines: 35
+    lines: 38
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 90
   - path: src/acheron/shell/api/routes/jobs.py
