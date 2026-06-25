@@ -271,14 +271,15 @@ related: []
 ### OBS-003 — Logs are free-form with no structured fields or trace correlation
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 263-270

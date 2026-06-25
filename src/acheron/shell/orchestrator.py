@@ -34,6 +34,7 @@ from acheron.shell.local_handlers import (
     LocalJobHandler,
     all_languages_caps,
 )
+from acheron.shell.logging_context import bind_job_id
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 
@@ -298,6 +299,10 @@ class Orchestrator:
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status."""
+        with bind_job_id(tracked.job_id):
+            await self._run_execution(tracked)
+
+    async def _run_execution(self, tracked: TrackedJob) -> None:
         db_job = await self._job_store.get(tracked.job_id)
         if db_job is None or db_job.status != PlanStatus.RUNNING:
             logger.warning(
