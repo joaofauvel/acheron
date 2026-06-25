@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 _SUPPORTED_LANGS = frozenset({"en", "fr", "de", "es", "pt", "ja"})
-_MODEL_ID = "ibm-granite/granite-speech-4.1-2b"
+_MODEL_ID_DEFAULT = "ibm-granite/granite-speech-4.1-2b"
 _DEFAULT_PROMPT = "transcribe the speech with proper punctuation and capitalization."
 
 
@@ -43,6 +43,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static description. No I/O — sync."""
+        model_id = self._settings.model_id or _MODEL_ID_DEFAULT
         metadata: dict[str, JsonValue] = {
             "asr_prompt": _DEFAULT_PROMPT,
             "health_provider": "runpod",
@@ -55,7 +56,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
             supported_formats_out=frozenset({"text"}),
             max_payload_bytes=None,
             batch_capable=False,
-            model_source=f"huggingface:{_MODEL_ID}",
+            model_source=f"huggingface:{model_id}",
             metadata=metadata,
         )
 
@@ -69,9 +70,10 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
                 AutoProcessor,
             )
 
-            self._processor = AutoProcessor.from_pretrained(_MODEL_ID)
+            model_id = self._settings.model_id or _MODEL_ID_DEFAULT
+            self._processor = AutoProcessor.from_pretrained(model_id)
             self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                _MODEL_ID,
+                model_id,
                 device_map="cuda:0",
                 torch_dtype=torch.bfloat16,
                 attn_implementation="flash_attention_2",
@@ -111,6 +113,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
 
         transcript = await asyncio.to_thread(self._transcribe, audio_bytes)
         chapter_id = safe_chapter_id(job.chapter_id)
+        model_id = self._settings.model_id or _MODEL_ID_DEFAULT
         return [
             BytesArtifact(
                 filename=f"{chapter_id}.txt",
@@ -118,7 +121,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
                 data=transcript.encode("utf-8"),
                 metadata={
                     "chapter_id": chapter_id,
-                    "model": _MODEL_ID,
+                    "model": model_id,
                     "language": source_lang,
                 },
             )

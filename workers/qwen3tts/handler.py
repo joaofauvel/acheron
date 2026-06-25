@@ -52,7 +52,7 @@ _ALL_SPEAKERS = frozenset(
         "Sohee",
     }
 )
-_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+_MODEL_ID_DEFAULT = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
 
 def _chunk_text(c: dict[str, Any]) -> str:
@@ -99,6 +99,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static capabilities (no I/O, sync)."""
+        model_id = self._settings.model_id or _MODEL_ID_DEFAULT
         metadata: dict[str, JsonValue] = {
             "speakers": cast("list[JsonValue]", sorted(_ALL_SPEAKERS)),
             "default_speaker": self._settings.default_speaker,
@@ -112,7 +113,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             max_payload_bytes=None,
             batch_capable=True,
             max_input_tokens=2048,
-            model_source=f"huggingface:{_MODEL_ID}",
+            model_source=f"huggingface:{model_id}",
             metadata=metadata,
         )
 
@@ -123,8 +124,9 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
         def _load() -> None:
             from qwen_tts import Qwen3TTSModel  # noqa: PLC0415 - lazy, not always installed
 
+            model_id = self._settings.model_id or _MODEL_ID_DEFAULT
             self._model = Qwen3TTSModel.from_pretrained(
-                _MODEL_ID,
+                model_id,
                 device_map="cuda:0",
                 dtype=torch.bfloat16,
                 attn_implementation="flash_attention_2",

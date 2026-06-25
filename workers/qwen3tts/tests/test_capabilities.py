@@ -51,6 +51,16 @@ def test_capabilities_metadata_lists_speakers_and_default() -> None:
     assert caps.metadata["default_speaker"] == "Ryan"
 
 
+def test_capabilities_custom_model_id_from_settings() -> None:
+    """A custom model_id setting flows through to model_source (mirrors translategemma)."""
+    from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+    h = Qwen3TTSRunpodHandler(
+        _settings(model_id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice-v2")
+    )
+    assert h.capabilities().model_source == "huggingface:Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice-v2"
+
+
 def test_handler_inherits_worker_handler() -> None:
     from acheron.worker_sdk.handler import WorkerHandler
     from workers.qwen3tts.handler import Qwen3TTSRunpodHandler

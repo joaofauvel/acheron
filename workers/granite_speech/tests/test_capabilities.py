@@ -51,6 +51,23 @@ def test_capabilities_model_source(handler: Any) -> None:
     assert caps.model_source == "huggingface:ibm-granite/granite-speech-4.1-2b"
 
 
+def test_capabilities_custom_model_id_from_settings() -> None:
+    """A custom model_id setting flows through to model_source (mirrors translategemma)."""
+    from acheron.worker_sdk.settings import WorkerSettings
+    from workers.granite_speech.handler import GraniteSpeechRunpodHandler
+
+    h = GraniteSpeechRunpodHandler(
+        WorkerSettings(
+            worker_id="granite-speech-test",
+            orchestrator_url="http://o:8000",
+            listen_port=8001,
+            price_source="zero",
+            model_id="ibm-granite/granite-speech-3-2b",
+        )
+    )
+    assert h.capabilities().model_source == "huggingface:ibm-granite/granite-speech-3-2b"
+
+
 def test_capabilities_metadata(handler: Any) -> None:
     caps = handler.capabilities()
     assert caps.metadata["asr_prompt"] == "transcribe the speech with proper punctuation and capitalization."
