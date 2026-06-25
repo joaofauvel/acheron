@@ -908,19 +908,17 @@ related: []
 ### ARCH-022 — `HttpWorker._post_multipart` is a near-byte-duplicate of `HttpWorker._request` — should be a one-liner wrapper
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 65-83, 163-185
-  - path: src/acheron/shell/transports/http.py
-    lines: 65-83, 163-185
+    lines: 65-83
 related: [ARCH-021, PERF-007]
 ```
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
 import httpx
 from pydantic import TypeAdapter
@@ -154,35 +154,11 @@ class HttpWorker(Worker):
                 first_match.content_type,
             ),
         }
-        resp = await self._post_multipart(form)
+        resp = await self._request("POST", "/execute", files=form)
         ctype = resp.headers.get("content-type", "")
         if ctype.startswith("multipart/mixed"):
             return await self._parse_multipart(resp, job.job_id)
         return _result_adapter.validate_json(resp.content)
-
-    async def _post_multipart(self, form: Mapping[str, tuple[str | None, bytes, str]]) -> httpx.Response:
-        """POST multipart/form-data to /execute with the same error-conversion contract as ``_request``.
-
-        ``httpx.ConnectError`` → ``WorkerUnavailableError``;
-        ``httpx.HTTPStatusError`` → ``WorkerError``.
-        """
-        url = f"{self._base_url}/execute"
-        try:
-            if self._client is not None:
-                resp = await self._client.post(url, files=form)
-            else:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(url, files=form)
-            resp.raise_for_status()
-        except httpx.ConnectError as exc:
-            msg = f"Worker unreachable: {self._base_url}"
-            raise WorkerUnavailableError(msg) from exc
-        except httpx.HTTPStatusError as exc:
-            detail = exc.response.text
-            msg = f"Worker error {exc.response.status_code}: {detail}"
-            raise WorkerError(msg) from exc
-        else:
-            return resp
 
     async def _parse_multipart(self, resp: httpx.Response, job_id: str) -> JobResult:
         """Parse the multipart/mixed body emitted by the SDK edge."""
