@@ -912,23 +912,25 @@ related:
 ### ARCH-021 — Identical uvicorn+TLS 7-line boilerplate duplicated across 4 entry points after the worker-side TLS rollout
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
+- path: src/acheron/worker_sdk/_server.py
 - path: src/acheron/shell/api/__main__.py
-  lines: 19-26
+  lines: 17
 - path: src/acheron/worker_sdk/cli.py
-  lines: 76-83
+  lines: 74
 - path: stubs/tts_local_stub/main.py
-  lines: 21-28
+  lines: 19
 - path: stubs/tts_grpc_stub/main.py
-  lines: 21-28
+  lines: 25
 related: []
 ```
 
