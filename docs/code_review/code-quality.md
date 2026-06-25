@@ -388,14 +388,14 @@ related:
 ### MAINT-014 — Stub handlers redundantly override the ABC's default no-op `startup`/`shutdown` methods
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
 - path: stubs/_sdk_base/__init__.py
   lines: 53-57, 101-105, 140-144
