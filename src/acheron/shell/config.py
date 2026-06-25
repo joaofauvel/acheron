@@ -31,6 +31,7 @@ class OrchestratorSettings(BaseModel):
 
     data_dir: Path = Field(default=Path("/data/jobs"))
     registration_token: str | None = Field(default=None)
+    open_registration: bool = False
     health_check_interval_seconds: int = Field(default=30)
 
 
@@ -109,11 +110,12 @@ class _YamlConfigSettingsSource(PydanticBaseSettingsSource):
 
 
 class _EnvAliasSettingsSource(PydanticBaseSettingsSource):
-    """Maps flat ACHERON_DATA_DIR to nested orchestrator.data_dir.
+    """Maps flat ACHERON_* vars to their nested settings.
 
-    Placed below env_settings so ACHERON_ORCHESTRATOR__DATA_DIR (structured
-    form) wins over ACHERON_DATA_DIR (flat alias), and above YAML so the
-    alias overrides file config.
+    Placed below env_settings so the structured form (e.g.
+    ``ACHERON_ORCHESTRATOR__DATA_DIR``) wins over the flat alias
+    (``ACHERON_DATA_DIR``), and above YAML so the alias overrides file
+    config.
     """
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:  # noqa: ANN401, ARG002
@@ -127,6 +129,9 @@ class _EnvAliasSettingsSource(PydanticBaseSettingsSource):
         token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
         if token:
             res.setdefault("orchestrator", {})["registration_token"] = token
+        open_reg = os.environ.get("ACHERON_OPEN_REGISTRATION")
+        if open_reg == "1":
+            res.setdefault("orchestrator", {})["open_registration"] = True
         return res
 
 

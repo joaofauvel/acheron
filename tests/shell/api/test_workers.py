@@ -1,11 +1,10 @@
 """Tests for worker API routes."""
 
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 import pytest
-
-if TYPE_CHECKING:
-    from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 _WORKER_PAYLOAD: dict[str, Any] = {
     "worker_id": "asr-1",
@@ -101,26 +100,44 @@ class TestRegistrationSecurity:
     @pytest.mark.asyncio
     async def test_register_without_token_env_rejected_by_default(
         self,
-        client: AsyncClient,
+        tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When ACHERON_REGISTRATION_TOKEN is unset, registration is rejected
         unless ACHERON_OPEN_REGISTRATION=1 is explicitly set."""
         monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
         monkeypatch.delenv("ACHERON_OPEN_REGISTRATION", raising=False)
-        response = await client.post("/workers", json=_WORKER_PAYLOAD)
+        from tests.shell.conftest import make_app
+
+        app = await make_app(tmp_path)
+        await app.state.orchestrator.start()
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.post("/workers", json=_WORKER_PAYLOAD)
+        finally:
+            await app.state.orchestrator.shutdown()
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_register_without_token_env_opt_in_open(
         self,
-        client: AsyncClient,
+        tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """ACHERON_OPEN_REGISTRATION=1 explicitly opens registration."""
         monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
         monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
-        response = await client.post("/workers", json=_WORKER_PAYLOAD)
+        from tests.shell.conftest import make_app
+
+        app = await make_app(tmp_path)
+        await app.state.orchestrator.start()
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.post("/workers", json=_WORKER_PAYLOAD)
+        finally:
+            await app.state.orchestrator.shutdown()
         assert response.status_code == 201
 
 

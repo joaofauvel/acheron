@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import secrets
 from typing import Annotated, cast
 
@@ -26,11 +25,12 @@ def verify_registration_token(
     """Validate registration token.
 
     - If ``ACHERON_REGISTRATION_TOKEN`` is set: require a matching bearer token.
-    - If unset: require the explicit opt-in flag ``ACHERON_OPEN_REGISTRATION=1``
-      to enable open registration. Without the flag, registration is rejected
-      so a missing token does not silently fail open in production.
+    - If unset: require the explicit opt-in flag
+      ``ACHERON_OPEN_REGISTRATION=1`` to enable open registration. Without the
+      flag, registration is rejected so a missing token does not silently
+      fail open in production.
     """
-    if os.environ.get("ACHERON_OPEN_REGISTRATION") == "1":
+    if orch.settings.orchestrator.open_registration:
         return
 
     token = orch.settings.orchestrator.registration_token

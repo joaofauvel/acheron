@@ -163,3 +163,23 @@ orchestrator:
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
     assert settings.orchestrator.registration_token == "hello-suffix"
+
+
+def test_open_registration_default_false() -> None:
+    """ACHERON_OPEN_REGISTRATION defaults to False when unset."""
+    settings = Settings()
+    assert settings.orchestrator.open_registration is False
+
+
+def test_open_registration_env_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ACHERON_OPEN_REGISTRATION=1 routes into orchestrator.open_registration."""
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+    settings = Settings()
+    assert settings.orchestrator.open_registration is True
+
+
+def test_open_registration_yaml_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """orchestrator.open_registration can be set directly in YAML."""
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "0")
+    settings = Settings(orchestrator={"open_registration": True})
+    assert settings.orchestrator.open_registration is True
