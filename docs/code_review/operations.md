@@ -1159,17 +1159,18 @@ related: [OBS-007, OBS-009, SEC-022]
 ### OBS-011 — `validate_chunking_fits_workers` runs in `submit_job` with no log on success or failure — operator cannot confirm the plan-time input-budget check ran
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-- path: src/acheron/shell/orchestrator.py
-  lines: 275-280
+- path: src/acheron/core/planner.py
+  lines: 122-172
 related:
 - TEST-015
 - ARCH-019

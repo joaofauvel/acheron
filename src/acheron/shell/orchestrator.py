@@ -27,7 +27,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
-from acheron.core.planner import compile_plan, validate_chunking_fits_workers
+from acheron.core.planner import ChunkingLimits, compile_plan
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
@@ -257,7 +257,11 @@ class Orchestrator:
             RuntimeError: If ``start()`` has not been called. Local workers
                 are registered during start(); submitting before start would
                 fail at execution with a confusing WorkerError.
-            AcheronError: If plan compilation fails (e.g. invalid language path).
+            InvalidLanguagePathError: If no registered worker supports the
+                requested language path.
+            ChunkingTooLongForWorkerError: If the chunking step's
+                ``max_chunk_length`` exceeds a text-input worker's
+                ``max_input_tokens``.
         """
         if not self._started:
             msg = "Orchestrator.start() must be called before submit_job()"
@@ -278,11 +282,15 @@ class Orchestrator:
         )
 
         capabilities = tuple(w.capabilities for w in await self._registry.list_all())
-        plan = compile_plan(request, strategy, capabilities, job_id=job_id)
-        validate_chunking_fits_workers(
+        plan = compile_plan(
+            request,
+            strategy,
             capabilities,
-            self._settings.workers.chunking.max_chunk_length,
-            chars_per_token=self._settings.chars_per_token,
+            job_id=job_id,
+            chunking=ChunkingLimits(
+                max_chunk_length=self._settings.workers.chunking.max_chunk_length,
+                chars_per_token=self._settings.chars_per_token,
+            ),
         )
         self._cache.save_plan(plan)
         self._invalidate_handler_cache()

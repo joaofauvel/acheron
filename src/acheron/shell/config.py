@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     providers: ProvidersSettings = Field(default_factory=ProvidersSettings)
     chars_per_token: int = Field(
         default=1
-    )  # chars-per-token estimate used by validate_chunking_fits_workers; 1 is the CJK worst case
+    )  # chars-per-token estimate used by compile_plan chunking validation; 1 is the CJK worst case
 
     @classmethod
     def settings_customise_sources(
