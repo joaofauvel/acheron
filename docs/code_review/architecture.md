@@ -376,19 +376,20 @@ related:
 ### ARCH-013 — `transports/grpc.py` and `transports/http.py` both duplicate the `data_dir` env-var fallback to `ACHERON_DATA_DIR`
 
 ```yaml
-status: stale
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
   commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  date: 2026-06-25
+fixed_in:
+- 7d4754a
 files:
 - path: src/acheron/shell/transports/grpc.py
-  lines: 42-53
+  lines: 45-54
 - path: src/acheron/shell/transports/http.py
-  lines: 60-62
+  lines: 53-64
 related:
 - CFG-006
 ```
