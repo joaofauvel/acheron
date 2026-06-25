@@ -221,10 +221,10 @@ class TestHandleHappyPath:
 
 
 class TestTranslateAll:
-    def test_translate_all_chunks_into_batches_of_max_batch_size(self) -> None:
+    def test_translate_all_chunks_into_batches_of_max_batch_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """10 chunks → 3 batches: 4 + 4 + 2."""
         from workers._shared import Chunk
-        from workers.translategemma.handler import TranslateGemmaRunpodHandler
+        from workers.translategemma import handler as handler_module
 
         h = _handler()
         calls: list[list[Chunk]] = []
@@ -233,13 +233,10 @@ class TestTranslateAll:
             calls.append(batch)
             return [f"t_{i}" for i in range(len(batch))]
 
-        original = TranslateGemmaRunpodHandler._translate_batch
-        TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
-        try:
-            chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(10)]
-            out = h._translate_all(chunks, "en", "es")
-        finally:
-            TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
+        original = handler_module.TranslateGemmaRunpodHandler._translate_batch
+        monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_batch", _spy)
+        chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(10)]
+        out = h._translate_all(chunks, "en", "es")
         assert len(calls) == 3
         assert [len(b) for b in calls] == [4, 4, 2]
         assert len(out) == 10
@@ -248,10 +245,12 @@ class TestTranslateAll:
         assert out[4] == "t_0"  # second batch starts fresh
         assert out[8] == "t_0"  # third batch (size 2) starts fresh
         assert out[9] == "t_1"
+        monkeypatch.undo()
+        assert handler_module.TranslateGemmaRunpodHandler._translate_batch is original
 
-    def test_translate_all_with_fewer_than_max_batch_size(self) -> None:
+    def test_translate_all_with_fewer_than_max_batch_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from workers._shared import Chunk
-        from workers.translategemma.handler import TranslateGemmaRunpodHandler
+        from workers.translategemma import handler as handler_module
 
         h = _handler()
         calls: list[list[Chunk]] = []
@@ -260,15 +259,14 @@ class TestTranslateAll:
             calls.append(batch)
             return [f"t_{i}" for i in range(len(batch))]
 
-        original = TranslateGemmaRunpodHandler._translate_batch
-        TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
-        try:
-            chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(3)]
-            out = h._translate_all(chunks, "en", "es")
-        finally:
-            TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
+        original = handler_module.TranslateGemmaRunpodHandler._translate_batch
+        monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_batch", _spy)
+        chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(3)]
+        out = h._translate_all(chunks, "en", "es")
         assert len(calls) == 1
         assert len(out) == 3
+        monkeypatch.undo()
+        assert handler_module.TranslateGemmaRunpodHandler._translate_batch is original
 
 
 class TestValidatePayload:

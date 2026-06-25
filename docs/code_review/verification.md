@@ -749,17 +749,17 @@ related: [SEC-011, OBS-011]
 ### TEST-016 — `workers/translategemma/tests/test_handler.py:235-241` class-level mutation anti-pattern — second instance of open TEST-012
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
-  - path: workers/translategemma/tests/test_handler.py
-    lines: 223-269
+- path: workers/translategemma/tests/test_handler.py
+  lines: 223-271
 related: [TEST-012]
 ```
 
