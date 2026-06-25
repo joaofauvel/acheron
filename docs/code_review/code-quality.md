@@ -929,19 +929,22 @@ related: [ARCH-018]
 ### MAINT-017 — chunks.json parsing duplicated byte-for-byte between qwen3tts and translategemma handlers — third instance of the wire-shape drift pattern
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
+- path: workers/_shared.py
+  lines: 82-104
 - path: workers/qwen3tts/handler.py
-  lines: 198-216
+  lines: 131
 - path: workers/translategemma/handler.py
-  lines: 188-198
+  lines: 187
 related:
 - MAINT-015
 - MAINT-018
@@ -959,19 +962,22 @@ related:
 ### MAINT-018 — Per-chunk field validation duplicated between translategemma (_normalize_chunk) and qwen3tts (_chunk_text / _chunk_chapter_id); shared `Chunk` dataclass would unify them
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-- path: workers/translategemma/handler.py
-  lines: 199, 297-315
+- path: workers/_shared.py
+  lines: 40-71
 - path: workers/qwen3tts/handler.py
-  lines: 59-85
+  lines: 138-156
+- path: workers/translategemma/handler.py
+  lines: 196-204
 related:
 - MAINT-017
 - MAINT-019

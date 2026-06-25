@@ -223,19 +223,20 @@ class TestHandleHappyPath:
 class TestTranslateAll:
     def test_translate_all_chunks_into_batches_of_max_batch_size(self) -> None:
         """10 chunks → 3 batches: 4 + 4 + 2."""
+        from workers._shared import Chunk
         from workers.translategemma.handler import TranslateGemmaRunpodHandler
 
         h = _handler()
-        calls: list[list[dict[str, Any]]] = []
+        calls: list[list[Chunk]] = []
 
-        def _spy(self: Any, batch: list[dict[str, Any]], src: str, tgt: str) -> list[str]:
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
             calls.append(batch)
             return [f"t_{i}" for i in range(len(batch))]
 
         original = TranslateGemmaRunpodHandler._translate_batch
         TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
         try:
-            chunks = [{"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(10)]
+            chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(10)]
             out = h._translate_all(chunks, "en", "es")
         finally:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
@@ -249,19 +250,20 @@ class TestTranslateAll:
         assert out[9] == "t_1"
 
     def test_translate_all_with_fewer_than_max_batch_size(self) -> None:
+        from workers._shared import Chunk
         from workers.translategemma.handler import TranslateGemmaRunpodHandler
 
         h = _handler()
-        calls: list[list[dict[str, Any]]] = []
+        calls: list[list[Chunk]] = []
 
-        def _spy(self: Any, batch: list[dict[str, Any]], src: str, tgt: str) -> list[str]:
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
             calls.append(batch)
             return [f"t_{i}" for i in range(len(batch))]
 
         original = TranslateGemmaRunpodHandler._translate_batch
         TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
         try:
-            chunks = [{"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(3)]
+            chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(3)]
             out = h._translate_all(chunks, "en", "es")
         finally:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
