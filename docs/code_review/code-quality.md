@@ -245,7 +245,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 0450dc31a8244560d5dd8da18ecb1e4ae8013cc5
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
@@ -254,7 +254,7 @@ files:
   - path: src/acheron/shell/health_providers.py
     lines: 80
   - path: src/acheron/shell/transports/http.py
-    lines: 239
+    lines: 209-215
   - path: src/acheron/shell/local_handlers.py
     lines: 317
   - path: src/acheron/shell/executors/streaming.py
@@ -446,7 +446,7 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 0450dc31a8244560d5dd8da18ecb1e4ae8013cc5
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
@@ -459,7 +459,7 @@ files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 90-95
   - path: src/acheron/shell/transports/http.py
-    lines: 66-84
+    lines: 65-83
 related: [CORR-014]
 ```
 

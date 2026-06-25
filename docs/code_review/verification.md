@@ -456,7 +456,7 @@ related: [DATA-002]
 ### DATA-006 — `HttpWorker._parse_multipart` edge cases (no metrics part, missing boundary, non-multipart body) are not covered
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
@@ -660,7 +660,7 @@ related: [CORR-013]
 ### DATA-008 — `HttpWorker._parse_multipart` response-side edge cases (no metrics part, missing boundary, non-multipart body) still uncovered after Layer 8b test additions
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1

@@ -182,8 +182,8 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -193,7 +193,7 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 195-211
   - path: src/acheron/shell/transports/http.py
-    lines: 159-181
+    lines: 163-185
 related: []
 ```
 
@@ -987,12 +987,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 143-165
+    lines: 163-185
 related: [PERF-007]
 ```
 

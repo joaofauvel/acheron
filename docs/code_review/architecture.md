@@ -366,14 +366,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 42-53
   - path: src/acheron/shell/transports/http.py
-    lines: 51-65
+    lines: 60-62
 related: [CFG-006]
 ```
 
@@ -550,14 +550,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 52
   - path: src/acheron/shell/transports/http.py
-    lines: 62
+    lines: 61
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 45-51
   - path: src/acheron/worker_sdk/app.py
@@ -628,14 +628,14 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 90-157
+    lines: 89-104, 113-161
   - path: src/acheron/shell/transports/http.py
-    lines: 114-157
+    lines: 89-104, 113-161
 related: [ARCH-013, ARCH-020]
 ```
 
@@ -655,7 +655,7 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 9b4adb6
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
@@ -666,7 +666,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 85-95
   - path: src/acheron/shell/transports/http.py
-    lines: 51-64
+    lines: 55-63
 related: [ARCH-014]
 ```
 
@@ -857,12 +857,12 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 90-157
+    lines: 89-104, 113-161
 related: [ARCH-014, ARCH-015, CORR-027]
 ```
 
@@ -913,14 +913,14 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 66-84
+    lines: 65-83, 163-185
   - path: src/acheron/shell/transports/http.py
-    lines: 159-181
+    lines: 65-83, 163-185
 related: [ARCH-021, PERF-007]
 ```
 
@@ -1014,12 +1014,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/core/models.py
-    lines: 89
+    lines: 86-90
   - path: src/acheron/worker_sdk/settings.py
     lines: 50-118
   - path: workers/qwen3tts/handler.py

@@ -333,7 +333,7 @@ related: [OBS-005]
 ### CORR-013 — `_parse_multipart` discards per-part `X-Acheron-Metadata` header sent by the SDK edge
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
@@ -475,12 +475,12 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 140-153
+    lines: 149-156
 related: []
 ```
 
@@ -713,7 +713,7 @@ related: [CFG-009, CORR-029]
 ### CORR-027 — `_execute_with_upstream_input` only POSTs the first matching file; multi-file upstream outputs are silently truncated
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
@@ -740,7 +740,7 @@ related: [ARCH-020]
 ### CORR-028 — `_parse_multipart` boundary extraction raises IndexError on response missing `boundary=`
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
@@ -794,7 +794,7 @@ related: [CORR-026, MAINT-019]
 ### CORR-030 — `_parse_multipart` takes the first `application/json` part as metrics; a sidecar JSON part would be silently overwritten
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
@@ -826,12 +826,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: a9298e0473399a3db86a33b164f0cf6263834195
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 236-242
+    lines: 209-215
 related: [MAINT-009, CORR-013]
 ```
 
