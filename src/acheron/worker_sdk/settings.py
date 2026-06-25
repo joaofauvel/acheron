@@ -16,7 +16,7 @@ import os
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -61,6 +61,13 @@ class WorkerSettings(BaseSettings):
     handler: str = ""
     model_id: str | None = None
     phantom_handler: str | None = None
+
+    worker_host: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("worker_host", "WORKER_HOST"),
+    )
+    log_level: str = "INFO"
+    runpod_base_url: str | None = None
 
     model_config = SettingsConfigDict(
         env_prefix="ACHERON_WORKER__",

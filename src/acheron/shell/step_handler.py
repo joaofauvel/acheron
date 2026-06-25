@@ -14,6 +14,8 @@ from acheron.shell.transports.http import HttpWorker
 from acheron.tls import grpc_channel
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from acheron.core.models import Plan, PlanStep
     from acheron.shell.cache import StepCache
     from acheron.shell.executors._utils import StepHandler
@@ -31,6 +33,7 @@ def default_worker_factory(
     local_handlers: dict[str, LocalJobHandler] | None = None,
     *,
     step_cache: StepCache | None = None,
+    data_dir: Path | str,
 ) -> Worker:
     """Create a worker from a registered worker's endpoint and transport.
 
@@ -40,13 +43,15 @@ def default_worker_factory(
 
     ``step_cache`` is forwarded to ``HttpWorker`` so the ASR branch can read
     upstream step outputs (e.g. extract step's audio file). When None,
-    ``HttpWorker`` constructs a default ``StepCache`` from
-    ``ACHERON_DATA_DIR`` (or its ``data_dir`` parameter).
+    ``HttpWorker`` constructs a default ``StepCache`` from ``data_dir``.
+
+    ``data_dir`` is the orchestrator's effective data dir (from settings) and
+    is forwarded to the transports so they don't need to read env vars.
     """
     match registered.transport:
         case "grpc":
             channel = grpc_channel(registered.endpoint)
-            return GrpcWorker(channel)
+            return GrpcWorker(channel, data_dir=data_dir)
         case "local":
             from acheron.shell.transports.local import LocalWorker  # noqa: PLC0415
 
@@ -61,7 +66,7 @@ def default_worker_factory(
                 supported_languages_out=registered.capabilities.supported_languages_out,
             )
         case _:
-            return HttpWorker(registered.endpoint, step_cache=step_cache)
+            return HttpWorker(registered.endpoint, data_dir=data_dir, step_cache=step_cache)
 
 
 def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str, dst: str) -> bool:
@@ -83,6 +88,7 @@ def create_step_handler(
     local_handlers: dict[str, LocalJobHandler] | None = None,
     *,
     step_cache: StepCache | None = None,
+    data_dir: Path | str,
 ) -> StepHandler:
     """Create a step handler that dispatches to registered workers.
 
@@ -92,13 +98,18 @@ def create_step_handler(
     ``step_cache`` is forwarded to ``default_worker_factory`` so ``HttpWorker``
     instances can read upstream step outputs (e.g. extract step's audio file
     for ASR). When None, the factory's HttpWorker constructs a default
-    ``StepCache`` from ``ACHERON_DATA_DIR``.
+    ``StepCache`` from ``data_dir``.
+
+    ``data_dir`` is the orchestrator's effective data dir and is forwarded to
+    the transports so they don't need to read env vars.
 
     Caches ``registry.list_all()`` per plan (plan_id) and reuses ``Worker``
     instances per worker_id across steps to avoid redundant registry round-trips
     and gRPC channel / HTTP connection churn.
     """
-    factory = worker_factory or (lambda reg: default_worker_factory(reg, local_handlers, step_cache=step_cache))
+    factory = worker_factory or (
+        lambda reg: default_worker_factory(reg, local_handlers, step_cache=step_cache, data_dir=data_dir)
+    )
     _cached_workers: tuple[RegisteredWorker, ...] | None = None
     _cached_plan_id: str | None = None
     _worker_instances: dict[str, Worker] = {}

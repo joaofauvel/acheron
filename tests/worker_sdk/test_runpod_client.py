@@ -37,7 +37,7 @@ class _FakeRun:
 def _patch_endpoint(monkeypatch: pytest.MonkeyPatch, fake: _FakeEndpoints) -> None:
     import acheron.worker_sdk._runpod_client as mod
 
-    def _factory(endpoint_id: str, *, api_key: str) -> _FakeEndpoints:
+    def _factory(endpoint_id: str, *, api_key: str, base_url: str | None = None) -> _FakeEndpoints:
         return fake
 
     monkeypatch.setattr(mod, "_open_endpoint", _factory)
@@ -67,9 +67,10 @@ class TestRunPodClient:
     async def test_endpoint_id_and_api_key_passed_to_factory(self, monkeypatch: pytest.MonkeyPatch) -> None:
         seen_args: dict[str, str] = {}
 
-        def _factory(endpoint_id: str, *, api_key: str) -> _FakeEndpoints:
+        def _factory(endpoint_id: str, *, api_key: str, base_url: str | None = None) -> _FakeEndpoints:
             seen_args["endpoint_id"] = endpoint_id
             seen_args["api_key"] = api_key
+            seen_args["base_url"] = base_url  # type: ignore[assignment]
             return _FakeEndpoints(output={"artifacts": []})
 
         import acheron.worker_sdk._runpod_client as mod
@@ -77,7 +78,7 @@ class TestRunPodClient:
         monkeypatch.setattr(mod, "_open_endpoint", _factory)
         client = RunPodClient(api_key="rk_secret", endpoint_id="eid", execution_timeout_s=60.0)
         await client.run(payload={})
-        assert seen_args == {"endpoint_id": "eid", "api_key": "rk_secret"}
+        assert seen_args == {"endpoint_id": "eid", "api_key": "rk_secret", "base_url": None}
 
     @pytest.mark.asyncio
     async def test_failed_status_raises_worker_error(self, monkeypatch: pytest.MonkeyPatch) -> None:

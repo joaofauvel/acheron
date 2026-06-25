@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -54,7 +53,7 @@ def _build_price_source(settings: WorkerSettings) -> PriceSource:
 
 def _endpoint_url(settings: WorkerSettings) -> str:
     """The URL the orchestrator will use to reach this edge container."""
-    return f"http://{os.environ.get('WORKER_HOST', 'localhost')}:{settings.listen_port}"
+    return f"http://{settings.worker_host or 'localhost'}:{settings.listen_port}"
 
 
 def _registration_caps(caps: WorkerCapabilities, settings: WorkerSettings) -> WorkerCapabilities:

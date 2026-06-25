@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from pathlib import Path
 
@@ -37,19 +36,21 @@ class GrpcWorker(Worker):
     orchestrator consumes ``Artifact`` parts via the shared
     ``_materialize_artifact`` / ``_build_result`` helpers — identical to the
     HTTP multipart path. Legacy ``pcm_data`` mode is preserved.
+
+    ``data_dir`` is required — the orchestrator (which owns settings) passes
+    it explicitly so the same transport works against the configured data
+    dir without reading env vars directly.
     """
 
     def __init__(
         self,
         channel: grpc.aio.Channel,
         *,
-        data_dir: Path | str | None = None,
+        data_dir: Path | str,
     ) -> None:
         self._channel = channel
         self._stub = synthesis_pb2_grpc.SynthesisStub(channel)  # type: ignore[no-untyped-call]
         self._health_stub = health_pb2_grpc.HealthStub(channel)
-        if data_dir is None:
-            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
         self._data_dir = Path(data_dir)
 
     async def capabilities(self) -> WorkerCapabilities:  # noqa: D102

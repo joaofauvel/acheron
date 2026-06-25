@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -624,7 +625,7 @@ async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) 
     assert orch._health_monitor._providers.get("runpod") is not None  # noqa: SLF001
 
 
-def test_orchestrator_does_not_mutate_passed_settings(tmp_path) -> None:
+def test_orchestrator_does_not_mutate_passed_settings(tmp_path: Path) -> None:
     """Orchestrator must not mutate the caller's Settings; it constructs a fresh one when needed."""
     from acheron.shell.config import OrchestratorSettings
 
@@ -645,7 +646,7 @@ def test_orchestrator_does_not_mutate_passed_settings(tmp_path) -> None:
     )
 
 
-def test_create_app_does_not_mutate_passed_settings(tmp_path) -> None:
+def test_create_app_does_not_mutate_passed_settings(tmp_path: Path) -> None:
     """create_app must not mutate the caller's Settings when data_dir is given."""
     from acheron.shell.api.app import create_app
     from acheron.shell.config import OrchestratorSettings

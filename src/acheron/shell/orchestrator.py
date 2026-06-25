@@ -84,9 +84,7 @@ class Orchestrator:
     ) -> None:
         if settings is None:
             default = load_settings()
-            self._settings = Settings(
-                orchestrator=default.orchestrator.model_copy(update={"data_dir": cache.data_dir})
-            )
+            self._settings = Settings(orchestrator=default.orchestrator.model_copy(update={"data_dir": cache.data_dir}))
         else:
             self._settings = settings
         self._registry = registry
@@ -97,6 +95,7 @@ class Orchestrator:
             registry,
             local_handlers=self._local_handlers,
             step_cache=self._step_cache,
+            data_dir=self._settings.orchestrator.data_dir,
         )
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)

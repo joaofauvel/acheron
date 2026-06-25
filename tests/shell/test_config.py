@@ -224,6 +224,8 @@ def test_open_registration_env_alias(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_open_registration_yaml_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """orchestrator.open_registration can be set directly in YAML."""
+    from acheron.shell.config import OrchestratorSettings
+
     monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "0")
-    settings = Settings(orchestrator={"open_registration": True})
+    settings = Settings(orchestrator=OrchestratorSettings(open_registration=True))
     assert settings.orchestrator.open_registration is True

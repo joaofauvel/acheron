@@ -31,18 +31,16 @@ class _Endpoint(Protocol):
     def run(self, payload: dict[str, object]) -> _Run: ...
 
 
-def _open_endpoint(endpoint_id: str, *, api_key: str) -> _Endpoint:
+def _open_endpoint(endpoint_id: str, *, api_key: str, base_url: str | None = None) -> _Endpoint:
     r"""Construct a RunPod Endpoint with optional test-seam base-URL override.
 
-    The ``ACHERON_WORKER__RUNPOD_BASE_URL`` env var (also forwarded to the
-    runpod SDK's ``RUNPOD_BASE_URL`` if it honours it) lets the in-process
+    ``base_url`` (from ``WorkerSettings.runpod_base_url``) lets the in-process
     mock RunPod server in ``stubs/_sdk_base/mock_runpod.py`` intercept calls
     in tests. The real runpod SDK's ``Endpoint`` constructor doesn't take a
-    ``base_url`` kwarg; if neither env var is honoured, the test seam is a
-    no-op (the SDK still works against the real RunPod API).
+    ``base_url`` kwarg; if the forwarded env var is not honoured, the test
+    seam is a no-op (the SDK still works against the real RunPod API).
     """
     runpod.api_key = api_key
-    base_url = os.environ.get("ACHERON_WORKER__RUNPOD_BASE_URL")
     if base_url:
         # Forward to the runpod SDK's own env var in case it supports
         # `RUNPOD_BASE_URL`. The SDK doesn't expose a direct kwarg; if
@@ -67,13 +65,23 @@ class RunPodClient:
     each ``/execute`` request received from the orchestrator.
     """
 
-    def __init__(self, *, api_key: str, endpoint_id: str, execution_timeout_s: float) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint_id: str,
+        execution_timeout_s: float,
+        base_url: str | None = None,
+    ) -> None:
         self._api_key = api_key
         self._endpoint_id = endpoint_id
         self._execution_timeout_s = execution_timeout_s
+        self._base_url = base_url
 
     async def run(self, payload: dict[str, object]) -> RunPodJobResult:
-        endpoint = await asyncio.to_thread(_open_endpoint, self._endpoint_id, api_key=self._api_key)
+        endpoint = await asyncio.to_thread(
+            _open_endpoint, self._endpoint_id, api_key=self._api_key, base_url=self._base_url
+        )
         start = time.monotonic()
         request = await asyncio.to_thread(endpoint.run, payload)
         try:

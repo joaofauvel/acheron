@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +44,10 @@ class HttpWorker(Worker):
     ``application/json`` body is the legacy path that round-trips a
     pre-materialized ``JobResult`` with absolute ``OutputFile.path`` entries
     (used by the HTTP stubs until Plan 3 replaces them).
+
+    ``data_dir`` is required — the orchestrator (which owns settings) passes
+    it explicitly so the same transport works against the configured data
+    dir without reading env vars directly.
     """
 
     def __init__(
@@ -52,13 +55,11 @@ class HttpWorker(Worker):
         base_url: str,
         client: httpx.AsyncClient | None = None,
         *,
-        data_dir: Path | str | None = None,
+        data_dir: Path | str,
         step_cache: StepCache | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._client = client
-        if data_dir is None:
-            data_dir = Path(os.environ.get("ACHERON_DATA_DIR", "/data/jobs"))
         self._data_dir = Path(data_dir)
         self._step_cache = step_cache if step_cache is not None else StepCache(self._data_dir)
 

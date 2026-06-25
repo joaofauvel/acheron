@@ -199,6 +199,7 @@ class RunPodForwarderHandler(WorkerHandler):
             api_key=self._settings.runpod_api_key,
             endpoint_id=self._settings.runpod_endpoint_id,
             execution_timeout_s=self._settings.execution_timeout_s,
+            base_url=self._settings.runpod_base_url,
         )
 
     async def shutdown(self) -> None:

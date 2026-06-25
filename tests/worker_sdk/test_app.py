@@ -100,3 +100,19 @@ class TestCreateWorkerApp:
             )
             assert r.status_code == 200
             assert "multipart/mixed" in r.headers["content-type"]
+
+    def test_endpoint_url_uses_worker_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When settings.worker_host is set, it is used in the registration endpoint URL."""
+        from acheron.worker_sdk.app import _endpoint_url
+
+        monkeypatch.delenv("WORKER_HOST", raising=False)
+        s = _settings(price_source="zero", worker_host="edge-prod-1")
+        assert _endpoint_url(s) == "http://edge-prod-1:0"
+
+    def test_endpoint_url_defaults_to_localhost(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When worker_host is unset (and WORKER_HOST env unset), the URL uses localhost."""
+        from acheron.worker_sdk.app import _endpoint_url
+
+        monkeypatch.delenv("WORKER_HOST", raising=False)
+        s = _settings(price_source="zero")
+        assert _endpoint_url(s) == "http://localhost:0"

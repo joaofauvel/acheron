@@ -22,30 +22,30 @@ _BASE_URL = "http://worker:8000"
 class TestHttpWorkerHealth:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_health_returns_true_on_200(self) -> None:
+    async def test_health_returns_true_on_200(self, tmp_path: Path) -> None:
         respx.get(f"{_BASE_URL}/health").mock(return_value=httpx.Response(200))
-        worker = HttpWorker(_BASE_URL)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
         assert await worker.health() is True
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_health_returns_false_on_500(self) -> None:
+    async def test_health_returns_false_on_500(self, tmp_path: Path) -> None:
         respx.get(f"{_BASE_URL}/health").mock(return_value=httpx.Response(500))
-        worker = HttpWorker(_BASE_URL)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
         assert await worker.health() is False
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_health_returns_false_on_connection_error(self) -> None:
+    async def test_health_returns_false_on_connection_error(self, tmp_path: Path) -> None:
         respx.get(f"{_BASE_URL}/health").mock(side_effect=httpx.ConnectError("refused"))
-        worker = HttpWorker(_BASE_URL)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
         assert await worker.health() is False
 
 
 class TestHttpWorkerCapabilities:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_capabilities_returns_worker_caps(self) -> None:
+    async def test_capabilities_returns_worker_caps(self, tmp_path: Path) -> None:
         respx.get(f"{_BASE_URL}/capabilities").mock(
             return_value=httpx.Response(
                 200,
@@ -61,7 +61,7 @@ class TestHttpWorkerCapabilities:
                 },
             )
         )
-        worker = HttpWorker(_BASE_URL)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
         caps = await worker.capabilities()
         assert caps.worker_type == WorkerType.TTS
         assert "es" in caps.supported_languages_in

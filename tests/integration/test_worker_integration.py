@@ -265,7 +265,7 @@ class TestWorkerIntegrationErrorPath:
             _caps(WorkerType.TTS, langs_in=frozenset({"es"}), langs_out=frozenset({"es"}), batch_capable=True),
         )
 
-        handler = create_step_handler(reg)
+        handler = create_step_handler(reg, data_dir=tmp_path)
         orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
         await orch.start()
         request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")

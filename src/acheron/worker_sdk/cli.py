@@ -70,7 +70,7 @@ def main() -> None:
     app = create_worker_app(handler=handler, settings=settings)
 
     logging.basicConfig(
-        level=os.environ.get("ACHERON_WORKER__LOG_LEVEL", "INFO"),
+        level=settings.log_level,
         stream=sys.stdout,
     )
     ssl = uvicorn_ssl_kwargs()

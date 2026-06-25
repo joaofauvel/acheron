@@ -18,12 +18,39 @@ class TestDefaults:
         assert s.output_mode == "multipart"
         assert s.execution_timeout_s == 1800.0
         assert s.default_speaker == "Ryan"
+        assert s.log_level == "INFO"
+        assert s.worker_host is None
+        assert s.runpod_base_url is None
 
     def test_per_language_defaults_empty_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
         monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
         s = WorkerSettings()  # type: ignore[call-arg]
         assert s.per_language_defaults == {}
+
+    def test_log_level_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ACHERON_WORKER__LOG_LEVEL maps to log_level."""
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__LOG_LEVEL", "DEBUG")
+        s = WorkerSettings()  # type: ignore[call-arg]
+        assert s.log_level == "DEBUG"
+
+    def test_runpod_base_url_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ACHERON_WORKER__RUNPOD_BASE_URL maps to runpod_base_url."""
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_BASE_URL", "http://mock-runpod:8000")
+        s = WorkerSettings()  # type: ignore[call-arg]
+        assert s.runpod_base_url == "http://mock-runpod:8000"
+
+    def test_worker_host_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """WORKER_HOST (no prefix) maps to worker_host."""
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("WORKER_HOST", "edge-host-1")
+        s = WorkerSettings()  # type: ignore[call-arg]
+        assert s.worker_host == "edge-host-1"
 
 
 class TestEnvOnlyFields:

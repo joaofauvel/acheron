@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -25,6 +26,8 @@ from acheron.shell.step_handler import create_step_handler, default_worker_facto
 from acheron.shell.stores.memory import InMemoryWorkerStore
 from acheron.shell.transports.http import HttpWorker
 from acheron.shell.transports.local import LocalWorker
+
+_TEST_DATA_DIR = Path("/tmp/acheron-test-step-handler")
 
 
 async def _echo_job_result(job: object) -> JobResult:
@@ -80,7 +83,7 @@ class TestStepHandler:
             supported_languages_out=frozenset({"es"}),
         )
         await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
-        handler = create_step_handler(reg, worker_factory=lambda _reg: local_worker)
+        handler = create_step_handler(reg, worker_factory=lambda _reg: local_worker, data_dir=_TEST_DATA_DIR)
         plan = _make_plan()
         step = plan.steps[0]
         result = await handler(step, plan)
@@ -89,7 +92,7 @@ class TestStepHandler:
     @pytest.mark.asyncio
     async def test_raises_when_no_worker_found(self) -> None:
         reg = InMemoryWorkerStore()
-        handler = create_step_handler(reg)
+        handler = create_step_handler(reg, data_dir=_TEST_DATA_DIR)
         plan = _make_plan()
         step = plan.steps[0]
         with pytest.raises(WorkerError, match="No worker"):
@@ -153,7 +156,7 @@ class TestStepHandler:
             ),
         )
 
-        handler = create_step_handler(reg, worker_factory=_factory)
+        handler = create_step_handler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
         plan = Plan(
             plan_id="p",
             job_id="j",
@@ -193,7 +196,7 @@ class TestStepHandler:
             supported_languages_in=frozenset({"es"}),
             supported_languages_out=frozenset({"es"}),
         )
-        handler = create_step_handler(reg, worker_factory=lambda _reg: local_worker)
+        handler = create_step_handler(reg, worker_factory=lambda _reg: local_worker, data_dir=_TEST_DATA_DIR)
         plan = Plan(
             plan_id="plan-1",
             job_id="job-1",
@@ -239,7 +242,7 @@ class TestStepHandler:
             factory_calls.append(getattr(registered, "worker_id", ""))
             return worker
 
-        handler = create_step_handler(reg, worker_factory=_factory)
+        handler = create_step_handler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
         plan = Plan(
             plan_id="plan-1",
             job_id="job-1",
@@ -285,13 +288,13 @@ class TestStepCachePlumbing:
             capabilities=_tts_caps(),
         )
         cache = StepCache("/tmp/acheron-test-step-cache")
-        worker = default_worker_factory(reg, step_cache=cache)
+        worker = default_worker_factory(reg, step_cache=cache, data_dir=_TEST_DATA_DIR)
         assert isinstance(worker, HttpWorker)
         assert worker._step_cache is cache  # noqa: SLF001
 
     def test_default_worker_factory_default_constructs_step_cache(self, tmp_path: object) -> None:
         """When ``step_cache`` is not provided, ``HttpWorker`` constructs its
-        own ``StepCache`` from the default data dir (backward compat)."""
+        own ``StepCache`` from the passed ``data_dir``."""
         from acheron.shell.registry import RegisteredWorker
 
         reg = RegisteredWorker(
@@ -300,7 +303,7 @@ class TestStepCachePlumbing:
             transport="http",
             capabilities=_tts_caps(),
         )
-        worker = default_worker_factory(reg)
+        worker = default_worker_factory(reg, data_dir=_TEST_DATA_DIR)
         assert isinstance(worker, HttpWorker)
         assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
 
@@ -316,7 +319,7 @@ class TestStepCachePlumbing:
         captured: dict = {}
 
         def _capture_factory(registered: RegisteredWorker) -> object:
-            worker = default_worker_factory(registered, step_cache=cache)
+            worker = default_worker_factory(registered, step_cache=cache, data_dir=_TEST_DATA_DIR)
             captured["worker"] = worker
             # Replace execute with the local echo so the test doesn't hit the network.
             worker.execute = _echo_job_result  # type: ignore[method-assign]
@@ -326,6 +329,7 @@ class TestStepCachePlumbing:
             reg,
             worker_factory=cast("WorkerFactory", _capture_factory),
             step_cache=cache,
+            data_dir=_TEST_DATA_DIR,
         )
         plan = _make_plan()
         await handler(plan.steps[0], plan)
@@ -340,7 +344,7 @@ class TestStepCachePlumbing:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
         cache = StepCache("/tmp/acheron-test-step-cache-3")
-        handler = create_step_handler(reg, step_cache=cache)
+        handler = create_step_handler(reg, step_cache=cache, data_dir=_TEST_DATA_DIR)
         # Capture the worker the default-factory lambda produced.
         original_default = default_worker_factory
         captured: dict = {}
@@ -350,8 +354,9 @@ class TestStepCachePlumbing:
             local_handlers: dict[str, LocalJobHandler] | None = None,
             *,
             step_cache: StepCache | None = None,
+            data_dir: Path | str = _TEST_DATA_DIR,
         ) -> object:
-            worker = original_default(registered, local_handlers, step_cache=step_cache)
+            worker = original_default(registered, local_handlers, step_cache=step_cache, data_dir=data_dir)
             captured["worker"] = worker
             worker.execute = _echo_job_result  # type: ignore[method-assign]
             return worker
