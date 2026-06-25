@@ -15,7 +15,7 @@ import httpx
 from grpc.health.v1 import health_pb2, health_pb2_grpc
 
 from acheron.core.models import WorkerStatus
-from acheron.shell.tls import grpc_channel
+from acheron.tls import grpc_channel
 
 if TYPE_CHECKING:
     from acheron.shell.health_providers import HealthProviders

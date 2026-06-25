@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 from acheron.core.errors import WorkerError
 from acheron.core.interfaces import Worker
 from acheron.core.models import Job, JobResult, WorkerCapabilities, WorkerType
-from acheron.shell.tls import grpc_channel
 from acheron.shell.transports.grpc import GrpcWorker
 from acheron.shell.transports.http import HttpWorker
+from acheron.tls import grpc_channel
 
 if TYPE_CHECKING:
     from acheron.core.models import Plan, PlanStep

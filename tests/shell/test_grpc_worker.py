@@ -268,7 +268,7 @@ async def test_grpc_channel_uses_secure_when_ca_set(dev_certs: Path, monkeypatch
             await asyncio.sleep(0.05)
 
     try:
-        from acheron.shell.tls import grpc_channel
+        from acheron.tls import grpc_channel
 
         channel = grpc_channel(f"127.0.0.1:{port}")
         try:

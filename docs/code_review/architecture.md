@@ -757,14 +757,14 @@ related: [CFG-007, CFG-010]
 ### ARCH-017 — `shell/tls.py` is a 24-line back-compat shim re-exporting `acheron.tls` — direct AGENTS.md greenfield violation
 
 ```yaml
-status: open
+status: fixed
 severity: high
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/tls.py
     lines: 1-24

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from acheron.core.errors import AcheronError
-from acheron.shell.tls import (
+from acheron.tls import (
     grpc_channel_credentials,
     grpc_server_credentials,
     uvicorn_ssl_kwargs,

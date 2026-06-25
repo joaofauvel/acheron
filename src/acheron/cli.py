@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from acheron.api_client import AcheronClient
-from acheron.shell.tls import resolve_ca_path
+from acheron.tls import resolve_ca_path
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine

@@ -7,7 +7,7 @@ import argparse
 import uvicorn
 
 from acheron.shell.api.app import create_app
-from acheron.shell.tls import uvicorn_ssl_kwargs
+from acheron.tls import uvicorn_ssl_kwargs
 
 
 def main() -> None:
