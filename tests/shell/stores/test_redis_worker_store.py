@@ -116,9 +116,7 @@ class TestCorruption:
             await store.get("w-corrupt")
 
     @pytest.mark.asyncio
-    async def test_invalid_worker_status_raises_cache_corrupted(
-        self, store: RedisWorkerStore, redis_url: str
-    ) -> None:
+    async def test_invalid_worker_status_raises_cache_corrupted(self, store: RedisWorkerStore, redis_url: str) -> None:
         """A ``status`` field whose value is not a valid ``WorkerStatus`` enum member
         must raise ``CacheCorruptedError`` naming the offending value — the symmetric
         contract to ``test_corrupt_worker_metadata_raises_cache_corrupted``."""
@@ -141,9 +139,7 @@ class TestCorruption:
             await store.get("w-bad-status")
 
     @pytest.mark.asyncio
-    async def test_missing_worker_status_defaults_to_healthy(
-        self, store: RedisWorkerStore, redis_url: str
-    ) -> None:
+    async def test_missing_worker_status_defaults_to_healthy(self, store: RedisWorkerStore, redis_url: str) -> None:
         """A worker blob with no ``status`` field defaults to ``HEALTHY`` — the
         deserializer uses ``fields.get("status") or HEALTHY.value`` as a tolerant
         fallback for legacy blobs written before the ``status`` field existed.

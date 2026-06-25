@@ -33,7 +33,7 @@ class ChunkingLimits:
     chars_per_token: int
 
 
-def compile_plan(
+def compile_plan(  # noqa: PLR0913
     request: JobRequest,
     strategy: ExecutorStrategy,
     capabilities: tuple[WorkerCapabilities, ...],

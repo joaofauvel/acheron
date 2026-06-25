@@ -340,16 +340,24 @@ class TestMultipartRequest:
         boundary = "acheron-roundtrip"
         sent_meta = {"sequence_id": 0, "speaker_hint": "bob"}
         body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="request"\r\n'
-            f"Content-Type: application/json\r\n\r\n"
-        ).encode() + envelope + b"\r\n"
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="request"\r\n'
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+        )
         body += (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="audio"; filename="podcast.mp3"\r\n'
-            f"Content-Type: audio/mpeg\r\n"
-            f"X-Acheron-Metadata: {json.dumps(sent_meta)}\r\n\r\n"
-        ).encode() + b"\xff\xfb\x90\x00mock-audio" + b"\r\n"
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="audio"; filename="podcast.mp3"\r\n'
+                f"Content-Type: audio/mpeg\r\n"
+                f"X-Acheron-Metadata: {json.dumps(sent_meta)}\r\n\r\n"
+            ).encode()
+            + b"\xff\xfb\x90\x00mock-audio"
+            + b"\r\n"
+        )
         body += f"--{boundary}--\r\n".encode()
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(

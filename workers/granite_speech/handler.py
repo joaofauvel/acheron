@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class _ModelProto(Protocol):
     """Surface the subset of the transformers model API the handler uses."""
 
-    def generate(self, **kwargs: Any) -> Any: ...
+    def generate(self, **kwargs: Any) -> Any: ...  # noqa: ANN401
 
 
 class _ProcessorProto(Protocol):
@@ -37,7 +37,7 @@ class _ProcessorProto(Protocol):
 
     tokenizer: Any
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...  # noqa: ANN401
 
 
 _SUPPORTED_LANGS = frozenset({"en", "fr", "de", "es", "pt", "ja"})

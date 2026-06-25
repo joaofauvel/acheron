@@ -84,20 +84,20 @@ class TestOrchestrator:
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
         orch = Orchestrator(reg, PlanCache(tmp_path))
         await orch.start()
-        assert isinstance(orch._handler, CachingStepHandler)
-        handler = orch._handler
-        handler._worker_instances["w-stub"] = object()  # type: ignore[assignment]
-        handler._cached_workers = ()
-        handler._cached_plan_id = "stale-plan"
+        assert isinstance(orch._handler, CachingStepHandler)  # noqa: SLF001
+        handler = orch._handler  # noqa: SLF001
+        handler._worker_instances["w-stub"] = object()  # type: ignore[assignment]  # noqa: SLF001
+        handler._cached_workers = ()  # noqa: SLF001
+        handler._cached_plan_id = "stale-plan"  # noqa: SLF001
 
         await orch.submit_job(
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
         )
 
-        assert handler._worker_instances == {}
-        assert handler._cached_workers is None
-        assert handler._cached_plan_id is None
+        assert handler._worker_instances == {}  # noqa: SLF001
+        assert handler._cached_workers is None  # noqa: SLF001
+        assert handler._cached_plan_id is None  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_submit_job_requires_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

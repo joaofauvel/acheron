@@ -96,14 +96,13 @@ class CachingStepHandler:
     ) -> None:
         self._registry = registry
         self._data_dir = data_dir
-        self._factory = worker_factory or (
-            lambda reg: default_worker_factory(reg, local_handlers, data_dir=data_dir)
-        )
+        self._factory = worker_factory or (lambda reg: default_worker_factory(reg, local_handlers, data_dir=data_dir))
         self._cached_workers: tuple[RegisteredWorker, ...] | None = None
         self._cached_plan_id: str | None = None
         self._worker_instances: dict[str, Worker] = {}
 
     async def __call__(self, step: PlanStep, plan: Plan) -> JobResult:
+        """Dispatch the step to a selected worker; cache workers per plan_id."""
         src = plan.source_language
         dst = plan.target_language
 

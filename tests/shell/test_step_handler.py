@@ -273,7 +273,6 @@ class TestStepHandler:
     @pytest.mark.asyncio
     async def test_invalidate_worker_cache_drops_instance_pool(self) -> None:
         """CORR-009: invalidating the cache clears both the worker list snapshot and the pool."""
-        from acheron.shell.registry import RegisteredWorker
 
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
@@ -292,14 +291,14 @@ class TestStepHandler:
         plan = _make_plan()
         step = plan.steps[0]
         await handler(step, plan)
-        assert "tts-1" in handler._worker_instances
-        assert handler._cached_workers is not None
+        assert "tts-1" in handler._worker_instances  # noqa: SLF001
+        assert handler._cached_workers is not None  # noqa: SLF001
         assert len(factory_calls) == 1
 
-        handler._invalidate_worker_cache()
-        assert handler._cached_workers is None
-        assert handler._cached_plan_id is None
-        assert handler._worker_instances == {}
+        handler._invalidate_worker_cache()  # noqa: SLF001
+        assert handler._cached_workers is None  # noqa: SLF001
+        assert handler._cached_plan_id is None  # noqa: SLF001
+        assert handler._worker_instances == {}  # noqa: SLF001
         assert len(factory_calls) == 1
 
 
