@@ -17,7 +17,7 @@ test:
 
 # Enforce import boundaries via import-linter
 lint-imports:
-    uv run lint-imports
+    uv run lint-imports >/dev/null
 
 # Run basedpyright type analysis (matches editor LSP)
 type-check-pyright:

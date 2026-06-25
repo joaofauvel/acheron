@@ -21,4 +21,5 @@ certs/
 .worktrees/
 .agents/
 .opencode/
-graphify-out/
+Justfile.overrides
+.local/
