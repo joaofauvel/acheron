@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from acheron.core.models import WorkerStatus
 
 if TYPE_CHECKING:
     from acheron.shell.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class HealthProvider(ABC):
@@ -46,7 +49,14 @@ class RunPodHealthProvider(HealthProvider):
                     headers=headers,
                     timeout=10.0,
                 )
-        except httpx.HTTPError, OSError:
+        except (httpx.HTTPError, OSError) as exc:
+            logger.warning(
+                "%s health check for %s failed: %s: %s",
+                type(self).__name__,
+                endpoint_id,
+                type(exc).__name__,
+                exc,
+            )
             return WorkerStatus.OFFLINE
         if resp.status_code == httpx.codes.OK:
             return WorkerStatus.BOOTING
@@ -77,7 +87,14 @@ class HuggingFaceHealthProvider(HealthProvider):
                     headers=headers,
                     timeout=10.0,
                 )
-        except httpx.HTTPError, OSError:
+        except (httpx.HTTPError, OSError) as exc:
+            logger.warning(
+                "%s health check for %s failed: %s: %s",
+                type(self).__name__,
+                endpoint_id,
+                type(exc).__name__,
+                exc,
+            )
             return WorkerStatus.OFFLINE
         if resp.status_code != httpx.codes.OK:
             return WorkerStatus.OFFLINE

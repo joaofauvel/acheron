@@ -40,6 +40,27 @@ class TestRunPodHealthProvider:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_network_error_logs_warning_with_provider_and_endpoint(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """OBS-005: when the network call fails, the provider must emit a
+        WARNING that names the provider class and the endpoint id so the
+        operator can tell a misconfigured key apart from a transient outage.
+        """
+        import logging
+
+        respx.get(f"{_RUNPOD_BASE}/endpoints/ep-1").mock(side_effect=httpx.ConnectError("refused"))
+        provider = RunPodHealthProvider(api_key="rp-key")
+        with caplog.at_level(logging.WARNING, logger="acheron.shell.health_providers"):
+            status = await provider.check_status("ep-1")
+        assert status == WorkerStatus.OFFLINE
+        assert any("RunPodHealthProvider" in r.message and "ep-1" in r.message for r in caplog.records), (
+            f"expected warning naming provider+endpoint, got: {[r.message for r in caplog.records]}"
+        )
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_authorization_header_sent(self) -> None:
         route = respx.get(f"{_RUNPOD_BASE}/endpoints/ep-1").mock(return_value=httpx.Response(200, json={}))
         provider = RunPodHealthProvider(api_key="rp-key")
@@ -110,6 +131,26 @@ class TestHuggingFaceHealthProvider:
         provider = HuggingFaceHealthProvider(api_key="hf-key")
         status = await provider.check_status("my-ns/ep-1")
         assert status == WorkerStatus.OFFLINE
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_network_error_logs_warning_with_provider_and_endpoint(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """OBS-005: HF provider must emit a WARNING naming the provider class
+        and the endpoint id on network failure.
+        """
+        import logging
+
+        respx.get(f"{_HF_BASE}/my-ns/ep-1").mock(side_effect=httpx.ConnectError("refused"))
+        provider = HuggingFaceHealthProvider(api_key="hf-key")
+        with caplog.at_level(logging.WARNING, logger="acheron.shell.health_providers"):
+            status = await provider.check_status("my-ns/ep-1")
+        assert status == WorkerStatus.OFFLINE
+        assert any("HuggingFaceHealthProvider" in r.message and "my-ns/ep-1" in r.message for r in caplog.records), (
+            f"expected warning naming provider+endpoint, got: {[r.message for r in caplog.records]}"
+        )
 
     @respx.mock
     @pytest.mark.asyncio
