@@ -28,7 +28,7 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.core.planner import compile_plan, validate_chunking_fits_workers
-from acheron.shell.cache import StepCache
+from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.executors import create_executor
@@ -85,7 +85,7 @@ class Orchestrator:
         handler: StepHandler | None = None,
         *,
         job_store: JobStore | None = None,
-        step_cache: StepCache | None = None,
+        step_cache: StepCache | InMemoryStepCache | None = None,
         settings: Settings | None = None,
     ) -> None:
         if settings is None:
@@ -95,7 +95,7 @@ class Orchestrator:
             self._settings = settings
         self._registry = registry
         self._cache = cache
-        self._step_cache = step_cache if step_cache is not None else StepCache(self._settings.orchestrator.data_dir)
+        self._step_cache = step_cache if step_cache is not None else InMemoryStepCache()
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(
             registry,

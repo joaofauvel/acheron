@@ -22,7 +22,7 @@ from httpx import ASGITransport
 from acheron.api_client import AcheronClient
 from acheron.core.models import Job, JobMetrics, JobResult, JobStatus, OutputFile, WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
-from acheron.shell.cache import PlanCache
+from acheron.shell.cache import PlanCache, StepCache
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
@@ -330,7 +330,7 @@ async def wired_orchestrator(
         ),
     )
 
-    orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path))
+    orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), step_cache=StepCache(tmp_path))
     await orch.start()
     yield orch
     await orch.shutdown()

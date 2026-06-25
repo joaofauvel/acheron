@@ -25,7 +25,7 @@ from acheron.core.models import (
     StepStatus,
     WorkerType,
 )
-from acheron.shell.cache import PlanCache
+from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache
 from acheron.shell.config import Settings
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
@@ -63,6 +63,17 @@ def _single_step_plan(job_id: str) -> Plan:
 
 
 class TestOrchestrator:
+    def test_default_step_cache_is_in_memory(self, tmp_path) -> None:
+        """ARCH-008: omitting step_cache constructs an InMemoryStepCache (decoupled from PlanCache.data_dir)."""
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
+        assert isinstance(orch._step_cache, InMemoryStepCache)  # noqa: SLF001
+
+    def test_explicit_step_cache_is_used(self, tmp_path) -> None:
+        """ARCH-008: passing step_cache uses the caller's instance verbatim."""
+        cache = StepCache(tmp_path / "explicit")
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, step_cache=cache)
+        assert orch._step_cache is cache  # noqa: SLF001
+
     @pytest.mark.asyncio
     async def test_submit_job_requires_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """submit_job raises RuntimeError if start() was not called.

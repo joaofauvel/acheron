@@ -220,19 +220,26 @@ related: [CORR-008]
 ### ARCH-008 — Orchestrator.__init__ still derives default StepCache from PlanCache.data_dir
 
 ```yaml
-status: stale
+status: fixed
 severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 75-108
+  lines: 81-99
 - path: src/acheron/shell/api/app.py
   lines: 46-49
+- path: src/acheron/shell/cache.py
+  lines: 132-180
+- path: tests/shell/test_orchestrator.py
+  lines: 65-77
+- path: tests/shell/test_data_dir.py
+  lines: 30-65
 related:
 - ARCH-006
 - CFG-004
