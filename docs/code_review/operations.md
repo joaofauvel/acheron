@@ -157,13 +157,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 136-169
-related: [CORR-017]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 136-169
+related:
+- CORR-017
 ```
 
 **Issue.** `_build_multipart_response` (lines 96-112) accumulates each artifact's body with `body_data = b""; ... body_data += chunk` and then concatenates every part with `b"".join(parts)`. For `FileArtifact` (artifacts.py:71-77) the stream yields 64 KiB chunks, so a 100 MiB chapter audio produces ~1600 chunks; each `bytes += bytes` allocates a fresh bytes object, giving O(n²) total allocation (~80 GiB of transient allocation for a 100 MiB artifact). The final `b"".join(parts)` then materialises the entire response in memory regardless of artifact size. For a batch inference of N chapters through the edge, the peak memory is the full response, and the orchestrator will read the same body in `HttpWorker._parse_multipart` (transports/http.py:96-98) — so the bytes are written to and read from RAM twice per `/execute`.
@@ -182,14 +183,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/health.py
   lines: 44-52
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 125-147
+  lines: 128-135, 203-210
 - path: src/acheron/worker_sdk/pricing.py
   lines: 195-211
 - path: src/acheron/shell/transports/http.py
@@ -327,20 +328,23 @@ related: [CORR-004, OBS-001]
 ### OBS-005 — Health providers swallow `(httpx.HTTPError, OSError)` silently with no diagnostic log
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: 1fbedbc
+  date: '2026-06-24'
+fixed_in:
+- 1fbedbc
 files:
-  - path: src/acheron/shell/health_providers.py
-    lines: 49-50
-  - path: src/acheron/shell/health_providers.py
-    lines: 80-81
-related: [CORR-010, EXC-003]
+- path: src/acheron/shell/health_providers.py
+  lines: 49-50
+- path: src/acheron/shell/health_providers.py
+  lines: 80-81
+related:
+- CORR-010
+- EXC-003
 ```
 
 **Issue.** Both `RunPodHealthProvider.check_status` (health_providers.py:49-50) and `HuggingFaceHealthProvider.check_status` (health_providers.py:80-81) catch `(httpx.HTTPError, OSError)` and silently return `WorkerStatus.OFFLINE`. The blanket `except` erases the distinction between (a) provider API key is invalid/wrong (401/403), (b) provider is rate-limiting (429), (c) network is down, (d) endpoint_id does not exist (404), and (e) provider service is degraded (5xx). The caller in `health._handle_failure` does log a warning when the provider itself raises (health.py:142), but the providers' `except` block short-circuits before that path is reached, so the user has no log evidence of the actual failure mode.
@@ -354,14 +358,15 @@ related: [CORR-010, EXC-003]
 ### OBS-006 — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: 1fbedbc
+  date: '2026-06-24'
+fixed_in:
+- 1fbedbc
 ```yaml
 status: open
 severity: medium
@@ -425,14 +430,15 @@ related: [SEC-005, SEC-014, OBS-009, OBS-010]
 ### OBS-008 — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- 1fbedbc
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 123-129
@@ -755,13 +761,15 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 286-304
-related: [SEC-006, OBS-007]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 286-304
+related:
+- SEC-006
+- OBS-007
 ```
 
 **Issue.** `_run_execute` (lines 162-178) catches `BaseException` from `self.handler.handle(job)` and returns a JSON body of `JobResult(job_id=..., status=FAILED, error=str(exc), ...)`. The orchestrator's `HttpWorker._request` (transports/http.py:70-73) catches `httpx.HTTPStatusError`, embeds `exc.response.text` into a `WorkerError`, and the orchestrator's `_execute` (orchestrator.py:332-344) puts that into `PlanResult.errors`. The end-to-end effect is identical to SEC-006: internal exception detail flows through `PlanResult.errors` to any caller of `GET /jobs/{id}`. For the qwen3tts handler, `str(exc)` commonly includes PyTorch device strings (e.g. `RuntimeError: CUDA error: device-side assert triggered`), torch tensor shapes, the underlying RunPod endpoint id, or even the model path on the RunPod serverless image. The error is also stored on the worker side via the `logger.exception` call (line 164) which is good, but the response body and downstream API expose the same string.
@@ -775,18 +783,20 @@ related: [SEC-006, OBS-007]
 ### SEC-013 — `RunPodPrice` sends API key as URL query parameter instead of Authorization header
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: 1fbedbc
+  date: '2026-06-24'
+fixed_in:
+- 1fbedbc
 files:
-  - path: src/acheron/worker_sdk/pricing.py
-    lines: 179-193
-related: [OBS-006]
+- path: src/acheron/worker_sdk/pricing.py
+  lines: 179-193
+related:
+- OBS-006
 ```
 
 **Issue.** `RunPodPrice._post_graphql` (pricing.py:185-190) sends the RunPod API key as a URL query parameter: `params={'api_key': self.api_key}`. This is the only place in the codebase that uses query-string auth — the health providers (health_providers.py:41, 72) correctly use `Authorization: Bearer` headers. RunPod's own REST API accepts both, but query-string secrets are routinely logged by HTTP access log middleware, CDN edges, and proxy layers. The edge container runs alongside the orchestrator on the same Docker network, so there is no proxy in the default path; however, the worker-side `ACHERON_WORKER__RUNPOD_BASE_URL` test seam (pricing.py:185) hints that the request can be intercepted by `stubs/_sdk_base/mock_runpod.py`, and the test seam is the only thing keeping the key out of test logs. In a future refactor that puts a real proxy in front, the key lands in the proxy's access log.
@@ -941,13 +951,14 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 228-253
-related: [SEC-012]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 228-253
+related:
+- SEC-012
 ```
 
 **Issue.** `_run_execute_multipart` (lines 167-186) catches `WorkerError` from `_parse_multipart_request` and returns a JSON 500 body built from `JobResult(... error=str(exc) ...)`. Internal exception detail (parse-failure messages naming internal paths, boundary mismatches, content-type strings) flows through to `GET /jobs/{id}`.

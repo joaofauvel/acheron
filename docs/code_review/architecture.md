@@ -254,14 +254,14 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health_providers.py
-    lines: 16-22
-  - path: src/acheron/core/interfaces.py
-    lines: 14-39
+- path: src/acheron/shell/health_providers.py
+  lines: 19-25
+- path: src/acheron/core/interfaces.py
+  lines: 14-39
 related: []
 ```
 
@@ -281,12 +281,12 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/health_providers.py
-  lines: 97-115
+  lines: 114-122
 - path: src/acheron/shell/health.py
   lines: 77-91
 - path: src/acheron/shell/orchestrator.py
@@ -310,7 +310,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
@@ -321,7 +321,7 @@ files:
 - path: src/acheron/worker_sdk/cloud.py
   lines: 22-27
 - path: src/acheron/worker_sdk/_runpod_client.py
-  lines: 21
+  lines: 1-8, 10-12, 22-27
 related:
 - CORR-016
 ```
@@ -342,7 +342,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:

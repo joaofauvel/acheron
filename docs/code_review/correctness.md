@@ -404,7 +404,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
@@ -458,13 +458,14 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 136-169
-related: [PERF-006]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 136-169
+related:
+- PERF-006
 ```
 
 **Issue.** `_build_multipart_response` iterates each artifact with `async for chunk in a.stream(): body_data += chunk` (lines 105-107), accumulating the entire stream into a single `bytes` object before the multipart body is constructed. The `StreamArtifact` variant in `artifacts.py:57-65` is documented as for "Lazily-produced chunks — long audio, batched generation" precisely to avoid this buffering, but the encoder ignores the streaming nature and materializes the full payload in memory. The constructed `Response` then holds the full body as a single `content=body` argument (line 113), which uvicorn will hold in memory before sending.
@@ -508,12 +509,12 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 256-280
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 256-280
 related: []
 ```
 

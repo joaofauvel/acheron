@@ -196,15 +196,16 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health_providers.py
-    lines: 39-53
-  - path: src/acheron/shell/health_providers.py
-    lines: 70-94
-related: [MAINT-006]
+- path: src/acheron/shell/health_providers.py
+  lines: 42-63, 80-111
+- path: src/acheron/shell/health_providers.py
+  lines: 70-94
+related:
+- MAINT-006
 ```
 
 **Issue.** `RunPodHealthProvider.check_status` (health_providers.py:39-53) and `HuggingFaceHealthProvider.check_status` (health_providers.py:70-94) share an identical 8-line fetch envelope: `try` → `async with httpx.AsyncClient() as client: resp = await client.get(url, headers=headers, timeout=10.0)` → `except (httpx.HTTPError, OSError)` → return `WorkerStatus.OFFLINE` → status code check. The two methods only diverge in URL construction and how they map the response body to BOOTING/OFFLINE. Adding a third provider (SageMaker, Vast.ai) requires re-typing the same fetch envelope.
@@ -310,7 +311,7 @@ severity: medium
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
@@ -338,12 +339,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/app.py
-  lines: 70-83
+  lines: 59-83
 related:
 - MAINT-013
 ```
@@ -364,15 +365,16 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 49-60
-  - path: src/acheron/worker_sdk/registration.py
-    lines: 78-91
-related: [MAINT-012]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 51-62
+- path: src/acheron/worker_sdk/registration.py
+  lines: 78-91
+related:
+- MAINT-012
 ```
 
 **Issue.** Two functions produce the same `{worker_type, supported_languages_in, supported_languages_out, supported_formats_in, supported_formats_out, max_payload_bytes, batch_capable, model_source, metadata}` dict from a `WorkerCapabilities` value. The only difference is the return-type annotation: `_caps_to_response` → `dict[str, Any]`, `_caps_to_dict` → `dict[str, object]`. Both use `sorted(frozenset)` for the language/format fields and `dict(metadata)` for the metadata.
@@ -525,17 +527,19 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health.py
-    lines: 139-145
-  - path: src/acheron/shell/health_providers.py
-    lines: 39-53
-  - path: src/acheron/shell/health_providers.py
-    lines: 70-94
-related: [MAINT-008, OBS-005]
+- path: src/acheron/shell/health.py
+  lines: 139-145
+- path: src/acheron/shell/health_providers.py
+  lines: 52-60, 90-98
+- path: src/acheron/shell/health_providers.py
+  lines: 70-94
+related:
+- MAINT-008
+- OBS-005
 ```
 
 **Issue.** The platform-provider call inside `_handle_failure` (health.py:139-145) wraps `await provider.check_status(endpoint_id)` in `except Exception as exc:  # noqa: BLE001`. The recovery logs a warning, forces `platform_status = WorkerStatus.OFFLINE`, and chains the error. The broad catch masks programming errors (`TypeError`, `AttributeError`) inside a provider as 'provider transient error'. The `HealthProvider` ABC docstring already promises 'returns OFFLINE on platform error' but the contract is not enforced by the type or by an internal try/except in either implementation.
@@ -549,14 +553,15 @@ related: [MAINT-008, OBS-005]
 ### EXC-004 — `create_worker_app` lifespan catches bare `BaseException` for the eager price refresh; swallows `KeyboardInterrupt`/`SystemExit`/`CancelledError`
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- 1fbedbc
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 123-129
@@ -576,18 +581,20 @@ related:
 ### EXC-005 — `_edge_http.py` `_dispatch` catches bare `BaseException` for handler failures; same anti-pattern as EXC-004 in a second file
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
-fixed_in: []
+  commit: 1fbedbc
+  date: '2026-06-24'
+fixed_in:
+- 1fbedbc
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 286-304
-related: [EXC-004]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 286-304
+related:
+- EXC-004
 ```
 
 **Issue.** `EdgeApp._dispatch` (lines 237-255) wraps `await self.handler.handle(job, input_obj)` in `except BaseException as exc:`. This is the same anti-pattern as EXC-004 (`create_worker_app` lifespan, app.py:122). `BaseException` is broader than what the error-conversion contract justifies: it also catches `KeyboardInterrupt` (operator Ctrl-C during a long handler), `SystemExit` (container shutdown), and `asyncio.CancelledError` (FastAPI's own request cancellation, which is the dominant path for an orchestrator cancelling a step). All three should propagate cleanly. The diff also removed the 3-line inline rationale comment, so the broad catch is now unexplained at the call site.
@@ -833,14 +840,14 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/cloud.py
   lines: 20, 38-39, 42
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 22,49,73,77,84,153
+  lines: 13, 51, 73, 77, 84, 153, 195
 - path: src/acheron/worker_sdk/pricing.py
   lines: 13,183,184,192
 - path: src/acheron/worker_sdk/cli.py

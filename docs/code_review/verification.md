@@ -157,12 +157,12 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/shell/health_providers.py
-    lines: 86-91
+- path: src/acheron/shell/health_providers.py
+  lines: 100-111
 related: []
 ```
 
@@ -209,7 +209,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 1fbedbc
   date: '2026-06-24'
 fixed_in: []
 files:
@@ -636,17 +636,18 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
-  date: 2026-06-24
+  commit: 1fbedbc
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 104-114
-  - path: tests/worker_sdk/test_edge_http.py
-    lines: 70-86
-  - path: tests/worker_sdk/test_edge_http_multipart.py
-    lines: 1-289
-related: [CORR-013]
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 104-114, 156-160
+- path: tests/worker_sdk/test_edge_http.py
+  lines: 70-86
+- path: tests/worker_sdk/test_edge_http_multipart.py
+  lines: 1-289
+related:
+- CORR-013
 ```
 
 **Issue.** `_build_multipart_response` emits `X-Acheron-Metadata: {json}` per artifact part (line 108). No test parses the response to confirm the per-part metadata header is present and contains the artifact's metadata dict. CORR-013 already noted the symmetric parser gap; the build-side test is the missing half.
