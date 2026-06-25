@@ -713,17 +713,19 @@ related: [CFG-009, CORR-029]
 ### CORR-027 — `_execute_with_upstream_input` only POSTs the first matching file; multi-file upstream outputs are silently truncated
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 133-143
+    lines: 133-144
+  - path: tests/shell/transports/test_http_multipart.py
+    lines: 163-272
 related: [ARCH-020]
 ```
 

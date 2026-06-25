@@ -129,14 +129,19 @@ class HttpWorker(Worker):
         except CacheMissError as exc:
             msg = f"{job.job_type.value} step {job.job_id}: no {upstream_step} step output for {plan_job_id}"
             raise WorkerError(msg) from exc
-        matching = next(
-            (o for o in upstream_outputs if content_type_predicate(o.content_type)),
-            None,
-        )
-        if matching is None:
+        matching = [o for o in upstream_outputs if content_type_predicate(o.content_type)]
+        if not matching:
             msg = f"{job.job_type.value} step {job.job_id}: no matching file in {upstream_step} output"
             raise WorkerError(msg)
-        file_path = Path(matching.path)
+        if len(matching) > 1:
+            msg = (
+                f"{job.job_type.value} step {job.job_id}: multiple matching files in "
+                f"{upstream_step} output (orchestrator supports only one); "
+                f"got {len(matching)} files"
+            )
+            raise WorkerError(msg)
+        first_match = matching[0]
+        file_path = Path(first_match.path)
         if not await asyncio.to_thread(file_path.exists):
             msg = f"{job.job_type.value} step {job.job_id}: file missing: {file_path}"
             raise WorkerError(msg)
@@ -146,7 +151,7 @@ class HttpWorker(Worker):
             form_field: (
                 file_path.name,
                 await asyncio.to_thread(file_path.read_bytes),
-                matching.content_type,
+                first_match.content_type,
             ),
         }
         resp = await self._post_multipart(form)
