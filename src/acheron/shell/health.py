@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,7 @@ from acheron.core.models import WorkerStatus
 from acheron.tls import grpc_channel
 
 if TYPE_CHECKING:
-    from acheron.shell.health_providers import HealthProviders
+    from acheron.shell.health_providers import HealthProvider
     from acheron.shell.registry import RegisteredWorker
     from acheron.shell.stores.base import WorkerStore
 
@@ -82,7 +82,7 @@ class HealthMonitor:
         registry: WorkerStore,
         interval: float = 30.0,
         health_check: HealthCheckFn | None = None,
-        providers: HealthProviders | None = None,
+        providers: Mapping[str, HealthProvider] | None = None,
     ) -> None:
         self._registry = registry
         self._interval = interval

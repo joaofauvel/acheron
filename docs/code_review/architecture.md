@@ -283,21 +283,24 @@ related: []
 ### ARCH-010 — HealthProviders container is a no-behavior wrapper over `dict[str, HealthProvider]`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/health_providers.py
-  lines: 114-122
+  lines: 113-122
 - path: src/acheron/shell/health.py
-  lines: 77-91
-- path: src/acheron/shell/orchestrator.py
-  lines: 103-108
+  lines: 77-92
+- path: tests/shell/test_health_providers.py
+  lines: 166-174
+- path: tests/shell/test_health_monitor.py
+  lines: 214-312
 related: []
 ```
 

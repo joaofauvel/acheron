@@ -16,7 +16,7 @@ from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.health import HealthMonitor, HealthProbeResult, _default_health_check
-from acheron.shell.health_providers import HealthProvider, HealthProviders
+from acheron.shell.health_providers import HealthProvider
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
@@ -211,7 +211,7 @@ class TestHealthMonitorProviderIntegration:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
         fake = _FakeProvider(WorkerStatus.BOOTING)
-        providers = HealthProviders({"runpod": fake})
+        providers = {"runpod": fake}
         health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
         await monitor.start()
@@ -234,7 +234,7 @@ class TestHealthMonitorProviderIntegration:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
         fake = _FakeProvider(WorkerStatus.OFFLINE)
-        providers = HealthProviders({"runpod": fake})
+        providers = {"runpod": fake}
         health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="down"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
         await monitor.start()
@@ -284,7 +284,7 @@ class TestHealthMonitorProviderIntegration:
     async def test_provider_raises_treated_as_offline(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
-        providers = HealthProviders({"runpod": _RaisingProvider(httpx.HTTPError("upstream broken"))})
+        providers = {"runpod": _RaisingProvider(httpx.HTTPError("upstream broken"))}
         health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
         await monitor.start()
@@ -309,7 +309,7 @@ class TestHealthMonitorProviderIntegration:
         transient platform error."""
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
-        providers = HealthProviders({"runpod": _RaisingProvider(RuntimeError("provider bug"))})
+        providers = {"runpod": _RaisingProvider(RuntimeError("provider bug"))}
         health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
         await monitor.start()
