@@ -204,19 +204,19 @@ related: [CORR-012]
 ### TEST-008 — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 31-51
 - path: tests/worker_sdk/test_app.py
-  lines: 56-88
+  lines: 56-88, 121-152
 related: []
 ```
 

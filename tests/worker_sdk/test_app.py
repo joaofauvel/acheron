@@ -118,6 +118,43 @@ class TestCreateWorkerApp:
         assert _endpoint_url(s) == "http://localhost:0"
 
 
+class TestBuildPriceSource:
+    """TEST-008: cover the ``static`` and ``runpod``-missing-key branches."""
+
+    def test_build_price_source_static_with_rate_returns_static_price(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``price_source='static'`` with a configured ``dollars_per_hour`` returns a
+        :class:`StaticPrice` carrying the configured rate."""
+        from acheron.worker_sdk.app import _build_price_source
+        from acheron.worker_sdk.pricing import StaticPrice
+
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "static")
+        monkeypatch.setenv("ACHERON_WORKER__DOLLARS_PER_HOUR", "1.25")
+        s = _settings(price_source="static", dollars_per_hour=1.25)
+        source = _build_price_source(s)
+        assert isinstance(source, StaticPrice)
+        assert source.dollars_per_hour == 1.25
+
+    def test_build_price_source_runpod_without_api_key_returns_zero_stub(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """``price_source='runpod'`` with no API key/endpoint falls back to :class:`ZeroPrice`
+        and logs a warning — a worker that forgot to set its env vars must not
+        crash the lifespan or break registration."""
+        from acheron.worker_sdk.app import _build_price_source
+        from acheron.worker_sdk.pricing import ZeroPrice
+
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
+        monkeypatch.delenv("ACHERON_WORKER__RUNPOD_API_KEY", raising=False)
+        monkeypatch.delenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", raising=False)
+        s = _settings(price_source="runpod", runpod_api_key=None, runpod_endpoint_id=None)
+        with caplog.at_level("WARNING", logger="acheron.worker_sdk.app"):
+            source = _build_price_source(s)
+        assert isinstance(source, ZeroPrice)
+        assert any("RUNPOD_API_KEY" in r.message and "prices will be unknown" in r.message for r in caplog.records)
+
+
 class TestLifespanPriceRefreshExceptionHandling:
     """EXC-004 + OBS-008: price refresh exceptions are narrowed; BaseException subclasses propagate."""
 
