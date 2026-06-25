@@ -24,7 +24,7 @@ RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
 # sets WORKER_NAME to pick the right yaml. The acheron CLI resolves
 # `WORKER_CONFIG` from /app/${WORKER_NAME}.worker.yaml first.
 COPY workers/__init__.py /app/workers/__init__.py
-COPY workers/_shared.py /app/workers/_shared.py
+COPY workers/_shared_utils.py /app/workers/_shared_utils.py
 
 # qwen3tts (8a) — bundled so the import path resolves.
 COPY workers/qwen3tts/__init__.py /app/workers/qwen3tts/__init__.py

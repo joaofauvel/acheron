@@ -225,10 +225,10 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 8b56c1b
+  commit: 2dbc401
   date: 2026-06-25
 fixed_in:
-- 8b56c1b
+- 2dbc401
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 81-99
@@ -724,10 +724,10 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 8b56c1b
   date: 2026-06-25
 fixed_in:
-- pending
+- 8b56c1b
 files:
 - path: workers/_shared_utils.py
   lines: 1-31

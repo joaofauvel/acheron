@@ -57,7 +57,7 @@ COPY workers/granite_speech/runpod_entrypoint.py /app/runpod_entrypoint.py
 COPY workers/granite_speech/worker.yaml /app/worker.yaml
 COPY workers/__init__.py /app/workers/__init__.py
 COPY workers/granite_speech/__init__.py /app/workers/granite_speech/__init__.py
-COPY workers/_shared.py /app/workers/_shared.py
+COPY workers/_shared_utils.py /app/workers/_shared_utils.py
 
 # HF cache lives on the RunPod network volume; offline mode forces the cached snapshot.
 ENV HF_HOME=/runpod-volume/huggingface-cache \
