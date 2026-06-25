@@ -1,6 +1,8 @@
 """Plan compilation from job requests."""
 
+import logging
 import uuid
+from dataclasses import dataclass
 
 from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
 from acheron.core.models import (
@@ -15,6 +17,21 @@ from acheron.core.models import (
     WorkerType,
 )
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ChunkingLimits:
+    """Chunking-step bounds the orchestrator passes to ``compile_plan``.
+
+    Carries the operator-tunable ``max_chunk_length`` and the chars-per-token
+    estimator used to convert it to a token budget against each text-input
+    worker's ``max_input_tokens``.
+    """
+
+    max_chunk_length: int
+    chars_per_token: int
+
 
 def compile_plan(
     request: JobRequest,
@@ -22,16 +39,29 @@ def compile_plan(
     capabilities: tuple[WorkerCapabilities, ...],
     plan_id: str | None = None,
     job_id: str | None = None,
+    *,
+    chunking: ChunkingLimits | None = None,
 ) -> Plan:
     """Compile a job request into a validated Plan DAG.
 
     Validates that available workers support the requested language path,
-    then generates the appropriate step sequence based on input type.
+    then (if ``chunking`` is supplied) that the chunking step's
+    ``max_chunk_length`` fits every text-input worker's ``max_input_tokens``.
+    Finally generates the step sequence based on input type.
 
     Raises:
         InvalidLanguagePathError: If no workers can handle the language path.
+        ChunkingTooLongForWorkerError: If ``chunking`` is supplied and
+            ``max_chunk_length`` exceeds a text-input worker's
+            ``max_input_tokens``.
     """
     _validate_language_path(request, capabilities)
+    if chunking is not None:
+        _validate_chunking_fits_workers(
+            capabilities,
+            chunking.max_chunk_length,
+            chars_per_token=chunking.chars_per_token,
+        )
 
     match request:
         case EpubRequest():
@@ -89,7 +119,7 @@ def _has_worker(
     )
 
 
-def validate_chunking_fits_workers(
+def _validate_chunking_fits_workers(
     capabilities: tuple[WorkerCapabilities, ...],
     chunking_max_length: int,
     chars_per_token: int,
@@ -102,13 +132,15 @@ def validate_chunking_fits_workers(
     per token), raises ``ChunkingTooLongForWorkerError`` so the caller fails the job
     at plan compile time, before any GPU time is spent.
 
-    The caller is the orchestrator, which reads ``chars_per_token`` from
-    ``Settings.chars_per_token`` (default 1 — conservative across all scripts, worst
-    case 1 char = 1 token as in CJK; operators on Latin-only content can raise it).
-    A future sub-project could swap in a tokenizer-based estimator.
+    The caller is ``compile_plan``, which receives the values through
+    :class:`ChunkingLimits` from the orchestrator. ``chars_per_token`` is a
+    conservative chars-to-tokens estimate (1 = CJK worst case; higher values
+    exploit Latin-script character efficiency).
 
-    Pure: no I/O, no global state. The caller is responsible for passing fresh
-    ``capabilities`` and the chunking step's config.
+    Raises:
+        ValueError: If ``chars_per_token <= 0``.
+        ChunkingTooLongForWorkerError: If ``chunking_max_length`` exceeds a
+            text-input worker's ``max_input_tokens``.
     """
     if chars_per_token <= 0:
         msg = f"chars_per_token must be > 0, got {chars_per_token}"

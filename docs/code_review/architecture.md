@@ -865,21 +865,22 @@ related: [MAINT-016]
 ### ARCH-019 — `validate_chunking_fits_workers` is a post-step in `submit_job` that should be folded into `compile_plan`
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/core/planner.py
-  lines: 19-52
+  lines: 36-77
 - path: src/acheron/core/planner.py
-  lines: 92-128
+  lines: 122-161
 - path: src/acheron/shell/orchestrator.py
-  lines: 275-280
+  lines: 281-290
 related:
 - CFG-009
 - CORR-026
