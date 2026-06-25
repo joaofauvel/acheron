@@ -794,17 +794,17 @@ related: [DOC-005]
 ### ARCH-018 — `ChunkingTooLongForWorkerError` is a subclass of `InvalidLanguagePathError` for back-compat reasons that don't exist — codifies a documentation-via-runtime-error contract
 
 ```yaml
-status: fixed
+status: verified
 severity: high
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date:   date: 2026-06-24
-fixed_in: [\"pending\"]
+  commit: 4863597
+  date: 2026-06-24
+fixed_in: [4863597]
 files:
   - path: src/acheron/core/errors.py
-    lines: 16-22
+    lines: 16-20
   - path: src/acheron/core/planner.py
     lines: 128
   - path: tests/core/test_errors.py

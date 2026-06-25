@@ -881,17 +881,17 @@ related: [TYPE-008]
 ### MAINT-016 — `ChunkingTooLongForWorkerError` subclasses `InvalidLanguagePathError` — inheritance used as a type-tag dispatch mechanism
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date:   date: 2026-06-24
-fixed_in: [\"pending\"]
+  commit: 4863597
+  date: 2026-06-24
+fixed_in: [4863597]
 files:
   - path: src/acheron/core/errors.py
-    lines: 16-22
+    lines: 16-20
   - path: src/acheron/core/planner.py
     lines: 92-128
   - path: src/acheron/shell/orchestrator.py
