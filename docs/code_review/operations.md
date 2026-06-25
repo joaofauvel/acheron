@@ -894,17 +894,17 @@ related:
 ### SEC-017 — Granite-speech runpod image runs as root — no `USER` directive (new instance of SEC-015)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: workers/granite_speech/Dockerfile.runpod
-    lines: 1-63
+    lines: 1-65
 related: [SEC-015]
 ```
 
