@@ -166,3 +166,164 @@ Env vars prefixed with `ACHERON_WORKER__` override YAML values at runtime, so th
 - `granite_speech` — `batch_capable=False` (`workers/granite_speech/handler.py:57`); ASR transcribes per audio file against `ibm-granite/granite-speech-4.1-2b`.
 
 **Multipart Transport.** File-backed `Input` and `Artifact` paths stream in **64 KiB** parts via `multipart/mixed` between the Orchestrator and Edge Worker, instead of buffering the full file in worker RAM. The per-chunk read uses `aiofiles.open(...)` with `await f.read(64 * 1024)` in a loop (`src/acheron/worker_sdk/artifacts.py:71-77`, `src/acheron/worker_sdk/inputs.py:72-78`). Byte-backed payloads (e.g., in-memory `BytesArtifact`s) round-trip as a single part.
+
+## RunPod Serverless Deployment
+
+This section assumes you already have a RunPod account and the [runpodctl](https://github.com/runpod/runpodctl) CLI configured. See the [RunPod API reference](https://docs.runpod.io/api-reference) for the full endpoint / template / network-volume schema.
+
+**Network Volume for HF cache.** GPU workers re-download the model on every cold start unless the weights are already on disk. Mount a RunPod Network Volume into the worker template, SSH into a pod that has the volume attached, and pre-warm the Hugging Face cache once:
+
+```bash
+huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+huggingface-cli download ibm-granite/granite-speech-4.1-2b
+huggingface-cli download google/translategemma-12b-it
+```
+
+Subsequent cold starts that mount the same Network Volume find the weights in the cache and skip the multi-GB download.
+
+**Template configuration.** When you create the RunPod serverless template, set `containerDiskInGb` to at least **10 GB** to hold the image, runtime, and any working files. Pick a GPU type that meets the VRAM guidance below; the model is selected on the endpoint, not in code.
+
+**Endpoint creation.** Create one Serverless endpoint per worker type, pointing the endpoint's `templateId` at the image published by CI:
+
+- `ghcr.io/<repo>/acheron-qwen3tts-runpod:<tag>` (TTS)
+- `ghcr.io/<repo>/acheron-granite-speech-runpod:<tag>` (ASR)
+- `ghcr.io/<repo>/acheron-translategemma-runpod:<tag>` (translation)
+
+The GHCR image is public; RunPod can pull it without a `containerRegistryAuthId` ([GitHub Packages docs](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)). Set the endpoint's:
+
+- `workersMin: 0` — scale to zero on idle so you don't pay for an idle GPU.
+- `workersMax: 1` — raise if you need concurrent fan-out; each worker is a full GPU instance.
+- `idleTimeout` (or `executionTimeoutMs`, depending on the API version) — a short value (e.g., 5 minutes / 300 s) keeps shutdown aggressive; the Network Volume absorbs cold-start cost, not boot-loop cost. The exact field name on `POST /endpoints/serverless` is `executionTimeoutMs` ([RunPod API reference](https://docs.runpod.io/api-reference/endpoints/POST/endpoints)).
+
+The Edge Worker reads its endpoint id from `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` and points `/execute` calls at it.
+
+## GPU & VRAM Guidance
+
+The numbers below are rules of thumb, not guarantees. The Hugging Face model card is the authoritative source for each model's VRAM requirements — check it before sizing a GPU.
+
+- **TTS** ([`Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice)) / **ASR** ([`ibm-granite/granite-speech-4.1-2b`](https://huggingface.co/ibm-granite/granite-speech-4.1-2b)) — 1.7B and 2B speech-language models. A 24 GB GPU (L4, A5000, RTX 3090) is the practical baseline; the Qwen3-TTS card recommends FlashAttention 2 to reduce memory.
+- **Translation** ([`google/translategemma-12b-it`](https://huggingface.co/google/translategemma-12b-it)) — a 12B multimodal translation model. 24 GB+ VRAM is the community-cloud baseline; Secure Cloud may be required at higher concurrency or batch size. The card states the model is designed to be deployable on resource-constrained hardware, so the exact number depends on batch size and KV-cache pressure. Consult the model card before sizing.
+
+## Edge Worker Proxy Setup
+
+The edge container is the GPU-less proxy that registers with the orchestrator and forwards `/execute` to the RunPod endpoint. The image is the same for every worker type — only the handler import path and `worker.yaml` differ.
+
+**Profile-based opt-in.** Real GPU workers are gated behind Docker Compose profiles so a default `docker compose up` stays self-contained:
+
+```bash
+docker compose --profile runpod-tts up --build
+docker compose --profile runpod-asr up --build
+docker compose --profile runpod-translation up --build
+```
+
+The profile names (`runpod-tts`, `runpod-asr`, `runpod-translation`) and the corresponding services (`qwen3tts-edge`, `granite-speech-edge`, `translategemma-edge`) are declared in `docker-compose.yml:198, 231, 265`. Services with no `profiles:` key start unconditionally; services with a profile start only when the profile is active.
+
+**Primary config is `worker.yaml`.** Each worker ships two YAMLs: a cloud-side `worker.yaml` (used by the RunPod runtime image) and an `worker.edge.yaml` (used by the `acheron-worker-edge` generic image). The edge-side file is bundled into `Dockerfile.edge` and read by the `acheron-worker-edge` image at startup. Operator-tunable keys, all optional in YAML (env-var overrides always win):
+
+- `worker_id` — stable identifier for this worker instance (also overridable as `ACHERON_WORKER__WORKER_ID`).
+- `orchestrator_url` — orchestrator URL the worker registers with and sends `/execute` to.
+- `listen_host` / `listen_port` — bind interface and port for the edge's HTTP/gRPC server (defaults `0.0.0.0` / `8001`).
+- `execution_timeout_s` — per-step execution timeout, default `1800` seconds.
+- `price_source` — `runpod` (auto-discover via RunPod GraphQL), `static` (fixed `dollars_per_hour`), or `zero` (stubs/local).
+- `secure_cloud` — when `price_source == "runpod"`, quote Secure Cloud (`true`) or Community Cloud (`false`) rates.
+- `default_speaker` — TTS only: the default Qwen3-TTS speaker. `Ryan` is the english-language default in the shipped `qwen3tts/worker.yaml`.
+- `per_language_defaults` — TTS only: a `language → speaker` map. Set in `worker.yaml`, not as an env var (pydantic-settings `dict` fields don't bind cleanly to env strings).
+- `output_mode` — `multipart` (stream bytes over HTTP) or `volume` (write to a shared volume).
+- `output_volume_dir` — required when `output_mode == "volume"`. Ignored otherwise.
+- `model_id` — override the model id the handler loads (e.g., `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`).
+- `handler` — Python import path to the worker handler class, used by `acheron-worker-edge` to import the handler when the cloud-side module is bundled.
+- `phantom_handler` — edge-only: cloud-side handler class used solely to read static `capabilities()` (no model load).
+
+**Secrets are env-only.** `ACHERON_WORKER__REGISTRATION_TOKEN`, `ACHERON_WORKER__RUNPOD_API_KEY`, and `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` are rejected when supplied via `worker.yaml` or as constructor kwargs (`src/acheron/worker_sdk/settings.py:26-32`). Set them in `.env` or your secret store.
+
+## GPU & Pricing Auto-Discovery
+
+The Edge Worker does not configure `gpu_type` — RunPod is the source of truth. `RunPodPrice` (in `src/acheron/worker_sdk/pricing.py`) queries RunPod's GraphQL API on schedule to discover the endpoint's active GPU type and hourly rate.
+
+- **Cache TTL** is `ACHERON_WORKER__PRICE_CACHE_TTL_S` (default `3600` seconds). When a job arrives and the cached rate is older than the TTL, `RunPodPrice.estimate()` triggers a refresh before computing the cost. GPU changes on the endpoint take effect on the next refresh — no image rebuild.
+- **Fault-tolerance.** A refresh failure returns `False` from `refresh()` and the cached rate is reused under the `CACHED` `CostBasis` (defined in `src/acheron/core/models.py:68-74`). If no rate is cached at all, the basis is `UNKNOWN` and `cost_estimate` is `None`. The job is never blocked by a missing price; cost reporting degrades, not execution.
+- **Static and zero sources.** `price_source: "static"` quotes a fixed `DOLLARS_PER_HOUR` (basis `STATIC`); `price_source: "zero"` reports `$0` (basis `STATIC`, used by the local stub workers in the dev compose stack).
+
+## TLS & Hardening
+
+**Defaults in the codebase.** TLS is opt-in. Setting `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` together enables HTTPS; setting only one is an error and the orchestrator refuses to start (`src/acheron/tls.py:30-38`). If both are unset, `uvicorn_ssl_kwargs()` logs exactly this warning before serving plain HTTP:
+
+> "ACHERON_TLS_CERT_FILE and ACHERON_TLS_KEY_FILE are unset — serving plain HTTP. Set both to enable HTTPS, or set ACHERON_ALLOW_INSECURE=1 to silence this warning."
+
+The Docker Compose stack auto-enables TLS by mounting self-signed certs from the `certs-init` service into every container (`docker-compose.yml:37-40`), so local dev always runs HTTPS. The first `docker compose up` materialises `./certs/`; `just certs` regenerates it manually.
+
+**Production.** Mount real certs (Let's Encrypt via cert-manager, your CA, etc.) with the right SANs, and set both env vars on the orchestrator. No Acheron code change is required.
+
+**Client-side trust.** Set `ACHERON_TLS_CA_FILE` to the CA bundle; `tls.py:79` falls back to the standard `SSL_CERT_FILE` (honoured by httpx and the Python `ssl` stdlib) if the Acheron-specific var is unset. The CLI additionally falls back to `./certs/acheron-ca.crt` in the current directory when present (`src/acheron/cli.py:50-53`), so local dev just works without any trust-store configuration.
+
+**Disabling TLS.** Unset the cert/key env vars. To silence the WARNING when plain HTTP is intentional, set `ACHERON_ALLOW_INSECURE=1` (`src/acheron/tls.py:22-23, 50-55`). The same flag silences the analogous WARNING emitted by `grpc_channel()` when `ACHERON_TLS_CA_FILE` is unset.
+
+**Reverse proxy (optional).** Acheron does not ship a proxy. If you want to terminate TLS at a reverse proxy instead of in-process, point nginx, Caddy, or anything else at the orchestrator (HTTPS) and the dashboard (HTTP), and terminate TLS there. The `ACHERON_TLS_*` env vars are independent of any proxy you add — leaving them unset serves plain HTTP from Acheron itself, which is fine when the proxy handles TLS in front.
+
+## YAML Configuration
+
+The orchestrator reads `acheron.yaml` for non-secret settings. The config search order, with first match winning (`src/acheron/shell/config.py:84-95`):
+
+1. `$ACHERON_CONFIG_PATH` — explicit path to a YAML file.
+2. `./acheron.yaml` or `./acheron.yml` — repo-local config.
+3. `/etc/acheron/acheron.yaml` or `/etc/acheron/acheron.yml` — system-wide config.
+
+**Top-level blocks.**
+
+- `orchestrator:` — `data_dir`, `registration_token`, `health_check_interval_seconds`.
+- `workers:` — `chunking` (`max_chunk_length`) and `packaging` (`bitrate`, `codec`, `max_fmt_chunk_length`).
+- `providers:` — RunPod and Hugging Face API keys for decoupled health checks when a worker's HTTP probe fails.
+- `chars_per_token` — top-level CJK worst-case estimate for chunk-fit validation; default `1`.
+
+`${VAR}` references in the YAML are expanded from `os.environ` at load time (`src/acheron/shell/config.py:18-26`), so `api_key: "${RUNPOD_API_KEY}"` in `acheron.yaml.example` is the recommended pattern for keys that should not be committed.
+
+**Env-var overrides.** Use `__` (double underscore) to address nested keys: `ACHERON_ORCHESTRATOR__DATA_DIR` overrides `orchestrator.data_dir`. The env-var source is layered above the YAML source in `settings_customise_sources` (`src/acheron/shell/config.py:146-160`), so env vars always win over file values. Flat aliases `ACHERON_DATA_DIR` and `ACHERON_REGISTRATION_TOKEN` also work for orchestrator-level settings.
+
+An example template is in `acheron.yaml.example`. Copy it to start:
+
+```bash
+cp acheron.yaml.example acheron.yaml
+```
+
+## Configuration Reference
+
+The authoritative table of every Acheron environment variable. Grouped by surface; defaults verified against the source at `README.md` commit time. `ACHERON_WORKER__*` is a `__` (double underscore) separator throughout.
+
+| Group | Variable | Default | Description |
+| ---- | -------- | ------- | ----------- |
+| Orchestrator / URLs | `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard: orchestrator URL. Use `http://` to skip TLS. |
+| Orchestrator / Registration | `ACHERON_REGISTRATION_TOKEN` | (auto-generated) | Worker registration shared secret. If unset, the orchestrator generates a secure token on startup and writes it to `{data_dir}/.registration_token` (`src/acheron/shell/orchestrator.py:207-225`). |
+| Orchestrator / Registration | `ACHERON_OPEN_REGISTRATION` | (unset) | Set to `1` to enable open worker registration (bypasses token checks, useful for local dev). |
+| Orchestrator / Config | `ACHERON_CONFIG_PATH` | (unset) | Custom path to the YAML configuration file (searches `acheron.yaml` / `acheron.yml` if unset). |
+| Orchestrator / Storage | `ACHERON_DATA_DIR` | `/data/jobs` | Orchestrator: plan and step-output cache directory (must be writable; orchestrator fails fast at startup if not). |
+| Orchestrator / Storage | `ACHERON_STORE_BACKEND` | `memory` | Orchestrator: `memory` (in-process, dev) or `redis` (persistent, production). |
+| Orchestrator / Storage | `REDIS_URL` | `redis://localhost:6379` | Redis connection (used when `ACHERON_STORE_BACKEND=redis`). |
+| Orchestrator / TLS | `ACHERON_TLS_CERT_FILE` | (unset) | Server: path to PEM-encoded server cert. Set with `ACHERON_TLS_KEY_FILE` to enable HTTPS. |
+| Orchestrator / TLS | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key. Set with `ACHERON_TLS_CERT_FILE` to enable HTTPS. |
+| Orchestrator / TLS | `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs. Falls back to `SSL_CERT_FILE`, then `./certs/acheron-ca.crt` in the CLI's CWD. |
+| Orchestrator / TLS | `ACHERON_ALLOW_INSECURE` | (unset) | Set to `1` to silence the plain-HTTP / insecure-gRPC WARNINGs emitted by `tls.py` when TLS env vars are unset. |
+| Worker / Transport | `ACHERON_WORKER__WORKER_ID` | (required) | Stable identifier for this worker instance. |
+| Worker / Transport | `ACHERON_WORKER__ORCHESTRATOR_URL` | (required) | Orchestrator URL the worker registers with and sends `/execute` to. |
+| Worker / Transport | `ACHERON_WORKER__LISTEN_HOST` | `0.0.0.0` | Bind host for the worker's HTTP/gRPC server. |
+| Worker / Transport | `ACHERON_WORKER__LISTEN_PORT` | `8001` | Bind port for the worker's HTTP/gRPC server. |
+| Worker / Transport | `ACHERON_WORKER__EXECUTION_TIMEOUT_S` | `1800` | Per-step execution timeout. |
+| Worker / Transport | `ACHERON_WORKER__OUTPUT_MODE` | `multipart` | `multipart` (stream bytes over HTTP) or `volume` (write to shared volume). |
+| Worker / Transport | `ACHERON_WORKER__OUTPUT_VOLUME_DIR` | (unset) | Required when `output_mode == "volume"`. |
+| Worker / Dispatch | `ACHERON_WORKER__HANDLER` | (unset) | Python import path to the worker handler class (used by `acheron-worker-edge` generic CLI). |
+| Worker / Dispatch | `ACHERON_WORKER__MODEL_ID` | (unset) | Override the model id the handler loads (e.g., `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`). |
+| Worker / Dispatch | `ACHERON_WORKER__PHANTOM_HANDLER` | (unset) | Edge-only: cloud-side handler class used solely to read static `capabilities()` (no model load). |
+| Worker / Dispatch | `ACHERON_WORKER__LOG_LEVEL` | `INFO` | Standard logging level. |
+| Worker / Secrets (env-only) | `ACHERON_WORKER__REGISTRATION_TOKEN` | (unset) | Bearer token for `Authorization` header on registration. Env-only — rejected when supplied via YAML or constructor. |
+| Worker / Secrets (env-only) | `ACHERON_WORKER__RUNPOD_API_KEY` | (unset) | RunPod account API key for the GraphQL pricing endpoint. Env-only. |
+| Worker / Secrets (env-only) | `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | (unset) | RunPod serverless endpoint id to forward `/execute` to. Env-only. |
+| Worker / Pricing | `ACHERON_WORKER__PRICE_SOURCE` | `runpod` | `runpod` (auto-discover from RunPod GraphQL), `static` (fixed `DOLLARS_PER_HOUR`), or `zero` (stubs/local). |
+| Worker / Pricing | `ACHERON_WORKER__SECURE_CLOUD` | `false` | When `price_source == "runpod"`, quote Secure Cloud (true) or Community Cloud (false) rates. |
+| Worker / Pricing | `ACHERON_WORKER__DOLLARS_PER_HOUR` | (unset) | Required when `price_source == "static"`. |
+| Worker / Pricing | `ACHERON_WORKER__PRICE_CACHE_TTL_S` | `3600` | RunPod rate cache TTL. Refreshed on demand when stale. |
+| Worker / Cloud transport | `ACHERON_WORKER__RUNPOD_BASE_URL` | (unset) | Override the RunPod API base URL (e.g., for testing). |
+| Worker / TTS | `ACHERON_WORKER__DEFAULT_SPEAKER` | `Ryan` | Default Qwen3-TTS speaker. Per-language defaults via `per_language_defaults` (set in YAML). |
+| Worker / TTS | `ACHERON_WORKER__PER_LANGUAGE_DEFAULTS` | (unset) | JSON dict of language → speaker overrides. Set in `worker.yaml` rather than env. |
+
+## License
+
+GPL-3.0-only
