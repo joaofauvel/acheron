@@ -210,23 +210,23 @@ class TestValidateChunkingFitsWorkers:
     def test_passes_when_chunking_within_limit(self) -> None:
         caps = (_text_input_tts_caps(max_input_tokens=2048),)
         # 250 chars / 4 chars-per-token = 62 tokens, well under 2048.
-        validate_chunking_fits_workers(caps, chunking_max_length=250)
+        validate_chunking_fits_workers(caps, chunking_max_length=250, chars_per_token=4)
 
     def test_raises_when_chunking_exceeds_tts_limit(self) -> None:
         caps = (_text_input_tts_caps(max_input_tokens=2048),)
         # 9000 chars / 4 = 2250 tokens, exceeds 2048.
         with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=2048"):
-            validate_chunking_fits_workers(caps, chunking_max_length=9000)
+            validate_chunking_fits_workers(caps, chunking_max_length=9000, chars_per_token=4)
 
     def test_raises_when_chunking_exceeds_translation_limit(self) -> None:
         caps = (_text_input_translation_caps(max_input_tokens=2048),)
         with pytest.raises(ChunkingTooLongForWorkerError, match="translation"):
-            validate_chunking_fits_workers(caps, chunking_max_length=9000)
+            validate_chunking_fits_workers(caps, chunking_max_length=9000, chars_per_token=4)
 
     def test_ignores_workers_with_unlimited_tokens(self) -> None:
         caps = (_text_input_tts_caps(max_input_tokens=None),)
         # Even with a huge chunk length, an unbounded worker is fine.
-        validate_chunking_fits_workers(caps, chunking_max_length=10_000_000)
+        validate_chunking_fits_workers(caps, chunking_max_length=10_000_000, chars_per_token=4)
 
     def test_ignores_non_text_input_worker_types(self) -> None:
         # ASR caps don't carry max_input_tokens (and the function should skip ASR entirely).
@@ -244,7 +244,7 @@ class TestValidateChunkingFitsWorkers:
             ),
         )
         # ASR is not in the text-input list; should not raise.
-        validate_chunking_fits_workers(caps, chunking_max_length=10_000_000)
+        validate_chunking_fits_workers(caps, chunking_max_length=10_000_000, chars_per_token=4)
 
     def test_smaller_chars_per_token_triggers_earlier(self) -> None:
         caps = (_text_input_tts_caps(max_input_tokens=2048),)
@@ -270,16 +270,16 @@ class TestValidateChunkingFitsWorkers:
         with pytest.raises(ValueError, match="chars_per_token must be > 0"):
             validate_chunking_fits_workers(caps, chunking_max_length=100, chars_per_token=0)
 
-    def test_default_chars_per_token_is_one_for_cjk_safety(self) -> None:
-        """The default must be conservative across all scripts (1 char/token).
+    def test_cjk_conservative_bound_via_explicit_one(self) -> None:
+        """At chars_per_token=1 (CJK worst case), 4000 chars against a 2048-token worker fails.
 
-        4000 chars at the old default of 4 chars/token = 1000 estimated tokens,
-        which the previous default let through against a 2048-token worker.
-        CJK content (1 char/token) would actually need 4000 tokens and OOM.
+        4000 chars / 1 char-per-token = 4000 estimated tokens, which exceeds 2048.
+        The orchestrator passes 1 by default (Settings.chars_per_token default); this
+        test documents the CJK safety bound the orchestrator relies on.
         """
         caps = (_text_input_tts_caps(max_input_tokens=2048),)
         with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=2048"):
-            validate_chunking_fits_workers(caps, chunking_max_length=4000)
+            validate_chunking_fits_workers(caps, chunking_max_length=4000, chars_per_token=1)
 
     def test_cjk_conservative_bound_with_explicit_one(self) -> None:
         """CJK path: 1 char/token. max_chunk_length=1000 < 2048 → passes; 3000 → fails."""
@@ -295,4 +295,10 @@ class TestValidateChunkingFitsWorkers:
             _text_input_tts_caps(max_input_tokens=10),
         )
         with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=10"):
-            validate_chunking_fits_workers(caps, chunking_max_length=1000)
+            validate_chunking_fits_workers(caps, chunking_max_length=1000, chars_per_token=4)
+
+    def test_chars_per_token_is_required(self) -> None:
+        """CFG-009: caller must pass chars_per_token explicitly; no function-level default."""
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        with pytest.raises(TypeError, match="chars_per_token"):
+            validate_chunking_fits_workers(caps, chunking_max_length=100)  # type: ignore[call-arg]

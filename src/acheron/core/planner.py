@@ -92,7 +92,7 @@ def _has_worker(
 def validate_chunking_fits_workers(
     capabilities: tuple[WorkerCapabilities, ...],
     chunking_max_length: int,
-    chars_per_token: int = 1,
+    chars_per_token: int,
 ) -> None:
     """Verify the chunking step's max_chunk_length fits each text-input worker's limit.
 
@@ -102,11 +102,10 @@ def validate_chunking_fits_workers(
     per token), raises ``ChunkingTooLongForWorkerError`` so the caller fails the job
     at plan compile time, before any GPU time is spent.
 
-    The default ``chars_per_token=1`` is conservative across all scripts: it assumes
-    the worst case (1 char = 1 token, as in CJK). The cost is token-budget slack for
-    Latin scripts, where 4-5 chars/token is typical; operators on Latin-only content
-    can raise it via ``Settings.chars_per_token``. A future sub-project could swap in
-    a tokenizer-based estimator.
+    The caller is the orchestrator, which reads ``chars_per_token`` from
+    ``Settings.chars_per_token`` (default 1 — conservative across all scripts, worst
+    case 1 char = 1 token as in CJK; operators on Latin-only content can raise it).
+    A future sub-project could swap in a tokenizer-based estimator.
 
     Pure: no I/O, no global state. The caller is responsible for passing fresh
     ``capabilities`` and the chunking step's config.
