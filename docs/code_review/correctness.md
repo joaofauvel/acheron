@@ -620,17 +620,17 @@ related: []
 ### CORR-024 — Edge `_parse_multipart_request` hardcodes `BytesInput.metadata={}`; per-part metadata is never parsed/forwarded
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 223-230
+    lines: 79-82, 121
 related: []
 ```
 
@@ -645,17 +645,17 @@ related: []
 ### CORR-025 — Edge `_parse_multipart_request` treats any non-JSON part as audio regardless of content_type
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 206-214
+    lines: 86-110
 related: []
 ```
 

@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from email.message import Message
 from email.parser import BytesParser
 from email.policy import default as default_policy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -31,6 +31,7 @@ from acheron.core.models import (
     JobMetrics,
     JobResult,
     JobStatus,
+    JsonValue,
     WorkerCapabilities,
     WorkerType,
 )
@@ -73,6 +74,52 @@ def _job_from_request(body: ExecuteRequest) -> Job:
 
 def _encode_metadata(metadata: dict[str, Any]) -> str:
     return json.dumps(metadata, separators=(",", ":"))
+
+
+def _decode_metadata(header: str | None) -> dict[str, JsonValue]:
+    if not header:
+        return {}
+    parsed = json.loads(header)
+    return {str(k): cast("JsonValue", v) for k, v in parsed.items()}
+
+
+def _classify_parts(message: Message) -> tuple[bytes | None, Message | None]:
+    """Pick the envelope (first ``application/json`` part) and the audio (first ``audio/*`` part).
+
+    Non-JSON, non-audio parts raise :class:`WorkerError` as a wire-format
+    error. Subsequent application/json parts (e.g. the translation step's
+    ``chunks.json`` form field) are silently skipped — the envelope is the
+    first one.
+    """
+    envelope_json: bytes | None = None
+    audio_part: Message | None = None
+    for part in message.get_payload():
+        if not isinstance(part, Message):
+            continue
+        part_ctype = part.get_content_type()
+        if part_ctype == "application/json":
+            if envelope_json is None:
+                raw = part.get_payload(decode=True)
+                envelope_json = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
+        elif part_ctype.startswith("audio/"):
+            if audio_part is None:
+                audio_part = part
+        else:
+            msg = f"Multipart part has unsupported Content-Type: {part_ctype} (expected application/json or audio/*)"
+            raise WorkerError(msg)
+    return envelope_json, audio_part
+
+
+def _build_input(audio_part: Message | None) -> Input | None:
+    if audio_part is None:
+        return None
+    audio_raw = audio_part.get_payload(decode=True)
+    audio_bytes = audio_raw if isinstance(audio_raw, bytes) else str(audio_raw).encode("utf-8")
+    return BytesInput(
+        content_type=audio_part.get_content_type(),
+        data=audio_bytes,
+        metadata=_decode_metadata(audio_part.get("X-Acheron-Metadata")),
+    )
 
 
 def _jobresult_to_json(result: JobResult) -> dict[str, Any]:
@@ -222,17 +269,7 @@ class EdgeApp:
             msg = "Multipart body was not multipart"
             raise WorkerError(msg)
 
-        envelope_json: bytes | None = None
-        audio_part: Message | None = None
-        for part in message.get_payload():
-            if not isinstance(part, Message):
-                continue
-            part_ctype = part.get_content_type()
-            if part_ctype == "application/json" and envelope_json is None:
-                raw = part.get_payload(decode=True)
-                envelope_json = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-            elif audio_part is None:
-                audio_part = part
+        envelope_json, audio_part = _classify_parts(message)
 
         if envelope_json is None:
             msg = "Multipart body has no application/json part"
@@ -240,16 +277,7 @@ class EdgeApp:
         body_req = ExecuteRequest.model_validate(json.loads(envelope_json))
 
         job = _job_from_request(body_req)
-        input_obj: Input | None = None
-        if audio_part is not None:
-            audio_raw = audio_part.get_payload(decode=True)
-            audio_bytes = audio_raw if isinstance(audio_raw, bytes) else str(audio_raw).encode("utf-8")
-            input_obj = BytesInput(
-                content_type=audio_part.get_content_type(),
-                data=audio_bytes,
-                metadata={},
-            )
-        return job, input_obj
+        return job, _build_input(audio_part)
 
     async def _run_execute(self, body: ExecuteRequest) -> Response:
         job = _job_from_request(body)

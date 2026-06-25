@@ -22,6 +22,7 @@ class _AsrEchoHandler(WorkerHandler):
     def __init__(self) -> None:
         self.received: list[bytes] = []
         self.received_content_type: list[str] = []
+        self.received_metadata: list[dict[str, object]] = []
 
     def capabilities(self) -> WorkerCapabilities:
         return WorkerCapabilities(
@@ -39,6 +40,7 @@ class _AsrEchoHandler(WorkerHandler):
         if input is not None:
             self.received.append(b"".join([c async for c in input.stream()]))
             self.received_content_type.append(input.content_type)
+            self.received_metadata.append(dict(input.metadata))
         return [
             BytesArtifact(
                 filename="out.txt",
@@ -177,3 +179,111 @@ class TestMultipartRequest:
         body = resp.json()
         assert body["status"] == "failed"
         assert "Traceback" not in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_with_non_audio_part_raises(self, app_and_handler: Any) -> None:
+        """CORR-025: a non-JSON, non-audio part (e.g. text/plain) must not be
+        silently treated as the audio input — it must raise a clean WorkerError
+        (not be coerced into a BytesInput with a wrong content_type).
+        """
+        app, _ = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                files={
+                    "request": ("", envelope, "application/json"),
+                    "sidecar": ("notes.txt", b"just a sidecar", "text/plain"),
+                },
+            )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert "unsupported Content-Type" in body["error"]
+        assert "text/plain" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_with_two_json_parts(self, app_and_handler: Any) -> None:
+        """The translation path sends two application/json parts (envelope +
+        chunks.json). Subsequent JSON parts are silently accepted; the envelope
+        is the first one. Regression for the strict CORR-025 fix accidentally
+        rejecting the chunks.json part.
+        """
+        app, _ = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "translation",
+                "payload": {"chunks": [{"text": "hola"}]},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                files={
+                    "request": ("", envelope, "application/json"),
+                    "chunks": ("chunks.json", b'{"chunks": []}', "application/json"),
+                },
+            )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_propagates_per_part_metadata(self, app_and_handler: Any) -> None:
+        """CORR-024: an audio part carrying an ``X-Acheron-Metadata`` header
+        must reach the handler as ``BytesInput.metadata`` (the request-side
+        mirror of the response-side CORR-013 fix).
+        """
+        app, handler = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        # httpx doesn't expose per-part custom headers via `files=`, so build
+        # the multipart body manually with a known boundary.
+        boundary = "acheron-test"
+        body = (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="request"\r\n'
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+        )
+        body += (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="audio"; filename="podcast.mp3"\r\n'
+                f"Content-Type: audio/mpeg\r\n"
+                f'X-Acheron-Metadata: {{"speaker_hint": "alice", "language": "en"}}\r\n\r\n'
+            ).encode()
+            + b"\xff\xfb\x90\x00mock-audio"
+            + b"\r\n"
+        )
+        body += f"--{boundary}--\r\n".encode()
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                content=body,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+        assert resp.status_code == 200
+        assert handler.received_metadata == [{"speaker_hint": "alice", "language": "en"}]
