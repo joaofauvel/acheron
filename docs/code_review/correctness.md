@@ -595,17 +595,17 @@ related: []
 ### CORR-023 — `_run_execute_multipart` only catches `WorkerError` from the parser; JSONDecodeError / ValidationError leak as opaque 500s
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 167-186
+    lines: 181-211
 related: []
 ```
 

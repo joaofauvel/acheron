@@ -182,7 +182,14 @@ class EdgeApp:
         """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
         try:
             job, input_obj = await self._parse_multipart_request(request)
-        except WorkerError as exc:
+        except (WorkerError, ValueError, KeyError) as exc:
+            parser_error: WorkerError
+            if isinstance(exc, WorkerError):
+                parser_error = exc
+            else:
+                msg = f"Malformed multipart envelope: {exc}"
+                parser_error = WorkerError(msg)
+                parser_error.__cause__ = exc
             # Mirror _dispatch's error contract: return a JobResult-shaped body
             # so the orchestrator's TypeAdapter(JobResult).validate_json parser
             # sees a valid failure record rather than an opaque 5xx.
@@ -191,7 +198,7 @@ class EdgeApp:
                 status=JobStatus.FAILED,
                 outputs=(),
                 metrics=JobMetrics(duration_seconds=0.0, cost_basis=None),
-                error=str(exc),
+                error=str(parser_error),
             )
             return JSONResponse(
                 status_code=500,
