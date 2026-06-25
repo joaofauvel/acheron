@@ -803,17 +803,17 @@ related: [TEST-004, DOC-005]
 ### DATA-009 — `tests/core/test_planner.py:TestValidateChunkingFitsWorkers` has no boundary-condition test (==, one-over, max_input_tokens=0, empty caps)
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: tests/core/test_planner.py
-  lines: 209-304
+  lines: 209-304, 300-340
 - path: src/acheron/core/planner.py
   lines: 92-128
 related:

@@ -297,6 +297,35 @@ class TestValidateChunkingFitsWorkers:
         with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=10"):
             validate_chunking_fits_workers(caps, chunking_max_length=1000, chars_per_token=4)
 
+    def test_passes_at_exact_equality_boundary(self) -> None:
+        """At the boundary ``estimated_tokens == max_input_tokens`` the function
+        must NOT raise — the check is strict ``>``, not ``>=``."""
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        validate_chunking_fits_workers(caps, chunking_max_length=8192, chars_per_token=4)
+
+    def test_raises_one_over_boundary(self) -> None:
+        """One token over the limit must raise. With ``chars_per_token=4`` and
+        ``max_input_tokens=2048`` the first failing ``chunking_max_length`` is
+        8196 (integer floor: 8196 // 4 == 2049 > 2048)."""
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=2048"):
+            validate_chunking_fits_workers(caps, chunking_max_length=8196, chars_per_token=4)
+
+    def test_zero_max_input_tokens_silently_permits_small_input(self) -> None:
+        """A degenerate ``max_input_tokens=0`` is a misconfiguration; the
+        function's check ``estimated_tokens > 0`` is always False, so any
+        non-trivial input passes. A future tightening (e.g. ``if max_input_tokens <= 0: raise``)
+        would silently change the production reject-set, so this test documents
+        the current contract."""
+        caps = (_text_input_tts_caps(max_input_tokens=0),)
+        validate_chunking_fits_workers(caps, chunking_max_length=1, chars_per_token=4)
+
+    def test_empty_capabilities_is_noop(self) -> None:
+        """An empty capabilities tuple iterates zero times and returns without
+        raising — semantically correct (nothing to validate against) but
+        previously unasserted."""
+        validate_chunking_fits_workers((), chunking_max_length=10_000_000, chars_per_token=4)
+
     def test_chars_per_token_is_required(self) -> None:
         """CFG-009: caller must pass chars_per_token explicitly; no function-level default."""
         caps = (_text_input_tts_caps(max_input_tokens=2048),)
