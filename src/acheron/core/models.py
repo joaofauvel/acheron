@@ -110,6 +110,7 @@ class OutputFile:
     size_bytes: int
     checksum: str
     content_type: str
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

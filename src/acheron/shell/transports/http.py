@@ -6,9 +6,6 @@ import asyncio
 import json
 import logging
 import os
-from email.message import Message
-from email.parser import BytesParser
-from email.policy import default as default_policy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,18 +19,20 @@ from acheron.core.errors import CacheMissError, WorkerError, WorkerUnavailableEr
 from acheron.core.interfaces import Worker
 from acheron.core.models import (
     Job,
-    JobMetrics,
     JobResult,
     OutputFile,
     WorkerCapabilities,
     WorkerType,
 )
 from acheron.shell.cache import StepCache
-from acheron.shell.transports._multipart import _build_result, _materialize_artifact
+from acheron.shell.transports._multipart import (
+    _build_result,
+    _materialize_artifact,
+    _parse_multipart_parts,
+)
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
-_metrics_adapter = TypeAdapter(JobMetrics)
 
 logger = logging.getLogger(__name__)
 
@@ -182,55 +181,24 @@ class HttpWorker(Worker):
 
     async def _parse_multipart(self, resp: httpx.Response, job_id: str) -> JobResult:
         """Parse the multipart/mixed body emitted by the SDK edge."""
-        ctype = resp.headers["content-type"]
-        # Extract boundary from the Content-Type header.
-        boundary_part = ctype.split("boundary=", 1)[1]
-        # Strip any trailing params / quotes.
-        boundary = boundary_part.split(";", 1)[0].strip().strip('"')
-        full_body = (
-            f"Content-Type: multipart/mixed; boundary={boundary}\r\nMIME-Version: 1.0\r\n\r\n"
-        ).encode() + resp.content
-        # Use email.parser to split the multipart body.
-        parser = BytesParser(policy=default_policy)
-        message = parser.parsebytes(full_body)
-        if not message.is_multipart():
-            msg = f"Multipart/mixed response from {self._base_url} was not multipart"
-            raise WorkerError(msg)
-
+        ctype = resp.headers.get("content-type", "")
         # The job_id embeds plan_id:plan_job_id-step_id; the step_id suffix is the dir.
         # Keep parity with the stub convention /data/jobs/<plan_job_id>/<step_id>/.
         plan_job_id = "-".join(job_id.split("-")[:-1]) if "-" in job_id else job_id
         step_id = job_id.rsplit("-", maxsplit=1)[-1] if "-" in job_id else "execute"
         dest_dir = self._data_dir / plan_job_id / step_id
 
+        parts, metrics = _parse_multipart_parts(ctype, resp.content)
         outputs: list[OutputFile] = []
-        metrics: JobMetrics | None = None
-
-        for part in message.get_payload():
-            # `message.get_payload()` is typed as the union of `str | Message | list[...]`
-            # by email.message; at runtime in a multipart body it returns a list of
-            # ``Message`` instances. Narrow via cast for the type-checker.
-            if not isinstance(part, Message):
-                continue
-            part_ctype = part.get_content_type()
-            if part_ctype == "application/json":
-                raw = part.get_payload(decode=True)
-                metrics = _metrics_adapter.validate_json(raw if isinstance(raw, bytes) else str(raw).encode("utf-8"))
-                continue
-            # Binary artifact part.
-            filename = part.get_filename() or "artifact.bin"
-            raw = part.get_payload(decode=True)
-            data = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-            _ = part.get("X-Acheron-Metadata")
+        for part in parts:
             out = await _materialize_artifact(
-                data=data,
-                filename=filename,
-                content_type=part_ctype,
+                data=part.data,
+                filename=part.filename,
+                content_type=part.content_type,
                 dest_dir=dest_dir,
+                metadata=part.metadata,
             )
             outputs.append(out)
-        if metrics is None:
-            metrics = JobMetrics(duration_seconds=0.0)
         return _build_result(job_id=job_id, outputs=tuple(outputs), metrics=metrics)
 
     async def health(self) -> bool:  # noqa: D102

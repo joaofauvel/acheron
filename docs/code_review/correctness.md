@@ -333,19 +333,25 @@ related: [OBS-005]
 ### CORR-013 — `_parse_multipart` discards per-part `X-Acheron-Metadata` header sent by the SDK edge
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
+  - path: src/acheron/shell/transports/_multipart.py
+    lines: 29-99
   - path: src/acheron/shell/transports/http.py
-    lines: 183-234
+    lines: 188-208
+  - path: src/acheron/core/models.py
+    lines: 113
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 188-231
+    lines: 89-117
+  - path: tests/shell/transports/test_http_multipart.py
+    lines: 37-67
 related: []
 ```
 
@@ -732,17 +738,19 @@ related: [ARCH-020]
 ### CORR-028 — `_parse_multipart` boundary extraction raises IndexError on response missing `boundary=`
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: [pending]
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 183-198
+  - path: src/acheron/shell/transports/_multipart.py
+    lines: 52-54
+  - path: tests/shell/transports/test_http_multipart.py
+    lines: 125-133
 related: [CORR-013, DATA-006, DATA-008]
 ```
 
@@ -784,17 +792,19 @@ related: [CORR-026, MAINT-019]
 ### CORR-030 — `_parse_multipart` takes the first `application/json` part as metrics; a sidecar JSON part would be silently overwritten
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: pending
   date: 2026-06-24
-fixed_in: []
+fixed_in: [pending]
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 209-219
+  - path: src/acheron/shell/transports/_multipart.py
+    lines: 65-99
+  - path: tests/shell/transports/test_http_multipart.py
+    lines: 70-122
 related: [CORR-013, DATA-006, DATA-008]
 ```
 
