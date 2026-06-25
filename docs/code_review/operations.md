@@ -810,14 +810,14 @@ related:
 ### SEC-014 — `worker.edge.yaml` default `orchestrator_url` is HTTP — registration token sent in cleartext when env var is not overridden
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: workers/qwen3tts/worker.edge.yaml
   lines: '11'
@@ -839,21 +839,21 @@ related:
 ### SEC-015 — All Docker images (orchestrator, dashboard, worker-stub-base, acheron-worker-edge, qwen3tts-runpod) run as root — no `USER` directive
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: fa87bc6
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: Dockerfile
-    lines: 1-41
+    lines: 1-47
   - path: Dockerfile.edge
-    lines: 1-48
+    lines: 1-50
   - path: workers/qwen3tts/Dockerfile.runpod
-    lines: 1-53
+    lines: 1-55
 related: []
 ```
 
@@ -868,14 +868,14 @@ related: []
 ### SEC-016 — Granite-speech edge image default `orchestrator_url` is HTTP — registration token sent in cleartext when env var is not overridden (new instance of SEC-014)
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: workers/granite_speech/worker.edge.yaml
   lines: '7'
@@ -894,17 +894,17 @@ related:
 ### SEC-017 — Granite-speech runpod image runs as root — no `USER` directive (new instance of SEC-015)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: workers/granite_speech/Dockerfile.runpod
-    lines: 1-63
+    lines: 1-65
 related: [SEC-015]
 ```
 

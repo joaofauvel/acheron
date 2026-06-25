@@ -529,14 +529,14 @@ related: []
 ### CORR-020 — `make_runpod_handler` silently coerces missing `data` field to empty bytes
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
 - path: src/acheron/worker_sdk/cloud.py
   lines: '49'

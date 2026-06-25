@@ -35,6 +35,9 @@ RUN pip install --no-cache-dir flash-attn==2.5.9.post1 --no-build-isolation
 # RunPod SDK so runpod.serverless.start() is importable.
 RUN pip install --no-cache-dir runpod
 
+# Non-root user (defense-in-depth; matches the translategemma pattern from SEC-020).
+RUN useradd --create-home --shell /bin/bash acheron
+
 WORKDIR /app
 
 # The worker's deployable assets. The cloud-side handler is entrypoint-only.
@@ -50,4 +53,5 @@ COPY workers/_shared.py /app/workers/_shared.py
 ENV HF_HOME=/runpod-volume/huggingface-cache \
     PYTHONPATH=/app
 
+USER acheron
 CMD ["python", "runpod_entrypoint.py"]

@@ -46,9 +46,9 @@ def make_runpod_handler(
             if not isinstance(audio_payload, dict):
                 msg = f"RunPod input_audio must be a dict, got {type(audio_payload).__name__}"
                 raise WorkerError(msg)
-            data_b64 = audio_payload.get("data", "")
-            if not isinstance(data_b64, str):
-                msg = "RunPod input_audio.data must be a str (base64-encoded bytes)"
+            data_b64 = audio_payload.get("data")
+            if not isinstance(data_b64, str) or not data_b64:
+                msg = "RunPod input_audio.data is required and must be a non-empty base64 str"
                 raise WorkerError(msg)
             metadata_raw = audio_payload.get("metadata", {})
             if not isinstance(metadata_raw, dict):
