@@ -38,7 +38,7 @@ class TestExceptionHierarchy:
         ("child", "parent"),
         [
             (InvalidLanguagePathError, PlanError),
-            (ChunkingTooLongForWorkerError, InvalidLanguagePathError),
+            (ChunkingTooLongForWorkerError, PlanError),
             (PlanValidationError, PlanError),
             (WorkerUnavailableError, WorkerError),
             (WorkerTimeoutError, WorkerError),
@@ -63,8 +63,8 @@ class TestMessagePropagation:
         with pytest.raises(PlanError):
             raise PlanValidationError("missing step dependency")
 
-    def test_chunking_too_long_caught_as_language_path(self) -> None:
-        with pytest.raises(InvalidLanguagePathError):
+    def test_chunking_too_long_caught_by_plan_error(self) -> None:
+        with pytest.raises(PlanError):
             raise ChunkingTooLongForWorkerError("chunking exceeds worker limit")
 
 

@@ -6,7 +6,12 @@ import asyncio
 
 import pytest
 
-from acheron.core.errors import InvalidLanguagePathError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.errors import (
+    ChunkingTooLongForWorkerError,
+    InvalidLanguagePathError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+)
 from acheron.core.models import (
     EpubRequest,
     ExecutorStrategy,
@@ -146,7 +151,7 @@ class TestOrchestrator:
         await orch.start()
 
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
-        with pytest.raises(InvalidLanguagePathError, match="max_input_tokens=10"):
+        with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=10"):
             await orch.submit_job(request, ExecutorStrategy.STREAMING)
 
     @pytest.mark.asyncio
