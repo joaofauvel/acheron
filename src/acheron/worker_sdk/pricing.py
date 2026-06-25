@@ -192,7 +192,7 @@ class RunPodPrice:
     ) -> dict[str, Any]:
         resp = await client.post(
             "https://api.runpod.io/graphql",
-            params={"api_key": self.api_key},
+            headers={"Authorization": f"Bearer {self.api_key}"},
             json={"query": query, "variables": variables or {}},
             timeout=10.0,
         )

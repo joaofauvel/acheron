@@ -133,3 +133,19 @@ class TestRunPodPrice:
         assert any("eid-bad" in r.message and "ConnectError" in r.message for r in caplog.records), (
             f"expected log with endpoint_id+exc_class, got: {[r.message for r in caplog.records]}"
         )
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_api_key_sent_as_authorization_header_not_query_param(self) -> None:
+        """SEC-013: the RunPod API key must travel in the ``Authorization``
+        Bearer header, not as a URL query parameter — query strings are
+        routinely logged by HTTP access middleware, CDN edges, and proxy
+        layers (CWE-598 / OWASP API3:2023).
+        """
+        route = respx.post("https://api.runpod.io/graphql").mock(return_value=_graphql_response({}))
+        price = RunPodPrice(api_key="rk_SECRET_DO_NOT_LOG", endpoint_id="eid", secure_cloud=False)
+        await price.refresh()
+        request = route.calls.last.request
+        assert "api_key" not in request.url.params
+        assert "rk_SECRET_DO_NOT_LOG" not in str(request.url)
+        assert request.headers["authorization"] == "Bearer rk_SECRET_DO_NOT_LOG"
