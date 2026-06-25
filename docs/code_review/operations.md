@@ -613,17 +613,19 @@ related: [OBS-004, SEC-010, SEC-012]
 ### SEC-007 — Host Path Traversal & Arbitrary Local File Read in ExtractionHandler
 
 ```yaml
-status: open
+status: fixed
 severity: high
 effort: M
 reviewed_at: d9dc740
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/local_handlers.py
-    lines: 242-265
+    lines: 242-300
+  - path: src/acheron/core/errors.py
+    lines: 8-10
 related: []
 ```
 

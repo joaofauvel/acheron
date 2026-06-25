@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from acheron.core.chunking import chunk_text
-from acheron.core.errors import CacheCorruptedError, CacheMissError, WorkerError
+from acheron.core.errors import CacheCorruptedError, CacheMissError, PathNotAllowedError, WorkerError
 from acheron.core.models import (
     SUPPORTED_LANGUAGES,
     Chunk,
@@ -242,16 +242,37 @@ def _copy_audio(source_path: Path, extract_dir: Path) -> list[OutputFile]:
 class ExtractionHandler:
     """Local handler for EPUB and audio extraction."""
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, allowlist_root: Path | None = None) -> None:
         self.data_dir = data_dir
+        self._allowlist_root = (allowlist_root or data_dir).resolve()
+
+    def _validate_source_path(self, source_path: Path) -> Path:
+        """Reject source paths resolving outside the configured allowlist. Return the resolved path."""
+        resolved = source_path.resolve()
+        if not resolved.is_relative_to(self._allowlist_root):
+            if str(source_path) != str(resolved):
+                msg = f"path {source_path} escapes allowlist {self._allowlist_root}"
+            else:
+                msg = f"path {source_path} is not under allowlist {self._allowlist_root}"
+            raise PathNotAllowedError(msg)
+        return resolved
+
+    def extract_epub(self, ebook_path: Path, extract_dir: Path | None = None) -> list[OutputFile]:
+        """Validate the path is within the allowlist and extract EPUB chapters into extract_dir."""
+        resolved = self._validate_source_path(ebook_path)
+        if extract_dir is None:
+            extract_dir = self.data_dir / "_epub_extract" / resolved.stem
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        return _extract_epub(resolved, extract_dir)
 
     async def __call__(self, job: Job) -> JobResult:
         """Run extraction: EPUB chapters to text or audio file copy."""
         start_time = time.monotonic()
         source_path_str = str(job.payload.get("source_path", ""))
         source_path = Path(source_path_str)
-        if not await asyncio.to_thread(source_path.exists):
-            msg = f"Source file not found: {source_path}"
+        resolved_source = self._validate_source_path(source_path)
+        if not await asyncio.to_thread(resolved_source.exists):
+            msg = f"Source file not found: {resolved_source}"
             raise WorkerError(msg)
 
         plan_job_id = job.job_id.rsplit("-", 1)[0]
@@ -260,9 +281,9 @@ class ExtractionHandler:
 
         is_epub = source_path.suffix.lower() == ".epub"
         if is_epub:
-            outputs = await asyncio.to_thread(_extract_epub, source_path, extract_dir)
+            outputs = await asyncio.to_thread(self.extract_epub, resolved_source, extract_dir)
         else:
-            outputs = await asyncio.to_thread(_copy_audio, source_path, extract_dir)
+            outputs = await asyncio.to_thread(_copy_audio, resolved_source, extract_dir)
 
         duration = time.monotonic() - start_time
         return JobResult(

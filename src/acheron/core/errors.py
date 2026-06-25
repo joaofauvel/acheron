@@ -5,6 +5,10 @@ class AcheronError(Exception):
     """Base exception for all Acheron errors."""
 
 
+class PathNotAllowedError(AcheronError):
+    """A path submitted for filesystem access resolves outside the configured allowlist."""
+
+
 class PlanError(AcheronError):
     """Errors related to plan compilation or validation."""
 

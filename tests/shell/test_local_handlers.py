@@ -4,9 +4,11 @@ import struct
 import zipfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
+from acheron.core.errors import PathNotAllowedError
 from acheron.core.models import Job, OutputFile, WorkerType
 from acheron.shell.cache import StepCache
 from acheron.shell.local_handlers import ChunkingHandler, ExtractionHandler, PackagingHandler
@@ -179,3 +181,40 @@ async def test_packaging_handler_rejects_huge_fmt_chunk(tmp_path: Path) -> None:
 
     with pytest.raises(WorkerError, match="Invalid format chunk size"):
         read_wav_duration(path, max_fmt_chunk_length=65536)
+
+
+class TestExtractionHandlerPathSecurity:
+    """SEC-007: host path traversal protection for ExtractionHandler."""
+
+    def test_resolved_path_inside_allowlist_passes(self, tmp_path: Path) -> None:
+        good = tmp_path / "book.epub"
+        _create_dummy_epub(good)
+        handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
+        with patch("acheron.shell.local_handlers._extract_epub") as mock_extract:
+            mock_extract.return_value = []
+            outputs = handler.extract_epub(good)
+        assert outputs == []
+        mock_extract.assert_called_once()
+
+    def test_path_traversal_raises(self, tmp_path: Path) -> None:
+        bad = tmp_path / ".." / "etc" / "passwd"
+        handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
+        with pytest.raises(PathNotAllowedError, match="escapes allowlist"):
+            handler.extract_epub(bad)
+
+    def test_absolute_path_outside_allowlist_raises(self, tmp_path: Path) -> None:
+        handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
+        with pytest.raises(PathNotAllowedError, match="not under allowlist"):
+            handler.extract_epub(Path("/etc/passwd"))
+
+    def test_symlink_pointing_outside_allowlist_raises(self, tmp_path: Path) -> None:
+        outside = tmp_path.parent / "outside_target_for_symlink_test"
+        outside.write_text("secret")
+        try:
+            symlink = tmp_path / "book.epub"
+            symlink.symlink_to(outside)
+            handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
+            with pytest.raises(PathNotAllowedError, match="escapes allowlist"):
+                handler.extract_epub(symlink)
+        finally:
+            outside.unlink(missing_ok=True)
