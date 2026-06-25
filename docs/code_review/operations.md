@@ -839,21 +839,21 @@ related:
 ### SEC-015 — All Docker images (orchestrator, dashboard, worker-stub-base, acheron-worker-edge, qwen3tts-runpod) run as root — no `USER` directive
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: fa87bc6
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: Dockerfile
-    lines: 1-41
+    lines: 1-47
   - path: Dockerfile.edge
-    lines: 1-48
+    lines: 1-50
   - path: workers/qwen3tts/Dockerfile.runpod
-    lines: 1-53
+    lines: 1-55
 related: []
 ```
 

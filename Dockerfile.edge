@@ -44,5 +44,8 @@ COPY workers/translategemma/worker.edge.yaml /app/translategemma.worker.yaml
 ENV WORKER_NAME=qwen3tts \
     PYTHONPATH=/app
 
+RUN useradd --create-home --shell /bin/bash acheron
+
 EXPOSE 8001
+USER acheron
 CMD ["acheron-worker-edge"]
