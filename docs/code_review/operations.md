@@ -703,19 +703,20 @@ related: [SEC-001, SEC-008, SEC-011]
 ### SEC-010 — Worker `last_error` exposed via unauthenticated /workers endpoint (info disclosure)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-  - path: src/acheron/shell/api/routes/workers.py
-    lines: 65-71
-  - path: src/acheron/shell/health.py
-    lines: 44-64
+- path: src/acheron/shell/api/routes/workers.py
+  lines: 65-71
+- path: src/acheron/shell/health.py
+  lines: 44-64
 related: [SEC-005, SEC-006, OBS-005]
 ```
 
