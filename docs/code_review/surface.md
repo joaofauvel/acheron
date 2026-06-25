@@ -321,14 +321,14 @@ related: [DOC-003]
 ### DOC-005 — `shell/tls.py` shim docstring violates greenfield rule; references past move and old import path
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: 2b8c721
   date: 2026-06-24
-fixed_in: []
+fixed_in: [2b8c721]
 files:
   - path: src/acheron/shell/tls.py
     lines: 1-24
