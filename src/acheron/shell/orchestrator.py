@@ -285,6 +285,7 @@ class Orchestrator:
             chars_per_token=self._settings.chars_per_token,
         )
         self._cache.save_plan(plan)
+        self._invalidate_handler_cache()
         logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
         tracked = TrackedJob(
@@ -306,6 +307,18 @@ class Orchestrator:
         """Run the plan executor and update job status."""
         with bind_job_id(tracked.job_id):
             await self._run_execution(tracked)
+
+    def _invalidate_handler_cache(self) -> None:
+        """Invalidate the step handler's worker-instance cache, if it exposes one.
+
+        The default :class:`CachingStepHandler` pools worker instances across
+        steps; we drop the pool at the start of each new plan so a worker
+        re-registration, removal, or endpoint change is reflected on the next
+        dispatch.
+        """
+        invalidate = getattr(self._handler, "_invalidate_worker_cache", None)
+        if invalidate is not None:
+            invalidate()
 
     async def _run_execution(self, tracked: TrackedJob) -> None:
         db_job = await self._job_store.get(tracked.job_id)

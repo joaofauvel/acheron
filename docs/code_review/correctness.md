@@ -231,17 +231,24 @@ related: []
 ### CORR-009 — Step handler caches worker list and worker instances across steps and plans
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/step_handler.py
-  lines: 105-144
+  lines: 80-179
+- path: src/acheron/shell/orchestrator.py
+  lines: 287-318
+- path: tests/shell/test_step_handler.py
+  lines: 273-302
+- path: tests/shell/test_orchestrator.py
+  lines: 79-105
 related: []
 ```
 

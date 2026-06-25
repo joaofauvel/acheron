@@ -75,6 +75,31 @@ class TestOrchestrator:
         assert orch._step_cache is cache  # noqa: SLF001
 
     @pytest.mark.asyncio
+    async def test_submit_job_invalidates_handler_worker_cache(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """CORR-009: submit_job drops the step handler's worker-instance pool so re-registrations take effect."""
+        from acheron.shell.step_handler import CachingStepHandler
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("es"))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path))
+        await orch.start()
+        assert isinstance(orch._handler, CachingStepHandler)
+        handler = orch._handler
+        handler._worker_instances["w-stub"] = object()  # type: ignore[assignment]
+        handler._cached_workers = ()
+        handler._cached_plan_id = "stale-plan"
+
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+
+        assert handler._worker_instances == {}
+        assert handler._cached_workers is None
+        assert handler._cached_plan_id is None
+
+    @pytest.mark.asyncio
     async def test_submit_job_requires_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """submit_job raises RuntimeError if start() was not called.
 
