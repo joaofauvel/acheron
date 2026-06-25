@@ -21,3 +21,4 @@ certs/
 .worktrees/
 .agents/
 .opencode/
+graphify-out/
