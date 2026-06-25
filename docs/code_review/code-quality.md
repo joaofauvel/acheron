@@ -245,8 +245,8 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 0450dc31a8244560d5dd8da18ecb1e4ae8013cc5
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/health_providers.py
@@ -256,7 +256,7 @@ files:
   - path: src/acheron/shell/transports/http.py
     lines: 239
   - path: src/acheron/shell/local_handlers.py
-    lines: 296
+    lines: 317
   - path: src/acheron/shell/executors/streaming.py
     lines: 155
   - path: src/acheron/worker_sdk/pricing.py
@@ -446,14 +446,14 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 0450dc31a8244560d5dd8da18ecb1e4ae8013cc5
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: pyproject.toml
     lines: 23
   - path: src/acheron/core/errors.py
-    lines: 16-29
+    lines: 27-28, 39-40
   - path: src/acheron/shell/executors/streaming.py
     lines: 246-248
   - path: src/acheron/shell/transports/grpc.py

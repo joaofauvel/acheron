@@ -618,12 +618,12 @@ severity: high
 effort: M
 reviewed_at: d9dc740
 last_verified_at:
-  commit: pending
+  commit: 0450dc31a8244560d5dd8da18ecb1e4ae8013cc5
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [0450dc31a8244560d5dd8da18ecb1e4ae8013cc5]
 files:
   - path: src/acheron/shell/local_handlers.py
-    lines: 242-300
+    lines: 242-294
   - path: src/acheron/core/errors.py
     lines: 8-10
 related: []
