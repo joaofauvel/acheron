@@ -2,7 +2,12 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from acheron.core.models import JsonValue  # noqa: TC001  (pydantic v2 needs the type at runtime to build validators)
+from acheron.core.models import (
+    CostBasis,
+    JsonValue,
+    PlanStatus,
+    WorkerStatus,
+)
 
 
 class _StrictRequest(BaseModel):
@@ -26,13 +31,13 @@ class JobResponse(BaseModel):
     """Response for a single job."""
 
     job_id: str
-    status: str
+    status: PlanStatus
     plan_id: str | None = None
     completed_steps: int = 0
     total_steps: int = 0
     total_cost: float = 0.0
     total_duration_seconds: float = 0.0
-    total_cost_basis: str | None = None
+    total_cost_basis: CostBasis | None = None
     errors: list[str] = []
 
 
@@ -73,7 +78,7 @@ class WorkerResponse(BaseModel):
     transport: str
     worker_type: str
     consecutive_failures: int
-    status: str = "healthy"
+    status: WorkerStatus = WorkerStatus.HEALTHY
     last_error: str | None = None
 
 

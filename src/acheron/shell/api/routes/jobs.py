@@ -87,12 +87,12 @@ def _tracked_to_response(tracked: TrackedJob) -> JobResponse:
     result = tracked.result
     return JobResponse(
         job_id=tracked.job_id,
-        status=tracked.status.value,
+        status=tracked.status,
         plan_id=tracked.plan.plan_id if tracked.plan else None,
         completed_steps=result.completed_steps if result else 0,
         total_steps=result.total_steps if result else 0,
         total_cost=result.total_cost if result else 0.0,
         total_duration_seconds=result.total_duration_seconds if result else 0.0,
-        total_cost_basis=(result.total_cost_basis.value if result and result.total_cost_basis else None),
+        total_cost_basis=(result.total_cost_basis if result and result.total_cost_basis else None),
         errors=list(result.errors) if result else [],
     )
