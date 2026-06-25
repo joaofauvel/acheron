@@ -257,7 +257,11 @@ class Orchestrator:
             RuntimeError: If ``start()`` has not been called. Local workers
                 are registered during start(); submitting before start would
                 fail at execution with a confusing WorkerError.
-            AcheronError: If plan compilation fails (e.g. invalid language path).
+            InvalidLanguagePathError: If no registered worker supports the
+                requested language path.
+            ChunkingTooLongForWorkerError: If the chunking step's
+                ``max_chunk_length`` exceeds a text-input worker's
+                ``max_input_tokens``.
         """
         if not self._started:
             msg = "Orchestrator.start() must be called before submit_job()"
