@@ -631,21 +631,21 @@ related: []
 ### TEST-013 — `test_edge_http.py` and `test_edge_http_multipart.py` don't assert `X-Acheron-Metadata` header construction in `_build_multipart_response`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 104-114, 156-160
 - path: tests/worker_sdk/test_edge_http.py
-  lines: 70-86
+  lines: 70-86, 211-260
 - path: tests/worker_sdk/test_edge_http_multipart.py
-  lines: 1-289
+  lines: 1-289, 290-378
 related:
 - CORR-013
 ```
