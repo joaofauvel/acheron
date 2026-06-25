@@ -12,6 +12,9 @@ It accepts ``/execute`` from the orchestrator and forwards the job to a
 RunPod serverless endpoint via :class:`RunPodClient`. The cloud-side
 RunPod image (which has the GPU + model) does the actual inference and
 returns artifacts.
+
+Importing this module loads the runpod SDK transitively (via
+``_runpod_client``).
 """
 
 from __future__ import annotations

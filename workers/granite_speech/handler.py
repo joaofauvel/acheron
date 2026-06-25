@@ -13,7 +13,7 @@ being one mode, per the Layer 8a spec.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
@@ -26,6 +26,20 @@ if TYPE_CHECKING:
     from acheron.worker_sdk.settings import WorkerSettings
 
 
+class _ModelProto(Protocol):
+    """Surface the subset of the transformers model API the handler uses."""
+
+    def generate(self, **kwargs: Any) -> Any: ...
+
+
+class _ProcessorProto(Protocol):
+    """Surface the subset of the transformers processor API the handler uses."""
+
+    tokenizer: Any
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+
+
 _SUPPORTED_LANGS = frozenset({"en", "fr", "de", "es", "pt", "ja"})
 _MODEL_ID_DEFAULT = "ibm-granite/granite-speech-4.1-2b"
 _DEFAULT_PROMPT = "transcribe the speech with proper punctuation and capitalization."
@@ -36,10 +50,8 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
 
     def __init__(self, settings: WorkerSettings) -> None:
         self._settings = settings
-        # The model + processor are typed loosely so the workspace tests
-        # don't need torch or transformers installed.
-        self._model: Any = None
-        self._processor: Any = None
+        self._model: _ModelProto | None = None
+        self._processor: _ProcessorProto | None = None
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static description. No I/O — sync."""
