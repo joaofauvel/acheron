@@ -8,6 +8,7 @@ the returned :class:`PriceEstimate`.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -15,6 +16,8 @@ from typing import Any, Protocol
 import httpx
 
 from acheron.core.models import CostBasis
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -140,7 +143,12 @@ class RunPodPrice:
             rate = await self._fetch_uninterruptable_price(client, gpu_id)
             if rate is None:
                 return False
-        except httpx.HTTPError, OSError, KeyError, ValueError, TypeError:
+        except (httpx.HTTPError, OSError, KeyError, ValueError, TypeError) as exc:
+            logger.exception(
+                "RunPod price refresh failed for endpoint %s: %s",
+                self.endpoint_id,
+                type(exc).__name__,
+            )
             return False
         self._rate = rate
         self._rate_fetched_at = time.monotonic()

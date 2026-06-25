@@ -13,6 +13,7 @@ so the import is at module load — no need for lazy resolution.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from typing import Protocol
 import runpod
 
 from acheron.core.errors import WorkerError
+
+logger = logging.getLogger(__name__)
 
 
 class _Run(Protocol):
@@ -79,11 +82,27 @@ class RunPodClient:
         self._base_url = base_url
 
     async def run(self, payload: dict[str, object]) -> RunPodJobResult:
-        endpoint = await asyncio.to_thread(
-            _open_endpoint, self._endpoint_id, api_key=self._api_key, base_url=self._base_url
-        )
+        try:
+            endpoint = await asyncio.to_thread(
+                _open_endpoint, self._endpoint_id, api_key=self._api_key, base_url=self._base_url
+            )
+        except Exception as exc:
+            logger.exception(
+                "RunPod open_endpoint failed for endpoint %s: %s",
+                self._endpoint_id,
+                type(exc).__name__,
+            )
+            raise
         start = time.monotonic()
-        request = await asyncio.to_thread(endpoint.run, payload)
+        try:
+            request = await asyncio.to_thread(endpoint.run, payload)
+        except Exception as exc:
+            logger.exception(
+                "RunPod endpoint.run failed for endpoint %s: %s",
+                self._endpoint_id,
+                type(exc).__name__,
+            )
+            raise
         try:
             output = await asyncio.wait_for(
                 asyncio.to_thread(request.output, timeout=self._execution_timeout_s),

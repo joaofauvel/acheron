@@ -112,3 +112,24 @@ class TestRunPodPrice:
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False)
         est = await price.estimate(gpu_seconds=10.0)
         assert est.cost is None
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_refresh_failure_logs_endpoint_id_and_exception_class(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """OBS-006: on transport failure, the pricing module emits a log line
+        naming the ``endpoint_id`` and the exception class so an operator can
+        diagnose a permanently-broken rate lookup from the cache silence.
+        """
+        import logging
+
+        respx.post("https://api.runpod.io/graphql").mock(side_effect=httpx.ConnectError("boom"))
+        price = RunPodPrice(api_key="k", endpoint_id="eid-bad", secure_cloud=False)
+        with caplog.at_level(logging.ERROR, logger="acheron.worker_sdk.pricing"):
+            est = await price.estimate(gpu_seconds=10.0)
+        assert est.cost is None
+        assert any("eid-bad" in r.message and "ConnectError" in r.message for r in caplog.records), (
+            f"expected log with endpoint_id+exc_class, got: {[r.message for r in caplog.records]}"
+        )
