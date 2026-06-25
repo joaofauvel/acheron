@@ -545,17 +545,17 @@ related: []
 ### CORR-021 — `make_runpod_handler` does not validate that `input_audio` payload is a dict
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 42-53
+    lines: 44-48
 related: []
 ```
 
@@ -570,17 +570,17 @@ related: []
 ### CORR-022 — `make_runpod_handler` does not validate `content_type` is a string
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 54-58
+    lines: 57-62
 related: []
 ```
 

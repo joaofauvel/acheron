@@ -43,6 +43,9 @@ def make_runpod_handler(
         job = _deserialise_job(runpod_job["input"])
         audio_payload = runpod_job["input"].get("input_audio")
         if audio_payload is not None:
+            if not isinstance(audio_payload, dict):
+                msg = f"RunPod input_audio must be a dict, got {type(audio_payload).__name__}"
+                raise WorkerError(msg)
             data_b64 = audio_payload.get("data", "")
             if not isinstance(data_b64, str):
                 msg = "RunPod input_audio.data must be a str (base64-encoded bytes)"
@@ -51,8 +54,12 @@ def make_runpod_handler(
             if not isinstance(metadata_raw, dict):
                 msg = "RunPod input_audio.metadata must be a dict"
                 raise WorkerError(msg)
+            content_type_raw = audio_payload.get("content_type", "audio/wav")
+            if not isinstance(content_type_raw, str):
+                msg = f"RunPod input_audio.content_type must be a str, got {type(content_type_raw).__name__}"
+                raise WorkerError(msg)
             input_obj = BytesInput(
-                content_type=str(audio_payload.get("content_type", "audio/wav")),
+                content_type=content_type_raw,
                 data=base64.b64decode(data_b64),
                 metadata=dict(metadata_raw),
             )

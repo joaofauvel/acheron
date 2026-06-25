@@ -144,3 +144,49 @@ class TestMakeRunpodHandlerAudioForward:
         }
         with pytest.raises(WorkerError, match=r"input_audio\.metadata must be a dict"):
             await wrapped(runpod_job)
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_dict_input_audio(self) -> None:
+        """CORR-021: a non-dict input_audio (e.g. raw bytes) must raise WorkerError
+        rather than AttributeError from .get().
+        """
+        from acheron.core.errors import WorkerError
+
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        runpod_job = {
+            "input": {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {},
+                "chapter_id": "ch1",
+                "input_audio": "not-a-dict",
+            }
+        }
+        with pytest.raises(WorkerError, match=r"input_audio must be a dict"):
+            await wrapped(runpod_job)
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_str_content_type(self) -> None:
+        """CORR-022: a non-str content_type must raise WorkerError rather than
+        being silently coerced via str().
+        """
+        from acheron.core.errors import WorkerError
+
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        runpod_job = {
+            "input": {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {},
+                "chapter_id": "ch1",
+                "input_audio": {
+                    "content_type": 42,
+                    "data": "AAAAAA==",
+                    "metadata": {},
+                },
+            }
+        }
+        with pytest.raises(WorkerError, match=r"input_audio\.content_type must be a str"):
+            await wrapped(runpod_job)
