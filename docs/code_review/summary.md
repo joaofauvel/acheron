@@ -25,7 +25,7 @@ last_staleness_scan:
 | REPRO | A | 0 critical, 0 high, 1 medium, 1 low |
 | DATA | B | 0 critical, 0 high, 4 medium, 1 low |
 | PERF | B | 0 critical, 0 high, 4 medium, 1 low |
-| OBS | B | 0 critical, 0 high, 6 medium, 3 low |
+| OBS | B | 0 critical, 0 high, 3 medium, 3 low |
 | SEC | C | 0 critical, 2 high, 4 medium, 8 low |
 | DX | A | 0 critical, 0 high, 1 medium, 0 low |
 | PKG | A | 0 critical, 0 high, 1 medium, 1 low |
@@ -95,10 +95,10 @@ Grade changes vs `e544584`: CORR B→C (medium count 7→11, crosses 9-15 medium
 
 | Status | Count |
 |---|---|
-| open | 133 |
+| open | 130 |
 | in-progress | 0 |
 | fixed | 2 |
-| verified | 48 |
+| verified | 51 |
 | stale | 0 |
 | wontfix | 0 |
 

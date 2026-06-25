@@ -380,7 +380,7 @@ related: [CORR-014]
 ### OBS-007 — Edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network (8004:8001)
 
 ```yaml
-status: open
+staleopen
 severity: medium
 effort: S
 reviewed_at: dbec2be
@@ -420,12 +420,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: fa87bc6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 115-133
+    lines: 119-138
 related: [EXC-004]
 ```
 
@@ -739,12 +739,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: fa87bc6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 240-255
+    lines: 251-269
 related: [SEC-006, OBS-007]
 ```
 
@@ -816,14 +816,14 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 9b4adb6
+  commit: fa87bc6
   date: 2026-06-24
 fixed_in: []
 files:
   - path: Dockerfile
     lines: 1-41
   - path: Dockerfile.edge
-    lines: 1-43
+    lines: 1-48
   - path: workers/qwen3tts/Dockerfile.runpod
     lines: 1-53
 related: []
@@ -922,12 +922,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: fa87bc6
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 167-186
+    lines: 181-200
 related: [SEC-012]
 ```
 
@@ -942,7 +942,7 @@ related: [SEC-012]
 ### OBS-009 — `granite-speech-edge` service exposes `/execute` on host port 8008 — unauthenticated (new instance of OBS-007)
 
 ```yaml
-status: open
+staleopen
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -998,14 +998,14 @@ related: [PERF-007]
 ### SEC-020 — Translategemma Dockerfile.runpod runs as root — no USER directive (new instance of SEC-015/SEC-017)
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 5c8fd8a
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: [5c8fd8a]
 files:
   - path: workers/translategemma/Dockerfile.runpod
     lines: 1-61
@@ -1023,14 +1023,14 @@ related: [SEC-015, SEC-017]
 ### SEC-021 — Translategemma worker.edge.yaml default `orchestrator_url` is HTTP — registration token sent in cleartext (new instance of SEC-014/SEC-016)
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 63fc3f9
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: [63fc3f9]
 files:
   - path: workers/translategemma/worker.edge.yaml
     lines: 7
@@ -1073,14 +1073,14 @@ related: [SEC-011, SEC-018]
 ### SEC-023 — Translategemma edge `phantom_handler` import path requires `workers/translategemma/handler.py` on PYTHONPATH, but `Dockerfile.edge` does not copy it — edge service is broken by design
 
 ```yaml
-status: fixed
+status: verified
 severity: high
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: fd3bcc1
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: [fd3bcc1]
 files:
   - path: Dockerfile.edge
     lines: 39-41
@@ -1100,14 +1100,14 @@ related: [DOC-005]
 ### OBS-010 — `translategemma-edge` service exposes `/execute` on host port 8009 — unauthenticated (new instance of OBS-007/OBS-009)
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: fa87bc6
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: [fa87bc6]
 files:
   - path: docker-compose.yml
     lines: 233-265
