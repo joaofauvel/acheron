@@ -2,7 +2,10 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from acheron.core.models import JsonValue  # noqa: TC001  (pydantic v2 needs the type at runtime to build validators)
+from acheron.core.models import (
+    JsonValue,
+    WorkerStatus,
+)
 
 
 class _StrictRequest(BaseModel):
@@ -73,7 +76,7 @@ class WorkerResponse(BaseModel):
     transport: str
     worker_type: str
     consecutive_failures: int
-    status: str = "healthy"
+    status: WorkerStatus = WorkerStatus.HEALTHY
     last_error: str | None = None
 
 

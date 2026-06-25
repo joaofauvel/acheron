@@ -717,17 +717,17 @@ related: []
 ### TYPE-004 — WorkerResponse.status is stringly-typed despite a WorkerStatus enum existing at core/models.py
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 68-77
+    lines: 70-78
   - path: src/acheron/shell/api/routes/workers.py
     lines: 51
   - path: src/acheron/shell/api/routes/workers.py
