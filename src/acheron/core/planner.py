@@ -146,11 +146,14 @@ def _validate_chunking_fits_workers(
         msg = f"chars_per_token must be > 0, got {chars_per_token}"
         raise ValueError(msg)
     text_input_types = (WorkerType.TRANSLATION, WorkerType.TTS)
+    estimated_tokens = chunking_max_length // chars_per_token
+    min_text_input_tokens: int | None = None
     for step_type in text_input_types:
         for c in capabilities:
             if c.worker_type != step_type or c.max_input_tokens is None:
                 continue
-            estimated_tokens = chunking_max_length // chars_per_token
+            if min_text_input_tokens is None or c.max_input_tokens < min_text_input_tokens:
+                min_text_input_tokens = c.max_input_tokens
             if estimated_tokens > c.max_input_tokens:
                 msg = (
                     f"Chunking max_chunk_length={chunking_max_length} chars "
@@ -158,7 +161,16 @@ def _validate_chunking_fits_workers(
                     f"{c.max_input_tokens} (estimated {estimated_tokens} tokens "
                     f"at chars_per_token={chars_per_token})"
                 )
+                logger.warning("chunking input-budget check failed: %s", msg)
                 raise ChunkingTooLongForWorkerError(msg)
+    logger.debug(
+        "chunking input-budget validated: max_chunk_length=%d, chars_per_token=%d, "
+        "estimated_tokens=%d, min text-input max_input_tokens=%s",
+        chunking_max_length,
+        chars_per_token,
+        estimated_tokens,
+        min_text_input_tokens,
+    )
 
 
 def _epub_steps(request: EpubRequest) -> list[PlanStep]:

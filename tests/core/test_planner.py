@@ -1,5 +1,7 @@
 """Tests for plan compilation."""
 
+import logging
+
 import pytest
 
 from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
@@ -334,3 +336,38 @@ class TestValidateChunkingFitsWorkers:
         """CFG-009: ``ChunkingLimits`` must require chars_per_token (no default)."""
         with pytest.raises(TypeError, match="chars_per_token"):
             ChunkingLimits(max_chunk_length=100)  # type: ignore[call-arg]
+
+    def test_success_logs_debug_with_max_estimated_tokens_and_limiting_worker(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """OBS-011: success path emits a DEBUG line with estimated_tokens and the
+        smallest text-input worker's max_input_tokens (the limiting worker).
+        """
+        caps = (
+            _text_input_tts_caps(max_input_tokens=4096),
+            _text_input_translation_caps(max_input_tokens=2048),
+        )
+        with caplog.at_level(logging.DEBUG, logger="acheron.core.planner"):
+            _validate_chunking_fits_workers(caps, chunking_max_length=1000, chars_per_token=4)
+        matching = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert matching, f"expected a DEBUG log, got: {[r.message for r in caplog.records]}"
+        msg = matching[-1].message
+        assert "max_chunk_length=1000" in msg
+        assert "estimated_tokens=250" in msg
+        assert "2048" in msg
+
+    def test_failure_logs_warning_with_full_error_message(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """OBS-011: failure path emits a WARNING line with the full error before re-raising."""
+        caps = (_text_input_tts_caps(max_input_tokens=10),)
+        with (
+            caplog.at_level(logging.WARNING, logger="acheron.core.planner"),
+            pytest.raises(ChunkingTooLongForWorkerError) as excinfo,
+        ):
+            _validate_chunking_fits_workers(caps, chunking_max_length=100, chars_per_token=1)
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert warning_records, f"expected a WARNING log, got: {[r.message for r in caplog.records]}"
+        assert str(excinfo.value) in warning_records[-1].message
