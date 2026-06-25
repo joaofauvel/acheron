@@ -193,7 +193,7 @@ The GHCR image is public; RunPod can pull it without a `containerRegistryAuthId`
 
 - `workersMin: 0` — scale to zero on idle so you don't pay for an idle GPU.
 - `workersMax: 1` — raise if you need concurrent fan-out; each worker is a full GPU instance.
-- `idleTimeout` (or `executionTimeoutMs`, depending on the API version) — a short value (e.g., 5 minutes / 300 s) keeps shutdown aggressive; the Network Volume absorbs cold-start cost, not boot-loop cost. The exact field name on `POST /endpoints/serverless` is `executionTimeoutMs` ([RunPod API reference](https://docs.runpod.io/api-reference/endpoints/POST/endpoints)).
+- `idleTimeout` (or `executionTimeoutMs`, depending on the API version) — a short value (e.g., 5 minutes / 300 s) keeps shutdown aggressive; the Network Volume absorbs cold-start cost, not boot-loop cost. The exact field name on `POST /endpoints` is `executionTimeoutMs` ([RunPod API reference](https://docs.runpod.io/api-reference/endpoints/POST/endpoints)).
 
 The Edge Worker reads its endpoint id from `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` and points `/execute` calls at it.
 
