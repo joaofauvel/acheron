@@ -223,7 +223,7 @@ class TestHandleHappyPath:
 class TestTranslateAll:
     def test_translate_all_chunks_into_batches_of_max_batch_size(self) -> None:
         """10 chunks → 3 batches: 4 + 4 + 2."""
-        from workers._shared import Chunk
+        from workers._shared_utils import Chunk
         from workers.translategemma.handler import TranslateGemmaRunpodHandler
 
         h = _handler()
@@ -250,7 +250,7 @@ class TestTranslateAll:
         assert out[9] == "t_1"
 
     def test_translate_all_with_fewer_than_max_batch_size(self) -> None:
-        from workers._shared import Chunk
+        from workers._shared_utils import Chunk
         from workers.translategemma.handler import TranslateGemmaRunpodHandler
 
         h = _handler()
@@ -304,7 +304,7 @@ class TestValidatePayload:
 class TestParseChunks:
     @pytest.mark.asyncio
     async def test_returns_parsed_chunks(self) -> None:
-        from workers._shared import Chunk
+        from workers._shared_utils import Chunk
 
         h = _handler()
         _mark_loaded(h)
@@ -323,7 +323,7 @@ class TestParseChunks:
 class TestTranslateAndArtifact:
     @pytest.mark.asyncio
     async def test_builds_artifact_per_chunk(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from workers._shared import Chunk
+        from workers._shared_utils import Chunk
 
         h = _handler()
         _mark_loaded(h)

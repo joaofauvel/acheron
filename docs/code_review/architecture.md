@@ -719,23 +719,24 @@ related:
 ### ARCH-016 — `workers/_shared` is a module (file) co-located with a same-name test directory and an out-of-workspace `pyproject`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-  - path: workers/_shared.py
-    lines: 1-31
-  - path: workers/_shared/pyproject.toml
-    lines: 1-2
-  - path: workers/_shared/tests/test_safe_chapter_id.py
-    lines: 1-55
-  - path: pyproject.toml
-    lines: 195
+- path: workers/_shared_utils.py
+  lines: 1-31
+- path: workers/_shared/pyproject.toml
+  lines: 1-2
+- path: workers/_shared/tests/test_safe_chapter_id.py
+  lines: 1-55
+- path: pyproject.toml
+  lines: 195
 related: []
 ```
 

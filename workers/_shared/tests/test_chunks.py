@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from workers._shared import Chunk, parse_chunks_json, validate_chunk_fields
+from workers._shared_utils import Chunk, parse_chunks_json, validate_chunk_fields
 
 from acheron.core.errors import WorkerError
 from acheron.worker_sdk.inputs import BytesInput

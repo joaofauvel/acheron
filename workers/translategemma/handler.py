@@ -19,7 +19,7 @@ from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from workers._shared import Chunk, parse_chunks_json, safe_chapter_id
+from workers._shared_utils import Chunk, parse_chunks_json, safe_chapter_id
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
