@@ -122,10 +122,10 @@ def create_worker_app(
         # 2. eager price refresh — fault-tolerant, never blocks
         try:
             await price_source.refresh()
-        except BaseException:  # noqa: BLE001
-            logger.warning(
-                "Price refresh raised at startup; worker will register anyway",
-                exc_info=True,
+        except httpx.HTTPError, OSError, KeyError, ValueError, TypeError:
+            logger.exception(
+                "%s price refresh failed at startup; worker will register anyway",
+                type(price_source).__name__,
             )
         # 3. register with orchestrator (skipped in tests / when explicitly disabled)
         if not disable_registration:

@@ -116,3 +116,61 @@ class TestCreateWorkerApp:
         monkeypatch.delenv("WORKER_HOST", raising=False)
         s = _settings(price_source="zero")
         assert _endpoint_url(s) == "http://localhost:0"
+
+
+class TestLifespanPriceRefreshExceptionHandling:
+    """EXC-004 + OBS-008: price refresh exceptions are narrowed; BaseException subclasses propagate."""
+
+    @pytest.mark.asyncio
+    async def test_lifespan_continues_when_price_refresh_raises_httpx_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A transient ``httpx.HTTPError`` from price refresh is logged; the
+        lifespan continues so a missing/expired RunPod API key doesn't block
+        container startup or registration.
+        """
+        from acheron.worker_sdk.pricing import RunPodPrice
+
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "k")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "eid123")
+
+        async def _raise(self: RunPodPrice) -> bool:
+            raise httpx.HTTPError("boom")
+
+        monkeypatch.setattr(RunPodPrice, "refresh", _raise)
+        h = _Stub()
+        s = _settings()
+        app = create_worker_app(handler=h, settings=s, disable_registration=True)
+        with caplog.at_level("WARNING", logger="acheron.worker_sdk.app"):
+            async with app.router.lifespan_context(app):
+                pass
+        assert any("RunPodPrice" in r.message and "price refresh" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_lifespan_propagates_keyboard_interrupt_during_price_refresh(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``KeyboardInterrupt`` during price refresh propagates out of the
+        lifespan so a Ctrl-C'd deployer gets a clean shutdown, not a 30s
+        hang because the bare ``except BaseException`` swallowed the signal.
+        """
+        from acheron.worker_sdk.pricing import RunPodPrice
+
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "k")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "eid123")
+
+        async def _raise(self: RunPodPrice) -> bool:
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(RunPodPrice, "refresh", _raise)
+        h = _Stub()
+        s = _settings()
+        app = create_worker_app(handler=h, settings=s, disable_registration=True)
+        with pytest.raises(KeyboardInterrupt):
+            async with app.router.lifespan_context(app):
+                pass
