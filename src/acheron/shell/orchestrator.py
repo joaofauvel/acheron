@@ -82,9 +82,13 @@ class Orchestrator:
         step_cache: StepCache | None = None,
         settings: Settings | None = None,
     ) -> None:
-        self._settings = settings or load_settings()
         if settings is None:
-            self._settings.orchestrator.data_dir = cache.data_dir
+            default = load_settings()
+            self._settings = Settings(
+                orchestrator=default.orchestrator.model_copy(update={"data_dir": cache.data_dir})
+            )
+        else:
+            self._settings = settings
         self._registry = registry
         self._cache = cache
         self._step_cache = step_cache if step_cache is not None else StepCache(self._settings.orchestrator.data_dir)

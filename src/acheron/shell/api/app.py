@@ -43,18 +43,20 @@ def create_app(
 
     ``ACHERON_DATA_DIR`` env var is consulted when ``data_dir`` is not provided.
     """
-    if settings is None:
-        settings = load_settings()
+    base_settings = settings if settings is not None else load_settings()
     if data_dir is not None:
-        settings.orchestrator.data_dir = Path(data_dir)
+        effective_data_dir = Path(data_dir)
+        settings = base_settings.model_copy(
+            update={"orchestrator": base_settings.orchestrator.model_copy(update={"data_dir": effective_data_dir})}
+        )
+    else:
+        settings = base_settings
     if registry is None:
         registry = create_worker_store()
     if job_store is None:
         job_store = create_job_store()
     if cache is None:
-        if data_dir is None:
-            data_dir = settings.orchestrator.data_dir
-        cache = PlanCache(data_dir)
+        cache = PlanCache(settings.orchestrator.data_dir)
 
     orchestrator = Orchestrator(
         registry=registry,

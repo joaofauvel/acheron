@@ -622,3 +622,44 @@ async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) 
     )
     assert orch._health_monitor._providers is not None  # noqa: SLF001
     assert orch._health_monitor._providers.get("runpod") is not None  # noqa: SLF001
+
+
+def test_orchestrator_does_not_mutate_passed_settings(tmp_path) -> None:
+    """Orchestrator must not mutate the caller's Settings; it constructs a fresh one when needed."""
+    from acheron.shell.config import OrchestratorSettings
+
+    settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path / "from_settings"))
+    original_data_dir = settings.orchestrator.data_dir
+    cache = PlanCache(data_dir=tmp_path / "from_cache")
+
+    orch = Orchestrator(
+        registry=InMemoryWorkerStore(),
+        cache=cache,
+        job_store=InMemoryJobStore(),
+        settings=settings,
+    )
+
+    assert settings.orchestrator.data_dir == original_data_dir, "Settings must not be mutated"
+    assert orch.settings.orchestrator.data_dir == original_data_dir, (
+        "Orchestrator must use the caller's settings when provided"
+    )
+
+
+def test_create_app_does_not_mutate_passed_settings(tmp_path) -> None:
+    """create_app must not mutate the caller's Settings when data_dir is given."""
+    from acheron.shell.api.app import create_app
+    from acheron.shell.config import OrchestratorSettings
+
+    original_dir = tmp_path / "from_settings"
+    other_dir = tmp_path / "from_arg"
+    settings = Settings(orchestrator=OrchestratorSettings(data_dir=original_dir))
+
+    create_app(
+        registry=InMemoryWorkerStore(),
+        job_store=InMemoryJobStore(),
+        cache=None,
+        data_dir=other_dir,
+        settings=settings,
+    )
+
+    assert settings.orchestrator.data_dir == original_dir, "Settings must not be mutated"
