@@ -19,10 +19,6 @@ price_source: runpod
 secure_cloud: false
 # price_cache_ttl_s: 3600.0
 
-# Output transport — multipart default (output side; input is implicit
-# from job_type == ASR).
-output_mode: multipart
-
 # Handler — used by the generic acheron-worker-edge CLI to import the handler
 # class when running the edge container alongside the orchestrator. The
 # runpod_entrypoint.py in the RunPod runtime image uses the import directly.

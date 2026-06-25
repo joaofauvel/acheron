@@ -14,8 +14,3 @@ model_id: "google/translategemma-12b-it"
 
 price_source: runpod
 secure_cloud: false
-
-# Edge transport is always HTTP multipart on the output side; the input
-# side is multipart (form-data) for TRANSLATION (chunks.json from chunking
-# step), JSON otherwise.
-output_mode: multipart

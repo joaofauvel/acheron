@@ -15,12 +15,25 @@ class TestDefaults:
         assert s.orchestrator_url == "http://orch:8000"
         assert s.listen_port == 8001
         assert s.price_source == "runpod"
-        assert s.output_mode == "multipart"
         assert s.execution_timeout_s == 1800.0
         assert s.default_speaker == "Ryan"
         assert s.log_level == "INFO"
         assert s.worker_host is None
         assert s.runpod_base_url is None
+
+    def test_output_mode_field_is_removed(self) -> None:
+        """`output_mode` and `output_volume_dir` were dropped (CFG-007): the
+        volume path is unimplemented and the edge transport is always HTTP
+        multipart, so the field was a silent knob. Rejecting it via
+        ``extra="forbid"`` makes the misconfiguration loud."""
+        assert "output_mode" not in WorkerSettings.model_fields
+        assert "output_volume_dir" not in WorkerSettings.model_fields
+        with pytest.raises(pydantic.ValidationError):
+            WorkerSettings(  # type: ignore[call-arg]
+                worker_id="w",
+                orchestrator_url="http://o:8000",
+                output_mode="multipart",
+            )
 
     def test_per_language_defaults_empty_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
@@ -77,13 +90,6 @@ class TestEnvOnlyFields:
 
 
 class TestValidation:
-    def test_volume_mode_requires_output_volume_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
-        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
-        monkeypatch.setenv("ACHERON_WORKER__OUTPUT_MODE", "volume")
-        with pytest.raises(pydantic.ValidationError, match="output_volume_dir"):
-            WorkerSettings()  # type: ignore[call-arg]
-
     def test_worker_id_required(self) -> None:
         with pytest.raises(pydantic.ValidationError, match="worker_id"):
             WorkerSettings()  # type: ignore[call-arg]

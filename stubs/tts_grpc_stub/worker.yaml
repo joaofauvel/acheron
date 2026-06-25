@@ -6,4 +6,3 @@ worker_id: "tts-grpc-stub"
 orchestrator_url: "http://orchestrator:8000"
 listen_port: 9002
 price_source: zero
-output_mode: multipart

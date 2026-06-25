@@ -27,9 +27,6 @@ per_language_defaults:
   ja: "Ono_Anna"
   ko: "Sohee"
 
-# Output transport — multipart default
-output_mode: multipart
-
 # Handler — used by the generic acheron-worker-edge CLI to import the handler
 # class when running the edge container alongside the orchestrator. The
 # runpod_entrypoint.py in the RunPod runtime image uses the import directly.

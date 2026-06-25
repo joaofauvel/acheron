@@ -14,7 +14,3 @@ model_id: "ibm-granite/granite-speech-4.1-2b"
 
 price_source: runpod
 secure_cloud: false
-
-# Edge transport is always HTTP multipart on the output side; the input
-# side is multipart (form-data) when job_type == ASR, JSON otherwise.
-output_mode: multipart

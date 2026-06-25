@@ -47,9 +47,6 @@ class WorkerSettings(BaseSettings):
 
     execution_timeout_s: float = 1800.0
 
-    output_mode: Literal["multipart", "volume"] = "multipart"
-    output_volume_dir: str | None = None
-
     price_source: Literal["runpod", "static", "zero"] = "runpod"
     secure_cloud: bool = False
     dollars_per_hour: float | None = None
@@ -120,9 +117,6 @@ class WorkerSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_composite(self) -> WorkerSettings:
-        if self.output_mode == "volume" and not self.output_volume_dir:
-            msg = "output_volume_dir is required when output_mode == 'volume'"
-            raise ValueError(msg)
         if self.price_source == "static" and self.dollars_per_hour is None:
             msg = "dollars_per_hour is required when price_source == 'static'"
             raise ValueError(msg)

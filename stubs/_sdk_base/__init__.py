@@ -1,6 +1,6 @@
 """Shared SDK-backed stub handlers for the SDK matrix.
 
-The stubs exercise the SDK across local/runpod, http/grpc, volume/multipart.
+The stubs exercise the SDK across local/runpod, http/grpc.
 Each stub is a 30-line ``main.py`` calling ``create_worker_app`` from the SDK;
 per-stub variance comes from ``worker.yaml`` + the handler class passed.
 """

@@ -264,34 +264,6 @@ services:
         condition: service_healthy
     profiles: ["runpod-translation"]
 
-  tts-volume-stub:
-    build:
-      context: .
-      target: worker-stub-base
-    ports:
-      - "8005:8005"
-    environment:
-      <<: *stub_env
-      WORKER_NAME: tts-volume-stub
-      ACHERON_WORKER__WORKER_ID: tts-volume-stub
-      ACHERON_WORKER__LISTEN_PORT: "8005"
-      ACHERON_WORKER__OUTPUT_MODE: volume
-      ACHERON_WORKER__OUTPUT_VOLUME_DIR: /data
-    volumes:
-      - ./certs:/certs:ro
-      - acheron-data:/data
-    command: ["python", "-m", "stubs.tts_volume_stub.main"]
-    healthcheck:
-      <<: *stub_healthcheck
-      test:
-        - "CMD-SHELL"
-        - "python"
-        - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8005/health').read()"
-    depends_on:
-      orchestrator:
-        condition: service_healthy
-
   tts-runpod-stub:
     build:
       context: .

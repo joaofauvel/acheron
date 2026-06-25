@@ -24,7 +24,6 @@ def _settings(worker_id: str, **overrides: object) -> WorkerSettings:
     ("handler_cls", "worker_id"),
     [
         (StubTTSHandler, "tts-local-stub"),
-        (StubTTSHandler, "tts-volume-stub"),
         (StubTTSHandler, "tts-grpc-stub"),
         (StubASRHandler, "asr-local-stub"),
         (StubTranslationHandler, "translation-local-stub"),
@@ -166,17 +165,6 @@ async def test_translation_runpod_stub_health() -> None:
     """The translation_runpod_stub is the RunPod variant of the translation stub."""
     settings = _settings("translation-runpod-stub", price_source="static", dollars_per_hour=0.69)
     h = StubTranslationHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        r = await client.get("/health")
-    assert r.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_tts_volume_stub_health() -> None:
-    """The tts_volume_stub uses output_mode=volume and a /data volume."""
-    settings = _settings("tts-volume-stub", output_mode="volume", output_volume_dir="/data")
-    h = StubTTSHandler(settings)
     app = create_worker_app(handler=h, settings=settings, disable_registration=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/health")

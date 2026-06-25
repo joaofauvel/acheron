@@ -20,6 +20,3 @@ model_id: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 # from the endpoint's gpuIds (RunPodPrice, no image rebuild required to switch).
 price_source: runpod
 secure_cloud: false
-
-# Edge transport is always HTTP multipart; the edge never writes to a shared volume.
-output_mode: multipart
