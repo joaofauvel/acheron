@@ -450,12 +450,12 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 88-121
+    lines: 136-169
 related: [PERF-006]
 ```
 
@@ -475,7 +475,7 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
@@ -500,12 +500,12 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 188-231
+    lines: 256-280
 related: []
 ```
 
@@ -525,12 +525,12 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 42-62
+    lines: 42-65
 related: []
 ```
 
@@ -545,7 +545,7 @@ related: []
 ### CORR-021 — `make_runpod_handler` does not validate that `input_audio` payload is a dict
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -570,7 +570,7 @@ related: []
 ### CORR-022 — `make_runpod_handler` does not validate `content_type` is a string
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -595,7 +595,7 @@ related: []
 ### CORR-023 — `_run_execute_multipart` only catches `WorkerError` from the parser; JSONDecodeError / ValidationError leak as opaque 500s
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -620,7 +620,7 @@ related: []
 ### CORR-024 — Edge `_parse_multipart_request` hardcodes `BytesInput.metadata={}`; per-part metadata is never parsed/forwarded
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -645,7 +645,7 @@ related: []
 ### CORR-025 — Edge `_parse_multipart_request` treats any non-JSON part as audio regardless of content_type
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -826,12 +826,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 209-215
+    lines: 185-191
 related: [MAINT-009, CORR-013]
 ```
 

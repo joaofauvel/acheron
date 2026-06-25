@@ -308,14 +308,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 1-12
+    lines: 10-12, 22-27
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 12-14
+    lines: 10-12, 22-27
   - path: src/acheron/worker_sdk/cloud.py
     lines: 22-27
   - path: src/acheron/worker_sdk/_runpod_client.py
@@ -366,7 +366,7 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
@@ -550,14 +550,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/grpc.py
     lines: 52
   - path: src/acheron/shell/transports/http.py
-    lines: 61
+    lines: 60-62
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 45-51
   - path: src/acheron/worker_sdk/app.py
@@ -628,14 +628,14 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 89-104, 113-161
+    lines: 89-161
   - path: src/acheron/shell/transports/http.py
-    lines: 89-104, 113-161
+    lines: 89-161
 related: [ARCH-013, ARCH-020]
 ```
 
@@ -655,7 +655,7 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
@@ -857,12 +857,12 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 89-104, 113-161
+    lines: 89-104
 related: [ARCH-014, ARCH-015, CORR-027]
 ```
 
@@ -908,7 +908,7 @@ related: []
 ### ARCH-022 — `HttpWorker._post_multipart` is a near-byte-duplicate of `HttpWorker._request` — should be a one-liner wrapper
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1

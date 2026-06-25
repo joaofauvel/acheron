@@ -157,12 +157,12 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 88-121
+    lines: 136-169
 related: [CORR-017]
 ```
 
@@ -182,7 +182,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
@@ -193,7 +193,7 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 195-211
   - path: src/acheron/shell/transports/http.py
-    lines: 163-185
+    lines: 65-83
 related: []
 ```
 
@@ -750,12 +750,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: fa87bc6
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 251-269
+    lines: 286-304
 related: [SEC-006, OBS-007]
 ```
 
@@ -933,12 +933,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: fa87bc6
+  commit: 26b8067b3ed53f84e9d6f797f51d20fa117be60f
   date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 181-200
+    lines: 228-253
 related: [SEC-012]
 ```
 
@@ -982,7 +982,7 @@ related: [OBS-007, OBS-010]
 ### PERF-008 — `HttpWorker._post_multipart` constructs a new `httpx.AsyncClient` per call (new instance of PERF-007)
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
