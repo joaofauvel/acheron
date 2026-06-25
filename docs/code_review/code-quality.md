@@ -994,17 +994,18 @@ related:
 ### MAINT-019 — `TranslateGemmaRunpodHandler.handle` is 54 lines (over 50) and bundles 3 distinct concerns: validation, parsing, inference + artifact building
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: workers/translategemma/handler.py
-  lines: 171-224
+  lines: 170-177
 related:
 - CORR-029
 - MAINT-017

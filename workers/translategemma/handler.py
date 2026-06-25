@@ -13,7 +13,7 @@ by being one mode, per the Layer 8a spec.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
@@ -169,6 +169,15 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
 
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         """Translate the chunks from ``input`` (chunks.json as a multipart part)."""
+        src, tgt = self._validate_payload(job, input)
+        # _validate_payload raised if input is None; mypy needs the explicit cast.
+        chunks = await self._parse_chunks(cast("Input", input))
+        if not chunks:
+            return []
+        return await self._translate_and_artifact(chunks, src, tgt)
+
+    def _validate_payload(self, job: Job, input: Input | None) -> tuple[str, str]:  # noqa: A002
+        """Validate model-loaded, input-present, and src/tgt constraints; return (src, tgt)."""
         if self._model is None or self._processor is None:
             msg = "TranslateGemma model not loaded (startup() not run)"
             raise WorkerError(msg)
@@ -183,13 +192,21 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         if tgt not in _SUPPORTED_LANGS:
             msg = f"Unsupported target language: {tgt!r}"
             raise WorkerError(msg)
+        return src, tgt
 
-        chunks = await parse_chunks_json(input)
-        if not chunks:
-            return []
+    @staticmethod
+    async def _parse_chunks(input: Input) -> list[Chunk]:  # noqa: A002
+        """Parse the JSON-serialised ``chunks.json`` body from ``input`` into :class:`Chunk` objects."""
+        return await parse_chunks_json(input)
 
+    async def _translate_and_artifact(
+        self,
+        chunks: list[Chunk],
+        src: str,
+        tgt: str,
+    ) -> list[Artifact]:
+        """Run batched translation and build one :class:`BytesArtifact` per chunk."""
         translated = await asyncio.to_thread(self._translate_all, chunks, src, tgt)
-
         model_id = self._settings.model_id or _MODEL_ID_DEFAULT
         artifacts: list[Artifact] = []
         for c, t in zip(chunks, translated, strict=True):

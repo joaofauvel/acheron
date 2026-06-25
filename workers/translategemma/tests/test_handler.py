@@ -269,3 +269,71 @@ class TestTranslateAll:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
         assert len(calls) == 1
         assert len(out) == 3
+
+
+class TestValidatePayload:
+    def test_returns_src_and_tgt(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        src, tgt = h._validate_payload(
+            _make_job(), _build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "x"}])
+        )
+        assert src == "en"
+        assert tgt == "es"
+
+    def test_raises_when_model_not_loaded(self) -> None:
+        h = _handler()
+        with pytest.raises(WorkerError, match="model not loaded"):
+            h._validate_payload(_make_job(), _build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "x"}]))
+
+    def test_raises_when_input_is_none(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        with pytest.raises(WorkerError, match="requires a chunks.json input"):
+            h._validate_payload(_make_job(), None)
+
+    def test_raises_when_target_language_unsupported(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        with pytest.raises(WorkerError, match="Unsupported target language"):
+            h._validate_payload(
+                _make_job(target_language="xx"), _build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "x"}])
+            )
+
+
+class TestParseChunks:
+    @pytest.mark.asyncio
+    async def test_returns_parsed_chunks(self) -> None:
+        from workers._shared import Chunk
+
+        h = _handler()
+        _mark_loaded(h)
+        chunks_in = [{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]
+        out = await h._parse_chunks(_build_input(chunks_in))
+        assert out == [Chunk(chapter_id="ch1", sequence_id=0, text="hi", instruct="")]
+
+    @pytest.mark.asyncio
+    async def test_empty_body_returns_empty_list(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        out = await h._parse_chunks(BytesInput(content_type="application/json", data=b""))
+        assert out == []
+
+
+class TestTranslateAndArtifact:
+    @pytest.mark.asyncio
+    async def test_builds_artifact_per_chunk(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from workers._shared import Chunk
+
+        h = _handler()
+        _mark_loaded(h)
+        _spy_translate_all(monkeypatch, ["hola", "mundo"])
+        chunks = [
+            Chunk(chapter_id="ch1", sequence_id=0, text="hello"),
+            Chunk(chapter_id="ch1", sequence_id=1, text="world"),
+        ]
+        out = await h._translate_and_artifact(chunks, "en", "es")
+        assert [a.filename for a in out] == ["ch1_0000.txt", "ch1_0001.txt"]
+        assert [a.data for a in out] == [b"hola", b"mundo"]
+        assert all(a.metadata["source_language"] == "en" for a in out)
+        assert all(a.metadata["target_language"] == "es" for a in out)
