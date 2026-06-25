@@ -9,7 +9,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
-from acheron.core.models import Job, WorkerCapabilities, WorkerType
+from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
@@ -297,7 +297,7 @@ class TestMultipartRequest:
 
         class _EchoingHandler(WorkerHandler):
             def __init__(self) -> None:
-                self.received_metadata: list[dict[str, object]] = []
+                self.received_metadata: list[dict[str, JsonValue]] = []
 
             def capabilities(self) -> WorkerCapabilities:
                 return WorkerCapabilities(

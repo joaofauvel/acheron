@@ -143,19 +143,25 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
         """Run transformers inference; returns the transcript string."""
         import torch
 
+        if self._model is None or self._processor is None:
+            msg = "Granite-Speech model not loaded"
+            raise WorkerError(msg)
+        processor = self._processor
+        model = self._model
+
         chat = [{"role": "user", "content": f"<|audio|>{_DEFAULT_PROMPT}"}]
-        prompt_text = self._processor.tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-        model_inputs = self._processor(
+        prompt_text = processor.tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+        model_inputs = processor(
             prompt_text,
             audio_bytes,
             device="cuda:0",
             return_tensors="pt",
         ).to("cuda:0")
         with torch.inference_mode():
-            model_outputs = self._model.generate(**model_inputs, max_new_tokens=4096, do_sample=False, num_beams=1)
+            model_outputs = model.generate(**model_inputs, max_new_tokens=4096, do_sample=False, num_beams=1)
         num_input_tokens = model_inputs["input_ids"].shape[-1]
         new_tokens = model_outputs[0, num_input_tokens:].unsqueeze(0)
-        text: list[str] = self._processor.tokenizer.batch_decode(
+        text: list[str] = processor.tokenizer.batch_decode(
             new_tokens, add_special_tokens=False, skip_special_tokens=True
         )
         return text[0].strip()
