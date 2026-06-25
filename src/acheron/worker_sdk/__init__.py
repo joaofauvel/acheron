@@ -1,10 +1,9 @@
 """Acheron worker SDK — the blueprint for Layer 8 real GPU workers.
 
-The sub-package is intentionally GPU-SDK free at import time: importing
-``acheron.worker_sdk`` does not transitively load ``runpod`` (that import
-lives in ``_runpod_client``, which is not part of the public re-exports).
-This lets tests of pure types (handler, artifacts, settings) run without
-the runpod SDK installed.
+Importing ``acheron.worker_sdk`` transitively loads the runpod SDK because
+``RunPodForwarderHandler`` and ``make_runpod_handler`` (re-exported from
+``cloud``) trigger ``_runpod_client``'s top-level ``import runpod``. The SDK
+pins ``runpod ~= 1.9`` as a main dep, so the import is always available.
 """
 
 from acheron.worker_sdk.app import create_worker_app

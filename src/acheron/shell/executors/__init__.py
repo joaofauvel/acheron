@@ -11,7 +11,7 @@ from acheron.shell.executors.streaming import StreamingExecutor
 
 if TYPE_CHECKING:
     from acheron.core.interfaces import Executor
-    from acheron.shell.cache import StepCache
+    from acheron.shell.cache import InMemoryStepCache, StepCache
     from acheron.shell.executors._utils import StepHandler
 
 
@@ -19,7 +19,7 @@ def create_executor(
     strategy: ExecutorStrategy,
     handler: StepHandler,
     *,
-    step_cache: StepCache | None = None,
+    step_cache: StepCache | InMemoryStepCache | None = None,
 ) -> Executor:
     """Create an executor instance for the given strategy."""
     match strategy:

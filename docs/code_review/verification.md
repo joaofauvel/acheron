@@ -204,19 +204,19 @@ related: [CORR-012]
 ### TEST-008 — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 31-51
 - path: tests/worker_sdk/test_app.py
-  lines: 56-88
+  lines: 56-88, 121-152
 related: []
 ```
 
@@ -429,19 +429,19 @@ related: ['DATA-003']
 ### DATA-005 — RedisWorkerStore._deserialize_worker invalid status field has no corruption test
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 101-106
   - path: tests/shell/stores/test_redis_worker_store.py
-    lines: 100-116
+    lines: 100-116, 118-167
 related: [DATA-002]
 ```
 
@@ -606,17 +606,17 @@ related: []
 ### TEST-012 — `test_step_handler.py` mutates module-level `default_worker_factory` instead of using `monkeypatch`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: tests/shell/test_step_handler.py
-  lines: 293-325
+  lines: 293-326
 related: []
 ```
 
@@ -631,21 +631,21 @@ related: []
 ### TEST-013 — `test_edge_http.py` and `test_edge_http_multipart.py` don't assert `X-Acheron-Metadata` header construction in `_build_multipart_response`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 104-114, 156-160
 - path: tests/worker_sdk/test_edge_http.py
-  lines: 70-86
+  lines: 70-86, 211-260
 - path: tests/worker_sdk/test_edge_http_multipart.py
-  lines: 1-289
+  lines: 1-289, 290-378
 related:
 - CORR-013
 ```
@@ -749,17 +749,17 @@ related: [SEC-011, OBS-011]
 ### TEST-016 — `workers/translategemma/tests/test_handler.py:235-241` class-level mutation anti-pattern — second instance of open TEST-012
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
-  - path: workers/translategemma/tests/test_handler.py
-    lines: 223-269
+- path: workers/translategemma/tests/test_handler.py
+  lines: 223-271
 related: [TEST-012]
 ```
 
@@ -774,17 +774,19 @@ related: [TEST-012]
 ### TEST-017 — `tests/integration/test_tls.py` hardcodes 3 repo-relative paths via `Path(__file__).resolve().parents[2]` — new brittleness introduced in this delta
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
-  - path: tests/integration/test_tls.py
-    lines: 73, 97-99, 109, 112, 121
+- path: tests/integration/test_tls.py
+  lines: 70-73, 97, 107, 116
+- path: tests/integration/conftest.py
+  lines: 339-348
 related: [TEST-004, DOC-005]
 ```
 
@@ -801,17 +803,17 @@ related: [TEST-004, DOC-005]
 ### DATA-009 — `tests/core/test_planner.py:TestValidateChunkingFitsWorkers` has no boundary-condition test (==, one-over, max_input_tokens=0, empty caps)
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
 - path: tests/core/test_planner.py
-  lines: 209-304
+  lines: 209-304, 300-340
 - path: src/acheron/core/planner.py
   lines: 92-128
 related:

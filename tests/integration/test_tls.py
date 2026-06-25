@@ -67,10 +67,10 @@ def _wait_for_workers_registered(orch_port: int, expected_ids: set[str], ca: Pat
 
 
 @pytest.fixture(scope="module")
-def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, object]]:
+def tls_stack(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Generator[dict[str, object]]:
     """Bring up orchestrator, tts-stub, and tts-grpc-stub over TLS."""
     certs_dir = tmp_path_factory.mktemp("certs")
-    script = Path(__file__).resolve().parents[2] / "scripts" / "generate_dev_certs.py"
+    script = repo_root / "scripts" / "generate_dev_certs.py"
     subprocess.run(
         [sys.executable, str(script), "--out-dir", str(certs_dir)],
         check=True,
@@ -94,11 +94,7 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
     base_env["ACHERON_STORE_BACKEND"] = "memory"
     base_env["ACHERON_ALLOW_INSECURE"] = "1"
     base_env["PYTHONPATH"] = (
-        str(Path(__file__).resolve().parents[2] / "src")
-        + os.pathsep
-        + str(Path(__file__).resolve().parents[2] / "stubs")
-        + os.pathsep
-        + base_env.get("PYTHONPATH", "")
+        str(repo_root / "src") + os.pathsep + str(repo_root / "stubs") + os.pathsep + base_env.get("PYTHONPATH", "")
     )
 
     orch_env = {
@@ -106,7 +102,6 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, o
         "ACHERON_TLS_CERT_FILE": str(certs_dir / "orchestrator.crt"),
         "ACHERON_TLS_KEY_FILE": str(certs_dir / "orchestrator.key"),
     }
-    repo_root = Path(__file__).resolve().parents[2]
     tts_env = {
         **base_env,
         "WORKER_CONFIG": str(repo_root / "stubs" / "tts_local_stub" / "worker.yaml"),

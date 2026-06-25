@@ -11,7 +11,12 @@ import uuid
 import weakref
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.errors import (
+    AcheronError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+    sanitise_exc_message,
+)
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -22,8 +27,8 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
-from acheron.core.planner import compile_plan, validate_chunking_fits_workers
-from acheron.shell.cache import StepCache
+from acheron.core.planner import ChunkingLimits, compile_plan
+from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.executors import create_executor
@@ -34,6 +39,7 @@ from acheron.shell.local_handlers import (
     LocalJobHandler,
     all_languages_caps,
 )
+from acheron.shell.logging_context import bind_job_id
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 
@@ -79,7 +85,7 @@ class Orchestrator:
         handler: StepHandler | None = None,
         *,
         job_store: JobStore | None = None,
-        step_cache: StepCache | None = None,
+        step_cache: StepCache | InMemoryStepCache | None = None,
         settings: Settings | None = None,
     ) -> None:
         if settings is None:
@@ -89,7 +95,7 @@ class Orchestrator:
             self._settings = settings
         self._registry = registry
         self._cache = cache
-        self._step_cache = step_cache if step_cache is not None else StepCache(self._settings.orchestrator.data_dir)
+        self._step_cache = step_cache if step_cache is not None else InMemoryStepCache()
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(
             registry,
@@ -251,7 +257,11 @@ class Orchestrator:
             RuntimeError: If ``start()`` has not been called. Local workers
                 are registered during start(); submitting before start would
                 fail at execution with a confusing WorkerError.
-            AcheronError: If plan compilation fails (e.g. invalid language path).
+            InvalidLanguagePathError: If no registered worker supports the
+                requested language path.
+            ChunkingTooLongForWorkerError: If the chunking step's
+                ``max_chunk_length`` exceeds a text-input worker's
+                ``max_input_tokens``.
         """
         if not self._started:
             msg = "Orchestrator.start() must be called before submit_job()"
@@ -272,13 +282,18 @@ class Orchestrator:
         )
 
         capabilities = tuple(w.capabilities for w in await self._registry.list_all())
-        plan = compile_plan(request, strategy, capabilities, job_id=job_id)
-        validate_chunking_fits_workers(
+        plan = compile_plan(
+            request,
+            strategy,
             capabilities,
-            self._settings.workers.chunking.max_chunk_length,
-            chars_per_token=self._settings.chars_per_token,
+            job_id=job_id,
+            chunking=ChunkingLimits(
+                max_chunk_length=self._settings.workers.chunking.max_chunk_length,
+                chars_per_token=self._settings.chars_per_token,
+            ),
         )
         self._cache.save_plan(plan)
+        self._invalidate_handler_cache()
         logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
         tracked = TrackedJob(
@@ -298,6 +313,22 @@ class Orchestrator:
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status."""
+        with bind_job_id(tracked.job_id):
+            await self._run_execution(tracked)
+
+    def _invalidate_handler_cache(self) -> None:
+        """Invalidate the step handler's worker-instance cache, if it exposes one.
+
+        The default :class:`CachingStepHandler` pools worker instances across
+        steps; we drop the pool at the start of each new plan so a worker
+        re-registration, removal, or endpoint change is reflected on the next
+        dispatch.
+        """
+        invalidate = getattr(self._handler, "_invalidate_worker_cache", None)
+        if invalidate is not None:
+            invalidate()
+
+    async def _run_execution(self, tracked: TrackedJob) -> None:
         db_job = await self._job_store.get(tracked.job_id)
         if db_job is None or db_job.status != PlanStatus.RUNNING:
             logger.warning(
@@ -367,7 +398,7 @@ class Orchestrator:
                     outputs=(),
                     total_cost=0.0,
                     total_duration_seconds=0.0,
-                    errors=(str(exc),),
+                    errors=(sanitise_exc_message(exc),),
                 )
             except Exception as exc:
                 logger.exception("Unexpected error executing %s", tracked.job_id)
@@ -380,7 +411,7 @@ class Orchestrator:
                     outputs=(),
                     total_cost=0.0,
                     total_duration_seconds=0.0,
-                    errors=(str(exc),),
+                    errors=(sanitise_exc_message(exc),),
                 )
             await self._job_store.put(tracked)
         finally:

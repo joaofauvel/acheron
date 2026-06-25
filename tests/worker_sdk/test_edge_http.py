@@ -94,7 +94,10 @@ class TestEdgeRoutes:
     ) -> None:
         """On handler error, the body is a ``JobResult`` JSON (status=failed,
         job_id echoed, error populated, no outputs) so the orchestrator's
-        :class:`TypeAdapter(JobResult).validate_json` parser succeeds.
+        :class:`TypeAdapter(JobResult).validate_json` parser succeeds. The
+        ``error`` field is sanitised to ``"<ClassName>: <first line>"`` so
+        internal exception detail (file paths, secrets) does not leak back
+        to the orchestrator.
         """
         app, h = app_handler
 
@@ -114,10 +117,38 @@ class TestEdgeRoutes:
         assert body["job_id"] == "j1"
         assert body["status"] == "failed"
         assert body["outputs"] == []
-        assert "OOM" in body["error"]
+        assert body["error"] == "RuntimeError: OOM"
         assert body["metrics"]["duration_seconds"] >= 0.0
         assert body["metrics"]["cost_basis"] is None
         assert any("handler failed" in r.message and "_Stub" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_execute_error_sanitises_secrets_in_message(
+        self,
+        app_handler: tuple[FastAPI, _Stub],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SEC-012: a handler exception whose message contains a credential
+        pattern must not surface that pattern in the 500 body. The full
+        message is preserved in ``logger.exception`` for the operator.
+        """
+        app, h = app_handler
+
+        async def _boom(job: Job, input: Input | None = None) -> list[BytesArtifact]:  # noqa: A002
+            msg = "DB connect failed password=foo at /runpod-volume/models/qwen3"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(h, "handle", _boom)
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 500
+        body = r.json()
+        assert "password=foo" not in body["error"]
+        assert body["error"].startswith("RuntimeError:")
 
     @pytest.mark.asyncio
     async def test_dispatch_propagates_keyboard_interrupt(
@@ -175,6 +206,60 @@ class TestEdgeRoutes:
         metrics = json.loads(json_bytes)
         assert metrics["cost_basis"] is None
         assert "unknown" not in json_bytes.decode("utf-8")
+
+    @pytest.mark.asyncio
+    async def test_execute_response_carries_x_acheron_metadata_per_artifact(self) -> None:
+        """TEST-013: each artifact in the multipart response must carry an
+        ``X-Acheron-Metadata`` header whose value is the JSON-serialized
+        ``artifact.metadata`` dict — the build-side mirror of the request-side
+        parser (CORR-013)."""
+        import json
+
+        class _MetaStub(WorkerHandler):
+            def capabilities(self) -> WorkerCapabilities:
+                return WorkerCapabilities(
+                    worker_type=WorkerType.TTS,
+                    supported_languages_in=frozenset({"en"}),
+                    supported_languages_out=frozenset({"en"}),
+                    supported_formats_in=frozenset({"text"}),
+                    supported_formats_out=frozenset({"wav"}),
+                    max_payload_bytes=None,
+                    batch_capable=False,
+                    model_source="huggingface:test",
+                )
+
+            async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
+                return [
+                    BytesArtifact(
+                        filename="out.wav",
+                        content_type="audio/wav",
+                        data=b"audio",
+                        metadata={"sequence_id": 0, "chapter_id": "ch1"},
+                    )
+                ]
+
+        h = _MetaStub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={
+                    "job_id": "j1",
+                    "job_type": "tts",
+                    "payload": {"chunks": [{"text": "hi"}]},
+                    "chapter_id": "ch1",
+                },
+            )
+        assert r.status_code == 200
+        # Find the audio part and parse its X-Acheron-Metadata header.
+        body = r.content
+        boundary = r.headers["content-type"].split("boundary=")[-1]
+        audio_part = next(p for p in body.split(f"--{boundary}".encode()) if b"audio/wav" in p)
+        header_block = audio_part.split(b"\r\n\r\n", 1)[0].decode("utf-8")
+        meta_line = next(line for line in header_block.split("\r\n") if line.startswith("X-Acheron-Metadata:"))
+        payload = meta_line.split(":", 1)[1].strip()
+        assert json.loads(payload) == {"sequence_id": 0, "chapter_id": "ch1"}
 
 
 class TestEdgeExecuteAuth:

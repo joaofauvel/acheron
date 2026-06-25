@@ -2,22 +2,30 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from acheron.shell.api.routes import capabilities, jobs, partials, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
+from acheron.shell.logging_context import ContextFilter, bind_request_id
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores import create_job_store, create_worker_store
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from starlette.middleware.base import RequestResponseEndpoint
+    from starlette.responses import Response
+
     from acheron.shell.stores.base import JobStore, WorkerStore
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -71,6 +79,13 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.orchestrator = orchestrator
+    logging.getLogger().addFilter(ContextFilter())
+
+    @app.middleware("http")
+    async def _request_id_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        with bind_request_id(request_id):
+            return await call_next(request)
 
     app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
     app.include_router(workers.router, prefix="/workers", tags=["workers"])

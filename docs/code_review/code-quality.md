@@ -388,14 +388,14 @@ related:
 ### MAINT-014 — Stub handlers redundantly override the ABC's default no-op `startup`/`shutdown` methods
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
 - path: stubs/_sdk_base/__init__.py
   lines: 53-57, 101-105, 140-144
@@ -522,17 +522,18 @@ related: []
 ### EXC-003 — HealthMonitor._handle_failure catches bare `Exception` from the platform provider; recovery should live inside the provider contract
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/health.py
-  lines: 139-145
+  lines: 139-148
 - path: src/acheron/shell/health_providers.py
   lines: 52-60, 90-98
 - path: src/acheron/shell/health_providers.py
@@ -717,17 +718,17 @@ related: []
 ### TYPE-004 — WorkerResponse.status is stringly-typed despite a WorkerStatus enum existing at core/models.py
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 68-77
+    lines: 70-78
   - path: src/acheron/shell/api/routes/workers.py
     lines: 51
   - path: src/acheron/shell/api/routes/workers.py
@@ -746,19 +747,19 @@ related: [TYPE-005]
 ### TYPE-005 — `JobResponse.status` and `JobResponse.total_cost_basis` are stringly-typed despite `PlanStatus` and `CostBasis` enums existing at `core/models.py`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 29
+    lines: 31
   - path: src/acheron/shell/api/schemas.py
-    lines: 35
+    lines: 38
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 90
   - path: src/acheron/shell/api/routes/jobs.py
@@ -868,21 +869,18 @@ related: []
 ### TYPE-009 — `GraniteSpeechRunpodHandler` types `self._model` and `self._processor` as `Any`; 2-line comment is a stale-prone impl-phase justification
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: 45599f0
+  date: 2026-06-25
+fixed_in:
+- 45599f0
 files:
 - path: workers/granite_speech/handler.py
-  lines: 39-42
-- path: workers/granite_speech/handler.py
-  lines: 64-80
-- path: workers/granite_speech/handler.py
-  lines: 127-145
+  lines: 14-58
 related:
 - TYPE-008
 ```
@@ -929,19 +927,22 @@ related: [ARCH-018]
 ### MAINT-017 — chunks.json parsing duplicated byte-for-byte between qwen3tts and translategemma handlers — third instance of the wire-shape drift pattern
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
+- path: workers/_shared.py
+  lines: 82-104
 - path: workers/qwen3tts/handler.py
-  lines: 198-216
+  lines: 131
 - path: workers/translategemma/handler.py
-  lines: 188-198
+  lines: 187
 related:
 - MAINT-015
 - MAINT-018
@@ -959,19 +960,22 @@ related:
 ### MAINT-018 — Per-chunk field validation duplicated between translategemma (_normalize_chunk) and qwen3tts (_chunk_text / _chunk_chapter_id); shared `Chunk` dataclass would unify them
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-- path: workers/translategemma/handler.py
-  lines: 199, 297-315
+- path: workers/_shared.py
+  lines: 40-71
 - path: workers/qwen3tts/handler.py
-  lines: 59-85
+  lines: 138-156
+- path: workers/translategemma/handler.py
+  lines: 196-204
 related:
 - MAINT-017
 - MAINT-019
@@ -988,17 +992,18 @@ related:
 ### MAINT-019 — `TranslateGemmaRunpodHandler.handle` is 54 lines (over 50) and bundles 3 distinct concerns: validation, parsing, inference + artifact building
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: workers/translategemma/handler.py
-  lines: 171-224
+  lines: 170-177
 related:
 - CORR-029
 - MAINT-017

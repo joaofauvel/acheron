@@ -9,7 +9,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
-from acheron.core.models import Job, WorkerCapabilities, WorkerType
+from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
@@ -287,3 +287,80 @@ class TestMultipartRequest:
             )
         assert resp.status_code == 200
         assert handler.received_metadata == [{"speaker_hint": "alice", "language": "en"}]
+
+    @pytest.mark.asyncio
+    async def test_multipart_metadata_round_trips_request_to_response(self) -> None:
+        """TEST-013: a metadata header sent to /execute round-trips to the
+        handler as ``BytesInput.metadata`` and back as the response part's
+        ``X-Acheron-Metadata`` header. Build-side mirror of CORR-013."""
+        from acheron.worker_sdk._edge_http import EdgeApp
+
+        class _EchoingHandler(WorkerHandler):
+            def __init__(self) -> None:
+                self.received_metadata: list[dict[str, JsonValue]] = []
+
+            def capabilities(self) -> WorkerCapabilities:
+                return WorkerCapabilities(
+                    worker_type=WorkerType.ASR,
+                    supported_languages_in=frozenset({"en"}),
+                    supported_languages_out=frozenset({"en"}),
+                    supported_formats_in=frozenset({"mp3"}),
+                    supported_formats_out=frozenset({"text"}),
+                    max_payload_bytes=None,
+                    batch_capable=False,
+                    model_source=None,
+                )
+
+            async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
+                if input is None:
+                    return []
+                meta = dict(input.metadata)
+                self.received_metadata.append(meta)
+                return [
+                    BytesArtifact(
+                        filename="out.txt",
+                        content_type="text/plain",
+                        data=b"echoed",
+                        metadata=meta,
+                    )
+                ]
+
+        h = _EchoingHandler()
+        app = EdgeApp(handler=h, capabilities=h.capabilities()).app
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        boundary = "acheron-roundtrip"
+        sent_meta = {"sequence_id": 0, "speaker_hint": "bob"}
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="request"\r\n'
+            f"Content-Type: application/json\r\n\r\n"
+        ).encode() + envelope + b"\r\n"
+        body += (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="audio"; filename="podcast.mp3"\r\n'
+            f"Content-Type: audio/mpeg\r\n"
+            f"X-Acheron-Metadata: {json.dumps(sent_meta)}\r\n\r\n"
+        ).encode() + b"\xff\xfb\x90\x00mock-audio" + b"\r\n"
+        body += f"--{boundary}--\r\n".encode()
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                content=body,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+        assert resp.status_code == 200
+        assert h.received_metadata == [sent_meta]
+        resp_boundary = resp.headers["content-type"].split("boundary=")[-1]
+        text_part = next(p for p in resp.content.split(f"--{resp_boundary}".encode()) if b"text/plain" in p)
+        header_block = text_part.split(b"\r\n\r\n", 1)[0].decode("utf-8")
+        meta_line = next(line for line in header_block.split("\r\n") if line.startswith("X-Acheron-Metadata:"))
+        assert json.loads(meta_line.split(":", 1)[1].strip()) == sent_meta

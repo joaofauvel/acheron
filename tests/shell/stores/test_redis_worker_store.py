@@ -115,6 +115,57 @@ class TestCorruption:
         with pytest.raises(CacheCorruptedError, match="metadata is not valid JSON"):
             await store.get("w-corrupt")
 
+    @pytest.mark.asyncio
+    async def test_invalid_worker_status_raises_cache_corrupted(
+        self, store: RedisWorkerStore, redis_url: str
+    ) -> None:
+        """A ``status`` field whose value is not a valid ``WorkerStatus`` enum member
+        must raise ``CacheCorruptedError`` naming the offending value — the symmetric
+        contract to ``test_corrupt_worker_metadata_raises_cache_corrupted``."""
+        from acheron.core.errors import CacheCorruptedError
+        from acheron.shell.stores.redis import _WORKER_KEY, _serialize_capabilities
+
+        r = aioredis.Redis.from_url(redis_url)
+        await r.hset(  # type: ignore[misc]
+            _WORKER_KEY.format(worker_id="w-bad-status"),
+            mapping={
+                "metadata_json": "{}",
+                "capabilities_json": _serialize_capabilities(_tts_caps()),
+                "status": "garbage",
+                "endpoint": "http://h",
+                "transport": "http",
+            },
+        )
+        await r.aclose()
+        with pytest.raises(CacheCorruptedError, match="invalid status: garbage"):
+            await store.get("w-bad-status")
+
+    @pytest.mark.asyncio
+    async def test_missing_worker_status_defaults_to_healthy(
+        self, store: RedisWorkerStore, redis_url: str
+    ) -> None:
+        """A worker blob with no ``status`` field defaults to ``HEALTHY`` — the
+        deserializer uses ``fields.get("status") or HEALTHY.value`` as a tolerant
+        fallback for legacy blobs written before the ``status`` field existed.
+        A regression to strict-required would silently break old deployments."""
+        from acheron.core.models import WorkerStatus
+        from acheron.shell.stores.redis import _WORKER_KEY, _serialize_capabilities
+
+        r = aioredis.Redis.from_url(redis_url)
+        await r.hset(  # type: ignore[misc]
+            _WORKER_KEY.format(worker_id="w-no-status"),
+            mapping={
+                "metadata_json": "{}",
+                "capabilities_json": _serialize_capabilities(_tts_caps()),
+                "endpoint": "http://h",
+                "transport": "http",
+            },
+        )
+        await r.aclose()
+        w = await store.get("w-no-status")
+        assert w is not None
+        assert w.status == WorkerStatus.HEALTHY
+
 
 class TestMetadataRoundTrip:
     @pytest.mark.asyncio

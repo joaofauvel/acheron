@@ -34,7 +34,7 @@ from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 if TYPE_CHECKING:
-    from acheron.shell.cache import StepCache
+    from acheron.shell.cache import InMemoryStepCache, StepCache
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class StreamingExecutor(Executor):
     def __init__(
         self,
         handler: StepHandler,
-        step_cache: StepCache,
+        step_cache: StepCache | InMemoryStepCache,
         *,
         queue_size: int = 4,
         step_timeout: float = 1800.0,

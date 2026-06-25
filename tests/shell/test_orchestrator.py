@@ -25,7 +25,7 @@ from acheron.core.models import (
     StepStatus,
     WorkerType,
 )
-from acheron.shell.cache import PlanCache
+from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache
 from acheron.shell.config import Settings
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
@@ -63,6 +63,42 @@ def _single_step_plan(job_id: str) -> Plan:
 
 
 class TestOrchestrator:
+    def test_default_step_cache_is_in_memory(self, tmp_path) -> None:
+        """ARCH-008: omitting step_cache constructs an InMemoryStepCache (decoupled from PlanCache.data_dir)."""
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
+        assert isinstance(orch._step_cache, InMemoryStepCache)  # noqa: SLF001
+
+    def test_explicit_step_cache_is_used(self, tmp_path) -> None:
+        """ARCH-008: passing step_cache uses the caller's instance verbatim."""
+        cache = StepCache(tmp_path / "explicit")
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, step_cache=cache)
+        assert orch._step_cache is cache  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_submit_job_invalidates_handler_worker_cache(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """CORR-009: submit_job drops the step handler's worker-instance pool so re-registrations take effect."""
+        from acheron.shell.step_handler import CachingStepHandler
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("es"))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path))
+        await orch.start()
+        assert isinstance(orch._handler, CachingStepHandler)
+        handler = orch._handler
+        handler._worker_instances["w-stub"] = object()  # type: ignore[assignment]
+        handler._cached_workers = ()
+        handler._cached_plan_id = "stale-plan"
+
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+
+        assert handler._worker_instances == {}
+        assert handler._cached_workers is None
+        assert handler._cached_plan_id is None
+
     @pytest.mark.asyncio
     async def test_submit_job_requires_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """submit_job raises RuntimeError if start() was not called.
@@ -470,6 +506,43 @@ class TestOrchestrator:
         await asyncio.gather(*tasks)
 
         assert handler_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_plan_result_errors_sanitised_on_handler_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When the executor itself raises, the persisted PlanResult.errors
+        must not contain traceback fragments or file paths from the exception."""
+        from acheron.core.interfaces import Executor
+        from acheron.core.models import PlanResult
+        from acheron.shell import orchestrator as orch_mod
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("en"))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps("en", "en"))
+
+        async def good_handler(step: PlanStep, plan: Plan) -> JobResult:
+            return await _success_handler(step, plan)
+
+        class _BoomExecutor(Executor):
+            async def run(self, plan: Plan) -> PlanResult:
+                msg = "secret stuff\n  File '/etc/passwd'\nTraceback (most recent call last):"
+                raise RuntimeError(msg)
+
+        monkeypatch.setattr(orch_mod, "create_executor", lambda *_a, **_kw: _BoomExecutor())
+        orch = Orchestrator(reg, PlanCache(tmp_path), good_handler)
+        await orch.start()
+
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
+        tasks = list(orch._tasks)  # noqa: SLF001
+        await asyncio.gather(*tasks)
+
+        assert tracked.status == PlanStatus.FAILED
+        assert tracked.result is not None
+        assert tracked.result.errors == ("RuntimeError: secret stuff",)
 
     @pytest.mark.asyncio
     async def test_orchestrator_generates_and_persists_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

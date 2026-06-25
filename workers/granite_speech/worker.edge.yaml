@@ -4,7 +4,7 @@
 # to read its static capabilities() without loading the model.
 
 worker_id: "granite-speech-edge"
-orchestrator_url: "http://orchestrator:8000"
+orchestrator_url: "https://orchestrator:8000"
 listen_port: 8001
 execution_timeout_s: 1800
 

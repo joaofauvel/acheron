@@ -21,7 +21,7 @@ from acheron.core.models import (
 from acheron.shell.cache import StepCache
 from acheron.shell.local_handlers import LocalJobHandler
 from acheron.shell.registry import RegisteredWorker
-from acheron.shell.step_handler import create_step_handler, default_worker_factory
+from acheron.shell.step_handler import CachingStepHandler, create_step_handler, default_worker_factory
 from acheron.shell.stores.memory import InMemoryWorkerStore
 from acheron.shell.transports.http import HttpWorker
 from acheron.shell.transports.local import LocalWorker
@@ -270,6 +270,38 @@ class TestStepHandler:
         await handler(plan.steps[1], plan)
         assert factory_calls == ["tts-1"]
 
+    @pytest.mark.asyncio
+    async def test_invalidate_worker_cache_drops_instance_pool(self) -> None:
+        """CORR-009: invalidating the cache clears both the worker list snapshot and the pool."""
+        from acheron.shell.registry import RegisteredWorker
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        factory_calls: list[RegisteredWorker] = []
+
+        def _factory(registered: RegisteredWorker) -> LocalWorker:
+            factory_calls.append(registered)
+            return LocalWorker(
+                worker_type=WorkerType.TTS,
+                handler=_echo_job_result,
+                supported_languages_in=frozenset({"es"}),
+                supported_languages_out=frozenset({"es"}),
+            )
+
+        handler = CachingStepHandler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
+        plan = _make_plan()
+        step = plan.steps[0]
+        await handler(step, plan)
+        assert "tts-1" in handler._worker_instances
+        assert handler._cached_workers is not None
+        assert len(factory_calls) == 1
+
+        handler._invalidate_worker_cache()
+        assert handler._cached_workers is None
+        assert handler._cached_plan_id is None
+        assert handler._worker_instances == {}
+        assert len(factory_calls) == 1
+
 
 class TestHttpWorkerStepCache:
     """ARCH-015: ``HttpWorker`` constructs its own ``StepCache`` from ``data_dir``
@@ -290,7 +322,9 @@ class TestHttpWorkerStepCache:
         assert worker._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
 
     @pytest.mark.asyncio
-    async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(self) -> None:
+    async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The default factory lambda in ``create_step_handler`` (no
         ``worker_factory`` arg) must produce an ``HttpWorker`` whose
         ``_step_cache`` is the worker's own default (constructed from
@@ -315,11 +349,10 @@ class TestHttpWorkerStepCache:
             worker.execute = _echo_job_result  # type: ignore[method-assign]
             return worker
 
-        sh.default_worker_factory = _capturing_default  # type: ignore[assignment]
-        try:
-            await handler(_make_plan().steps[0], _make_plan())
-        finally:
-            sh.default_worker_factory = original_default
+        monkeypatch.setattr(sh, "default_worker_factory", _capturing_default)
+        await handler(_make_plan().steps[0], _make_plan())
         assert isinstance(captured["worker"], HttpWorker)
         assert isinstance(captured["worker"]._step_cache, StepCache)  # noqa: SLF001
+        assert sh.default_worker_factory is _capturing_default
+        # monkeypatch restores the module-level original on test teardown.
         assert captured["worker"]._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001

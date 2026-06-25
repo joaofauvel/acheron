@@ -53,7 +53,7 @@ COPY workers/translategemma/runpod_entrypoint.py /app/runpod_entrypoint.py
 COPY workers/translategemma/worker.yaml /app/worker.yaml
 COPY workers/__init__.py /app/workers/__init__.py
 COPY workers/translategemma/__init__.py /app/workers/translategemma/__init__.py
-COPY workers/_shared.py /app/workers/_shared.py
+COPY workers/_shared_utils.py /app/workers/_shared_utils.py
 
 # HF cache lives on the RunPod network volume; offline mode forces the cached snapshot.
 ENV HF_HOME=/runpod-volume/huggingface-cache \

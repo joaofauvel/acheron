@@ -13,14 +13,13 @@ by being one mode, per the Layer 8a spec.
 from __future__ import annotations
 
 import asyncio
-import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from workers._shared import safe_chapter_id
+from workers._shared_utils import Chunk, parse_chunks_json, safe_chapter_id
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
@@ -170,6 +169,15 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
 
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         """Translate the chunks from ``input`` (chunks.json as a multipart part)."""
+        src, tgt = self._validate_payload(job, input)
+        # _validate_payload raised if input is None; mypy needs the explicit cast.
+        chunks = await self._parse_chunks(cast("Input", input))
+        if not chunks:
+            return []
+        return await self._translate_and_artifact(chunks, src, tgt)
+
+    def _validate_payload(self, job: Job, input: Input | None) -> tuple[str, str]:  # noqa: A002
+        """Validate model-loaded, input-present, and src/tgt constraints; return (src, tgt)."""
         if self._model is None or self._processor is None:
             msg = "TranslateGemma model not loaded (startup() not run)"
             raise WorkerError(msg)
@@ -184,37 +192,33 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         if tgt not in _SUPPORTED_LANGS:
             msg = f"Unsupported target language: {tgt!r}"
             raise WorkerError(msg)
+        return src, tgt
 
-        chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])
-        if not chunks_json_bytes:
-            return []
-        try:
-            chunks_raw = json.loads(chunks_json_bytes.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            msg = f"chunks.json is not valid JSON: {exc}"
-            raise WorkerError(msg) from exc
-        if not isinstance(chunks_raw, list):
-            msg = "chunks.json must be a JSON array of chunk dicts"
-            raise WorkerError(msg)
+    @staticmethod
+    async def _parse_chunks(input: Input) -> list[Chunk]:  # noqa: A002
+        """Parse the JSON-serialised ``chunks.json`` body from ``input`` into :class:`Chunk` objects."""
+        return await parse_chunks_json(input)
 
-        chunks = [_normalize_chunk(c) for c in chunks_raw]
-        if not chunks:
-            return []
-
+    async def _translate_and_artifact(
+        self,
+        chunks: list[Chunk],
+        src: str,
+        tgt: str,
+    ) -> list[Artifact]:
+        """Run batched translation and build one :class:`BytesArtifact` per chunk."""
         translated = await asyncio.to_thread(self._translate_all, chunks, src, tgt)
-
         model_id = self._settings.model_id or _MODEL_ID_DEFAULT
         artifacts: list[Artifact] = []
         for c, t in zip(chunks, translated, strict=True):
-            chapter_id = safe_chapter_id(c["chapter_id"])
+            chapter_id = safe_chapter_id(c.chapter_id)
             artifacts.append(
                 BytesArtifact(
-                    filename=f"{chapter_id}_{c['sequence_id']:04d}.txt",
+                    filename=f"{chapter_id}_{c.sequence_id:04d}.txt",
                     content_type="text/plain",
                     data=t.encode("utf-8"),
                     metadata={
                         "chapter_id": chapter_id,
-                        "sequence_id": c["sequence_id"],
+                        "sequence_id": c.sequence_id,
                         "source_language": src,
                         "target_language": tgt,
                         "model": model_id,
@@ -225,7 +229,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
 
     def _translate_all(
         self,
-        chunks: list[dict[str, Any]],
+        chunks: list[Chunk],
         src: str,
         tgt: str,
     ) -> list[str]:
@@ -238,7 +242,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
 
     def _translate_batch(
         self,
-        batch: list[dict[str, Any]],
+        batch: list[Chunk],
         src: str,
         tgt: str,
     ) -> list[str]:
@@ -255,7 +259,7 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
                             "type": "text",
                             "source_lang_code": src,
                             "target_lang_code": tgt,
-                            "text": c["text"],
+                            "text": c.text,
                         }
                     ],
                 }
@@ -294,24 +298,3 @@ def _require_str(payload: dict[str, JsonValue], key: str) -> str:
         msg = f"{key} is required and must be a str (got {type(v).__name__ if v is not None else 'missing'})"
         raise WorkerError(msg)
     return v
-
-
-def _normalize_chunk(c: object) -> dict[str, Any]:
-    """Validate and normalise a single chunk dict from chunks.json.
-
-    Requires: ``chapter_id`` (str), ``sequence_id`` (int), ``text`` (str).
-    Returns a plain dict usable by ``_translate_batch``.
-    """
-    if not isinstance(c, dict):
-        msg = f"chunk must be a dict, got {type(c).__name__}"
-        raise WorkerError(msg)
-    if "chapter_id" not in c or not isinstance(c["chapter_id"], str):
-        msg = "chunk.chapter_id is required (str)"
-        raise WorkerError(msg)
-    if "sequence_id" not in c or not isinstance(c["sequence_id"], int):
-        msg = "chunk.sequence_id is required (int)"
-        raise WorkerError(msg)
-    if "text" not in c or not isinstance(c["text"], str):
-        msg = "chunk.text is required (str)"
-        raise WorkerError(msg)
-    return {"chapter_id": c["chapter_id"], "sequence_id": c["sequence_id"], "text": c["text"]}

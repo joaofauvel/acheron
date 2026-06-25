@@ -50,12 +50,6 @@ class StubTTSHandler(WorkerHandler):
             metadata={"stub": True},
         )
 
-    async def startup(self) -> None:
-        return None
-
-    async def shutdown(self) -> None:
-        return None
-
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         chunks = job.payload.get("chunks", [])
         if not isinstance(chunks, list) or not chunks:
@@ -98,12 +92,6 @@ class StubASRHandler(WorkerHandler):
             metadata={"stub": True},
         )
 
-    async def startup(self) -> None:
-        return None
-
-    async def shutdown(self) -> None:
-        return None
-
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         # `input` is accepted and ignored — the stub proves the multipart
         # contract end-to-end without GPU.
@@ -136,12 +124,6 @@ class StubTranslationHandler(WorkerHandler):
             model_source=None,
             metadata={"stub": True},
         )
-
-    async def startup(self) -> None:
-        return None
-
-    async def shutdown(self) -> None:
-        return None
 
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
         chunks = job.payload.get("chunks", [])

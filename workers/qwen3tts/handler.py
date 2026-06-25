@@ -14,14 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import io
-import json
 from typing import TYPE_CHECKING, Any, cast
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from workers._shared import safe_chapter_id
+from workers._shared_utils import parse_chunks_json, safe_chapter_id
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
@@ -54,35 +53,6 @@ _ALL_SPEAKERS = frozenset(
 )
 _MODEL_ID_DEFAULT = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 _MAX_INPUT_TOKENS_DEFAULT = 2048
-
-
-def _chunk_text(c: dict[str, Any]) -> str:
-    """Read the text field from a chunk dict."""
-    if "text" not in c:
-        msg = "chunk.text is required"
-        raise WorkerError(msg)
-    text = c["text"]
-    if not isinstance(text, str):
-        msg = f"chunk.text must be a str, got {type(text).__name__}"
-        raise WorkerError(msg)
-    return text
-
-
-def _chunk_chapter_id(c: dict[str, Any]) -> str:
-    r"""Read and sanitise the chapter_id field from a chunk dict.
-
-    Delegates to ``workers._shared.safe_chapter_id``; the defensive checks
-    against NUL bytes / path separators / ``..`` are shared with the
-    granite-speech handler.
-    """
-    if "chapter_id" not in c:
-        msg = "chunk.chapter_id is required"
-        raise WorkerError(msg)
-    cid = c["chapter_id"]
-    if not isinstance(cid, str):
-        msg = f"chunk.chapter_id must be a str, got {type(cid).__name__}"
-        raise WorkerError(msg)
-    return safe_chapter_id(cid)
 
 
 class Qwen3TTSRunpodHandler(WorkerHandler):
@@ -158,17 +128,17 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
         if input is None:
             msg = "Qwen3-TTS requires a chunks.json input (multipart part)"
             raise WorkerError(msg)
-        chunks = await self._load_chunks(input)
+        chunks = await parse_chunks_json(input)
         if not chunks:
             return []
         target_lang = self._validate_target_lang(job)
         qwen_lang = _LANG_MAP[target_lang]
         speaker = self._resolve_speaker(job, target_lang)
 
-        texts = [_chunk_text(c) for c in chunks]
+        texts = [c.text for c in chunks]
         languages = [qwen_lang] * len(chunks)
         speakers = [speaker] * len(chunks)
-        instructs = [c.get("instruct", "") for c in chunks]
+        instructs = [c.instruct for c in chunks]
 
         import soundfile as sf  # noqa: PLC0415 - lazy, not always installed
 
@@ -180,44 +150,23 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
         wavs, sr = await asyncio.to_thread(_generate)
 
         artifacts: list[Artifact] = []
-        for i, (wav, chunk) in enumerate(zip(wavs, chunks, strict=True)):
+        for wav, chunk in zip(wavs, chunks, strict=True):
             buf = io.BytesIO()
             sf.write(buf, wav, sr, format="WAV")
-            seq = chunk.get("sequence_id", i)
-            chapter_id = _chunk_chapter_id(chunk)
+            chapter_id = safe_chapter_id(chunk.chapter_id)
             artifacts.append(
                 BytesArtifact(
-                    filename=f"{chapter_id}_{seq:04d}.wav",
+                    filename=f"{chapter_id}_{chunk.sequence_id:04d}.wav",
                     content_type="audio/wav",
                     data=buf.getvalue(),
                     metadata={
-                        "sequence_id": seq,
+                        "sequence_id": chunk.sequence_id,
                         "chapter_id": chapter_id,
                         "sample_rate": sr,
                     },
                 )
             )
         return artifacts
-
-    @staticmethod
-    async def _load_chunks(input: Input) -> list[dict[str, Any]]:  # noqa: A002
-        """Parse the JSON-serialised ``chunks.json`` body from ``input``.
-
-        Returns an empty list if the body is empty. Raises ``WorkerError`` on
-        malformed JSON or a non-list top-level value.
-        """
-        chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])
-        if not chunks_json_bytes:
-            return []
-        try:
-            raw_chunks = json.loads(chunks_json_bytes.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            msg = f"chunks.json is not valid JSON: {exc}"
-            raise WorkerError(msg) from exc
-        if not isinstance(raw_chunks, list):
-            msg = "chunks.json must be a JSON array of chunk dicts"
-            raise WorkerError(msg)
-        return [c for c in raw_chunks if isinstance(c, dict)]
 
     def _validate_target_lang(self, job: Job) -> str:
         target_lang = job.payload.get("target_language")

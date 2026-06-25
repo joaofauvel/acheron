@@ -8,7 +8,7 @@
 #   env-only and supplied by the operator at runtime.
 
 worker_id: "qwen3tts-edge"
-orchestrator_url: "http://orchestrator:8000"
+orchestrator_url: "https://orchestrator:8000"
 listen_port: 8001
 execution_timeout_s: 1800
 

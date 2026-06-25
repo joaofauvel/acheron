@@ -164,16 +164,12 @@ class TestHuggingFaceHealthProvider:
 
 
 class TestHealthProvidersContainer:
-    def test_get_returns_provider_by_name(self) -> None:
-        from acheron.shell.health_providers import HealthProviders
-
-        providers = HealthProviders({"runpod": RunPodHealthProvider(api_key="k")})
+    def test_dict_get_returns_provider_by_name(self) -> None:
+        providers: dict[str, RunPodHealthProvider] = {"runpod": RunPodHealthProvider(api_key="k")}
         assert isinstance(providers.get("runpod"), RunPodHealthProvider)
 
-    def test_get_unknown_returns_none(self) -> None:
-        from acheron.shell.health_providers import HealthProviders
-
-        providers = HealthProviders({})
+    def test_dict_get_unknown_returns_none(self) -> None:
+        providers: dict[str, RunPodHealthProvider] = {}
         assert providers.get("runpod") is None
 
 

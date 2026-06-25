@@ -13,17 +13,31 @@ being one mode, per the Layer 8a spec.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from workers._shared import safe_chapter_id
+from workers._shared_utils import safe_chapter_id
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
     from acheron.worker_sdk.settings import WorkerSettings
+
+
+class _ModelProto(Protocol):
+    """Surface the subset of the transformers model API the handler uses."""
+
+    def generate(self, **kwargs: Any) -> Any: ...
+
+
+class _ProcessorProto(Protocol):
+    """Surface the subset of the transformers processor API the handler uses."""
+
+    tokenizer: Any
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 _SUPPORTED_LANGS = frozenset({"en", "fr", "de", "es", "pt", "ja"})
@@ -36,10 +50,8 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
 
     def __init__(self, settings: WorkerSettings) -> None:
         self._settings = settings
-        # The model + processor are typed loosely so the workspace tests
-        # don't need torch or transformers installed.
-        self._model: Any = None
-        self._processor: Any = None
+        self._model: _ModelProto | None = None
+        self._processor: _ProcessorProto | None = None
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static description. No I/O — sync."""
@@ -131,19 +143,25 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
         """Run transformers inference; returns the transcript string."""
         import torch
 
+        if self._model is None or self._processor is None:
+            msg = "Granite-Speech model not loaded"
+            raise WorkerError(msg)
+        processor = self._processor
+        model = self._model
+
         chat = [{"role": "user", "content": f"<|audio|>{_DEFAULT_PROMPT}"}]
-        prompt_text = self._processor.tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-        model_inputs = self._processor(
+        prompt_text = processor.tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+        model_inputs = processor(
             prompt_text,
             audio_bytes,
             device="cuda:0",
             return_tensors="pt",
         ).to("cuda:0")
         with torch.inference_mode():
-            model_outputs = self._model.generate(**model_inputs, max_new_tokens=4096, do_sample=False, num_beams=1)
+            model_outputs = model.generate(**model_inputs, max_new_tokens=4096, do_sample=False, num_beams=1)
         num_input_tokens = model_inputs["input_ids"].shape[-1]
         new_tokens = model_outputs[0, num_input_tokens:].unsqueeze(0)
-        text: list[str] = self._processor.tokenizer.batch_decode(
+        text: list[str] = processor.tokenizer.batch_decode(
             new_tokens, add_special_tokens=False, skip_special_tokens=True
         )
         return text[0].strip()

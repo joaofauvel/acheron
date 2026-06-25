@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import tempfile
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -127,3 +128,51 @@ class StepCache:
     def _write_manifest(step_dir: Path, manifest_file: Path, manifest: bytes) -> None:
         step_dir.mkdir(parents=True, exist_ok=True)
         manifest_file.write_bytes(manifest)
+
+
+class InMemoryStepCache:
+    """Process-local step cache. State is lost on restart.
+
+    Used as the orchestrator's default so that constructing an ``Orchestrator``
+    does not require a writable data directory. Callers that want cross-process
+    resume must pass an explicit ``StepCache`` rooted at a shared directory.
+    """
+
+    def __init__(self, data_dir: str | Path | None = None) -> None:
+        self._data_dir = Path(data_dir) if data_dir is not None else Path(tempfile.mkdtemp(prefix="acheron-step-"))
+        self._outputs: dict[tuple[str, str], tuple[OutputFile, ...]] = {}
+
+    @property
+    def data_dir(self) -> Path:
+        """The root directory for the cache. Files are not materialised here."""
+        return self._data_dir
+
+    async def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
+        """Record the step's output manifest in memory."""
+        self._outputs[(job_id, step_id)] = outputs
+
+    async def load_outputs(self, job_id: str, step_id: str) -> tuple[OutputFile, ...]:
+        """Return a previously-saved manifest.
+
+        Raises:
+            CacheMissError: If no manifest is recorded for ``(job_id, step_id)``.
+        """
+        try:
+            return self._outputs[(job_id, step_id)]
+        except KeyError as exc:
+            msg = f"Step cache miss: {job_id}/{step_id}"
+            raise CacheMissError(msg) from exc
+
+    async def step_has_valid_cache(self, job_id: str, step_id: str) -> bool:
+        """Return True iff the manifest is recorded and every file still exists on disk."""
+        outputs = self._outputs.get((job_id, step_id))
+        if outputs is None:
+            return False
+        for output in outputs:
+            file_path = Path(output.path)
+            if not await asyncio.to_thread(file_path.exists):
+                return False
+            checksum = await asyncio.to_thread(_checksum, file_path)
+            if checksum != output.checksum:
+                return False
+        return True

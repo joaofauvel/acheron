@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from workers._shared import safe_chapter_id
+from workers._shared_utils import safe_chapter_id
 
 from acheron.core.errors import WorkerError
 

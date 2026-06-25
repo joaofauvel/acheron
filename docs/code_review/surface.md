@@ -351,19 +351,20 @@ related: [ARCH-017]
 ### DOC-006 — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections after the 8c plan-time check
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 246-253
+  lines: 253-265
 - path: src/acheron/core/planner.py
-  lines: 97-112
+  lines: 140-144
 related:
 - ARCH-019
 - CFG-009

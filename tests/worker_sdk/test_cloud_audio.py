@@ -120,7 +120,7 @@ class TestMakeRunpodHandlerAudioForward:
                 },
             }
         }
-        with pytest.raises(WorkerError, match=r"input_audio\.data must be a str"):
+        with pytest.raises(WorkerError, match=r"input_audio\.data is required"):
             await wrapped(runpod_job)
 
     @pytest.mark.asyncio
@@ -189,4 +189,53 @@ class TestMakeRunpodHandlerAudioForward:
             }
         }
         with pytest.raises(WorkerError, match=r"input_audio\.content_type must be a str"):
+            await wrapped(runpod_job)
+
+    @pytest.mark.asyncio
+    async def test_rejects_missing_data_field(self) -> None:
+        """CORR-020: an input_audio with no `data` key must raise WorkerError
+        rather than silently coerce to empty bytes.
+        """
+        from acheron.core.errors import WorkerError
+
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        runpod_job = {
+            "input": {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {},
+                "chapter_id": "ch1",
+                "input_audio": {
+                    "content_type": "audio/wav",
+                    "metadata": {},
+                },
+            }
+        }
+        with pytest.raises(WorkerError, match=r"input_audio\.data is required"):
+            await wrapped(runpod_job)
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_data_field(self) -> None:
+        """CORR-020: an empty `data` string must raise WorkerError rather than
+        being silently treated as zero-byte audio.
+        """
+        from acheron.core.errors import WorkerError
+
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        runpod_job = {
+            "input": {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {},
+                "chapter_id": "ch1",
+                "input_audio": {
+                    "content_type": "audio/wav",
+                    "data": "",
+                    "metadata": {},
+                },
+            }
+        }
+        with pytest.raises(WorkerError, match=r"input_audio\.data is required"):
             await wrapped(runpod_job)
