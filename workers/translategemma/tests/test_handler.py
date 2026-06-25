@@ -223,19 +223,20 @@ class TestHandleHappyPath:
 class TestTranslateAll:
     def test_translate_all_chunks_into_batches_of_max_batch_size(self) -> None:
         """10 chunks → 3 batches: 4 + 4 + 2."""
+        from workers._shared import Chunk
         from workers.translategemma.handler import TranslateGemmaRunpodHandler
 
         h = _handler()
-        calls: list[list[dict[str, Any]]] = []
+        calls: list[list[Chunk]] = []
 
-        def _spy(self: Any, batch: list[dict[str, Any]], src: str, tgt: str) -> list[str]:
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
             calls.append(batch)
             return [f"t_{i}" for i in range(len(batch))]
 
         original = TranslateGemmaRunpodHandler._translate_batch
         TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
         try:
-            chunks = [{"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(10)]
+            chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(10)]
             out = h._translate_all(chunks, "en", "es")
         finally:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
@@ -249,21 +250,90 @@ class TestTranslateAll:
         assert out[9] == "t_1"
 
     def test_translate_all_with_fewer_than_max_batch_size(self) -> None:
+        from workers._shared import Chunk
         from workers.translategemma.handler import TranslateGemmaRunpodHandler
 
         h = _handler()
-        calls: list[list[dict[str, Any]]] = []
+        calls: list[list[Chunk]] = []
 
-        def _spy(self: Any, batch: list[dict[str, Any]], src: str, tgt: str) -> list[str]:
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
             calls.append(batch)
             return [f"t_{i}" for i in range(len(batch))]
 
         original = TranslateGemmaRunpodHandler._translate_batch
         TranslateGemmaRunpodHandler._translate_batch = _spy  # type: ignore[method-assign]
         try:
-            chunks = [{"chapter_id": "ch1", "sequence_id": i, "text": f"chunk-{i}"} for i in range(3)]
+            chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(3)]
             out = h._translate_all(chunks, "en", "es")
         finally:
             TranslateGemmaRunpodHandler._translate_batch = original  # type: ignore[method-assign]
         assert len(calls) == 1
         assert len(out) == 3
+
+
+class TestValidatePayload:
+    def test_returns_src_and_tgt(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        src, tgt = h._validate_payload(
+            _make_job(), _build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "x"}])
+        )
+        assert src == "en"
+        assert tgt == "es"
+
+    def test_raises_when_model_not_loaded(self) -> None:
+        h = _handler()
+        with pytest.raises(WorkerError, match="model not loaded"):
+            h._validate_payload(_make_job(), _build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "x"}]))
+
+    def test_raises_when_input_is_none(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        with pytest.raises(WorkerError, match="requires a chunks.json input"):
+            h._validate_payload(_make_job(), None)
+
+    def test_raises_when_target_language_unsupported(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        with pytest.raises(WorkerError, match="Unsupported target language"):
+            h._validate_payload(
+                _make_job(target_language="xx"), _build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "x"}])
+            )
+
+
+class TestParseChunks:
+    @pytest.mark.asyncio
+    async def test_returns_parsed_chunks(self) -> None:
+        from workers._shared import Chunk
+
+        h = _handler()
+        _mark_loaded(h)
+        chunks_in = [{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]
+        out = await h._parse_chunks(_build_input(chunks_in))
+        assert out == [Chunk(chapter_id="ch1", sequence_id=0, text="hi", instruct="")]
+
+    @pytest.mark.asyncio
+    async def test_empty_body_returns_empty_list(self) -> None:
+        h = _handler()
+        _mark_loaded(h)
+        out = await h._parse_chunks(BytesInput(content_type="application/json", data=b""))
+        assert out == []
+
+
+class TestTranslateAndArtifact:
+    @pytest.mark.asyncio
+    async def test_builds_artifact_per_chunk(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from workers._shared import Chunk
+
+        h = _handler()
+        _mark_loaded(h)
+        _spy_translate_all(monkeypatch, ["hola", "mundo"])
+        chunks = [
+            Chunk(chapter_id="ch1", sequence_id=0, text="hello"),
+            Chunk(chapter_id="ch1", sequence_id=1, text="world"),
+        ]
+        out = await h._translate_and_artifact(chunks, "en", "es")
+        assert [a.filename for a in out] == ["ch1_0000.txt", "ch1_0001.txt"]
+        assert [a.data for a in out] == [b"hola", b"mundo"]
+        assert all(a.metadata["source_language"] == "en" for a in out)
+        assert all(a.metadata["target_language"] == "es" for a in out)

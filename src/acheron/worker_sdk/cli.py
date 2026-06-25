@@ -19,9 +19,7 @@ import os
 import sys
 from typing import Any
 
-import uvicorn
-
-from acheron.tls import uvicorn_ssl_kwargs
+from acheron.worker_sdk._server import run_worker_server
 from acheron.worker_sdk.app import create_worker_app
 from acheron.worker_sdk.config_loader import load_settings
 
@@ -73,14 +71,7 @@ def main() -> None:
         level=settings.log_level,
         stream=sys.stdout,
     )
-    ssl = uvicorn_ssl_kwargs()
-    uvicorn.run(
-        app,
-        host=settings.listen_host,
-        port=settings.listen_port,
-        ssl_certfile=ssl.get("ssl_certfile"),
-        ssl_keyfile=ssl.get("ssl_keyfile"),
-    )
+    run_worker_server(app, host=settings.listen_host, port=settings.listen_port)
 
 
 if __name__ == "__main__":
