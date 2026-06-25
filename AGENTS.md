@@ -27,4 +27,4 @@ AI agents MUST follow this sequence for all changes.
 - Always prefer chaining exceptions to keep the full chain of events leading to us raising our custom exceptions.
 - Prefer strict domain separation, avoid string-based dispatch, and use typing in your favor to avoid seas of complex branching that are brittle and hard to maintain and extend.
 - Make illegal states unrepresentable.
-- Tests should usually verify behavior, as opposed to state.
+- Tests should usually verify behavior, as opposed to state. Avoid tautological tests.
