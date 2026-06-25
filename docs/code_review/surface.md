@@ -260,12 +260,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 7d4754a
+  commit: 0e6c576
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: .env.example
-  lines: 9-46
+  lines: 5, 9, 29
 - path: .env.example
   lines: 9-46
 - path: README.md

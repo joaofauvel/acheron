@@ -696,15 +696,18 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/tests/test_handler.py
-    lines: 1-269
-  - path: workers/translategemma/handler.py
-    lines: 170-285
-related: [CORR-029, CORR-033, MAINT-019]
+- path: workers/translategemma/tests/test_handler.py
+  lines: 1-269
+- path: workers/translategemma/handler.py
+  lines: 170-285
+related:
+- CORR-029
+- CORR-033
+- MAINT-019
 ```
 
 **Issue.** test_handler.py (269 lines) covers the validation surface (11 `test_handle_with_*_raises` tests), happy path (single chunk, multi-chunk, empty chunks, empty body), and batched dispatch (10 chunks → 3 batches of [4,4,2]). The handler's GPU-side failure surface is not tested at all: (1) the production line 203 `translated = await asyncio.to_thread(self._translate_all, chunks, src, tgt)` has no try/except — when `_translate_batch` raises (CUDA OOM, NaN/inf in input_ids, processor shape mismatch, etc.) the exception propagates raw to the RunPod runtime; no test asserts that handle() either re-raises as `WorkerError` or wraps with chain. (2) When batch 1 succeeds and batch 2 fails, the handler currently aborts mid-stream, dropping batch 1's translations and producing no partial output — a regression that switched to per-batch exception capture (e.g. to surface partial-success) would be invisible. (3) The tokenizer boot path at handler.py:268-269 `if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None: tokenizer.pad_token_id = tokenizer.eos_token_id` is a one-shot init; no test exercises it because the test uses `_spy_translate_all` and never builds a real processor. (4) `_translate_all` is fed raw `chunks` whose `text` field is user-controlled ePUB text; a test that proves `text=None` (not str) is rejected by `_normalize_chunk` would be a useful guard.

@@ -780,15 +780,17 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/handler.py
-    lines: 170-235
-  - path: workers/translategemma/handler.py
-    lines: 225-236
-related: [CORR-026, MAINT-019]
+- path: workers/translategemma/handler.py
+  lines: 204, 239-287
+- path: workers/translategemma/handler.py
+  lines: 225-236
+related:
+- CORR-026
+- MAINT-019
 ```
 
 **Issue.** `_translate_batch` runs a single `self._model.generate(...)` per batch. If the 3rd of 10 batches (chunks 9-12 of 40) raises (OOM mid-batch, GPU fault, NaN/inf in input_ids), the `try/except` in `handle` (lines 203+ `await asyncio.to_thread(self._translate_all, ...)`) propagates the exception, and the orchestrator's `/execute` returns a 500 `JobResult` with all 8 previously translated batches discarded. The 32 chunks that were already on the GPU and translated are lost; the operator pays the warm-up cost again on the next attempt. The handler does not emit partial artifacts and does not surface the per-batch progress in the error message.
@@ -861,13 +863,17 @@ severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/handler.py
-    lines: 187-191
-related: [CORR-017, CORR-018, CORR-019, MAINT-017]
+- path: workers/translategemma/handler.py
+  lines: 188-190
+related:
+- CORR-017
+- CORR-018
+- CORR-019
+- MAINT-017
 ```
 
 **Issue.** Line 187: `chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])`. This loads the full chunks.json into RAM before validation. For a long chapter (e.g. 5000 chunks × 200 chars each = 1 MB JSON, or 20000 chunks × 250 chars = 5 MB), the handler holds the full JSON in memory plus the parsed list plus the validated chunks dict. The same anti-pattern exists on the orchestrator's request side (CORR-018) and the SDK's request parser (CORR-019), but the cloud handler is a third instance of the same shape. The Input Protocol has a `StreamInput` variant specifically to avoid this buffering, but `make_runpod_handler` always wraps in a `BytesInput` (cloud.py:54-58), so the cloud handler never sees a StreamInput from the RunPod forwarder.
@@ -886,13 +892,14 @@ severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/handler.py
-    lines: 267-269
-related: [TYPE-010]
+- path: workers/translategemma/handler.py
+  lines: 270-271
+related:
+- TYPE-010
 ```
 
 **Issue.** Lines 267-269: `if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None: tokenizer.pad_token_id = tokenizer.eos_token_id`. The processor is a stateful object loaded once at `startup()` and held on `self._processor`. The assignment mutates the tokenizer's state in-place and persists across all subsequent `handle()` calls. For the single-handler single-process RunPod serverless case this is benign (the mutation happens once at boot). But: (1) if a future maintainer ever instantiates two handlers against the same processor (e.g. for load testing, or for a future model-rotation pattern), the second inherits the mutated state and the first's intentional non-mutation is lost. (2) If the processor is ever replaced via a hot-reload, the new processor's tokenizer starts un-mutated but the first call sets it. The mutation is correct but a side-effect on shared state.

@@ -598,14 +598,15 @@ related:
 ### CFG-007 — `WorkerSettings.model_id` and `WorkerSettings.output_mode` are config knobs that don't actually control anything
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
+  commit: 0e6c576
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- 0e6c576
 files:
 - path: src/acheron/worker_sdk/settings.py
   lines: 50-51, 62-63
@@ -737,14 +738,15 @@ related: []
 ### CFG-008 — CFG-007 regression: `WorkerSettings.model_id` is set in 4 YAML files and still never consumed by any handler
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 7d4754a
+  commit: 0e6c576
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- 0e6c576
 files:
 - path: src/acheron/worker_sdk/settings.py
   lines: 62-63
@@ -1000,34 +1002,37 @@ related:
 ### CFG-010 — `WorkerSettings.model_id` is now consumed only by `translategemma` — qwen3tts and granite_speech still hard-code the value, widening the CFG-007/008 silence from 4 YAMLs to 6
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+  commit: 0e6c576
+  date: '2026-06-24'
+fixed_in:
+- 0e6c576
 files:
-  - path: workers/qwen3tts/handler.py
-    lines: 55, 100-117, 119-133
-  - path: workers/qwen3tts/worker.yaml
-    lines: 37
-  - path: workers/qwen3tts/worker.edge.yaml
-    lines: 17
-  - path: workers/granite_speech/handler.py
-    lines: 30, 44-60, 62-78, 121
-  - path: workers/granite_speech/worker.yaml
-    lines: 30
-  - path: workers/granite_speech/worker.edge.yaml
-    lines: 13
-  - path: workers/translategemma/handler.py
-    lines: 29, 125, 148, 205
-  - path: workers/translategemma/worker.yaml
-    lines: 30
-  - path: workers/translategemma/worker.edge.yaml
-    lines: 13
-related: [CFG-007, CFG-008]
+- path: workers/qwen3tts/handler.py
+  lines: 55, 100-117, 119-133
+- path: workers/qwen3tts/worker.yaml
+  lines: 37
+- path: workers/qwen3tts/worker.edge.yaml
+  lines: 17
+- path: workers/granite_speech/handler.py
+  lines: 30, 44-60, 62-78, 121
+- path: workers/granite_speech/worker.yaml
+  lines: 30
+- path: workers/granite_speech/worker.edge.yaml
+  lines: 13
+- path: workers/translategemma/handler.py
+  lines: 29, 125, 148, 205
+- path: workers/translategemma/worker.yaml
+  lines: 30
+- path: workers/translategemma/worker.edge.yaml
+  lines: 13
+related:
+- CFG-007
+- CFG-008
 ```
 
 **Issue.** Layer 8c adds a new worker package, `workers/translategemma/`, that CONSUMES `WorkerSettings.model_id` correctly: `model_id = self._settings.model_id or _MODEL_ID_DEFAULT` (translategemma/handler.py:125, 148, 205). It also sets `model_id: "google/translategemma-12b-it"` in both `worker.yaml:30` and `worker.edge.yaml:13`. The two pre-existing workers (qwen3tts, granite_speech) do NOT consume the field: qwen3tts/handler.py hard-codes `_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"` and uses it in `capabilities()` (line 115) and `startup()` (line 127); granite_speech/handler.py hard-codes `_MODEL_ID = "ibm-granite/granite-speech-4.1-2b"` and uses it in `capabilities()` (line 58), `startup()` (line 72), and the artifact metadata (line 121). The 8c delta therefore widened the CFG-007/008 silence from 4 YAMLs (2 worker.yaml + 2 worker.edge.yaml) to 6 YAMLs (2+2+2), while introducing the FIRST worker that actually consumes the field.
@@ -1041,14 +1046,15 @@ related: [CFG-007, CFG-008]
 ### CFG-011 — `WorkerCapabilities.max_input_tokens` is published in capabilities() by 2 workers but only consumed in 1 place (the planner) — value is hard-coded in handlers, not configurable via WorkerSettings
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7d4754a
+  commit: 0e6c576
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- 0e6c576
 files:
 - path: src/acheron/core/models.py
   lines: 86-90

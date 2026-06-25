@@ -805,15 +805,17 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/qwen3tts/worker.edge.yaml
-    lines: 11
-  - path: src/acheron/worker_sdk/registration.py
-    lines: 48-50
-related: [OBS-007, SEC-003]
+- path: workers/qwen3tts/worker.edge.yaml
+  lines: '11'
+- path: src/acheron/worker_sdk/registration.py
+  lines: 48-50
+related:
+- OBS-007
+- SEC-003
 ```
 
 **Issue.** `worker.edge.yaml` (the config baked into the acheron-worker-edge image at `Dockerfile.edge:31`) sets `orchestrator_url: 'http://orchestrator:8000'`. `docker-compose.yml:174` overrides this to https in the compose-managed deployment, but a deployer that runs the edge image standalone (e.g., on a RunPod pod or a different orchestrator topology) inherits the HTTP default. `registration.py:50` puts the bearer token in the `Authorization` header, which is transmitted in cleartext over HTTP. Any on-path observer between the edge container and the orchestrator (a Docker bridge snoop, a sidecar, an L7 proxy with request logging) captures the registration token, and the attacker can then register an arbitrary worker endpoint and exfiltrate job payloads (per the SEC-008 / SEC-009 exposure). The same default also affects the `_register` flow in `app.py:103-113`.
@@ -861,13 +863,14 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 9b4adb6
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/granite_speech/worker.edge.yaml
-    lines: 7
-related: [SEC-014]
+- path: workers/granite_speech/worker.edge.yaml
+  lines: '7'
+related:
+- SEC-014
 ```
 
 **Issue.** `workers/granite_speech/worker.edge.yaml:7` sets `orchestrator_url: "http://orchestrator:8000"`. The docker-compose service overrides to https at line 208, but a deployer that runs the acheron-worker-edge image standalone (RunPod pod, different topology) inherits the HTTP default; `registration.py:50` puts the bearer token in the Authorization header, transmitted in cleartext.

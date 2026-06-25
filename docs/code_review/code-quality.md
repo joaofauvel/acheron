@@ -391,16 +391,16 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: stubs/_sdk_base/__init__.py
-    lines: 53-57
-  - path: stubs/_sdk_base/__init__.py
-    lines: 101-105
-  - path: stubs/_sdk_base/__init__.py
-    lines: 140-144
+- path: stubs/_sdk_base/__init__.py
+  lines: 53-57, 101-105, 140-144
+- path: stubs/_sdk_base/__init__.py
+  lines: 101-105
+- path: stubs/_sdk_base/__init__.py
+  lines: 140-144
 related: []
 ```
 
@@ -612,15 +612,16 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: src/acheron/api_client.py
-    lines: 41-128
-  - path: src/acheron/cli.py
-    lines: 165-292
-related: [ARCH-004]
+- path: src/acheron/api_client.py
+  lines: 41-128
+- path: src/acheron/cli.py
+  lines: 165-292
+related:
+- ARCH-004
 ```
 
 **Issue.** Every `AcheronClient` method returns `dict[str, Any]` or `list[dict[str, Any]]` (api_client.py:35,51,58,65,76). The CLI then indexes these with magic strings — `result['job_id']`, `j['status']`, `j['worker_id']`, `p['workers']`, `result['errors']` (cli.py:169-236); any key typo is a runtime KeyError. Typed pydantic response schemas (JobResponse, WorkerResponse, CapabilitiesResponse) already exist in schemas.py but are not used on the client side. The metadata contract sub-issue is resolved: `RegisteredWorker.metadata` (registry.py:27), `WorkerStore.register` metadata (stores/base.py:30), and schemas.py:55 are now all `dict[str, JsonValue]`, matching `WorkerCapabilities.metadata`.
@@ -865,17 +866,18 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/granite_speech/handler.py
-    lines: 37-42
-  - path: workers/granite_speech/handler.py
-    lines: 64-80
-  - path: workers/granite_speech/handler.py
-    lines: 127-145
-related: [TYPE-008]
+- path: workers/granite_speech/handler.py
+  lines: 39-42
+- path: workers/granite_speech/handler.py
+  lines: 64-80
+- path: workers/granite_speech/handler.py
+  lines: 127-145
+related:
+- TYPE-008
 ```
 
 **Issue.** `GraniteSpeechRunpodHandler.__init__` (lines 37-42) types `self._model: Any = None` and `self._processor: Any = None`. The accompanying 2-line comment ('The model + processor are typed loosely so the workspace tests don't need torch or transformers installed') is a stale-prone impl-phase comment — it references a workspace-test implementation detail that can change. The actual production code does not use the `Any`: lines 64-80 import torch + transformers inside `startup()`; lines 127-145 import torch inside `_transcribe()`.
@@ -925,15 +927,18 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/qwen3tts/handler.py
-    lines: 198-216
-  - path: workers/translategemma/handler.py
-    lines: 187-199
-related: [MAINT-015, MAINT-018, CORR-032]
+- path: workers/qwen3tts/handler.py
+  lines: 198-216
+- path: workers/translategemma/handler.py
+  lines: 188-198
+related:
+- MAINT-015
+- MAINT-018
+- CORR-032
 ```
 
 **Issue.** The 13-line `chunks.json` parsing block is byte-identical in both worker handlers. The translategemma version (lines 187-199) is inline inside `handle()`; the qwen3tts version (lines 198-216) is the `_load_chunks` method. Both do `b''.join([chunk async for chunk in input.stream()])`, both check `if not chunks_json_bytes: return []`, both call `json.loads(chunks_json_bytes.decode('utf-8'))`, both catch `(json.JSONDecodeError, UnicodeDecodeError) as exc: raise WorkerError(msg) from exc`, and both check `isinstance(raw_chunks, list)` with the same error string. Layer 8c is the natural consolidation moment: a third worker that consumes `chunks.json` (a future ASR-via-chunks, an OCR worker, a TTS-via-chunks) will copy this verbatim.
@@ -952,15 +957,17 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/handler.py
-    lines: 199, 297-315
-  - path: workers/qwen3tts/handler.py
-    lines: 58-67, 70-84, 164, 183
-related: [MAINT-017, MAINT-019]
+- path: workers/translategemma/handler.py
+  lines: 199, 297-315
+- path: workers/qwen3tts/handler.py
+  lines: 59-85
+related:
+- MAINT-017
+- MAINT-019
 ```
 
 **Issue.** Translategemma's `_normalize_chunk(c: object) -> dict[str, Any]` (lines 297-315) validates and returns a fresh dict with `chapter_id`/`sequence_id`/`text`. Qwen3TTS splits the same validation into two module-level helpers: `_chunk_text(c) -> str` (lines 58-67) and `_chunk_chapter_id(c) -> str` (lines 70-84). Both validate the same three fields with the same isinstance checks, raise `WorkerError` on the same failure modes, and use the same field names. The translategemma shape (return a normalised dict) is more reusable, but the qwen3tts helpers are inline-callable. The drift risk is that a future chunk schema change (e.g. adding a `metadata` field) touches two files with different shapes.
@@ -979,13 +986,16 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/handler.py
-    lines: 170-223
-related: [CORR-029, MAINT-017, MAINT-018]
+- path: workers/translategemma/handler.py
+  lines: 171-224
+related:
+- CORR-029
+- MAINT-017
+- MAINT-018
 ```
 
 **Issue.** `TranslateGemmaRunpodHandler.handle` (lines 170-223) is 54 lines and conflates three responsibilities: (1) precondition validation (model loaded, input present, src/tgt in supported langs) — lines 172-185, (2) chunks.json parsing (lines 187-201) — same body as the qwen3tts `_load_chunks` method, (3) inference call + artifact-building loop (lines 203-223). The function is exactly the same length as `Qwen3TTSRunpodHandler.handle` (53 lines), so this is not a new regression — but the consolidation of the parsing block (MAINT-017) automatically shrinks `handle` to ~38 lines. A pattern-level observation: the handlers' `handle()` methods are converging on the same shape and the same 50-line threshold.
@@ -1006,17 +1016,19 @@ severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 0e6c576
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: workers/translategemma/handler.py
-    lines: 118-121
-  - path: workers/qwen3tts/handler.py
-    lines: 97-98, 172
-  - path: workers/granite_speech/handler.py
-    lines: 37-42
-related: [TYPE-009, CORR-033]
+- path: workers/translategemma/handler.py
+  lines: 118-121
+- path: workers/qwen3tts/handler.py
+  lines: 98-99, 39-42, 118-121
+- path: workers/granite_speech/handler.py
+  lines: 37-42
+related:
+- TYPE-009
+- CORR-033
 ```
 
 **Issue.** The delta adds the third worker package with the same `self._model: Any = None` / `self._processor: Any = None` anti-pattern, plus the same 2-line stale-prone comment ("The model + processor are typed loosely so the workspace tests don't need torch or transformers installed"). Concretely: `TranslateGemmaRunpodHandler.__init__` (translategemma/handler.py:118-121) now types both `_model` and `_processor` as `Any` with the same comment. The pre-existing qwen3tts `Any` typing also surfaces a new `# type: ignore[no-any-return]` marker at line 172 (`return self._model.generate_custom_voice(...)`) introduced in this delta — directly enabled by the `Any` typing. All three handlers carry the same comment text, which is itself a copy-paste smell. The comment references an impl-phase workspace-test detail that has now changed once (and will change again when the workspace test layout is reorganised).
