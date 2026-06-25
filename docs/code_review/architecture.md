@@ -675,14 +675,15 @@ related:
 ### ARCH-015 — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- e123f35
 files:
 - path: src/acheron/shell/step_handler.py
   lines: 31-69
@@ -857,7 +858,7 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
@@ -866,7 +867,7 @@ files:
 - path: src/acheron/core/planner.py
   lines: 92-128
 - path: src/acheron/shell/orchestrator.py
-  lines: 276-281
+  lines: 275-280
 related:
 - CFG-009
 - CORR-026
@@ -969,14 +970,15 @@ related: [ARCH-021, PERF-007]
 ### CFG-009 — `Settings.chars_per_token` is a top-level knob consumed by exactly one function and duplicated in two defaults
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
-fixed_in: []
+fixed_in:
+- e123f35
 files:
 - path: src/acheron/shell/config.py
   lines: 167-169

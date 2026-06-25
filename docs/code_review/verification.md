@@ -242,14 +242,14 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/stores/redis.py
   lines: 332-341
 - path: src/acheron/shell/step_handler.py
-  lines: 113-153
+  lines: 105-144
 - path: tests/integration/test_worker_integration.py
   lines: 280-294
 related: []
@@ -611,12 +611,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: e123f35
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: tests/shell/test_step_handler.py
-    lines: 336-369
+- path: tests/shell/test_step_handler.py
+  lines: 293-325
 related: []
 ```
 
@@ -805,15 +805,18 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
+  commit: e123f35
+  date: '2026-06-24'
 fixed_in: []
 files:
-  - path: tests/core/test_planner.py
-    lines: 209-298
-  - path: src/acheron/core/planner.py
-    lines: 92-128
-related: [CORR-026, ARCH-019, CFG-009]
+- path: tests/core/test_planner.py
+  lines: 209-304
+- path: src/acheron/core/planner.py
+  lines: 92-128
+related:
+- CORR-026
+- ARCH-019
+- CFG-009
 ```
 
 **Issue.** The 9 new tests in `TestValidateChunkingFitsWorkers` cover the function's interior well (within-limit, exceeds-limit for TTS and TRANSLATION, unbounded workers, non-text workers, chars_per_token variants, error-message contents, invalid chars_per_token=0 ValueError, multi-worker check). The 4 most production-relevant boundary cases are missing: (1) the equality case `chunking_max_length == max_input_tokens * chars_per_token` — at `max_input_tokens=2048, chars_per_token=4` this is `chunking_max_length=8192` which yields `estimated_tokens=2048`, the comparison `2048 > 2048` is False, so the function should NOT raise. (2) the first-failing-over case: at the same params, `chunking_max_length=8196` yields `2049 > 2048` and SHOULD raise. (3) `max_input_tokens=0` is a degenerate semantic: with `chunking_max_length < chars_per_token`, `estimated_tokens=0`, `0 > 0` is False, so the function silently permits any non-trivial input against a 0-token worker. (4) empty capabilities tuple `caps=()` — the function iterates zero times and returns without raising; semantically correct but not asserted. None of these are covered. The current tests use `max_input_tokens=2048` and `chunking_max_length=9000` (far over the limit) and never probe the boundary.

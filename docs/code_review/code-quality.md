@@ -143,12 +143,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 360-385
+  lines: 359-384
 related:
 - OBS-004
 ```
@@ -169,12 +169,12 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 196-234
+  lines: 209-228
 related:
 - SEC-008
 - MAINT-007

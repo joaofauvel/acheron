@@ -219,12 +219,12 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 297-385
+  lines: 237-245, 293-295, 299-388
 - path: src/acheron/shell/orchestrator.py
   lines: 235-243, 291-293, 297-385
 - path: src/acheron/shell/orchestrator.py
@@ -275,7 +275,7 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
@@ -284,7 +284,7 @@ files:
 - path: src/acheron/shell/health.py
   lines: 113-152
 - path: src/acheron/shell/step_handler.py
-  lines: '138'
+  lines: '137'
 - path: dashboard/app.py
   lines: 27
 related: []
@@ -595,12 +595,12 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 360-385
+  lines: 362-384
 related:
 - OBS-004
 - SEC-010
@@ -1149,12 +1149,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 277-281
+  lines: 275-280
 related:
 - TEST-015
 - ARCH-019

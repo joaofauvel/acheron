@@ -236,12 +236,12 @@ severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7d4754a
+  commit: e123f35
   date: '2026-06-24'
 fixed_in: []
 files:
 - path: src/acheron/shell/step_handler.py
-  lines: 113-153
+  lines: 105-144
 related: []
 ```
 
