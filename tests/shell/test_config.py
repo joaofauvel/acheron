@@ -136,8 +136,10 @@ providers:
     assert settings.providers.runpod.api_key == "expanded-rp-key"
 
 
-def test_yaml_env_var_unset_expands_to_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """An unset ${VAR} must expand to empty string (falsy → provider not created)."""
+def test_yaml_env_var_unset_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unset ${VAR} must raise (no silent empty-string fallback)."""
+    from acheron.shell.config import UnsetEnvVarError
+
     monkeypatch.delenv("RUNPOD_API_KEY", raising=False)
     yaml_content = """
 providers:
@@ -147,8 +149,50 @@ providers:
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml_content, encoding="utf-8")
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    with pytest.raises(UnsetEnvVarError, match="RUNPOD_API_KEY"):
+        load_settings()
+
+
+def test_yaml_env_var_default_syntax_used_when_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """${VAR:-default} uses the default when the env var is unset."""
+    monkeypatch.delenv("MY_VAR", raising=False)
+    yaml_content = """
+orchestrator:
+  registration_token: "${MY_VAR:-fallback}"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
-    assert settings.providers.runpod.api_key == ""
+    assert settings.orchestrator.registration_token == "fallback"
+
+
+def test_yaml_env_var_default_syntax_unused_when_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """${VAR:-default} expands to the env value when the var is set."""
+    monkeypatch.setenv("MY_VAR", "actual")
+    yaml_content = """
+orchestrator:
+  registration_token: "${MY_VAR:-fallback}"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.orchestrator.registration_token == "actual"
+
+
+def test_yaml_env_var_lowercase_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """${my_var} (lowercase) is a valid reference and expands when set."""
+    monkeypatch.setenv("my_var", "lower-value")
+    yaml_content = """
+orchestrator:
+  registration_token: "${my_var}"
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml_content, encoding="utf-8")
+    monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
+    settings = load_settings()
+    assert settings.orchestrator.registration_token == "lower-value"
 
 
 def test_yaml_env_var_expansion_nested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

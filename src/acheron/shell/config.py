@@ -12,13 +12,34 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 _logger = logging.getLogger(__name__)
 
-_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+class UnsetEnvVarError(ValueError):
+    """Raised when a ${VAR} reference in config YAML resolves to an unset env var.
+
+    ${VAR:-default} syntax is the supported escape hatch for optional vars.
+    """
+
+
+def _resolve_env_var(match: re.Match[str]) -> str:
+    """Resolve a single ${VAR} or ${VAR:-default} reference against os.environ."""
+    name, default = match.group(1), match.group(2)
+    if name in os.environ:
+        return os.environ[name]
+    if default is not None:
+        return default
+    msg = (
+        f"Config references ${{{name}}} but the env var is not set. "
+        f"Set {name} or use ${{{name}:-<default>}} to provide a fallback."
+    )
+    raise UnsetEnvVarError(msg)
 
 
 def _expand_env_vars(value: Any) -> Any:  # noqa: ANN401
     """Recursively expand ${VAR} references in string values from os.environ."""
     if isinstance(value, str):
-        return _ENV_VAR_PATTERN.sub(lambda m: os.environ.get(m.group(1), ""), value)
+        return _ENV_VAR_PATTERN.sub(_resolve_env_var, value)
     if isinstance(value, dict):
         return {k: _expand_env_vars(v) for k, v in value.items()}
     if isinstance(value, list):
