@@ -94,7 +94,6 @@ class Orchestrator:
         self._handler = handler or create_step_handler(
             registry,
             local_handlers=self._local_handlers,
-            step_cache=self._step_cache,
             data_dir=self._settings.orchestrator.data_dir,
         )
         self._job_store = job_store if job_store is not None else create_job_store()

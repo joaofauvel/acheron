@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -272,29 +271,11 @@ class TestStepHandler:
         assert factory_calls == ["tts-1"]
 
 
-class TestStepCachePlumbing:
-    """``step_cache`` flows from the orchestrator through ``create_step_handler``
-    to ``default_worker_factory`` and finally to ``HttpWorker``."""
+class TestHttpWorkerStepCache:
+    """ARCH-015: ``HttpWorker`` constructs its own ``StepCache`` from ``data_dir``
+    when the factory does not pass one. The factory is no longer the seam."""
 
-    def test_default_worker_factory_threads_step_cache(self) -> None:
-        """``default_worker_factory(reg, step_cache=cache)`` constructs an
-        ``HttpWorker`` whose ``_step_cache`` is the same instance."""
-        from acheron.shell.registry import RegisteredWorker
-
-        reg = RegisteredWorker(
-            worker_id="tts-x",
-            endpoint="http://worker:8000",
-            transport="http",
-            capabilities=_tts_caps(),
-        )
-        cache = StepCache("/tmp/acheron-test-step-cache")
-        worker = default_worker_factory(reg, step_cache=cache, data_dir=_TEST_DATA_DIR)
-        assert isinstance(worker, HttpWorker)
-        assert worker._step_cache is cache  # noqa: SLF001
-
-    def test_default_worker_factory_default_constructs_step_cache(self, tmp_path: object) -> None:
-        """When ``step_cache`` is not provided, ``HttpWorker`` constructs its
-        own ``StepCache`` from the passed ``data_dir``."""
+    def test_default_worker_factory_produces_http_worker_with_default_step_cache(self) -> None:
         from acheron.shell.registry import RegisteredWorker
 
         reg = RegisteredWorker(
@@ -306,46 +287,20 @@ class TestStepCachePlumbing:
         worker = default_worker_factory(reg, data_dir=_TEST_DATA_DIR)
         assert isinstance(worker, HttpWorker)
         assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
+        assert worker._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
 
     @pytest.mark.asyncio
-    async def test_create_step_handler_default_factory_receives_step_cache(self, tmp_path: object) -> None:
-        """The default factory inside ``create_step_handler`` receives the
-        caller's ``step_cache`` (via the closure)."""
-        from acheron.shell.step_handler import WorkerFactory
+    async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(self) -> None:
+        """The default factory lambda in ``create_step_handler`` (no
+        ``worker_factory`` arg) must produce an ``HttpWorker`` whose
+        ``_step_cache`` is the worker's own default (constructed from
+        ``data_dir``). The orchestrator no longer threads ``step_cache``
+        through the factory (ARCH-015)."""
+        import acheron.shell.step_handler as sh
 
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
-        cache = StepCache("/tmp/acheron-test-step-cache-2")
-        captured: dict = {}
-
-        def _capture_factory(registered: RegisteredWorker) -> object:
-            worker = default_worker_factory(registered, step_cache=cache, data_dir=_TEST_DATA_DIR)
-            captured["worker"] = worker
-            # Replace execute with the local echo so the test doesn't hit the network.
-            worker.execute = _echo_job_result  # type: ignore[method-assign]
-            return worker
-
-        handler = create_step_handler(
-            reg,
-            worker_factory=cast("WorkerFactory", _capture_factory),
-            step_cache=cache,
-            data_dir=_TEST_DATA_DIR,
-        )
-        plan = _make_plan()
-        await handler(plan.steps[0], plan)
-        assert isinstance(captured["worker"], HttpWorker)
-        assert captured["worker"]._step_cache is cache  # noqa: SLF001
-
-    @pytest.mark.asyncio
-    async def test_create_step_handler_default_factory_lambda_threads_cache(self, tmp_path: object) -> None:
-        """The DEFAULT factory lambda inside ``create_step_handler`` (no
-        ``worker_factory`` arg) must capture the caller's ``step_cache``
-        closure and pass it to ``default_worker_factory`` → ``HttpWorker``."""
-        reg = InMemoryWorkerStore()
-        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
-        cache = StepCache("/tmp/acheron-test-step-cache-3")
-        handler = create_step_handler(reg, step_cache=cache, data_dir=_TEST_DATA_DIR)
-        # Capture the worker the default-factory lambda produced.
+        handler = create_step_handler(reg, data_dir=_TEST_DATA_DIR)
         original_default = default_worker_factory
         captured: dict = {}
 
@@ -353,22 +308,18 @@ class TestStepCachePlumbing:
             registered: RegisteredWorker,
             local_handlers: dict[str, LocalJobHandler] | None = None,
             *,
-            step_cache: StepCache | None = None,
             data_dir: Path | str = _TEST_DATA_DIR,
         ) -> object:
-            worker = original_default(registered, local_handlers, step_cache=step_cache, data_dir=data_dir)
+            worker = original_default(registered, local_handlers, data_dir=data_dir)
             captured["worker"] = worker
             worker.execute = _echo_job_result  # type: ignore[method-assign]
             return worker
 
-        # Patch the default_worker_factory used by the lambda closure.
-        import acheron.shell.step_handler as sh
-
         sh.default_worker_factory = _capturing_default  # type: ignore[assignment]
         try:
-            plan = _make_plan()
-            await handler(plan.steps[0], plan)
+            await handler(_make_plan().steps[0], _make_plan())
         finally:
             sh.default_worker_factory = original_default
         assert isinstance(captured["worker"], HttpWorker)
-        assert captured["worker"]._step_cache is cache  # noqa: SLF001
+        assert isinstance(captured["worker"]._step_cache, StepCache)  # noqa: SLF001
+        assert captured["worker"]._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
