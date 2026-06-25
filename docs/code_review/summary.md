@@ -59,6 +59,9 @@ M-effort open stories (still in the Round 2 design but not yet landed):
 21. SEC-005 — Job submission/listing/capabilities routes require no authentication [low, M] — `operations.md` *(B24)*
 22. TYPE-008 — WorkerSDK has 14+ `Any`/`dict[str, Any]` annotations in 5 files [low, M] — `code-quality.md` *(B17)*
 23. TYPE-010 — All three RunPod worker handlers type `self._model`/`self._processor` as `Any` with a stale-prone impl-phase comment — third instance of TYPE-009 [low, M] — `code-quality.md` *(B17)*
+24. CORR-012 — Health monitor trusts provider `BOOTING` status without bounding duration — step handler treats BOOTING as always-healthy [low, M] — `correctness.md` *(B10)*
+25. TYPE-006 — `grpc.py` accumulates 5 `# type: ignore[...]` markers for the new proto `Artifact` oneof; needs a local `.pyi` stub [low, M] — `code-quality.md` *(B17)*
+26. TYPE-007 — `RunPodForwarderHandler.__init__` calls `phantom_handler(settings)` under `# type: ignore[call-arg]`; needs a typed `RunPodHandlerProtocol` factory return [low, M] — `code-quality.md` *(B17)*
 
 ## Quick wins
 
@@ -78,7 +81,7 @@ S-effort open stories (low-risk, short fixes):
 12. PERF-006 — Edge `/execute` buffers entire multipart body in memory; O(n²) append for `FileArtifact` streams [medium, S] — `operations.md` *(B11)*
 13. PERF-007 — Per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse) [medium, S] — `operations.md` *(B10)*
 14. PKG-003 — `Dockerfile:39` (certs-init stage) pins `cryptography~=49.0` while `pyproject.toml:168` pins `cryptography~=46.0` [medium, S] — `surface.md` *(B23)*
-15. CORR-012 — Health monitor trusts provider `BOOTING` status without bounding duration [low, S] — `correctness.md` *(B10)*
+15. CORR-012 — Health monitor trusts provider `BOOTING` status without bounding duration [low, M] — `correctness.md` *(B10)*
 16. CORR-031 — `HttpWorker.health` uses deprecated Python 2 `except E1, E2:` syntax [low, S] — `correctness.md` *(B19)*
 17. DATA-007 — `_runpod_client` `output.artifacts`-not-list path and `FileArtifact` stream edge cases lack direct tests [low, S] — `verification.md` *(B20)*
 18. MAINT-005 — `Orchestrator._execute` duplicates `PlanResult` construction across adjacent exception handlers [low, S] — `code-quality.md` *(B19)*
