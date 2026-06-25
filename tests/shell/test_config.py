@@ -13,7 +13,7 @@ def test_default_settings() -> None:
     assert settings.workers.chunking.max_chunk_length == 250
     assert settings.workers.packaging.bitrate == "128k"
     assert settings.workers.packaging.max_fmt_chunk_length == 65536
-    assert settings.chars_per_token == 4
+    assert settings.chars_per_token == 1
 
 
 def test_chars_per_token_override_from_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

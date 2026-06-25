@@ -138,7 +138,9 @@ class Settings(BaseSettings):
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     workers: WorkerSettings = Field(default_factory=WorkerSettings)
     providers: ProvidersSettings = Field(default_factory=ProvidersSettings)
-    chars_per_token: int = Field(default=4)  # chars-per-token estimate used by validate_chunking_fits_workers
+    chars_per_token: int = Field(
+        default=1
+    )  # chars-per-token estimate used by validate_chunking_fits_workers; 1 is the CJK worst case
 
     @classmethod
     def settings_customise_sources(

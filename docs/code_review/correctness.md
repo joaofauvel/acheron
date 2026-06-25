@@ -261,8 +261,8 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: pending
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/config.py
@@ -288,8 +288,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: pending
+  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/shell/config.py
@@ -678,19 +678,21 @@ No numerical correctness findings. Cost/duration aggregation is simple addition 
 ### CORR-026 — `chars_per_token=4` default under-estimates CJK tokens; docstring claim is inverted
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: 1fd0c3c
   date: 2026-06-24
-fixed_in: []
+fixed_in: [1fd0c3c]
 files:
   - path: src/acheron/core/planner.py
-    lines: 92-128
+    lines: 92-130
   - path: src/acheron/shell/config.py
-    lines: 141
+    lines: 141-143
+  - path: tests/core/test_planner.py
+    lines: 273-289
 related: [CFG-009, CORR-029]
 ```
 

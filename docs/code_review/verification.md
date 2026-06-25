@@ -802,12 +802,12 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+  commit: pending
   date: 2026-06-24
 fixed_in: []
 files:
   - path: tests/core/test_planner.py
-    lines: 209-280
+    lines: 209-298
   - path: src/acheron/core/planner.py
     lines: 92-128
 related: [CORR-026, ARCH-019, CFG-009]

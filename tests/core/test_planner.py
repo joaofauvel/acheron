@@ -270,6 +270,24 @@ class TestValidateChunkingFitsWorkers:
         with pytest.raises(ValueError, match="chars_per_token must be > 0"):
             validate_chunking_fits_workers(caps, chunking_max_length=100, chars_per_token=0)
 
+    def test_default_chars_per_token_is_one_for_cjk_safety(self) -> None:
+        """The default must be conservative across all scripts (1 char/token).
+
+        4000 chars at the old default of 4 chars/token = 1000 estimated tokens,
+        which the previous default let through against a 2048-token worker.
+        CJK content (1 char/token) would actually need 4000 tokens and OOM.
+        """
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        with pytest.raises(ChunkingTooLongForWorkerError, match="max_input_tokens=2048"):
+            validate_chunking_fits_workers(caps, chunking_max_length=4000)
+
+    def test_cjk_conservative_bound_with_explicit_one(self) -> None:
+        """CJK path: 1 char/token. max_chunk_length=1000 < 2048 → passes; 3000 → fails."""
+        caps = (_text_input_tts_caps(max_input_tokens=2048),)
+        validate_chunking_fits_workers(caps, chunking_max_length=1000, chars_per_token=1)
+        with pytest.raises(ChunkingTooLongForWorkerError):
+            validate_chunking_fits_workers(caps, chunking_max_length=3000, chars_per_token=1)
+
     def test_all_workers_checked_not_just_first(self) -> None:
         # Two TTS workers: the first has plenty of headroom, the second is too small.
         caps = (
