@@ -132,6 +132,34 @@ class TestParseMultipartPartsBoundary:
             )
 
 
+class TestParseMultipartPartsNoMetrics:
+    """DATA-006 — response with no metrics part falls through to default ``JobMetrics``."""
+
+    def test_no_metrics_part_yields_default_zero_duration(self) -> None:
+        body = _build_body(
+            [
+                ("ch1.txt", "text/plain", b"hello", None),
+            ]
+        )
+        _, metrics = _parse_multipart_parts(
+            f"multipart/mixed; boundary={_BOUNDARY}",
+            body,
+        )
+        assert metrics.duration_seconds == 0.0
+        assert metrics.cost_basis is None
+
+
+class TestParseMultipartPartsMalformed:
+    """DATA-008 — malformed body raises ``WorkerError``."""
+
+    def test_non_multipart_body_raises_worker_error(self) -> None:
+        with pytest.raises(WorkerError, match="not multipart"):
+            _parse_multipart_parts(
+                f"multipart/mixed; boundary={_BOUNDARY}",
+                b"this is not actually a multipart body",
+            )
+
+
 class TestExecuteWithUpstreamInputDuplicateFile:
     """CORR-027 — multi-file upstream outputs raise ``WorkerError`` instead of silent truncation."""
 

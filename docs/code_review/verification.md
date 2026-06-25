@@ -456,21 +456,21 @@ related: [DATA-002]
 ### DATA-006 — `HttpWorker._parse_multipart` edge cases (no metrics part, missing boundary, non-multipart body) are not covered
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 183-234
+  - path: src/acheron/shell/transports/_multipart.py
+    lines: 29-99
+  - path: tests/shell/transports/test_http_multipart.py
+    lines: 135-160
   - path: tests/shell/transports/test_asr_multipart.py
     lines: 1-233
-  - path: tests/shell/test_http_worker.py
-    lines: 1-200, 203-267
 related: [CORR-013, CORR-028, CORR-031]
 ```
 
@@ -660,21 +660,21 @@ related: [CORR-013]
 ### DATA-008 — `HttpWorker._parse_multipart` response-side edge cases (no metrics part, missing boundary, non-multipart body) still uncovered after Layer 8b test additions
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: [pending]
 files:
-  - path: src/acheron/shell/transports/http.py
-    lines: 183-234
+  - path: src/acheron/shell/transports/_multipart.py
+    lines: 29-99
+  - path: tests/shell/transports/test_http_multipart.py
+    lines: 152-160
   - path: tests/shell/transports/test_asr_multipart.py
     lines: 1-233
-  - path: tests/shell/test_http_worker.py
-    lines: 135-200, 203-267
 related: [DATA-006, CORR-013, CORR-028, CORR-031]
 ```
 
