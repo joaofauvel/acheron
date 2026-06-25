@@ -231,17 +231,24 @@ related: []
 ### CORR-009 — Step handler caches worker list and worker instances across steps and plans
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: 3839d7f
+  date: 2026-06-25
+fixed_in:
+- 3839d7f
 files:
 - path: src/acheron/shell/step_handler.py
-  lines: 105-144
+  lines: 80-179
+- path: src/acheron/shell/orchestrator.py
+  lines: 287-318
+- path: tests/shell/test_step_handler.py
+  lines: 273-302
+- path: tests/shell/test_orchestrator.py
+  lines: 79-105
 related: []
 ```
 
@@ -426,19 +433,20 @@ related:
 ### CORR-016 — `worker_sdk` package docstring falsely claims it is GPU-SDK-free at import time
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: 45599f0
+  date: 2026-06-25
+fixed_in:
+- 45599f0
 files:
-  - path: src/acheron/worker_sdk/__init__.py
-    lines: 1-8
-  - path: src/acheron/worker_sdk/__init__.py
-    lines: 12
+- path: src/acheron/worker_sdk/__init__.py
+  lines: 1-8
+- path: src/acheron/worker_sdk/cloud.py
+  lines: 1-23
 related: [ARCH-011]
 ```
 

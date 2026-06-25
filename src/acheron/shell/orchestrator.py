@@ -28,7 +28,7 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.core.planner import compile_plan, validate_chunking_fits_workers
-from acheron.shell.cache import StepCache
+from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.executors import create_executor
@@ -85,7 +85,7 @@ class Orchestrator:
         handler: StepHandler | None = None,
         *,
         job_store: JobStore | None = None,
-        step_cache: StepCache | None = None,
+        step_cache: StepCache | InMemoryStepCache | None = None,
         settings: Settings | None = None,
     ) -> None:
         if settings is None:
@@ -95,7 +95,7 @@ class Orchestrator:
             self._settings = settings
         self._registry = registry
         self._cache = cache
-        self._step_cache = step_cache if step_cache is not None else StepCache(self._settings.orchestrator.data_dir)
+        self._step_cache = step_cache if step_cache is not None else InMemoryStepCache()
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(
             registry,
@@ -285,6 +285,7 @@ class Orchestrator:
             chars_per_token=self._settings.chars_per_token,
         )
         self._cache.save_plan(plan)
+        self._invalidate_handler_cache()
         logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
         tracked = TrackedJob(
@@ -306,6 +307,18 @@ class Orchestrator:
         """Run the plan executor and update job status."""
         with bind_job_id(tracked.job_id):
             await self._run_execution(tracked)
+
+    def _invalidate_handler_cache(self) -> None:
+        """Invalidate the step handler's worker-instance cache, if it exposes one.
+
+        The default :class:`CachingStepHandler` pools worker instances across
+        steps; we drop the pool at the start of each new plan so a worker
+        re-registration, removal, or endpoint change is reflected on the next
+        dispatch.
+        """
+        invalidate = getattr(self._handler, "_invalidate_worker_cache", None)
+        if invalidate is not None:
+            invalidate()
 
     async def _run_execution(self, tracked: TrackedJob) -> None:
         db_job = await self._job_store.get(tracked.job_id)

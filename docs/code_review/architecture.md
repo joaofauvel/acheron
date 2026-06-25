@@ -220,19 +220,26 @@ related: [CORR-008]
 ### ARCH-008 — Orchestrator.__init__ still derives default StepCache from PlanCache.data_dir
 
 ```yaml
-status: stale
+status: fixed
 severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: 8b56c1b
+  date: 2026-06-25
+fixed_in:
+- 8b56c1b
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 75-108
+  lines: 81-99
 - path: src/acheron/shell/api/app.py
   lines: 46-49
+- path: src/acheron/shell/cache.py
+  lines: 132-180
+- path: tests/shell/test_orchestrator.py
+  lines: 65-77
+- path: tests/shell/test_data_dir.py
+  lines: 30-65
 related:
 - ARCH-006
 - CFG-004
@@ -276,21 +283,24 @@ related: []
 ### ARCH-010 — HealthProviders container is a no-behavior wrapper over `dict[str, HealthProvider]`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: 162bf11
+  date: 2026-06-25
+fixed_in:
+- 162bf11
 files:
 - path: src/acheron/shell/health_providers.py
-  lines: 114-122
+  lines: 113-122
 - path: src/acheron/shell/health.py
-  lines: 77-91
-- path: src/acheron/shell/orchestrator.py
-  lines: 103-108
+  lines: 77-92
+- path: tests/shell/test_health_providers.py
+  lines: 166-174
+- path: tests/shell/test_health_monitor.py
+  lines: 214-312
 related: []
 ```
 
@@ -366,19 +376,20 @@ related:
 ### ARCH-013 — `transports/grpc.py` and `transports/http.py` both duplicate the `data_dir` env-var fallback to `ACHERON_DATA_DIR`
 
 ```yaml
-status: stale
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
   commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  date: 2026-06-25
+fixed_in:
+- 7d4754a
 files:
 - path: src/acheron/shell/transports/grpc.py
-  lines: 42-53
+  lines: 45-54
 - path: src/acheron/shell/transports/http.py
-  lines: 60-62
+  lines: 53-64
 related:
 - CFG-006
 ```
@@ -708,23 +719,24 @@ related:
 ### ARCH-016 — `workers/_shared` is a module (file) co-located with a same-name test directory and an out-of-workspace `pyproject`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-  - path: workers/_shared.py
-    lines: 1-31
-  - path: workers/_shared/pyproject.toml
-    lines: 1-2
-  - path: workers/_shared/tests/test_safe_chapter_id.py
-    lines: 1-55
-  - path: pyproject.toml
-    lines: 195
+- path: workers/_shared_utils.py
+  lines: 1-31
+- path: workers/_shared/pyproject.toml
+  lines: 1-2
+- path: workers/_shared/tests/test_safe_chapter_id.py
+  lines: 1-55
+- path: pyproject.toml
+  lines: 195
 related: []
 ```
 

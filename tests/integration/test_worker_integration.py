@@ -138,7 +138,7 @@ class TestWorkerIntegrationErrorPath:
         """
         import struct
 
-        from acheron.shell.cache import PlanCache
+        from acheron.shell.cache import PlanCache, StepCache
         from acheron.shell.stores.memory import InMemoryWorkerStore
 
         def _dummy_wav(path: Path) -> bytes:
@@ -187,7 +187,7 @@ class TestWorkerIntegrationErrorPath:
                 metrics=JobMetrics(duration_seconds=0.0),
             )
 
-        orch = Orchestrator(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path))
+        orch = Orchestrator(registry=InMemoryWorkerStore(), cache=PlanCache(tmp_path), step_cache=StepCache(tmp_path))
         await orch.start()
         await orch.register_worker(
             "trans-local",

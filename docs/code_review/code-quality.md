@@ -869,21 +869,18 @@ related: []
 ### TYPE-009 — `GraniteSpeechRunpodHandler` types `self._model` and `self._processor` as `Any`; 2-line comment is a stale-prone impl-phase justification
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: 45599f0
+  date: 2026-06-25
+fixed_in:
+- 45599f0
 files:
 - path: workers/granite_speech/handler.py
-  lines: 39-42
-- path: workers/granite_speech/handler.py
-  lines: 64-80
-- path: workers/granite_speech/handler.py
-  lines: 127-145
+  lines: 14-58
 related:
 - TYPE-008
 ```

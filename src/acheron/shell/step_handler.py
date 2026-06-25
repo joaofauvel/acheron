@@ -77,40 +77,40 @@ def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str,
             return True
 
 
-def create_step_handler(
-    registry: WorkerStore,
-    worker_factory: WorkerFactory | None = None,
-    local_handlers: dict[str, LocalJobHandler] | None = None,
-    *,
-    data_dir: Path | str,
-) -> StepHandler:
-    """Create a step handler that dispatches to registered workers.
+class CachingStepHandler:
+    """Step handler that caches the worker list and worker instances per plan.
 
-    ``local_handlers`` maps worker_id to its in-process handler. Required when
-    the registry contains local workers (transport == "local").
-
-    ``data_dir`` is the orchestrator's effective data dir and is forwarded to
-    the transports so they don't need to read env vars. ``HttpWorker``
-    constructs its own ``StepCache`` from ``data_dir``.
-
-    Caches ``registry.list_all()`` per plan (plan_id) and reuses ``Worker``
-    instances per worker_id across steps to avoid redundant registry round-trips
-    and gRPC channel / HTTP connection churn.
+    The handler is a callable: ``await handler(step, plan) -> JobResult``. The
+    orchestrator invalidates the cache on ``submit_job`` and on task cancellation
+    via :meth:`_invalidate_worker_cache` so a worker that was re-registered or
+    removed between plans is picked up on the next dispatch.
     """
-    factory = worker_factory or (lambda reg: default_worker_factory(reg, local_handlers, data_dir=data_dir))
-    _cached_workers: tuple[RegisteredWorker, ...] | None = None
-    _cached_plan_id: str | None = None
-    _worker_instances: dict[str, Worker] = {}
 
-    async def handler(step: PlanStep, plan: Plan) -> JobResult:
-        nonlocal _cached_workers, _cached_plan_id
+    def __init__(
+        self,
+        registry: WorkerStore,
+        worker_factory: WorkerFactory | None = None,
+        local_handlers: dict[str, LocalJobHandler] | None = None,
+        *,
+        data_dir: Path | str,
+    ) -> None:
+        self._registry = registry
+        self._data_dir = data_dir
+        self._factory = worker_factory or (
+            lambda reg: default_worker_factory(reg, local_handlers, data_dir=data_dir)
+        )
+        self._cached_workers: tuple[RegisteredWorker, ...] | None = None
+        self._cached_plan_id: str | None = None
+        self._worker_instances: dict[str, Worker] = {}
+
+    async def __call__(self, step: PlanStep, plan: Plan) -> JobResult:
         src = plan.source_language
         dst = plan.target_language
 
-        if _cached_workers is None or plan.plan_id != _cached_plan_id:
-            _cached_workers = await registry.list_all()
-            _cached_plan_id = plan.plan_id
-        workers = _cached_workers
+        if self._cached_workers is None or plan.plan_id != self._cached_plan_id:
+            self._cached_workers = await self._registry.list_all()
+            self._cached_plan_id = plan.plan_id
+        workers = self._cached_workers
 
         selected: RegisteredWorker | None = None
         for w in workers:
@@ -135,10 +135,47 @@ def create_step_handler(
         )
 
         logger.info("Dispatching %s to %s", step.step_id, selected.worker_id)
-        worker_instance = _worker_instances.get(selected.worker_id)
+        worker_instance = self._worker_instances.get(selected.worker_id)
         if worker_instance is None:
-            worker_instance = factory(selected)
-            _worker_instances[selected.worker_id] = worker_instance
+            worker_instance = self._factory(selected)
+            self._worker_instances[selected.worker_id] = worker_instance
         return await worker_instance.execute(job)
 
-    return handler
+    def _invalidate_worker_cache(self) -> None:
+        """Drop both the worker-list snapshot and the worker-instance pool.
+
+        The orchestrator calls this on ``submit_job`` and on task cancellation
+        so a worker re-registration, removal, or endpoint change is reflected
+        on the next dispatch.
+        """
+        self._cached_workers = None
+        self._cached_plan_id = None
+        self._worker_instances.clear()
+
+
+def create_step_handler(
+    registry: WorkerStore,
+    worker_factory: WorkerFactory | None = None,
+    local_handlers: dict[str, LocalJobHandler] | None = None,
+    *,
+    data_dir: Path | str,
+) -> StepHandler:
+    """Create a step handler that dispatches to registered workers.
+
+    ``local_handlers`` maps worker_id to its in-process handler. Required when
+    the registry contains local workers (transport == "local").
+
+    ``data_dir`` is the orchestrator's effective data dir and is forwarded to
+    the transports so they don't need to read env vars. ``HttpWorker``
+    constructs its own ``StepCache`` from ``data_dir``.
+
+    Caches ``registry.list_all()`` per plan (plan_id) and reuses ``Worker``
+    instances per worker_id across steps to avoid redundant registry round-trips
+    and gRPC channel / HTTP connection churn.
+    """
+    return CachingStepHandler(
+        registry,
+        worker_factory=worker_factory,
+        local_handlers=local_handlers,
+        data_dir=data_dir,
+    )
