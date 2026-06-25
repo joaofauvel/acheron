@@ -271,14 +271,15 @@ related: []
 ### OBS-003 — Logs are free-form with no structured fields or trace correlation
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 263-270
@@ -596,14 +597,15 @@ related: [OBS-007]
 ### SEC-006 — Raw exception strings exposed in PlanResult.errors via OBS-004 fix
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 362-384
@@ -701,19 +703,20 @@ related: [SEC-001, SEC-008, SEC-011]
 ### SEC-010 — Worker `last_error` exposed via unauthenticated /workers endpoint (info disclosure)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
-  - path: src/acheron/shell/api/routes/workers.py
-    lines: 65-71
-  - path: src/acheron/shell/health.py
-    lines: 44-64
+- path: src/acheron/shell/api/routes/workers.py
+  lines: 65-71
+- path: src/acheron/shell/health.py
+  lines: 44-64
 related: [SEC-005, SEC-006, OBS-005]
 ```
 
@@ -756,14 +759,15 @@ related: [SEC-008, SEC-009, SEC-022, DOC-003]
 ### SEC-012 — Edge `/execute` returns raw `str(exc)` in 500 body, exposing internal exception detail to the orchestrator (extension of SEC-006)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 286-304

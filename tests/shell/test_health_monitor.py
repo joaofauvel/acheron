@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import grpc
 import grpc.aio
+import httpx
 import pytest
 import pytest_asyncio
 from grpc.health.v1 import health, health_pb2, health_pb2_grpc
@@ -197,9 +198,11 @@ class _FakeProvider(HealthProvider):
 class _RaisingProvider(HealthProvider):
     """Fake HealthProvider that always raises."""
 
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
     async def check_status(self, endpoint_id: str) -> WorkerStatus:
-        msg = "upstream broken"
-        raise RuntimeError(msg)
+        raise self._exc
 
 
 class TestHealthMonitorProviderIntegration:
@@ -281,7 +284,7 @@ class TestHealthMonitorProviderIntegration:
     async def test_provider_raises_treated_as_offline(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
-        providers = HealthProviders({"runpod": _RaisingProvider()})
+        providers = HealthProviders({"runpod": _RaisingProvider(httpx.HTTPError("upstream broken"))})
         health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
         await monitor.start()
@@ -297,4 +300,19 @@ class TestHealthMonitorProviderIntegration:
             )
 
         await _poll_for(_offline_with_error)
+        await monitor.stop()
+
+    @pytest.mark.asyncio
+    async def test_provider_runtime_error_propagates(self) -> None:
+        """Unexpected exceptions from the provider (e.g. AttributeError from a
+        refactor) must propagate so the bug surfaces, not be masked as a
+        transient platform error."""
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = HealthProviders({"runpod": _RaisingProvider(RuntimeError("provider bug"))})
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
+        await monitor.start()
+        with pytest.raises(RuntimeError, match="provider bug"):
+            await monitor._check_all()  # noqa: SLF001
         await monitor.stop()

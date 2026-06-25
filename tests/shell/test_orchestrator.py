@@ -472,6 +472,43 @@ class TestOrchestrator:
         assert handler_calls == 0
 
     @pytest.mark.asyncio
+    async def test_plan_result_errors_sanitised_on_handler_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When the executor itself raises, the persisted PlanResult.errors
+        must not contain traceback fragments or file paths from the exception."""
+        from acheron.core.interfaces import Executor
+        from acheron.core.models import PlanResult
+        from acheron.shell import orchestrator as orch_mod
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("en"))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps("en", "en"))
+
+        async def good_handler(step: PlanStep, plan: Plan) -> JobResult:
+            return await _success_handler(step, plan)
+
+        class _BoomExecutor(Executor):
+            async def run(self, plan: Plan) -> PlanResult:
+                msg = "secret stuff\n  File '/etc/passwd'\nTraceback (most recent call last):"
+                raise RuntimeError(msg)
+
+        monkeypatch.setattr(orch_mod, "create_executor", lambda *_a, **_kw: _BoomExecutor())
+        orch = Orchestrator(reg, PlanCache(tmp_path), good_handler)
+        await orch.start()
+
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
+        tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)
+        tasks = list(orch._tasks)  # noqa: SLF001
+        await asyncio.gather(*tasks)
+
+        assert tracked.status == PlanStatus.FAILED
+        assert tracked.result is not None
+        assert tracked.result.errors == ("RuntimeError: secret stuff",)
+
+    @pytest.mark.asyncio
     async def test_orchestrator_generates_and_persists_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from acheron.shell.config import OrchestratorSettings, Settings
 

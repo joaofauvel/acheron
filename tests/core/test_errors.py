@@ -78,3 +78,46 @@ class TestPipelineError:
         from acheron.core.errors import PipelineError, WorkerError
 
         assert not issubclass(PipelineError, WorkerError)
+
+
+class TestSanitiseExcMessage:
+    def test_formats_class_name_with_first_line(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        assert sanitise_exc_message(RuntimeError("boom")) == "RuntimeError: boom"
+
+    def test_strips_traceback_file_lines(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        exc = RuntimeError("secret stuff\n  File '/etc/passwd'\nTraceback (most recent call last):")
+        assert sanitise_exc_message(exc) == "RuntimeError: secret stuff"
+
+    def test_strips_leading_blank_lines(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        exc = RuntimeError("\n\n  File '/etc/passwd'\nactual message")
+        assert sanitise_exc_message(exc) == "RuntimeError: actual message"
+
+    def test_empty_message_returns_placeholder(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        assert sanitise_exc_message(RuntimeError("")) == "RuntimeError: <no message>"
+
+    def test_uses_actual_subclass_name(self) -> None:
+        from acheron.core.errors import WorkerError, sanitise_exc_message
+
+        assert sanitise_exc_message(WorkerError("timeout")) == "WorkerError: timeout"
+
+    def test_strips_credential_pattern(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        exc = RuntimeError("DB connect failed password=foo at /runpod-volume")
+        assert sanitise_exc_message(exc) == "RuntimeError: DB connect failed password=<redacted> at /runpod-volume"
+
+    def test_strips_multiple_credential_variants(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        exc = RuntimeError("auth api_key=abc123 token=xyz")
+        result = sanitise_exc_message(exc)
+        assert "abc123" not in result
+        assert "xyz" not in result

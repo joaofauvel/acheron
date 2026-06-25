@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
-from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
+from acheron.shell.api.deps import AuthorizedDep, OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import (
     WorkerListResponse,
     WorkerRegistrationRequest,
@@ -54,8 +54,14 @@ async def register_worker(
 
 
 @router.get("", response_model=WorkerListResponse)
-async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
-    """List all registered workers."""
+async def list_workers(orch: OrchestratorDep, authorized: AuthorizedDep) -> WorkerListResponse:
+    """List all registered workers.
+
+    ``last_error`` is the raw health-probe failure message; it can embed
+    internal IPs / ports / DNS detail (see SEC-010). It is only returned to
+    callers that prove authority over the registration token; unauthenticated
+    callers see ``last_error=None``.
+    """
     workers = await orch.list_workers()
     return WorkerListResponse(
         workers=[
@@ -66,7 +72,7 @@ async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
                 worker_type=w.capabilities.worker_type.value,
                 consecutive_failures=w.consecutive_failures,
                 status=w.status,
-                last_error=w.last_error,
+                last_error=w.last_error if authorized else None,
             )
             for w in workers
         ]

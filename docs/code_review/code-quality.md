@@ -522,17 +522,18 @@ related: []
 ### EXC-003 — HealthMonitor._handle_failure catches bare `Exception` from the platform provider; recovery should live inside the provider contract
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/health.py
-  lines: 139-145
+  lines: 139-148
 - path: src/acheron/shell/health_providers.py
   lines: 52-60, 90-98
 - path: src/acheron/shell/health_providers.py

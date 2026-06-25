@@ -72,6 +72,36 @@ class TestWorkerRoutes:
         assert data["status"] == "healthy"
         assert data["last_error"] is None
 
+    @pytest.mark.asyncio
+    async def test_list_workers_unauthenticated_scrubs_last_error(self, client_with_token: AsyncClient) -> None:
+        """SEC-010: an unauthenticated GET /workers must not return
+        ``last_error`` (it can embed internal IPs / ports / DNS detail)."""
+        await client_with_token.post(
+            "/workers",
+            json=_WORKER_PAYLOAD,
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+        response = await client_with_token.get("/workers")
+        assert response.status_code == 200
+        for w in response.json()["workers"]:
+            assert w["last_error"] is None
+
+    @pytest.mark.asyncio
+    async def test_list_workers_authenticated_includes_last_error(self, client_with_token: AsyncClient) -> None:
+        """SEC-010: with a valid registration token, ``last_error`` is returned."""
+        await client_with_token.post(
+            "/workers",
+            json=_WORKER_PAYLOAD,
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+        response = await client_with_token.get(
+            "/workers",
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+        assert response.status_code == 200
+        for w in response.json()["workers"]:
+            assert "last_error" in w
+
 
 class TestRegistrationSecurity:
     @pytest.mark.asyncio

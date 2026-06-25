@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from acheron.core.errors import WorkerError
+from acheron.core.errors import WorkerError, sanitise_exc_message
 from acheron.core.models import (
     Job,
     JobMetrics,
@@ -296,7 +296,7 @@ class EdgeApp:
                 status=JobStatus.FAILED,
                 outputs=(),
                 metrics=JobMetrics(duration_seconds=duration, cost_basis=None),
-                error=str(exc),
+                error=sanitise_exc_message(exc),
             )
             return JSONResponse(
                 status_code=500,

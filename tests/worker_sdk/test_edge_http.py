@@ -94,7 +94,10 @@ class TestEdgeRoutes:
     ) -> None:
         """On handler error, the body is a ``JobResult`` JSON (status=failed,
         job_id echoed, error populated, no outputs) so the orchestrator's
-        :class:`TypeAdapter(JobResult).validate_json` parser succeeds.
+        :class:`TypeAdapter(JobResult).validate_json` parser succeeds. The
+        ``error`` field is sanitised to ``"<ClassName>: <first line>"`` so
+        internal exception detail (file paths, secrets) does not leak back
+        to the orchestrator.
         """
         app, h = app_handler
 
@@ -114,10 +117,38 @@ class TestEdgeRoutes:
         assert body["job_id"] == "j1"
         assert body["status"] == "failed"
         assert body["outputs"] == []
-        assert "OOM" in body["error"]
+        assert body["error"] == "RuntimeError: OOM"
         assert body["metrics"]["duration_seconds"] >= 0.0
         assert body["metrics"]["cost_basis"] is None
         assert any("handler failed" in r.message and "_Stub" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_execute_error_sanitises_secrets_in_message(
+        self,
+        app_handler: tuple[FastAPI, _Stub],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SEC-012: a handler exception whose message contains a credential
+        pattern must not surface that pattern in the 500 body. The full
+        message is preserved in ``logger.exception`` for the operator.
+        """
+        app, h = app_handler
+
+        async def _boom(job: Job, input: Input | None = None) -> list[BytesArtifact]:  # noqa: A002
+            msg = "DB connect failed password=foo at /runpod-volume/models/qwen3"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(h, "handle", _boom)
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 500
+        body = r.json()
+        assert "password=foo" not in body["error"]
+        assert body["error"].startswith("RuntimeError:")
 
     @pytest.mark.asyncio
     async def test_dispatch_propagates_keyboard_interrupt(

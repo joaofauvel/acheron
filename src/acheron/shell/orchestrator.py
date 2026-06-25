@@ -11,7 +11,12 @@ import uuid
 import weakref
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.errors import (
+    AcheronError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+    sanitise_exc_message,
+)
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -34,6 +39,7 @@ from acheron.shell.local_handlers import (
     LocalJobHandler,
     all_languages_caps,
 )
+from acheron.shell.logging_context import bind_job_id
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 
@@ -298,6 +304,10 @@ class Orchestrator:
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status."""
+        with bind_job_id(tracked.job_id):
+            await self._run_execution(tracked)
+
+    async def _run_execution(self, tracked: TrackedJob) -> None:
         db_job = await self._job_store.get(tracked.job_id)
         if db_job is None or db_job.status != PlanStatus.RUNNING:
             logger.warning(
@@ -367,7 +377,7 @@ class Orchestrator:
                     outputs=(),
                     total_cost=0.0,
                     total_duration_seconds=0.0,
-                    errors=(str(exc),),
+                    errors=(sanitise_exc_message(exc),),
                 )
             except Exception as exc:
                 logger.exception("Unexpected error executing %s", tracked.job_id)
@@ -380,7 +390,7 @@ class Orchestrator:
                     outputs=(),
                     total_cost=0.0,
                     total_duration_seconds=0.0,
-                    errors=(str(exc),),
+                    errors=(sanitise_exc_message(exc),),
                 )
             await self._job_store.put(tracked)
         finally:

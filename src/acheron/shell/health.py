@@ -138,8 +138,13 @@ class HealthMonitor:
         if provider is not None and endpoint_id:
             try:
                 platform_status = await provider.check_status(endpoint_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Health provider %s raised for %s: %s", provider_name, worker.worker_id, exc)
+            except (httpx.HTTPError, OSError, ValueError) as exc:
+                logger.warning(
+                    "Health provider %s raised for worker %s: %s",
+                    provider_name,
+                    worker.worker_id,
+                    exc,
+                )
                 platform_status = WorkerStatus.OFFLINE
                 error = f"{error}; provider {provider_name} error: {exc}"
             if platform_status == WorkerStatus.BOOTING:
