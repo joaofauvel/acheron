@@ -774,17 +774,19 @@ related: [TEST-012]
 ### TEST-017 — `tests/integration/test_tls.py` hardcodes 3 repo-relative paths via `Path(__file__).resolve().parents[2]` — new brittleness introduced in this delta
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in: [pending]
 files:
-  - path: tests/integration/test_tls.py
-    lines: 73, 97-99, 109, 112, 121
+- path: tests/integration/test_tls.py
+  lines: 70-73, 97, 107, 116
+- path: tests/integration/conftest.py
+  lines: 339-348
 related: [TEST-004, DOC-005]
 ```
 

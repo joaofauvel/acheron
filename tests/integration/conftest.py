@@ -336,6 +336,15 @@ async def wired_orchestrator(
     await orch.shutdown()
 
 
+@pytest.fixture(scope="session")
+def repo_root() -> Path:
+    """Absolute path to the Acheron repository root (single source of truth for
+    integration tests that need repo-relative paths like ``scripts/`` or
+    ``stubs/``). Computed once per session so the cost is paid at most once.
+    """
+    return Path(__file__).resolve().parents[2]
+
+
 @pytest.fixture
 def epub_file(tmp_path: Path) -> Path:
     """Minimal valid EPUB for integration tests."""
