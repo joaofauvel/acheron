@@ -438,10 +438,10 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 45599f0
   date: 2026-06-25
 fixed_in:
-- pending
+- 45599f0
 files:
 - path: src/acheron/worker_sdk/__init__.py
   lines: 1-8

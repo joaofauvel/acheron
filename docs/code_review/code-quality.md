@@ -874,10 +874,10 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 45599f0
   date: 2026-06-25
 fixed_in:
-- pending
+- 45599f0
 files:
 - path: workers/granite_speech/handler.py
   lines: 14-58
