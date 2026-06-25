@@ -759,14 +759,15 @@ related: [SEC-008, SEC-009, SEC-022, DOC-003]
 ### SEC-012 — Edge `/execute` returns raw `str(exc)` in 500 body, exposing internal exception detail to the orchestrator (extension of SEC-006)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-25
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 286-304

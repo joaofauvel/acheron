@@ -491,7 +491,7 @@ class TestOrchestrator:
             return await _success_handler(step, plan)
 
         class _BoomExecutor(Executor):
-            async def run(self, _plan: Plan) -> PlanResult:
+            async def run(self, plan: Plan) -> PlanResult:
                 msg = "secret stuff\n  File '/etc/passwd'\nTraceback (most recent call last):"
                 raise RuntimeError(msg)
 

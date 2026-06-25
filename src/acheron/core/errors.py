@@ -1,5 +1,7 @@
 """Domain exception hierarchy for Acheron."""
 
+import re
+
 
 class AcheronError(Exception):
     """Base exception for all Acheron errors."""
@@ -77,6 +79,17 @@ class JobAlreadyRunningError(JobError):
     """Requested tracked job is already active in this orchestrator."""
 
 
+_CREDENTIAL_PATTERN = re.compile(
+    r"\b(password|passwd|secret|token|api[_-]?key|authorization)\s*=\s*\S+",
+    re.IGNORECASE,
+)
+
+
+def _scrub_credentials(text: str) -> str:
+    """Strip ``key=secret`` style credential patterns from ``text``."""
+    return _CREDENTIAL_PATTERN.sub(r"\1=<redacted>", text)
+
+
 def sanitise_exc_message(exc: BaseException) -> str:
     """Return a public-safe ``"<ClassName>: <first line>"`` summary of ``exc``.
 
@@ -84,9 +97,10 @@ def sanitise_exc_message(exc: BaseException) -> str:
     internals, or user-submitted text. For API/response surfaces we keep the
     exception class so operators can still distinguish a ``WorkerError`` from
     a generic ``RuntimeError`` while stripping the message body. Traceback
-    fragments (``File ...`` / ``Traceback (most recent call last):``) are
-    also stripped — those belong in ``logger.exception`` output, not in
-    machine-readable error fields.
+    fragments (``File ...`` / ``Traceback (most recent call last):``) and
+    credential-shaped ``key=value`` patterns are also stripped — those
+    belong in ``logger.exception`` output, not in machine-readable error
+    fields.
     """
     raw = str(exc)
     first_line = ""
@@ -96,7 +110,7 @@ def sanitise_exc_message(exc: BaseException) -> str:
             continue
         if stripped.startswith(("File ", "Traceback")):
             continue
-        first_line = stripped
+        first_line = _scrub_credentials(stripped)
         break
     if not first_line:
         first_line = "<no message>"

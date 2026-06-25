@@ -107,3 +107,17 @@ class TestSanitiseExcMessage:
         from acheron.core.errors import WorkerError, sanitise_exc_message
 
         assert sanitise_exc_message(WorkerError("timeout")) == "WorkerError: timeout"
+
+    def test_strips_credential_pattern(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        exc = RuntimeError("DB connect failed password=foo at /runpod-volume")
+        assert sanitise_exc_message(exc) == "RuntimeError: DB connect failed password=<redacted> at /runpod-volume"
+
+    def test_strips_multiple_credential_variants(self) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        exc = RuntimeError("auth api_key=abc123 token=xyz")
+        result = sanitise_exc_message(exc)
+        assert "abc123" not in result
+        assert "xyz" not in result
