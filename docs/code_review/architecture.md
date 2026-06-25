@@ -288,10 +288,10 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 162bf11
   date: 2026-06-25
 fixed_in:
-- pending
+- 162bf11
 files:
 - path: src/acheron/shell/health_providers.py
   lines: 113-122
