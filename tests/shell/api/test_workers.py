@@ -191,3 +191,34 @@ class TestStrictRequest:
         payload["capabilities"] = caps
         response = await client.post("/workers", json=payload)
         assert response.status_code == 422
+
+
+class TestMaxInputTokensRoundTrip:
+    """CFG-012: max_input_tokens must survive the wire boundary (request → store → response)."""
+
+    @pytest.mark.asyncio
+    async def test_register_persists_max_input_tokens(self, client) -> None:  # type: ignore[no-untyped-def]
+        payload = {
+            **_WORKER_PAYLOAD,
+            "worker_id": "tts-cfg12",
+            "capabilities": {
+                **_WORKER_PAYLOAD["capabilities"],
+                "worker_type": "tts",
+                "max_input_tokens": 4096,
+            },
+        }
+        response = await client.post("/workers", json=payload)
+        assert response.status_code == 201
+        assert response.json()["max_input_tokens"] == 4096
+
+        listed = await client.get("/workers")
+        assert listed.status_code == 200
+        workers = {w["worker_id"]: w for w in listed.json()["workers"]}
+        assert workers["tts-cfg12"]["max_input_tokens"] == 4096
+
+    @pytest.mark.asyncio
+    async def test_register_without_max_input_tokens_defaults_to_none(self, client) -> None:  # type: ignore[no-untyped-def]
+        """When the request omits max_input_tokens, the orchestrator's stored value is None."""
+        response = await client.post("/workers", json=_WORKER_PAYLOAD)
+        assert response.status_code == 201
+        assert response.json()["max_input_tokens"] is None

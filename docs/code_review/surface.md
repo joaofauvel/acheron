@@ -446,7 +446,7 @@ severity: medium
 effort: M
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: pending
   date: 2026-06-26
 fixed_in: []
 files:
@@ -461,7 +461,7 @@ files:
   - path: src/acheron/worker_sdk/__init__.py
     lines: 1-5
   - path: src/acheron/worker_sdk/_caps.py
-    lines: 1-6
+    lines: 1-8
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 1-7
   - path: src/acheron/worker_sdk/_runpod_client.py

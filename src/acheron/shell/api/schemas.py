@@ -58,6 +58,7 @@ class WorkerCapabilitiesRequest(_StrictRequest):
     max_payload_bytes: int | None = None
     batch_capable: bool = False
     model_source: str | None = None
+    max_input_tokens: int | None = None
     metadata: dict[str, JsonValue] = {}
 
 
@@ -80,6 +81,7 @@ class WorkerResponse(BaseModel):
     consecutive_failures: int
     status: WorkerStatus = WorkerStatus.HEALTHY
     last_error: str | None = None
+    max_input_tokens: int | None = None
 
 
 class WorkerListResponse(BaseModel):

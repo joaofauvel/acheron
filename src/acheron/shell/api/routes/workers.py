@@ -37,6 +37,7 @@ async def register_worker(
         max_payload_bytes=body.capabilities.max_payload_bytes,
         batch_capable=body.capabilities.batch_capable,
         model_source=body.capabilities.model_source,
+        max_input_tokens=body.capabilities.max_input_tokens,
         metadata=body.capabilities.metadata,
     )
 
@@ -50,6 +51,7 @@ async def register_worker(
         consecutive_failures=0,
         status=WorkerStatus.HEALTHY,
         last_error=None,
+        max_input_tokens=body.capabilities.max_input_tokens,
     )
 
 
@@ -73,6 +75,7 @@ async def list_workers(orch: OrchestratorDep, authorized: AuthorizedDep) -> Work
                 consecutive_failures=w.consecutive_failures,
                 status=w.status,
                 last_error=w.last_error if authorized else None,
+                max_input_tokens=w.capabilities.max_input_tokens,
             )
             for w in workers
         ]

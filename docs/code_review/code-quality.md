@@ -1113,12 +1113,12 @@ severity: low
 effort: M
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: pending
   date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_caps.py
-    lines: 18
+    lines: 12-18
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 62, 227, 234, 321
   - path: src/acheron/worker_sdk/_server.py

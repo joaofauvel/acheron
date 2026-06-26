@@ -26,5 +26,6 @@ def caps_to_dict(caps: WorkerCapabilities) -> dict[str, Any]:
         "max_payload_bytes": caps.max_payload_bytes,
         "batch_capable": caps.batch_capable,
         "model_source": caps.model_source,
+        "max_input_tokens": caps.max_input_tokens,
         "metadata": dict(caps.metadata),
     }
