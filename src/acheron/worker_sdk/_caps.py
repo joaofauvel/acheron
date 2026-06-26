@@ -9,9 +9,10 @@ the shape.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from acheron.core.models import WorkerCapabilities
+if TYPE_CHECKING:
+    from acheron.core.models import WorkerCapabilities
 
 
 def caps_to_dict(caps: WorkerCapabilities) -> dict[str, Any]:

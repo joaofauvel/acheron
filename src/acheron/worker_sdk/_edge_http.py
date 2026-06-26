@@ -49,10 +49,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _caps_to_response(caps: WorkerCapabilities) -> dict[str, Any]:
-    return caps_to_dict(caps)
-
-
 def _job_from_request(body: ExecuteRequest) -> Job:
     return Job(
         job_id=body.job_id,
@@ -323,7 +319,7 @@ class EdgeApp:
 
         @app.get("/capabilities")
         async def get_capabilities() -> dict[str, Any]:
-            return _caps_to_response(self.capabilities)
+            return caps_to_dict(self.capabilities)
 
         @app.post("/execute", dependencies=[Depends(_verify_bearer)])
         async def execute(request: Request) -> Response:

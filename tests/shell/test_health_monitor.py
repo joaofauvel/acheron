@@ -14,9 +14,9 @@ import pytest
 import pytest_asyncio
 from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
+from acheron.core.interfaces import HealthProvider
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.health import HealthMonitor, HealthProbeResult, _default_health_check
-from acheron.core.interfaces import HealthProvider
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
