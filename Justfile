@@ -37,7 +37,7 @@ validate: lint-strict lint-imports type-check type-check-pyright test
 
 # Install all dependencies including dev
 install:
-    uv sync --all-extras
+    uv sync --all-extras --all-packages
 
 # Generate local Acheron CA + per-service dev certs in ./certs/
 certs:

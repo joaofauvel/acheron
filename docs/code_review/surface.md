@@ -76,14 +76,14 @@ related: [DOC-003]
 ### DX-003 — `just install` does not install the new `workers/qwen3tts/` workspace member, breaking the documented fresh-clone setup
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  commit: pending
   date: 2026-06-23
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: Justfile
     lines: 38-40

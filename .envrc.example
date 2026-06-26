@@ -2,7 +2,7 @@
 # .envrc is gitignored — do not commit secrets\
 
 # create the venv if it doesn't yet exist
-[[ -d ".venv" ]] || ( uv venv && uv sync --all-extras )
+[[ -d ".venv" ]] || ( uv venv && uv sync --all-extras --all-packages )
 
 export VIRTUAL_ENV=".venv"
 layout python
