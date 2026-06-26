@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import secrets
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +37,42 @@ _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class StepDispatch:
+    """How an upstream step's output maps onto a multipart upload.
+
+    Bundles the three magic strings that the legacy
+    ``_execute_with_upstream_input(upstream_step=..., content_type_predicate=...,
+    form_field=...)`` signature had: the upstream ``step_id`` to read from
+    the cache, the predicate that picks a single ``OutputFile`` out of the
+    upstream step's outputs, and the form field name used when posting
+    the picked file as a multipart part.
+    """
+
+    upstream_step: str
+    content_type_predicate: Callable[[str], bool]
+    form_field: str
+
+
+MATCHES_BY_TYPE: dict[WorkerType, StepDispatch] = {
+    WorkerType.ASR: StepDispatch(
+        upstream_step="extract",
+        content_type_predicate=lambda c: c.startswith("audio/"),
+        form_field="audio",
+    ),
+    WorkerType.TRANSLATION: StepDispatch(
+        upstream_step="chunk",
+        content_type_predicate=lambda c: c == "application/json",
+        form_field="chunks",
+    ),
+    WorkerType.TTS: StepDispatch(
+        upstream_step="chunk",
+        content_type_predicate=lambda c: c == "application/json",
+        form_field="chunks",
+    ),
+}
 
 
 class HttpWorker(Worker):
@@ -90,56 +127,31 @@ class HttpWorker(Worker):
         return _caps_adapter.validate_json(resp.content)
 
     async def execute(self, job: Job) -> JobResult:  # noqa: D102
-        match job.job_type:
-            case WorkerType.ASR:
-                return await self._execute_with_upstream_input(
-                    job,
-                    upstream_step="extract",
-                    content_type_predicate=lambda c: c.startswith("audio/"),
-                    form_field="audio",
-                )
-            case WorkerType.TRANSLATION | WorkerType.TTS:
-                return await self._execute_with_upstream_input(
-                    job,
-                    upstream_step="chunk",
-                    content_type_predicate=lambda c: c == "application/json",
-                    form_field="chunks",
-                )
-            case _:
-                # Existing JSON / multipart-mixed response path (unchanged).
-                resp = await self._request("POST", "/execute", json=_job_to_dict(job))
-                ctype = resp.headers.get("content-type", "")
-                if ctype.startswith("multipart/mixed"):
-                    return await self._parse_multipart(resp, job.job_id)
-                return _result_adapter.validate_json(resp.content)
+        dispatch = MATCHES_BY_TYPE.get(job.job_type)
+        if dispatch is not None:
+            return await self._execute_with_upstream_input(job, dispatch)
+        resp = await self._request("POST", "/execute", json=_job_to_dict(job))
+        ctype = resp.headers.get("content-type", "")
+        if ctype.startswith("multipart/mixed"):
+            return await self._parse_multipart(resp, job.job_id)
+        return _result_adapter.validate_json(resp.content)
 
-    async def _execute_with_upstream_input(
-        self,
-        job: Job,
-        *,
-        upstream_step: str,
-        content_type_predicate: Callable[[str], bool],
-        form_field: str,
-    ) -> JobResult:
-        """Read the upstream step's matching output and POST it as multipart to the worker.
-
-        Used by ASR (upstream=extract, predicate=audio/*, field=audio) and
-        TRANSLATION/TTS (upstream=chunk, predicate=application/json, field=chunks).
-        """
+    async def _execute_with_upstream_input(self, job: Job, dispatch: StepDispatch) -> JobResult:
+        """Read the upstream step's matching output and POST it as multipart to the worker."""
         plan_job_id = job.job_id.rsplit("-", 1)[0]
         try:
-            upstream_outputs = await self._step_cache.load_outputs(plan_job_id, upstream_step)
+            upstream_outputs = await self._step_cache.load_outputs(plan_job_id, dispatch.upstream_step)
         except CacheMissError as exc:
-            msg = f"{job.job_type.value} step {job.job_id}: no {upstream_step} step output for {plan_job_id}"
+            msg = f"{job.job_type.value} step {job.job_id}: no {dispatch.upstream_step} step output for {plan_job_id}"
             raise WorkerError(msg) from exc
-        matching = [o for o in upstream_outputs if content_type_predicate(o.content_type)]
+        matching = [o for o in upstream_outputs if dispatch.content_type_predicate(o.content_type)]
         if not matching:
-            msg = f"{job.job_type.value} step {job.job_id}: no matching file in {upstream_step} output"
+            msg = f"{job.job_type.value} step {job.job_id}: no matching file in {dispatch.upstream_step} output"
             raise WorkerError(msg)
         if len(matching) > 1:
             msg = (
                 f"{job.job_type.value} step {job.job_id}: multiple matching files in "
-                f"{upstream_step} output (orchestrator supports only one); "
+                f"{dispatch.upstream_step} output (orchestrator supports only one); "
                 f"got {len(matching)} files"
             )
             raise WorkerError(msg)
@@ -152,7 +164,7 @@ class HttpWorker(Worker):
         content_iter, boundary = await _stream_multipart_request(
             job=job,
             file_path=file_path,
-            form_field=form_field,
+            form_field=dispatch.form_field,
             content_type=first_match.content_type,
         )
         resp = await self._request(
