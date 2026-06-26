@@ -1061,7 +1061,7 @@ related:
 ### MAINT-020 — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit; plus 1 new site introduced by EXC-004 fix (regression of MAINT-009)
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: S
 reviewed_at: 77aadcd

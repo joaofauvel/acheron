@@ -928,7 +928,7 @@ related:
 ### CORR-034 — Python 2 'except E1, E2:' syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031)
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: S
 reviewed_at: 77aadcd
