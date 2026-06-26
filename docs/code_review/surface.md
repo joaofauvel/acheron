@@ -139,14 +139,14 @@ related: []
 ### PKG-002 — `pyproject.toml` dead `root_package` key + duplicate `soundfile` dev entry — drift artifacts from the workspace scaffold merge
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  commit: pending
   date: 2026-06-23
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: pyproject.toml
     lines: 152-153

@@ -149,7 +149,6 @@ filterwarnings = [
 ]
 
 [tool.importlinter]
-root_package = "acheron"
 root_packages = ["acheron", "workers"]
 
 [[tool.importlinter.contracts]]
@@ -186,7 +185,6 @@ dev = [
     "pytest-xdist~=3.8",
     "respx~=0.23",
     "ruff~=0.15",
-    "soundfile>=0.14.0",
     "testcontainers[redis]~=4.14",
     "types-aiofiles~=24.0",
     "types-grpcio~=1.0",

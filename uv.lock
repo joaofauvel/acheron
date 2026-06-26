@@ -108,7 +108,6 @@ dev = [
     { name = "respx", specifier = "~=0.23" },
     { name = "ruff", specifier = "~=0.15" },
     { name = "soundfile", specifier = "~=0.14" },
-    { name = "soundfile", specifier = ">=0.14.0" },
     { name = "testcontainers", extras = ["redis"], specifier = "~=4.14" },
     { name = "types-aiofiles", specifier = "~=24.0" },
     { name = "types-grpcio", specifier = "~=1.0" },
