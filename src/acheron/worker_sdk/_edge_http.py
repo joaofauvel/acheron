@@ -352,7 +352,7 @@ class EdgeApp:
                 status=JobStatus.FAILED,
                 outputs=(),
                 metrics=JobMetrics(duration_seconds=0.0, cost_basis=None),
-                error=str(parser_error),
+                error=sanitise_exc_message(parser_error),
             )
             return JSONResponse(
                 status_code=500,

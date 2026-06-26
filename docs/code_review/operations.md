@@ -958,19 +958,18 @@ related: [SEC-011, SEC-022]
 ### SEC-019 — Edge `/execute` multipart branch returns 500 body with `error=str(exc)`, exposing raw exception detail (new instance of SEC-012)
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
-reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+reviewed_at: 77aadcd
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 335-361
-related:
-- SEC-012
+    lines: 355
+related: [SEC-012, B08, B19]
 ```
 
 **Issue.** `_run_execute_multipart` (lines 167-186) catches `WorkerError` from `_parse_multipart_request` and returns a JSON 500 body built from `JobResult(... error=str(exc) ...)`. Internal exception detail (parse-failure messages naming internal paths, boundary mismatches, content-type strings) flows through to `GET /jobs/{id}`.

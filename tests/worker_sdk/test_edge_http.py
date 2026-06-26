@@ -1,6 +1,6 @@
 """Tests for the internal edge FastAPI app."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
@@ -331,3 +331,40 @@ class TestEdgeExecuteAuth:
             caps = await c.get("/capabilities")
         assert h.status_code == 200
         assert caps.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_multipart_500_body_sanitised(
+        self, app_handler: tuple[FastAPI, _Stub], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SEC-019: the /execute multipart 500 body must not echo the raw exception message.
+
+        The multipart parser catches ``(WorkerError, ValueError, KeyError)`` and
+        returns a JobResult-shaped JSON body. ``sanitise_exc_message`` strips
+        traceback fragments and credential-shaped ``key=value`` patterns, so
+        downstream consumers never see a leaked path or token.
+        """
+        from acheron.worker_sdk import _edge_http as edge_module
+
+        app, _ = app_handler
+
+        def _boom(_self: Any, _request: Any) -> Any:
+            msg = (
+                "/runpod-volume/secrets/api_key=abc123 not found\n"
+                "  File '/etc/passwd'\nTraceback (most recent call last):"
+            )
+            raise ValueError(msg)
+
+        monkeypatch.setattr(edge_module.EdgeApp, "_parse_multipart_request", _boom)
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                files={"field": ("f.txt", b"hi", "text/plain")},
+            )
+        assert r.status_code == 500
+        body = r.json()
+        # Sanitised message retains class + first line, drops traceback + creds.
+        assert "api_key=abc123" not in body["error"]
+        assert "/etc/passwd" not in body["error"]
+        assert "Traceback" not in body["error"]
+        assert body["error"].startswith("WorkerError:")
