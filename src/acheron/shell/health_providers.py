@@ -42,6 +42,8 @@ async def _fetch_provider_response(
             exc,
         )
         return None
+
+
 class RunPodHealthProvider(HealthProvider):
     """RunPod Serverless health provider.
 
