@@ -138,14 +138,15 @@ related: [CORR-008]
 ### MAINT-005 — Orchestrator._execute duplicates PlanResult construction across adjacent exception handlers
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 359-384
@@ -219,14 +220,15 @@ related:
 ### MAINT-008 — HealthMonitor._handle_failure reassigns its `error` parameter inside the try/except
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
   - path: src/acheron/shell/health.py
     lines: 133-152
@@ -335,14 +337,15 @@ related:
 ### MAINT-012 — `_registration_caps` manually re-lists every `WorkerCapabilities` field to swap in enriched metadata; should use `dataclasses.replace`
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 59-83
