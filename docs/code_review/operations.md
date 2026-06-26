@@ -191,9 +191,9 @@ files:
 - path: src/acheron/shell/health.py
   lines: 44-52
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 128-135, 199-206
+  lines: 122-129, 193-200
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 187-201
+  lines: 181-195
 - path: src/acheron/shell/transports/http.py
   lines: 105-123
 related: []
@@ -1205,7 +1205,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 337-360
+    lines: 328-351
 related: [OBS-006, OBS-005]
 ```
 

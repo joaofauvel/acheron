@@ -441,63 +441,63 @@ related: [DX-003, DX-004]
 ### DOC-007 — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 77aadcd
 last_verified_at:
   commit: pending
   date: 2026-06-26
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/executors/streaming.py
-    lines: 1-9
+    lines: 1
   - path: src/acheron/shell/logging_context.py
-    lines: 1-5
+    lines: 1
   - path: src/acheron/shell/transports/_multipart.py
-    lines: 1-3
+    lines: 1
   - path: src/acheron/tls.py
-    lines: 1-5
+    lines: 1
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 1-5
+    lines: 1
   - path: src/acheron/worker_sdk/_caps.py
-    lines: 1-8
+    lines: 1
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 1-7
+    lines: 1
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 1-8
+    lines: 1
   - path: src/acheron/worker_sdk/_server.py
-    lines: 1-4
+    lines: 1
   - path: src/acheron/worker_sdk/artifacts.py
-    lines: 1-4
+    lines: 1
   - path: src/acheron/worker_sdk/cli.py
-    lines: 1-8
+    lines: 1
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 1-14
+    lines: 1
   - path: src/acheron/worker_sdk/config_loader.py
-    lines: 1-9
+    lines: 1
   - path: src/acheron/worker_sdk/inputs.py
-    lines: 1-4
+    lines: 1
   - path: src/acheron/worker_sdk/pricing.py
-    lines: 1-5
+    lines: 1
   - path: src/acheron/worker_sdk/registration.py
-    lines: 1-7
+    lines: 1
   - path: src/acheron/worker_sdk/schemas.py
-    lines: 1-3
+    lines: 1
   - path: src/acheron/worker_sdk/settings.py
-    lines: 1-8
+    lines: 1
   - path: workers/granite_speech/handler.py
-    lines: 1-8
+    lines: 1
   - path: workers/granite_speech/runpod_entrypoint.py
-    lines: 1-4
+    lines: 1
   - path: workers/qwen3tts/handler.py
-    lines: 1-8
+    lines: 1
   - path: workers/qwen3tts/runpod_entrypoint.py
-    lines: 1-4
+    lines: 1
   - path: workers/translategemma/handler.py
-    lines: 1-11
+    lines: 1
   - path: workers/translategemma/runpod_entrypoint.py
-    lines: 1-4
+    lines: 1
 related: [DOC-005]
 ```
 

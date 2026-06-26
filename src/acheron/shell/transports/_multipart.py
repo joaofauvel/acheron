@@ -1,8 +1,4 @@
-"""Shared helpers used by both HttpWorker (multipart/mixed) and GrpcWorker (Artifact parts).
-
-The orchestrator materializes received bytes into its own ``ACHERON_DATA_DIR``,
-so a worker needs no shared filesystem with the orchestrator.
-"""
+"""Shared helpers used by both HttpWorker (multipart/mixed) and GrpcWorker (Artifact parts)."""
 
 from __future__ import annotations
 

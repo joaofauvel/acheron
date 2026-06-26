@@ -1,14 +1,4 @@
-"""Configuration for Acheron worker containers.
-
-Env vars use the ``ACHERON_WORKER__`` prefix (``__`` after the prefix,
-matching the project's ``ACHERON_<SECTION>__<FIELD>`` convention from
-``acheron.yaml.example``). This avoids collision with the orchestrator's
-own env namespace (``ACHERON_REGISTRATION_TOKEN`` etc.).
-
-Secrets (``registration_token``, ``runpod_api_key``, ``runpod_endpoint_id``)
-are env-only — rejected when passed to the constructor so they cannot
-silently land in committed ``worker.yaml`` overrides or image layers.
-"""
+"""Configuration for Acheron worker containers."""
 
 from __future__ import annotations
 

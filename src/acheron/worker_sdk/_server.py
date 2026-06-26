@@ -1,9 +1,4 @@
-"""Shared uvicorn server runner for the orchestrator and worker edge entry points.
-
-Consolidates the ``uvicorn_ssl_kwargs()`` + ``uvicorn.run(...)`` envelope that
-was duplicated across the orchestrator ``__main__``, the worker SDK CLI, and
-the two TLS-enabled stubs.
-"""
+"""Shared uvicorn server runner for the orchestrator and worker edge entry points."""
 
 from __future__ import annotations
 

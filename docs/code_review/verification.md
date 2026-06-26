@@ -495,7 +495,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 98-101
+    lines: 88-91
   - path: src/acheron/worker_sdk/artifacts.py
     lines: 71-77
   - path: tests/worker_sdk/test_runpod_client.py
@@ -526,7 +526,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/inputs.py
-    lines: 21-34, 64-79
+    lines: 16-29, 59-74
   - path: tests/worker_sdk/test_inputs.py
     lines: 1-86
 related: []
@@ -580,7 +580,7 @@ last_verified_at:
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/cloud.py
-  lines: 49, 53, 57
+  lines: 32, 36, 40
 - path: tests/worker_sdk/test_cloud_audio.py
   lines: 1-192
 related: []
@@ -695,7 +695,7 @@ files:
 - path: workers/translategemma/tests/test_handler.py
   lines: 1-269
 - path: workers/translategemma/handler.py
-  lines: 170-285
+  lines: 160-275
 related:
 - CORR-029
 - CORR-033
@@ -723,7 +723,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/tls.py
-    lines: 1-114
+    lines: 1-109
   - path: tests/integration/test_tls.py
     lines: 176-205
 related: [SEC-011, OBS-011]
@@ -861,7 +861,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/artifacts.py
-    lines: 62-78
+    lines: 57-73
   - path: tests/worker_sdk/test_artifacts.py
     lines: 45-53
 related: []
@@ -888,7 +888,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/pricing.py
-    lines: 47-73
+    lines: 41-67
   - path: tests/worker_sdk/test_pricing.py
     lines: 1-50
 related: []

@@ -1,10 +1,4 @@
-"""Acheron worker SDK — the blueprint for Layer 8 real GPU workers.
-
-Importing ``acheron.worker_sdk`` transitively loads the runpod SDK because
-``RunPodForwarderHandler`` and ``make_runpod_handler`` (re-exported from
-``cloud``) trigger ``_runpod_client``'s top-level ``import runpod``. The SDK
-pins ``runpod ~= 1.9`` as a main dep, so the import is always available.
-"""
+"""Acheron worker SDK — the blueprint for Layer 8 real GPU workers."""
 
 from acheron.worker_sdk.app import create_worker_app
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact

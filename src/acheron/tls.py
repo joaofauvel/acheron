@@ -1,9 +1,4 @@
-"""TLS helpers — env-var to SSL credentials conversion for HTTP and gRPC.
-
-Lives at the top level of ``acheron`` (not under ``shell``) so both the
-orchestrator and the worker SDK can depend on it without violating the
-``worker-sdk-no-shell`` import-linter contract.
-"""
+"""TLS helpers — env-var to SSL credentials conversion for HTTP and gRPC."""
 
 from __future__ import annotations
 

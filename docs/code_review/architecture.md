@@ -358,7 +358,7 @@ files:
 - path: src/acheron/worker_sdk/app.py
   lines: 139-146
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 124-271
+  lines: 115-262
 related:
 - CORR-015
 - MAINT-011
@@ -1139,11 +1139,11 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/settings.py
-    lines: 26-32
+    lines: 16-22
   - path: src/acheron/worker_sdk/config_loader.py
     lines: 23
   - path: src/acheron/worker_sdk/config_loader.py
-    lines: 61-67
+    lines: 12
   - path: src/acheron/worker_sdk/settings.py
     lines: 107-117
 related: [ARCH-005]

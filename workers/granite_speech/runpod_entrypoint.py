@@ -1,9 +1,4 @@
-"""RunPod Serverless entrypoint — loads the model eagerly at boot, then calls runpod.serverless.start.
-
-RunPod schedules GPU pods on demand; the entry loads the model into VRAM
-before the first inference request arrives so warm pods respond immediately
-and cold pods pay the load cost once.
-"""
+"""RunPod Serverless entrypoint — loads the model eagerly at boot, then calls runpod.serverless.start."""
 
 from __future__ import annotations
 

@@ -1,11 +1,4 @@
-"""Single canonical serialiser for :class:`WorkerCapabilities`.
-
-The edge ``GET /capabilities`` response and the registration ``POST
-/workers`` payload both need the same dict shape; keeping two
-parallel functions lets a field addition drift silently. One
-function, imported by both call sites, removes the third copy of
-the shape.
-"""
+"""Single canonical serialiser for :class:`WorkerCapabilities`."""
 
 from __future__ import annotations
 

@@ -1,12 +1,4 @@
-"""Self-registration client for the edge container.
-
-Posts ``WorkerRegistrationRequest`` to the orchestrator's ``POST /workers``
-route, with exponential backoff until the orchestrator is reachable. The
-caller enriches ``capabilities.metadata`` with ``health_provider`` /
-``health_endpoint_id`` (see :func:`acheron.worker_sdk.app._registration_caps`)
-so the orchestrator's existing ``RunPodHealthProvider`` cold-start detection
-plumbing (Layer 11) picks the worker up unchanged.
-"""
+"""Self-registration client for the edge container."""
 
 from __future__ import annotations
 

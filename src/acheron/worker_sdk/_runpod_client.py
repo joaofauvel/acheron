@@ -1,14 +1,4 @@
-"""Internal RunPod Serverless client used by the edge container.
-
-The edge container (acheron-worker-edge image) is GPU-less: it serialises a
-Job into RunPod's ``/run`` input, submits via the ``runpod`` Python SDK,
-polls until COMPLETED/FAILED, and decodes the artifacts. ``gpu_seconds``
-is the wall-time of the call — a fair proxy for billing when the serverless
-endpoint schedules single-GPU pods per job.
-
-The runpod SDK is a pinned main dep (``runpod~=1.9``, ``cryptography<47``),
-so the import is at module load — no need for lazy resolution.
-"""
+"""Internal RunPod Serverless client used by the edge container."""
 
 from __future__ import annotations
 

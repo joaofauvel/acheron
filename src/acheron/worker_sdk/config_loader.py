@@ -1,15 +1,4 @@
-"""Worker configuration discovery and loading.
-
-Resolution order (first match wins):
-  1. ``WORKER_CONFIG`` env var → explicit path (absolute or relative).
-  2. ``<cwd>/<worker_name>.worker.yaml`` — ``worker_name`` from
-     ``WORKER_NAME`` env var or the current directory's basename.
-  3. ``<cwd>/worker.yaml``.
-  4. Env vars only (no file).
-
-Env vars override YAML values on conflict. Secrets are rejected when
-present in YAML (fail-loud to keep them out of image layers).
-"""
+"""Worker configuration discovery and loading."""
 
 from __future__ import annotations
 

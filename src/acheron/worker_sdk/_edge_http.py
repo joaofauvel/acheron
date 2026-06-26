@@ -1,13 +1,4 @@
-"""Internal FastAPI app served by the edge container.
-
-Routes: ``GET /health``, ``GET /capabilities``, ``POST /execute``.
-
-``/execute`` emits a ``multipart/mixed`` body: one binary part per
-:class:`Artifact` returned by the handler, plus a trailing
-``application/json`` part carrying ``JobMetrics`` (duration, gpu_seconds,
-cost_estimate, cost_basis). On handler failure the response is a plain
-JSON ``ExecuteError`` body with status 500.
-"""
+"""Internal FastAPI app served by the edge container."""
 
 from __future__ import annotations
 

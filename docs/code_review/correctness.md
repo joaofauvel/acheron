@@ -942,7 +942,7 @@ files:
   - path: src/acheron/shell/cache.py
     lines: 116
   - path: src/acheron/shell/executors/streaming.py
-    lines: 155
+    lines: 144
   - path: src/acheron/shell/local_handlers.py
     lines: 317
   - path: src/acheron/worker_sdk/app.py

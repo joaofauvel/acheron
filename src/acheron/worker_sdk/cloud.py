@@ -1,21 +1,4 @@
-"""Cloud-side adapter + edge forwarder for RunPod workers.
-
-``runpod.serverless.start({"handler": fn})`` expects ``fn(job: dict) -> dict``.
-We wrap a :class:`WorkerHandler` so the same handler module runs inside
-the RunPod serverless runtime image — its ``handle()`` contract is
-identical whether the caller is the cloud-side handler loop or (in a
-future sub-project) a local edge runtime.
-
-The reverse direction — :class:`RunPodForwarderHandler` — is the
-``WorkerHandler`` implementation that runs *inside* the edge container.
-It accepts ``/execute`` from the orchestrator and forwards the job to a
-RunPod serverless endpoint via :class:`RunPodClient`. The cloud-side
-RunPod image (which has the GPU + model) does the actual inference and
-returns artifacts.
-
-Importing this module loads the runpod SDK transitively (via
-``_runpod_client``).
-"""
+"""Cloud-side adapter + edge forwarder for RunPod workers."""
 
 from __future__ import annotations
 

@@ -1,10 +1,4 @@
-"""Per-task logging context (job_id, request_id).
-
-A :class:`logging.Filter` attaches the current :class:`ContextVar` values to
-every :class:`logging.LogRecord` so existing ``logger.info(...)`` calls
-emitting a free-form message can still be filtered/aggregated by job_id or
-request_id downstream.
-"""
+"""Per-task logging context (job_id, request_id)."""
 
 from __future__ import annotations
 

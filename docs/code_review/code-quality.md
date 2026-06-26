@@ -434,7 +434,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/inputs.py
-    lines: 1-79
+    lines: 1-74
   - path: src/acheron/worker_sdk/artifacts.py
     lines: 1-78
 related: [MAINT-002, MAINT-013]
@@ -828,7 +828,7 @@ last_verified_at:
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/cloud.py
-  lines: '175'
+  lines: 158
 related: []
 ```
 
@@ -853,13 +853,13 @@ last_verified_at:
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/cloud.py
-  lines: 20, 38-39, 42
+  lines: 3, 21-22, 25
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 13, 51, 73, 77, 84, 153, 195
+  lines: 4, 42, 64, 68, 75, 144, 186
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 13,183,184,192
+  lines: 7, 177, 178, 186
 - path: src/acheron/worker_sdk/cli.py
-  lines: 20,31,39,63,64
+  lines: 10, 21, 29, 53, 54
 - path: src/acheron/worker_sdk/app.py
   lines: 32-52
 related: []
@@ -1040,11 +1040,11 @@ last_verified_at:
 fixed_in: []
 files:
 - path: workers/translategemma/handler.py
-  lines: 118-121
+  lines: 108-111
 - path: workers/qwen3tts/handler.py
-  lines: 98-99, 39-42, 118-121
+  lines: 88-89, 29-32, 108-111
 - path: workers/granite_speech/handler.py
-  lines: 37-42
+  lines: 27-32
 related:
 - TYPE-009
 - CORR-033
@@ -1075,7 +1075,7 @@ files:
   - path: src/acheron/shell/local_handlers.py
     lines: 317
   - path: src/acheron/shell/executors/streaming.py
-    lines: 155
+    lines: 144
   - path: src/acheron/shell/cache.py
     lines: 116
   - path: src/acheron/worker_sdk/app.py
@@ -1118,19 +1118,19 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_caps.py
-    lines: 12-18
+    lines: 5-11
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 62, 227, 234, 321
   - path: src/acheron/worker_sdk/_server.py
-    lines: 39
+    lines: 34
   - path: src/acheron/worker_sdk/cli.py
     lines: 29, 37, 61
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 42, 45, 77, 81, 87, 97, 103
+    lines: 25, 28, 60, 64, 70, 80, 86
   - path: src/acheron/worker_sdk/config_loader.py
     lines: 42, 55
   - path: src/acheron/worker_sdk/pricing.py
-    lines: 191, 192, 200
+    lines: 185, 186, 194
   - path: src/acheron/worker_sdk/settings.py
     lines: 96
 related: [TYPE-008]

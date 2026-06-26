@@ -1,9 +1,4 @@
-"""Composable output artifact primitives for WorkerHandler.handle() returns.
-
-The multipart encoder / volume writer treat these uniformly via the
-`Artifact` Protocol so workers mix-and-match the variant their model's API
-naturally produces — no forced buffering.
-"""
+"""Composable output artifact primitives for WorkerHandler.handle() returns."""
 
 from __future__ import annotations
 

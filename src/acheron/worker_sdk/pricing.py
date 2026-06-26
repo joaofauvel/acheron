@@ -1,10 +1,4 @@
-"""Price discovery for Layer 8 workers — fault-tolerant, never blocks a job.
-
-`PriceSource` is the seam. Three variants; workers compose the right one.
-The backend calls ``await price_source.estimate(gpu_seconds)`` after each
-handle() and populates ``JobMetrics.cost_estimate`` + ``cost_basis`` from
-the returned :class:`PriceEstimate`.
-"""
+"""Price discovery for Layer 8 workers — fault-tolerant, never blocks a job."""
 
 from __future__ import annotations
 

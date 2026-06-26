@@ -1,8 +1,4 @@
-"""Pydantic schemas for the worker /execute request and error response.
-
-Strict (``extra="forbid"``) so client typos fail loudly — matches the
-orchestrator's API schema convention.
-"""
+"""Pydantic schemas for the worker /execute request and error response."""
 
 from __future__ import annotations
 

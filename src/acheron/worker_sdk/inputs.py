@@ -1,9 +1,4 @@
-"""Transport-neutral input handed to WorkerHandler.handle() alongside the Job.
-
-The `Input` Protocol is symmetric with `artifacts.Artifact` — the same
-three-variant shape (bytes / stream / file), the opposite direction on
-the wire. Workers consume an `Input`; they produce `list[Artifact]`.
-"""
+"""Transport-neutral input handed to WorkerHandler.handle() alongside the Job."""
 
 from __future__ import annotations
 

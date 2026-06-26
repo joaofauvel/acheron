@@ -1,14 +1,4 @@
-"""RunPod Serverless handler for ibm-granite/granite-speech-4.1-2b.
-
-This module runs **inside the RunPod serverless runtime image** (see
-``Dockerfile.runpod``). The cloud-side ``runpod_entrypoint.py`` imports
-``GraniteSpeechRunpodHandler`` here, calls ``startup()`` eagerly at boot,
-then ``runpod.serverless.start({"handler": make_runpod_handler(handler)})``.
-
-A local-GPU fallback handler (``GraniteSpeechLocalHandler``) is deferred to a
-separate future worker package — workers commit to one deployment mode by
-being one mode, per the Layer 8a spec.
-"""
+"""RunPod Serverless handler for ibm-granite/granite-speech-4.1-2b."""
 
 from __future__ import annotations
 

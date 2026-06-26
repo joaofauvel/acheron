@@ -1,14 +1,4 @@
-"""RunPod Serverless handler for Qwen3-TTS-12Hz-1.7B-CustomVoice.
-
-This module runs **inside the RunPod serverless runtime image** (see
-``Dockerfile.runpod``). The cloud-side ``runpod_entrypoint.py`` imports
-``Qwen3TTSRunpodHandler`` here, calls ``startup()`` eagerly at boot, then
-``runpod.serverless.start({"handler": make_runpod_handler(handler)})``.
-
-A local-GPU fallback handler (``Qwen3TTSLocalHandler``) is deferred to a
-separate future worker package — workers commit to one deployment mode by
-being one mode, per the Layer 8a spec.
-"""
+"""RunPod Serverless handler for Qwen3-TTS-12Hz-1.7B-CustomVoice."""
 
 from __future__ import annotations
 

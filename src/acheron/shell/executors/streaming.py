@@ -1,15 +1,4 @@
-"""Streaming pipeline executor — per-stage asyncio.Queue pipeline.
-
-The plan's stages are dispatched sequentially via bounded queues. Each stage
-runs in the outer ``asyncio.TaskGroup`` so a single failure cancels the
-rest cleanly. Outputs are written to ``StepCache`` after each stage and
-``PlanResult.outputs`` is built by scanning the cache at the end.
-
-The executor models the plan as a linear pipeline; stages are connected via
-queues in topological order and ``_END`` propagates downstream on failure.
-Non-linear DAGs where a step depends on a non-immediately-preceding step
-are not supported — the current planner only generates linear chains.
-"""
+"""Streaming pipeline executor — per-stage asyncio.Queue pipeline."""
 
 from __future__ import annotations
 

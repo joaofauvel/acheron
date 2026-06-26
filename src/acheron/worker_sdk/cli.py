@@ -1,14 +1,4 @@
-"""``acheron-worker-edge`` is the image's CMD module, not a user-facing CLI.
-
-The deployer configures the edge container via ``docker-compose.yml``
-service env vars + ``worker.yaml`` discovery — they never invoke this
-binary directly. It exists so the same published generic image serves
-TTS / ASR / translation RunPod workers (only the handler import path +
-``worker.yaml`` differ per service).
-
-Usage (in the published image's CMD):
-    python -m acheron.worker_sdk.cli --handler workers.qwen3tts.handler:Qwen3TTSRunpodHandler
-"""
+"""``acheron-worker-edge`` is the image's CMD module, not a user-facing CLI."""
 
 from __future__ import annotations
 
