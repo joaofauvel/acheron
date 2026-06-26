@@ -256,19 +256,18 @@ related:
 ### ARCH-009 — HealthProvider ABC lives in shell/health_providers.py instead of core/interfaces.py
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
-reviewed_at: 63faed4
+reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/health_providers.py
   lines: 19-25
-- path: src/acheron/core/interfaces.py
-  lines: 14-39
 related: []
 ```
 

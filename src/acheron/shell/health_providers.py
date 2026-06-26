@@ -3,26 +3,17 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import httpx
 
+from acheron.core.interfaces import HealthProvider
 from acheron.core.models import WorkerStatus
 
 if TYPE_CHECKING:
     from acheron.shell.config import Settings
 
 logger = logging.getLogger(__name__)
-
-
-class HealthProvider(ABC):
-    """Query a hosting platform API to determine if a worker is booting or offline."""
-
-    @abstractmethod
-    async def check_status(self, endpoint_id: str) -> WorkerStatus:
-        """Query the platform to verify if the container is booting vs offline."""
-        ...
 
 
 class RunPodHealthProvider(HealthProvider):

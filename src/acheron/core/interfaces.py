@@ -8,6 +8,7 @@ from acheron.core.models import (
     Plan,
     PlanResult,
     WorkerCapabilities,
+    WorkerStatus,
 )
 
 
@@ -36,4 +37,13 @@ class Executor(ABC):
     @abstractmethod
     async def run(self, plan: Plan) -> PlanResult:
         """Execute a plan and return the aggregated result."""
+        ...
+
+
+class HealthProvider(ABC):
+    """Query a hosting platform API to determine if a worker is booting or offline."""
+
+    @abstractmethod
+    async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        """Query the platform to verify if the container is booting vs offline."""
         ...

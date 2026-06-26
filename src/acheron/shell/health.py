@@ -18,7 +18,7 @@ from acheron.core.models import WorkerStatus
 from acheron.tls import grpc_channel
 
 if TYPE_CHECKING:
-    from acheron.shell.health_providers import HealthProvider
+    from acheron.core.interfaces import HealthProvider
     from acheron.shell.registry import RegisteredWorker
     from acheron.shell.stores.base import WorkerStore
 
