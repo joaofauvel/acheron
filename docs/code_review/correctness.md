@@ -487,17 +487,18 @@ related:
 ### CORR-018 — ASR multipart path materializes entire audio file in memory
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/transports/http.py
-  lines: 152-156
+  lines: 150-160
 related: []
 ```
 

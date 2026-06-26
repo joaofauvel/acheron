@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
 
+import aiofiles
 import httpx
 from pydantic import TypeAdapter
 
@@ -147,15 +149,18 @@ class HttpWorker(Worker):
             msg = f"{job.job_type.value} step {job.job_id}: file missing: {file_path}"
             raise WorkerError(msg)
 
-        form: dict[str, tuple[str | None, bytes, str]] = {
-            "request": (None, json.dumps(_job_to_dict(job)).encode("utf-8"), "application/json"),
-            form_field: (
-                file_path.name,
-                await asyncio.to_thread(file_path.read_bytes),
-                first_match.content_type,
-            ),
-        }
-        resp = await self._request("POST", "/execute", files=form)
+        content_iter, boundary = await _stream_multipart_request(
+            job=job,
+            file_path=file_path,
+            form_field=form_field,
+            content_type=first_match.content_type,
+        )
+        resp = await self._request(
+            "POST",
+            "/execute",
+            content=content_iter,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
         ctype = resp.headers.get("content-type", "")
         if ctype.startswith("multipart/mixed"):
             return await self._parse_multipart(resp, job.job_id)
@@ -200,3 +205,45 @@ def _job_to_dict(job: Job) -> dict[str, Any]:
         "chapter_id": job.chapter_id,
         "sequence_ids": list(job.sequence_ids) if job.sequence_ids else None,
     }
+
+
+async def _stream_multipart_request(
+    *,
+    job: Job,
+    file_path: Path,
+    form_field: str,
+    content_type: str,
+    chunk_size: int = 64 * 1024,
+) -> tuple[AsyncIterator[bytes], str]:
+    """Build a streaming ``multipart/form-data`` body for the ASR / TRANSLATION / TTS upload.
+
+    The body carries two parts: a ``request`` JSON envelope and the upstream
+    output file streamed from disk in ``chunk_size`` bytes. The full body is
+    never materialised in memory — the iterator yields header + file chunks
+    on demand as httpx reads from it.
+
+    Returns ``(body_iterator, boundary)``. The caller passes them to
+    :meth:`httpx.AsyncClient.request` via ``content=`` and ``headers=``
+    respectively.
+    """
+    boundary = f"acheron-{secrets.token_hex(16)}"
+    envelope = json.dumps(_job_to_dict(job)).encode("utf-8")
+
+    async def _gen() -> AsyncIterator[bytes]:
+        yield (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="request"\r\n'
+            f"Content-Type: application/json\r\n\r\n"
+        ).encode() + envelope + b"\r\n"
+        yield (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{form_field}"; filename="{file_path.name}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        async with aiofiles.open(file_path, "rb") as f:
+            while chunk := await f.read(chunk_size):
+                yield chunk
+        yield b"\r\n"
+        yield f"--{boundary}--\r\n".encode()
+
+    return _gen(), boundary

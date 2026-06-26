@@ -13,6 +13,23 @@ from acheron.shell.cache import StepCache
 from acheron.shell.transports.http import HttpWorker
 
 
+def _multipart_stub_response() -> httpx.Response:
+    return httpx.Response(
+        200,
+        headers={"content-type": "multipart/mixed; boundary=----x"},
+        content=(
+            b"------x\r\n"
+            b'Content-Disposition: attachment; filename="ch1.txt"\r\n'
+            b"Content-Type: text/plain\r\n\r\n"
+            b"transcribed audio\r\n"
+            b"------x\r\n"
+            b"Content-Type: application/json\r\n\r\n"
+            b'{"duration_seconds": 1.5, "cost_basis": null}\r\n'
+            b"------x--\r\n"
+        ),
+    )
+
+
 def _audio_bytes() -> bytes:
     return b"\xff\xfb\x90\x00MOCK-MP3-AUDIO"
 
@@ -399,3 +416,48 @@ async def test_extraction_step_falls_through_to_json_path(tmp_path: Path) -> Non
         result = await worker.execute(job)
     assert result.status == JobStatus.SUCCESS
     assert captured["content_type"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_asr_multipart_streams_audio_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CORR-018: ASR upload must not load the audio file into memory in one shot.
+
+    The transport must stream the file from disk via httpx, not call
+    ``Path.read_bytes()`` to materialise it.
+    """
+    audio_path = tmp_path / "big.mp3"
+    audio_path.write_bytes(b"\xff\xfb\x90\x00" * 2_500_000)  # ~10 MB
+    plan_job_id = "job-stream"
+    cache = StepCache(tmp_path)
+    await _seed_extract_output(cache, plan_job_id, audio_path)
+
+    read_bytes_calls: list[Path] = []
+    original_read_bytes = Path.read_bytes
+
+    def _spy_read_bytes(self: Path, *args: object, **kwargs: object) -> bytes:
+        if self == audio_path:
+            read_bytes_calls.append(self)
+        return original_read_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", _spy_read_bytes)
+
+    async def _handle(request: httpx.Request) -> httpx.Response:
+        return _multipart_stub_response()
+
+    transport = httpx.MockTransport(_handle)
+    async with httpx.AsyncClient(transport=transport, base_url="http://stub:8002") as client:
+        worker = HttpWorker(
+            "http://stub:8002",
+            client=client,
+            data_dir=tmp_path,
+            step_cache=cache,
+        )
+        job = Job(
+            job_id=f"{plan_job_id}-transcribe",
+            job_type=WorkerType.ASR,
+            payload={"source_language": "en"},
+            chapter_id="ch1",
+        )
+        result = await worker.execute(job)
+    assert result.status == JobStatus.SUCCESS
+    assert read_bytes_calls == []
