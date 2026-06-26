@@ -902,19 +902,19 @@ related:
 ### CORR-033 — `TranslateGemmaRunpodHandler._translate_batch` mutates the shared processor's tokenizer in-place
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
+  commit: pending
   date: '2026-06-24'
-fixed_in: []
+fixed_in: ["pending"]
 files:
-- path: workers/translategemma/handler.py
-  lines: 273-275
+  - path: workers/translategemma/handler.py
+    lines: 273-275
 related:
-- TYPE-010
+  - TYPE-010
 ```
 
 **Issue.** Lines 267-269: `if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None: tokenizer.pad_token_id = tokenizer.eos_token_id`. The processor is a stateful object loaded once at `startup()` and held on `self._processor`. The assignment mutates the tokenizer's state in-place and persists across all subsequent `handle()` calls. For the single-handler single-process RunPod serverless case this is benign (the mutation happens once at boot). But: (1) if a future maintainer ever instantiates two handlers against the same processor (e.g. for load testing, or for a future model-rotation pattern), the second inherits the mutated state and the first's intentional non-mutation is lost. (2) If the processor is ever replaced via a hot-reload, the new processor's tokenizer starts un-mutated but the first call sets it. The mutation is correct but a side-effect on shared state.

@@ -152,6 +152,9 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
                 device_map="cuda:0",
                 torch_dtype=torch.bfloat16,
             )
+            tokenizer = self._processor.tokenizer
+            if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+                tokenizer.pad_token_id = tokenizer.eos_token_id
 
         await asyncio.to_thread(_load)
 
@@ -276,9 +279,6 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             self._processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
             for m in messages_per_chunk
         ]
-        tokenizer = self._processor.tokenizer
-        if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
-            tokenizer.pad_token_id = tokenizer.eos_token_id
         inputs = self._processor(
             text=prompts,
             return_tensors="pt",

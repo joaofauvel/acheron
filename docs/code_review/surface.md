@@ -495,7 +495,7 @@ files:
   - path: workers/qwen3tts/runpod_entrypoint.py
     lines: 1-4
   - path: workers/translategemma/handler.py
-    lines: 1-8
+    lines: 1-11
   - path: workers/translategemma/runpod_entrypoint.py
     lines: 1-4
 related: [DOC-005]

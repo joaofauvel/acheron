@@ -335,3 +335,25 @@ class TestTranslateAndArtifact:
         assert [a.data for a in out] == [b"hola", b"mundo"]
         assert all(a.metadata["source_language"] == "en" for a in out)
         assert all(a.metadata["target_language"] == "es" for a in out)
+
+
+class TestTokenizerMutation:
+    """CORR-033: the pad_token_id init must be a one-shot startup side-effect, not a per-call mutation."""
+
+    def test_translate_batch_does_not_mutate_tokenizer(self) -> None:
+        """_translate_batch's body must not assign pad_token_id; that init belongs in startup()."""
+        import inspect
+
+        from workers.translategemma import handler as handler_module
+
+        source = inspect.getsource(handler_module.TranslateGemmaRunpodHandler._translate_batch)
+        assert "pad_token_id" not in source
+
+    def test_startup_initialises_pad_token_id_once(self) -> None:
+        """The pad_token_id init lives in startup()'s loader, not _translate_batch."""
+        import inspect
+
+        from workers.translategemma import handler as handler_module
+
+        source = inspect.getsource(handler_module.TranslateGemmaRunpodHandler.startup)
+        assert "pad_token_id" in source
