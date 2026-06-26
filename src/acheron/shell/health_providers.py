@@ -21,7 +21,7 @@ async def _fetch_provider_response(
     url: str,
     *,
     headers: dict[str, str] | None = None,
-    timeout: float = 10.0,
+    timeout: float = 10.0,  # noqa: ASYNC109 - delegated to httpx
 ) -> httpx.Response | None:
     """Issue a GET to ``url`` and return the response, or ``None`` on transport failure.
 

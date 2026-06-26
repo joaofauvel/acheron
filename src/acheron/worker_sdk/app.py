@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 import httpx
 from fastapi import FastAPI
 
-from acheron.core.models import WorkerCapabilities
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.pricing import (
     PriceSource,
@@ -23,6 +22,7 @@ from acheron.worker_sdk.registration import register_with_orchestrator
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from acheron.core.models import WorkerCapabilities
     from acheron.worker_sdk.handler import WorkerHandler
     from acheron.worker_sdk.settings import WorkerSettings
 

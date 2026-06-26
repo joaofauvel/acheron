@@ -152,7 +152,7 @@ class StreamingExecutor(Executor):
         for step in steps:
             try:
                 step_outputs = await self._cache.load_outputs(plan.job_id, step.step_id)
-            except (CacheMissError, CacheCorruptedError):
+            except CacheMissError, CacheCorruptedError:
                 # CacheMissError: step never ran or didn't reach save_outputs.
                 # CacheCorruptedError: partial manifest from a mid-save cancellation.
                 continue
