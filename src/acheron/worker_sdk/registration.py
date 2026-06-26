@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from acheron.worker_sdk._caps import caps_to_dict
+
 if TYPE_CHECKING:
     from acheron.core.models import WorkerCapabilities
 
@@ -53,7 +55,7 @@ async def register_with_orchestrator(  # noqa: PLR0913
         "worker_id": worker_id,
         "endpoint": endpoint,
         "transport": transport,
-        "capabilities": _caps_to_dict(capabilities),
+        "capabilities": caps_to_dict(capabilities),
     }
 
     url = f"{orchestrator_url.rstrip('/')}/workers"
@@ -73,19 +75,3 @@ async def register_with_orchestrator(  # noqa: PLR0913
         else:
             logger.info("Registered %s with orchestrator", worker_id)
             return
-
-
-def _caps_to_dict(caps: WorkerCapabilities) -> dict[str, object]:
-    """Serialize WorkerCapabilities for POST /workers."""
-    metadata = dict(caps.metadata)
-    return {
-        "worker_type": caps.worker_type.value,
-        "supported_languages_in": sorted(caps.supported_languages_in),
-        "supported_languages_out": sorted(caps.supported_languages_out),
-        "supported_formats_in": sorted(caps.supported_formats_in),
-        "supported_formats_out": sorted(caps.supported_formats_out),
-        "max_payload_bytes": caps.max_payload_bytes,
-        "batch_capable": caps.batch_capable,
-        "model_source": caps.model_source,
-        "metadata": metadata,
-    }

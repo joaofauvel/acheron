@@ -35,6 +35,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
+from acheron.worker_sdk._caps import caps_to_dict
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
 from acheron.worker_sdk.inputs import BytesInput, Input
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
@@ -49,17 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 def _caps_to_response(caps: WorkerCapabilities) -> dict[str, Any]:
-    return {
-        "worker_type": caps.worker_type.value,
-        "supported_languages_in": sorted(caps.supported_languages_in),
-        "supported_languages_out": sorted(caps.supported_languages_out),
-        "supported_formats_in": sorted(caps.supported_formats_in),
-        "supported_formats_out": sorted(caps.supported_formats_out),
-        "max_payload_bytes": caps.max_payload_bytes,
-        "batch_capable": caps.batch_capable,
-        "model_source": caps.model_source,
-        "metadata": caps.metadata,
-    }
+    return caps_to_dict(caps)
 
 
 def _job_from_request(body: ExecuteRequest) -> Job:

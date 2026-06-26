@@ -360,14 +360,15 @@ related:
 ### MAINT-013 — `_caps_to_response` (edge) and `_caps_to_dict` (registration) duplicate the same `WorkerCapabilities` → dict serialisation
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 51-62
