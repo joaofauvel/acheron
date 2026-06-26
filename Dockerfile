@@ -42,6 +42,6 @@ USER acheron
 FROM python:3.14-slim AS certs-init
 
 WORKDIR /app
-RUN pip install --no-cache-dir cryptography~=49.0
+RUN pip install --no-cache-dir cryptography~=46.0
 COPY scripts/generate_dev_certs.py ./scripts/generate_dev_certs.py
 CMD ["python", "scripts/generate_dev_certs.py", "--out-dir", "/certs"]

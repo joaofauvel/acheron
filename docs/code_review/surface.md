@@ -168,14 +168,14 @@ related: []
 ### PKG-003 — `Dockerfile:39` (certs-init stage) pins `cryptography~=49.0` while `pyproject.toml:168` pins `cryptography~=46.0`
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  commit: pending
   date: 2026-06-23
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: Dockerfile
     lines: 42-46
