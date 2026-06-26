@@ -514,17 +514,18 @@ related: []
 ### CORR-019 — SDK edge `_parse_multipart_request` materializes entire request body in memory
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 256-280
+  lines: 256-296
 related: []
 ```
 

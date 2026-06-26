@@ -11,19 +11,19 @@ JSON ``ExecuteError`` body with status 500.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
-from email.message import Message
-from email.parser import BytesParser
-from email.policy import default as default_policy
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from python_multipart.multipart import MultipartParser, parse_options_header
 
 from acheron.core.errors import WorkerError, sanitise_exc_message
 from acheron.core.models import (
@@ -83,43 +83,158 @@ def _decode_metadata(header: str | None) -> dict[str, JsonValue]:
     return {str(k): cast("JsonValue", v) for k, v in parsed.items()}
 
 
-def _classify_parts(message: Message) -> tuple[bytes | None, Message | None]:
-    """Pick the envelope (first ``application/json`` part) and the audio (first ``audio/*`` part).
+@dataclass(frozen=True)
+class _ParsedMultipartPart:
+    """A single parsed part of the ``multipart/form-data`` request body.
 
-    Non-JSON, non-audio parts raise :class:`WorkerError` as a wire-format
-    error. Subsequent application/json parts (e.g. the translation step's
-    ``chunks.json`` form field) are silently skipped — the envelope is the
-    first one.
+    Built by the streaming parser in :meth:`EdgeApp._parse_multipart_request`
+    from the low-level :class:`MultipartParser` callbacks. The audio part
+    is later converted to a :class:`BytesInput` so the handler API is
+    unchanged from the caller's perspective.
     """
-    envelope_json: bytes | None = None
-    audio_part: Message | None = None
-    for part in message.get_payload():
-        if not isinstance(part, Message):
-            continue
-        part_ctype = part.get_content_type()
-        if part_ctype == "application/json":
-            if envelope_json is None:
-                raw = part.get_payload(decode=True)
-                envelope_json = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-        elif part_ctype.startswith("audio/"):
-            if audio_part is None:
-                audio_part = part
-        else:
-            msg = f"Multipart part has unsupported Content-Type: {part_ctype} (expected application/json or audio/*)"
-            raise WorkerError(msg)
-    return envelope_json, audio_part
+
+    field_name: bytes
+    file_name: bytes | None
+    content_type: str
+    data: bytes
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
-def _build_input(audio_part: Message | None) -> Input | None:
-    if audio_part is None:
-        return None
-    audio_raw = audio_part.get_payload(decode=True)
-    audio_bytes = audio_raw if isinstance(audio_raw, bytes) else str(audio_raw).encode("utf-8")
-    return BytesInput(
-        content_type=audio_part.get_content_type(),
-        data=audio_bytes,
-        metadata=_decode_metadata(audio_part.get("X-Acheron-Metadata")),
+class _MultipartStreamState:
+    """Mutable state shared across the streaming multipart parser callbacks.
+
+    Plain attributes avoid the ``nonlocal`` chain that a closure-heavy
+    implementation would otherwise need.
+    """
+
+    __slots__ = (
+        "field_name",
+        "file_name",
+        "header_name_buf",
+        "header_value_buf",
+        "headers",
+        "part_content_type",
+        "part_data",
+        "part_metadata",
+        "parts",
     )
+
+    def __init__(self) -> None:
+        self.headers: dict[bytes, bytes] = {}
+        self.field_name: bytes | None = None
+        self.file_name: bytes | None = None
+        self.part_content_type: str | None = None
+        self.part_data = io.BytesIO()
+        self.part_metadata: dict[str, JsonValue] = {}
+        self.header_name_buf: list[bytes] = []
+        self.header_value_buf: list[bytes] = []
+        self.parts: list[_ParsedMultipartPart] = []
+
+    def reset_part(self) -> None:
+        self.headers.clear()
+        self.field_name = None
+        self.file_name = None
+        self.part_content_type = None
+        self.part_data.seek(0)
+        self.part_data.truncate()
+        self.part_metadata.clear()
+
+    def commit_part(self) -> None:
+        if self.field_name is None:
+            return
+        self.parts.append(
+            _ParsedMultipartPart(
+                field_name=self.field_name,
+                file_name=self.file_name,
+                content_type=self.part_content_type or "application/octet-stream",
+                data=self.part_data.getvalue(),
+                metadata=cast("dict[str, str]", self.part_metadata),
+            )
+        )
+
+
+def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamState) -> MultipartParser:
+    """Wire the low-level multipart parser callbacks to a state object."""
+
+    def _on_part_begin() -> None:
+        state.reset_part()
+
+    def _on_header_field(data: bytes, start: int, end: int) -> None:
+        state.header_name_buf.append(bytes(data[start:end]))
+
+    def _on_header_value(data: bytes, start: int, end: int) -> None:
+        state.header_value_buf.append(bytes(data[start:end]))
+
+    def _on_header_end() -> None:
+        name = b"".join(state.header_name_buf).lower()
+        value = b"".join(state.header_value_buf)
+        state.headers[name] = value
+        state.header_name_buf.clear()
+        state.header_value_buf.clear()
+
+    def _on_headers_finished() -> None:
+        disp_value = state.headers.get(b"content-disposition")
+        if disp_value is not None:
+            _, opts = parse_options_header(disp_value)
+            name = opts.get(b"name")
+            fname = opts.get(b"filename")
+            state.field_name = name if isinstance(name, bytes) else name.encode("latin-1") if name else None
+            state.file_name = fname if isinstance(fname, bytes) else fname.encode("latin-1") if fname else None
+        ct = state.headers.get(b"content-type")
+        state.part_content_type = ct.decode("latin-1") if ct else None
+        meta = state.headers.get(b"x-acheron-metadata")
+        if meta is not None:
+            state.part_metadata.update(_decode_metadata(meta.decode("latin-1")))
+
+    def _on_part_data(data: bytes, start: int, end: int) -> None:
+        state.part_data.write(bytes(data[start:end]))
+
+    def _on_part_end() -> None:
+        state.commit_part()
+
+    return MultipartParser(
+        boundary,
+        {
+            "on_part_begin": _on_part_begin,
+            "on_header_field": _on_header_field,
+            "on_header_value": _on_header_value,
+            "on_header_end": _on_header_end,
+            "on_headers_finished": _on_headers_finished,
+            "on_part_data": _on_part_data,
+            "on_part_end": _on_part_end,
+        },
+    )
+
+
+def _build_job_and_input(parts: list[_ParsedMultipartPart]) -> tuple[Job, BytesInput | None]:
+    """Classify the parsed parts into a Job + optional audio input."""
+    envelope_json: bytes | None = None
+    audio_input: BytesInput | None = None
+    for p in parts:
+        if p.field_name == b"request":
+            envelope_json = p.data
+            continue
+        if p.field_name == b"audio" and p.content_type.startswith("audio/"):
+            audio_input = BytesInput(
+                content_type=p.content_type,
+                data=p.data,
+                metadata=cast("dict[str, JsonValue]", p.metadata),
+            )
+            continue
+        if p.field_name == b"chunks" or (p.field_name and p.content_type == "application/json"):
+            # TRANSLATION/TTS path: the second JSON part is chunks.json;
+            # the handler uses the first JSON envelope's payload, not the
+            # chunks file body. Skip silently — CORR-025 regression guard.
+            continue
+        msg = f"Multipart part has unsupported Content-Type: {p.content_type} (expected application/json or audio/*)"
+        raise WorkerError(msg)
+
+    if envelope_json is None:
+        msg = "Multipart body has no application/json part"
+        raise WorkerError(msg)
+
+    body_req = ExecuteRequest.model_validate(json.loads(envelope_json))
+    return _job_from_request(body_req), audio_input
 
 
 def _jobresult_to_json(result: JobResult) -> dict[str, Any]:
@@ -259,30 +374,25 @@ class EdgeApp:
         return await self._dispatch(job, input_obj)
 
     async def _parse_multipart_request(self, request: Request) -> tuple[Job, Input | None]:
-        """Parse the multipart body into a Job + optional Input. Raises WorkerError on malformed input."""
+        """Parse the multipart body into a Job + optional Input. Raises WorkerError on malformed input.
+
+        Streams the request body in chunks via python-multipart's
+        :class:`MultipartParser` low-level API so the body is never
+        materialised in memory as a single ``bytes`` blob. Per-part
+        ``X-Acheron-Metadata`` headers are captured (preserving the
+        CORR-024 contract) by reading the raw header callbacks.
+        """
         ctype = request.headers.get("content-type", "")
         if "boundary=" not in ctype:
             msg = "Multipart body is missing boundary"
             raise WorkerError(msg)
-        boundary = ctype.split("boundary=", 1)[1].split(";", 1)[0].strip().strip('"')
-        body = await request.body()
-        full_body = (
-            f"Content-Type: {ctype.split(';', 1)[0].strip()}; boundary={boundary}\r\nMIME-Version: 1.0\r\n\r\n"
-        ).encode() + body
-        message = BytesParser(policy=default_policy).parsebytes(full_body)
-        if not message.is_multipart():
-            msg = "Multipart body was not multipart"
-            raise WorkerError(msg)
-
-        envelope_json, audio_part = _classify_parts(message)
-
-        if envelope_json is None:
-            msg = "Multipart body has no application/json part"
-            raise WorkerError(msg)
-        body_req = ExecuteRequest.model_validate(json.loads(envelope_json))
-
-        job = _job_from_request(body_req)
-        return job, _build_input(audio_part)
+        boundary = ctype.split("boundary=", 1)[1].split(";", 1)[0].strip().strip('"').encode("latin-1")
+        state = _MultipartStreamState()
+        parser = _build_streaming_multipart_parser(boundary, state)
+        async for chunk in request.stream():
+            parser.write(chunk)
+        parser.finalize()
+        return _build_job_and_input(state.parts)
 
     async def _run_execute(self, body: ExecuteRequest) -> Response:
         job = _job_from_request(body)

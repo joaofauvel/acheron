@@ -443,3 +443,117 @@ class TestMultipartResponseStreaming:
         assert joined.count(b"x") >= n_chunks
         # Body contains the closing boundary.
         assert joined.rstrip(b"\r\n").endswith(b"--")
+
+
+class TestParseMultipartRequestStreaming:
+    """CORR-019: edge /execute must parse the request body in streaming chunks."""
+
+    @pytest.mark.asyncio
+    async def test_parse_multipart_streams_request_body(
+        self, app_and_handler: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The parser must not call ``Request.body()`` — it must consume the
+        request via ``Request.stream()`` and feed chunks into python-multipart.
+        """
+        from starlette.requests import Request
+
+        body_calls: list[Request] = []
+        original_body = Request.body
+
+        async def _spy_body(self: Request) -> bytes:
+            body_calls.append(self)
+            return await original_body(self)
+
+        monkeypatch.setattr(Request, "body", _spy_body)
+
+        app, _ = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        # 10 MB of audio bytes — a body() call would materialise the whole thing.
+        audio = b"\xff\xfb\x90\x00" * 2_500_000
+        boundary = "acheron-stream"
+        body = (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="request"\r\n'
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+        )
+        body += (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="audio"; filename="big.mp3"\r\n'
+                f"Content-Type: audio/mpeg\r\n\r\n"
+            ).encode()
+            + audio
+            + b"\r\n"
+        )
+        body += f"--{boundary}--\r\n".encode()
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                content=body,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+        assert resp.status_code == 200
+        assert body_calls == []
+
+    @pytest.mark.asyncio
+    async def test_parse_multipart_handles_large_file_via_disk_spool(self, app_and_handler: Any, tmp_path: Any) -> None:
+        """A 2 MB audio part must be parsed correctly even when the file spills
+        to disk via python-multipart's MAX_MEMORY_FILE_SIZE config.
+        """
+        app, handler = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        # 2 MB audio — will spill to disk with the default 1 MB threshold.
+        audio = b"\xab" * (2 * 1024 * 1024)
+        boundary = "acheron-big"
+        body = (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="request"\r\n'
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+        )
+        body += (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="audio"; filename="big.mp3"\r\n'
+                f"Content-Type: audio/mpeg\r\n\r\n"
+            ).encode()
+            + audio
+            + b"\r\n"
+        )
+        body += f"--{boundary}--\r\n".encode()
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                content=body,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+        assert resp.status_code == 200
+        # Handler received the full audio bytes.
+        assert len(handler.received) == 1
+        assert len(handler.received[0]) == len(audio)
+        assert handler.received[0] == audio
