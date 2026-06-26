@@ -389,33 +389,27 @@ class Orchestrator:
                     )
             except AcheronError as exc:
                 logger.exception("Plan execution failed for %s", tracked.job_id)
-                tracked.status = PlanStatus.FAILED
-                tracked.result = PlanResult(
-                    plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
-                    status=PlanStatus.FAILED,
-                    completed_steps=0,
-                    total_steps=len(tracked.plan.steps) if tracked.plan else 0,
-                    outputs=(),
-                    total_cost=0.0,
-                    total_duration_seconds=0.0,
-                    errors=(sanitise_exc_message(exc),),
-                )
+                self._record_failure(tracked, exc)
             except Exception as exc:
                 logger.exception("Unexpected error executing %s", tracked.job_id)
-                tracked.status = PlanStatus.FAILED
-                tracked.result = PlanResult(
-                    plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
-                    status=PlanStatus.FAILED,
-                    completed_steps=0,
-                    total_steps=len(tracked.plan.steps) if tracked.plan else 0,
-                    outputs=(),
-                    total_cost=0.0,
-                    total_duration_seconds=0.0,
-                    errors=(sanitise_exc_message(exc),),
-                )
+                self._record_failure(tracked, exc)
             await self._job_store.put(tracked)
         finally:
             self._active_jobs.discard(tracked.job_id)
+
+    def _record_failure(self, tracked: TrackedJob, exc: BaseException) -> None:
+        """Mark ``tracked`` as failed and build the resulting :class:`PlanResult`."""
+        tracked.status = PlanStatus.FAILED
+        tracked.result = PlanResult(
+            plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
+            status=PlanStatus.FAILED,
+            completed_steps=0,
+            total_steps=len(tracked.plan.steps) if tracked.plan else 0,
+            outputs=(),
+            total_cost=0.0,
+            total_duration_seconds=0.0,
+            errors=(sanitise_exc_message(exc),),
+        )
 
     async def get_job(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""

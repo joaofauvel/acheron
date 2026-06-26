@@ -843,14 +843,15 @@ related: [CORR-013, DATA-006, DATA-008]
 ### CORR-031 — `HttpWorker.health` uses deprecated Python 2 `except E1, E2:` syntax
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/transports/http.py
   lines: '189'

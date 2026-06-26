@@ -314,7 +314,7 @@ class ChunkingHandler:
             try:
                 upstream_outputs = await cache.load_outputs(plan_job_id, step_dep)
                 break
-            except CacheMissError, CacheCorruptedError, OSError:
+            except (CacheMissError, CacheCorruptedError, OSError):
                 continue
 
         if not upstream_outputs:

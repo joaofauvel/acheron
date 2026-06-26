@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -70,17 +71,7 @@ def _registration_caps(caps: WorkerCapabilities, settings: WorkerSettings) -> Wo
     enriched = dict(caps.metadata)
     enriched["health_provider"] = "runpod"
     enriched["health_endpoint_id"] = settings.runpod_endpoint_id
-    return WorkerCapabilities(
-        worker_type=caps.worker_type,
-        supported_languages_in=caps.supported_languages_in,
-        supported_languages_out=caps.supported_languages_out,
-        supported_formats_in=caps.supported_formats_in,
-        supported_formats_out=caps.supported_formats_out,
-        max_payload_bytes=caps.max_payload_bytes,
-        batch_capable=caps.batch_capable,
-        model_source=caps.model_source,
-        metadata=enriched,
-    )
+    return dataclasses.replace(caps, metadata=enriched)
 
 
 def create_worker_app(

@@ -244,14 +244,15 @@ related: [EXC-003]
 ### MAINT-009 — Python 2-style `except A, B:` syntax used at 7 sites across 6 files
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/health_providers.py
   lines: 49

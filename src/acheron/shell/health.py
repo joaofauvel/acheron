@@ -135,6 +135,7 @@ class HealthMonitor:
         provider_name = _metadata_str(worker, "health_provider")
         endpoint_id = _metadata_str(worker, "health_endpoint_id")
         provider = self._providers.get(provider_name) if self._providers and provider_name else None
+        message = error
         if provider is not None and endpoint_id:
             try:
                 platform_status = await provider.check_status(endpoint_id)
@@ -146,12 +147,12 @@ class HealthMonitor:
                     exc,
                 )
                 platform_status = WorkerStatus.OFFLINE
-                error = f"{error}; provider {provider_name} error: {exc}"
+                message = f"{error}; provider {provider_name} error: {exc}"
             if platform_status == WorkerStatus.BOOTING:
-                await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, error)
+                await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
                 logger.info("Worker %s marked BOOTING via %s", worker.worker_id, provider_name)
                 return
-        await self._registry.set_worker_status(worker.worker_id, WorkerStatus.OFFLINE, error)
+        await self._registry.set_worker_status(worker.worker_id, WorkerStatus.OFFLINE, message)
         removed = await self._registry.record_health_failure(worker.worker_id)
         if removed:
             logger.warning("Removed unhealthy worker %s after 3 failures", worker.worker_id)
