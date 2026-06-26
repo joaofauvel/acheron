@@ -1,19 +1,19 @@
 ---
-branch: chore/code-review-update
+branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
 last_staleness_scan:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  date: 2026-06-26
 ---
 
 # Verification
 
 ## TEST — Test discipline
 
-**Grade:** A
+**Grade:** B
 
-TEST-001, TEST-003, TEST-004 remain verified. TEST-002, TEST-005, TEST-006, TEST-007 kept open (code unchanged since 63faed4, gaps remain). One new TEST finding: TEST-008 (low) — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test. Layer 8a added strong 1:1 test coverage for the new `worker_sdk/` (14 test files mirror the 13 source modules) and the qwen3tts worker (`_FakeModel` pattern), but the static-fallback pricing branch and the non-RunPod passthrough metadata assertion are untested.
+TEST-001, TEST-003, TEST-004 remain verified. TEST-002, TEST-005, TEST-006, TEST-007 kept open (code unchanged since 63faed4, gaps remain). One new TEST finding: TEST-008 (low) — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test. Layer 8a added strong 1:1 test coverage for the new `worker_sdk/` (14 test files mirror the 13 source modules) and the qwen3tts worker (`_FakeModel` pattern), but the static-fallback pricing branch and the non-RunPod passthrough metadata assertion are untested. **2026-06-26 refresh**: TEST-018 (low) — `test_app.py` still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete, regression of TEST-008). TEST-019 (low) — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4). TEST-020 (low) — `test_pricing.py` has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract).
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -209,9 +209,9 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 048e5c2
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [048e5c2]
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 31-51
@@ -434,9 +434,9 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 32d67ae
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [32d67ae]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 101-106
@@ -461,9 +461,9 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: a9298e0
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [a9298e0]
 files:
   - path: src/acheron/shell/transports/_multipart.py
     lines: 29-99
@@ -492,15 +492,6 @@ reviewed_at: dbec2be
 last_verified_at:
   commit: e54458416e9bfe890a473dd9d542978d205b40a1
   date: 2026-06-23
-fixed_in: []
-```yaml
-status: open
-severity: low
-effort: S
-reviewed_at: dbec2be
-last_verified_at:
-  commit: pending
-  date: 2026-06-24
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
@@ -611,9 +602,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 156755f
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [156755f]
 files:
 - path: tests/shell/test_step_handler.py
   lines: 293-326
@@ -636,9 +627,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 43ef688
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [43ef688]
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 104-114, 156-160
@@ -666,9 +657,9 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: a9298e0
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [a9298e0]
 files:
   - path: src/acheron/shell/transports/_multipart.py
     lines: 29-99
@@ -754,9 +745,9 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 299f08c
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [299f08c]
 files:
 - path: workers/translategemma/tests/test_handler.py
   lines: 223-271
@@ -779,9 +770,9 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: b37cd7d
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [b37cd7d]
 files:
 - path: tests/integration/test_tls.py
   lines: 70-73, 97, 107, 116
@@ -808,9 +799,9 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: a4bd73e
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [a4bd73e]
 files:
 - path: tests/core/test_planner.py
   lines: 209-304, 300-340
@@ -829,4 +820,85 @@ related:
 **Recommendation.** Add 4 tests in `TestValidateChunkingFitsWorkers`: (1) `test_passes_at_exact_equality_boundary` — caps `(max_input_tokens=2048,)`, `chunking_max_length=8192, chars_per_token=4` → no raise; (2) `test_raises_one_over_boundary` — same caps, `chunking_max_length=8196, chars_per_token=4` → `ChunkingTooLongForWorkerError`; (3) `test_zero_max_input_tokens_silently_permits_small_input` — caps `(max_input_tokens=0,)`, `chunking_max_length=1, chars_per_token=4` → no raise (documents the degenerate semantic); (4) `test_empty_capabilities_is_noop` — caps `()`, `chunking_max_length=10_000_000` → no raise.
 
 **Verification.** Run `just test tests/core/test_planner.py::TestValidateChunkingFitsWorkers`; the 4 new tests pass with the current implementation. The first two would catch a regression that changes `>` to `>=` in planner.py:121.
+
+### TEST-018 — test_app.py still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete, regression of TEST-008)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 47-50, 69-70
+  - path: tests/worker_sdk/test_app.py
+    lines: 121-156
+related: [TEST-008]
+```
+
+**Issue.** TEST-008 (status: fixed) was resolved by adding TestBuildPriceSource covering only 1.5 of the 3 recommended tests: `test_build_price_source_static_with_rate_returns_static_price` (line 124) and `test_build_price_source_runpod_without_api_key_returns_zero_stub` (line 137, a partial-credit test). The two remaining branches are still untested: (1) `test_build_price_source_static_without_rate_falls_back_to_zero` — covers app.py:47-50 (the warning + ZeroPrice fallback when `dollars_per_hour is None`); (2) `test_registration_caps_passthrough_when_not_runpod` — covers app.py:69-70 (the early-return when `price_source != 'runpod'`, asserting the registered payload lacks `health_provider`/`health_endpoint_id` keys). The original concern (a worker that opted out of RunPod silently broadcasting bogus health_provider metadata) is not gated by any test.
+
+**Why it matters.** A regression that dropped the `logger.warning` in app.py:48 or accidentally enriched metadata even when `price_source='static'` would be invisible to the current suite. The orchestrator's RunPodHealthProvider would then look up a non-RunPod worker on the RunPod REST API and surface a confusing 404 to the operator.
+
+**Recommendation.** Add the two missing tests in `tests/worker_sdk/test_app.py`: `test_build_price_source_static_without_rate_falls_back_to_zero` (assert warning logged + ZeroPrice returned) and `test_registration_caps_passthrough_when_not_runpod` (build a `WorkerSettings(price_source='static', runpod_endpoint_id=None)` and assert the registered payload's metadata has no `health_provider` key).
+
+**Verification.** Run `just test tests/worker_sdk/test_app.py` — new tests pass without external mocking.
+
+### TEST-019 — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/artifacts.py
+    lines: 62-78
+  - path: tests/worker_sdk/test_artifacts.py
+    lines: 45-53
+related: []
+```
+
+**Issue.** TestBytesArtifact has 4 tests (test_stream_yields_data_once, test_metadata_default_empty, etc.) and TestStreamArtifact has 1; TestFileArtifact (artifacts.py:62-78) has only 1 test: `test_stream_reads_from_disk_in_chunks` (lines 47-52, 200 KiB → 3 reads). The dataclass fields are untested: `metadata` defaulting to `{}` (BytesArtifact has this test at line 28, FileArtifact doesn't), and the `stream()` path on an empty file (zero reads, yields `b''`) and on a missing path (`aiofiles.open` raises FileNotFoundError, line 73). The latter is a security boundary — FileArtifact is the worker-to-orchestrator channel for files on disk and a missing path on the worker's filesystem would surface as a raw exception to the orchestrator.
+
+**Why it matters.** The 200 KiB happy path doesn't probe the loop's empty-read exit (line 76-77) or the `aiofiles.open` failure path (line 73). A refactor that swapped `while True: chunk = await f.read(64 * 1024)` for `async for chunk in f` would be caught by the existing test only if it broke the 3-read case; the 1-byte and 0-byte cases are unasserted. A future commit tightening `FileArtifact.path` to require a `Path` (vs `str | Path`) would not break the 200 KiB test.
+
+**Recommendation.** Add 3 tests in TestFileArtifact: (1) `test_metadata_default_empty` mirroring TestBytesArtifact:28; (2) `test_stream_yields_nothing_on_empty_file` — write an empty tmp file, collect via `_collect`, assert `b''`; (3) `test_stream_raises_filenotfounderror_on_missing_path` — point at a non-existent path, assert `FileNotFoundError` propagates from `stream()` (don't catch).
+
+**Verification.** Run `just test tests/worker_sdk/test_artifacts.py`; the 3 new tests pass with `tmp_path` fixtures only.
+
+### TEST-020 — test_pricing.py has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 47-73
+  - path: tests/worker_sdk/test_pricing.py
+    lines: 1-50
+related: []
+```
+
+**Issue.** `ZeroPrice.refresh()` (pricing.py:55-57) returns `True` (no-op). `StaticPrice.refresh()` (pricing.py:71-73) returns `True` (no-op). These are the two no-op branches of the `PriceSource.refresh()` Protocol, both claiming 'no rate lookup needed'. test_pricing.py has 3 tests for the variants (test_returns_zero_with_static_label, test_computes_cost_from_rate, test_zero_gpu_seconds_yields_zero) but zero tests for `refresh()`. The orchestrator lifespan calls `await price_source.refresh()` after construction (app.py lifespan, per the test_lifespan_continues_when_price_refresh_raises_httpx_error test in test_app.py:162-186) — a regression where `StaticPrice.refresh()` started returning `False` would propagate a 'price source not warm' signal to whatever consumes the return value.
+
+**Why it matters.** The contract `refresh() -> bool` (True = warmed, False = not warmed) is a wire-level assertion: a worker reporting `False` from refresh is signalling its lifespan should not claim to be ready. A typo'd return value (e.g. `return gpu_seconds` on a future `StaticPrice.refresh()` that decides to recompute rates) would silently break the lifespan contract. The 4 refresh-related tests in test_runpod_price.py cover only the RunPodPrice path.
+
+**Recommendation.** Add 2 small tests in test_pricing.py: `test_zero_price_refresh_returns_true` and `test_static_price_refresh_returns_true`, each `@pytest.mark.asyncio`, asserting `await ZeroPrice().refresh() is True` and `await StaticPrice(dollars_per_hour=0.69).refresh() is True` respectively. These are the parallel contract tests to test_runpod_price.py's refresh coverage.
+
+**Verification.** Run `just test tests/worker_sdk/test_pricing.py`; the 2 new tests pass without fixtures.
 

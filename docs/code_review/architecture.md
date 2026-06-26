@@ -1,19 +1,19 @@
 ---
-branch: chore/code-review-update
+branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
 last_staleness_scan:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  date: 2026-06-26
 ---
 
 # Architecture
 
 ## ARCH — Architecture
 
-**Grade:** B
+**Grade:** A
 
-Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584.
+Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584. ARCH-011 marked stale in the 2026-06-26 refresh: the original false claim is gone, the unconditional `from acheron.worker_sdk.cloud import ...` is the documented behavior now, not a bug. One new finding: ARCH-023 (low) — cross-module import of module-private `_ENV_ONLY_FIELDS` is the same PLC2701 anti-pattern as the original ARCH-005.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -261,10 +261,10 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: e43c708
   date: '2026-06-25'
 fixed_in:
-- pending
+- e43c708
 files:
 - path: src/acheron/shell/health_providers.py
   lines: 19-25
@@ -314,13 +314,13 @@ related: []
 ### ARCH-011 — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
   commit: 1fbedbc
-  date: '2026-06-24'
+  date: 2026-06-24
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/__init__.py
@@ -403,9 +403,9 @@ related:
 
 ## CFG — Configuration
 
-**Grade:** B
+**Grade:** A
 
-CFG-001, CFG-002 remain verified. CFG-003, CFG-004, CFG-005, CFG-006, CFG-007 remain open and re-resolved. CFG-007 is now widened by the 8b worker: `WorkerSettings.model_id` is configured in FOUR YAML files (qwen3tts + granite-speech, each with a `worker.yaml` and `worker.edge.yaml`) and still has zero consumers, so the documented knob is now silent across a wider surface. New CFG-008 (medium) — tracks that regression.
+CFG-001, CFG-002 remain verified. CFG-003, CFG-004, CFG-005, CFG-006, CFG-007 remain open and re-resolved. CFG-007 is now widened by the 8b worker: `WorkerSettings.model_id` is configured in FOUR YAML files (qwen3tts + granite-speech, each with a `worker.yaml` and `worker.edge.yaml`) and still has zero consumers, so the documented knob is now silent across a wider surface. New CFG-008 (medium) — tracks that regression. **One new finding: CFG-012 (high)** — `WorkerCapabilities.max_input_tokens` is set by handlers but dropped at every wire boundary, so the orchestrator's plan-time check is silently bypassed. The CFG-011 fix was incomplete: `caps_to_dict` and the request schema never got the field.
 
 ### CFG-001 — ACHERON_STORE_BACKEND / REDIS_URL selection logic duplicated across create_worker_store and create_job_store
 
@@ -661,10 +661,10 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 9773dfe
   date: '2026-06-25'
 fixed_in:
-- pending
+- 9773dfe
 files:
 - path: src/acheron/shell/transports/http.py
   lines: 90-105
@@ -804,9 +804,9 @@ severity: high
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 2b8c721
   date: 2026-06-24
-fixed_in: ["pending"]
+fixed_in: ["2b8c721"]
 files:
   - path: src/acheron/shell/tls.py
     lines: 1-24
@@ -870,10 +870,10 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: a7928f0
   date: 2026-06-25
 fixed_in:
-- pending
+- a7928f0
 files:
 - path: src/acheron/core/planner.py
   lines: 36-77
@@ -902,10 +902,10 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: aa10e15
   date: '2026-06-25'
 fixed_in:
-- pending
+- aa10e15
 files:
 - path: src/acheron/shell/transports/http.py
   lines: 114-162
@@ -931,10 +931,10 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 409b010
   date: 2026-06-25
 fixed_in:
-- pending
+- 409b010
 files:
 - path: src/acheron/worker_sdk/_server.py
 - path: src/acheron/shell/api/__main__.py
@@ -964,9 +964,9 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 26b8067
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [26b8067]
 files:
   - path: src/acheron/shell/transports/http.py
     lines: 65-83
@@ -1094,3 +1094,65 @@ related:
 **Recommendation.** Add `max_input_tokens: int | None = None` to `WorkerSettings`. In each worker that publishes a `max_input_tokens`, read it: `max_input_tokens=self._settings.max_input_tokens or _DEFAULT_MAX_INPUT_TOKENS`. Document the field in the worker YAML files. This is the same one-line wiring the translategemma worker already does for `model_id`; applying it to `max_input_tokens` is the natural symmetry.
 
 **Verification.** `git grep -n 'max_input_tokens' src/acheron/worker_sdk/settings.py` returns one definition. `git grep -n 'max_input_tokens=_MAX\|max_input_tokens=2048' workers/` returns either zero matches (option: drop the field until wiring exists) or one default-and-consume pattern per text-input worker. `just test` (existing `test_capabilities.py` for qwen3tts and translategemma continues to pass with the default). `just type-check`; `just lint-strict`.
+
+### CFG-012 — `WorkerCapabilities.max_input_tokens` is set by handlers but dropped at every wire boundary, so the orchestrator's plan-time check is silently bypassed
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_caps.py
+    lines: 18-30
+  - path: src/acheron/shell/api/schemas.py
+    lines: 50-61
+  - path: src/acheron/shell/api/schemas.py
+    lines: 73-82
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 31-41
+related: [CFG-011]
+```
+
+**Issue.** CFG-011 was 'fixed' by adding `max_input_tokens` to `WorkerCapabilities` and reading it from `WorkerSettings` in qwen3tts and translategemma handlers. The data, however, never reaches the orchestrator: (1) `caps_to_dict` in `worker_sdk/_caps.py:18-30` does not serialise `max_input_tokens`; (2) `WorkerCapabilitiesRequest` in `shell/api/schemas.py:50-61` does not declare the field and inherits `extra='forbid'` from `_StrictRequest`, so a worker posting it would get a 422; (3) `register_worker` in `shell/api/routes/workers.py:31-41` builds the `WorkerCapabilities` from the request body without `max_input_tokens`, so it defaults to `None`; (4) `WorkerResponse` in `shell/api/schemas.py:73-82` does not surface it either. The result: every registered worker's `max_input_tokens` is `None` from the orchestrator's perspective, and `validate_chunking_fits_workers` (planner.py:153 `if c.worker_type != step_type or c.max_input_tokens is None: continue`) silently skips the budget check for every job. The only test that exercises the check (`tests/shell/test_orchestrator.py:185-198`) bypasses the wire format by calling `InMemoryWorkerStore.register` directly, so it does not catch this. The `worker_sdk/_caps.py` docstring literally warns 'keeping two parallel functions lets a field addition drift silently. One function, imported by both call sites, removes the third copy of the shape' — and that is exactly what happened to CFG-011's field.
+
+**Why it matters.** The plan-time `ChunkingTooLongForWorkerError` check is the only thing standing between a user setting `chunking.max_chunk_length=10000` and a worker that internally caps input at 2048 tokens. With the check bypassed, a user-set mismatch silently falls through to the worker, which then either fails with a confusing worker-side error or produces truncated output. The user sees a runtime failure where they were promised a clean plan-time rejection (planner.py:133-134 raises before any GPU time is spent). It is exactly the 'documentation-via-runtime-error contract' pattern AGENTS.md flags: the YAML says one thing, the orchestrator does another.
+
+**Recommendation.** Add `max_input_tokens` to four sites: (1) `caps_to_dict` in `worker_sdk/_caps.py:18-30` — add `'max_input_tokens': caps.max_input_tokens,` to the dict; (2) `WorkerCapabilitiesRequest` in `shell/api/schemas.py:50-61` — add `max_input_tokens: int | None = None,`; (3) `register_worker` in `shell/api/routes/workers.py:31-41` — pass `max_input_tokens=body.capabilities.max_input_tokens` into the `WorkerCapabilities(...)` constructor; (4) `WorkerResponse` in `shell/api/schemas.py:73-82` — add the field. Add an end-to-end test in `tests/shell/api/test_workers.py` that POSTs a body with `max_input_tokens=4096`, lists the workers, and asserts the orchestrator's stored `WorkerCapabilities.max_input_tokens == 4096`. The existing `tests/core/test_planner.py` chunking check should then also include a test that builds the `WorkerCapabilities` from the registration route (not directly) and asserts the check fires — this is the test that would have caught the regression.
+
+**Verification.** `python -c 'import requests; ... POST /workers with max_input_tokens=4096, then GET /capabilities and assert max_input_tokens==4096'` (or the corresponding `TestClient` flow). A unit test that constructs a `WorkerCapabilities` via the API route and asserts the chunking check fires on a too-large `max_chunk_length`. `git grep -n 'max_input_tokens' src/` should show the field in `caps_to_dict`, `WorkerCapabilitiesRequest`, and `register_worker`. `just test` (full 767-test suite + the new end-to-end test) and `just type-check` (since `extra='forbid'` will catch any drift on the request side).
+
+### ARCH-023 — Cross-module import of module-private `_ENV_ONLY_FIELDS` from `worker_sdk/settings.py` to `worker_sdk/config_loader.py` — same PLC2701 anti-pattern as the original ARCH-005
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 26-32
+  - path: src/acheron/worker_sdk/config_loader.py
+    lines: 23
+  - path: src/acheron/worker_sdk/config_loader.py
+    lines: 61-67
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 107-117
+related: [ARCH-005]
+```
+
+**Issue.** `_ENV_ONLY_FIELDS` is defined as a leading-underscore frozenset in `worker_sdk/settings.py:26-32` and is imported as a module-private symbol by `worker_sdk/config_loader.py:23` (`from acheron.worker_sdk.settings import _ENV_ONLY_FIELDS, WorkerSettings`). The leading underscore is the Python convention for module-private symbols — importing it from another module breaks the encapsulation contract and signals an unfinished refactor. The original ARCH-005 found exactly this pattern (`_BUILT_IN_LOCAL_HANDLERS` imported across modules) and flagged it for the same reason; the fix in commit 92ed9da removed the constant rather than renaming it. The same fix discipline was not applied here: `_ENV_ONLY_FIELDS` is consumed in two places (settings.py:107 for the `_reject_env_only_fields` validator and config_loader.py:61 for the YAML-load-time offender check) and the second consumer reaches into a private symbol to find the field set.
+
+**Why it matters.** A future contributor renaming or splitting `_ENV_ONLY_FIELDS` in `settings.py` (e.g. moving the env-only contract onto a `Field(env_only=True)` descriptor or splitting the frozenset by env-var semantics) will not realise `config_loader.py` reads the same set, and the YAML-side rejection will silently drift away from the validator-side rejection. The two checks must stay in lockstep for the env-only contract to hold; today the lockstep is maintained by a module-private import. AGENTS.md hard rule 1 ('no `legacy` fallbacks, replace/refactor old paths over adding compatibility fallbacks') is not directly about this, but the spirit applies — an unfinished encapsulation is exactly the kind of debt a greenfield project should clear.
+
+**Recommendation.** Pick one: (a) drop the leading underscore and rename to `ENV_ONLY_FIELDS` in `settings.py:26-32`, then update the import site in `config_loader.py:23`; (b) expose the env-only set as a method on `WorkerSettings` (e.g. `WorkerSettings.is_env_only_field(name) -> bool`) and have `config_loader.py:61` call it, removing the cross-module constant read entirely. Option (b) keeps the encapsulation strong and gives the validator room to evolve (e.g. per-field metadata); option (a) is the smaller change.
+
+**Verification.** `git grep -n '^from acheron.worker_sdk.settings import _' src/ tests/` returns no matches. `grep -rn '_ENV_ONLY_FIELDS' src/ tests/` shows only the definition site in `settings.py`. `just test` (the existing `tests/worker_sdk/test_settings.py` env-only-field cases continue to pass; the YAML-side rejection in `config_loader.py:61` still raises with the same message). `just lint-strict` and `just type-check`.

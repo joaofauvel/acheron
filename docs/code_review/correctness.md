@@ -1,19 +1,19 @@
 ---
-branch: chore/code-review-update
+branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
 last_staleness_scan:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  date: 2026-06-26
 ---
 
 # Correctness
 
 ## CORR — Correctness
 
-**Grade:** C
+**Grade:** B
 
-Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified.
+Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified. **2026-06-26 refresh**: CORR-034 (medium) — Python 2 `except E1, E2:` syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031). CORR-035 (high) — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary).
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -331,7 +331,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
-    lines: 133-152
+    lines: 133-157
 related: [OBS-005]
 ```
 
@@ -351,9 +351,9 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 5837f5e
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [5837f5e]
 files:
   - path: src/acheron/shell/transports/_multipart.py
     lines: 29-99
@@ -416,7 +416,7 @@ last_verified_at:
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/app.py
-  lines: 139-146
+  lines: 130-137
 related:
 - ARCH-012
 - MAINT-011
@@ -466,10 +466,10 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: d7cabcb
   date: '2026-06-25'
 fixed_in:
-- pending
+- d7cabcb
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 136-178
@@ -493,10 +493,10 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 2da264b
   date: '2026-06-25'
 fixed_in:
-- pending
+- 2da264b
 files:
 - path: src/acheron/shell/transports/http.py
   lines: 150-160
@@ -519,10 +519,10 @@ severity: medium
 effort: M
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 48d778c
   date: '2026-06-25'
 fixed_in:
-- pending
+- 48d778c
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 256-296
@@ -545,9 +545,9 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: b2b8723
   date: 2026-06-25
-fixed_in: [pending]
+fixed_in: [b2b8723]
 files:
 - path: src/acheron/worker_sdk/cloud.py
   lines: '49'
@@ -570,9 +570,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: c718495
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [c718495]
 files:
   - path: src/acheron/worker_sdk/cloud.py
     lines: 44-48
@@ -595,9 +595,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: c718495
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [c718495]
 files:
   - path: src/acheron/worker_sdk/cloud.py
     lines: 57-62
@@ -620,9 +620,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 416b0b8
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [416b0b8]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 181-211
@@ -645,9 +645,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 1ca7a81
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [1ca7a81]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 79-82, 121
@@ -670,9 +670,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: 1ca7a81
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [1ca7a81]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 86-110
@@ -738,9 +738,9 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 714d2be
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [714d2be]
 files:
   - path: src/acheron/shell/transports/http.py
     lines: 133-144
@@ -765,9 +765,9 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 5837f5e
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [5837f5e]
 files:
   - path: src/acheron/shell/transports/_multipart.py
     lines: 52-54
@@ -797,9 +797,9 @@ last_verified_at:
 fixed_in: []
 files:
 - path: workers/translategemma/handler.py
-  lines: 204, 239-287
+  lines: 202-228, 230-241, 243-291
 - path: workers/translategemma/handler.py
-  lines: 225-236
+  lines: 232-243
 related:
 - CORR-026
 - MAINT-019
@@ -821,9 +821,9 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 5837f5e
   date: 2026-06-24
-fixed_in: [pending]
+fixed_in: [5837f5e]
 files:
   - path: src/acheron/shell/transports/_multipart.py
     lines: 65-99
@@ -848,10 +848,10 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: c3e1bb8
   date: '2026-06-25'
 fixed_in:
-- pending
+- c3e1bb8
 files:
 - path: src/acheron/shell/transports/http.py
   lines: '189'
@@ -881,7 +881,9 @@ last_verified_at:
 fixed_in: []
 files:
 - path: workers/translategemma/handler.py
-  lines: 188-190
+  lines: 190-192
+- path: workers/_shared_utils.py
+  lines: 89
 related:
 - CORR-017
 - CORR-018
@@ -910,7 +912,7 @@ last_verified_at:
 fixed_in: []
 files:
 - path: workers/translategemma/handler.py
-  lines: 270-271
+  lines: 273-275
 related:
 - TYPE-010
 ```
@@ -922,3 +924,63 @@ related:
 **Recommendation.** Move the pad_token_id check into `startup()` (after `_load()`): `if self._processor.tokenizer.pad_token_id is None and self._processor.tokenizer.eos_token_id is not None: self._processor.tokenizer.pad_token_id = self._processor.tokenizer.eos_token_id`. This makes the mutation explicit and one-time. Add a comment that this is a one-shot init, not a per-call side effect.
 
 **Verification.** Add a test in `workers/translategemma/tests/test_handler.py` that calls `_translate_batch` twice and asserts `self._processor.tokenizer.pad_token_id` is set only after `startup()`, not changed between calls. A simple way: assert the assignment is not in `_translate_batch`'s body via `inspect.getsource`.
+
+### CORR-034 — Python 2 'except E1, E2:' syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031)
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 206
+  - path: src/acheron/shell/cache.py
+    lines: 116
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 155
+  - path: src/acheron/shell/local_handlers.py
+    lines: 317
+  - path: src/acheron/worker_sdk/app.py
+    lines: 116
+related: [CORR-031, MAINT-009, MAINT-020, EXC-004]
+```
+
+**Issue.** Commit a7aaf1e ('fix: styling') reverted the CORR-031 / MAINT-009 parenthesised-except fix at all 4 sites that were previously corrected (http.py:206, cache.py:116, streaming.py:155, local_handlers.py:317), re-introducing the Python 2 'except A, B:' syntax that raises a SyntaxWarning on every Python 3.10+ import. A 5th site at app.py:116 was never fixed by the original B19 commit (it was added later by EXC-004 / OBS-008 in 285e5e4) so it has been in the Python 2 form since its introduction.
+
+**Why it matters.** The parenthesised form is the only one that pyupgrade and ruff will accept long-term. ruff B033/E999-adjacent rules and the future-Python-removal notice make the deprecation more visible over time. A new contributor who copies one of these sites perpetuates the deprecation. The cost of fixing is one pair of parentheses per site, but the regression commit explicitly undid the B19 effort.
+
+**Recommendation.** Re-apply the parenthesised form at all 5 sites. Add a CI lint check (ruff E999 or 'syntax-warning-as-error' via -W error::SyntaxWarning) to prevent further reverts.
+
+**Verification.** Run 'python3 -W error -c "from acheron.shell.executors.streaming import StreamingExecutor"' (and the other 4 modules) — no SyntaxWarning should be raised. Add a test that imports each affected module under -W error::SyntaxWarning and asserts no warning. Run `just test` to confirm no behavioural regression.
+
+### CORR-035 — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary)
+
+```yaml
+status: open
+severity: high
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 166-175
+  - path: src/acheron/shell/stores/redis.py
+    lines: 260-266
+related: [CORR-013]
+```
+
+**Issue.** _serialize_job (redis.py:166-175) builds the per-output dict from {path, filename, size_bytes, checksum, content_type} only, omitting the `metadata` field that the CORR-013 fix added to OutputFile. _deserialize_job (redis.py:260-266) constructs OutputFile without passing metadata, so the default-factory empty dict is used on read. Any orchestrator using the Redis backend (the default for production) loses all per-artifact metadata (sequence_id, chapter_id, sample_rate, model, etc.) the moment a PlanResult is stored, and the metadata is silently replaced with {} on the next resume_job / get_job. The in-memory store and the file-backed StepCache use pydantic TypeAdapter (which preserves metadata correctly) so this regression is specific to the Redis path. The CORR-013 test suite (test_http_multipart.py) only verifies the parser level and never exercises a Redis round-trip with a non-empty metadata dict — the bug is uncovered by existing tests.
+
+**Why it matters.** The CORR-013 fix is meaningless in production if the next layer throws the data away. The metadata header is the only way to associate an emitted OutputFile with its chapter and sequence position (per the CORR-013 / CORR-024 rationale). After an orchestrator restart, all artifacts are returned to the API / dashboard with metadata={}, which silently breaks the chunk-ordering contract for any consumer that walks outputs. The wire format silently disagrees with the in-process representation; the issue cannot be caught by the worker (which is already on the other side of the boundary) or by a fresh deployment (which has no prior state to compare).
+
+**Recommendation.** Add 'metadata': dict(o.metadata) to the per-output dict in _serialize_job (line 166-175) and pass metadata=o.get('metadata', {}) to the OutputFile constructor in _deserialize_job (line 260-266). Defensively validate the deserialised value is a dict (e.g. via isinstance check) and fall back to {} on type drift, mirroring the worker-metadata check at line 99-100. Add a round-trip integration test in test_redis_job_store.py that seeds a PlanResult with a non-empty OutputFile.metadata and asserts the deserialised value equals the original.
+
+**Verification.** Add test_redis_job_store.py::TestPlanRoundTrip::test_result_with_metadata_round_trips: create a PlanResult with outputs=(OutputFile(..., metadata={'sequence_id': 7, 'chapter_id': 'ch3'}),), call store.put, then store.get, and assert loaded.result.outputs[0].metadata == {'sequence_id': 7, 'chapter_id': 'ch3'}. Add a second test for metadata containing nested non-str values to confirm the type drift fallback (empty dict on bad JSON shape).

@@ -1,10 +1,10 @@
 ---
-branch: chore/code-review-update
+branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
 last_staleness_scan:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  date: 2026-06-26
 ---
 
 # Surface
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-DX-001 is verified. DX-002 (medium) transitioned to `fixed` in 5b55e6f (README Quick Start replaced `acheron submit` with the canonical `acheron job ...` form). DX-003 (medium) remains open and re-resolved: the new `workers/granite_speech` workspace member widens the gap. No new DX findings at high threshold.
+DX-001 is verified. DX-002 (medium) transitioned to `fixed` in 5b55e6f (README Quick Start replaced `acheron submit` with the canonical `acheron job ...` form). DX-003 (medium) remains open and re-resolved: the new `workers/granite_speech` workspace member widens the gap. No new DX findings at high threshold. **2026-06-26 refresh**: DX-004 added — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members.
 
 ### DX-001 — Quick Start omits `just certs` — fresh clone breaks `docker compose up`
 
@@ -88,9 +88,9 @@ files:
   - path: Justfile
     lines: 38-40
   - path: pyproject.toml
-    lines: 194-198
+    lines: 198-202
   - path: pyproject.toml
-    lines: 139-140
+    lines: 140-144
 related: []
 ```
 
@@ -106,7 +106,7 @@ related: []
 
 **Grade:** A
 
-PKG-001 is verified. Two new PKG findings: PKG-002 (low) — `pyproject.toml` dead `root_package` key + duplicate `soundfile` dev entry; PKG-003 (medium) — `Dockerfile:39` (certs-init stage) pins `cryptography~=49.0` while `pyproject.toml:168` pins `cryptography~=46.0`.
+PKG-001 is verified. Two new PKG findings: PKG-002 (low) — `pyproject.toml` dead `root_package` key + duplicate `soundfile` dev entry; PKG-003 (medium) — `Dockerfile:39` (certs-init stage) pins `cryptography~=49.0` while `pyproject.toml:168` pins `cryptography~=46.0`. **2026-06-26 refresh**: PKG-004 added — All three worker packages duplicate `pythonpath = ["../.."]` in `[tool.pytest.ini_options]`, masking the DX-003 workspace install gap.
 
 ### PKG-001 — `jinja2` is a runtime dep of the acheron wheel but is only used by the separate dashboard package
 
@@ -149,11 +149,11 @@ last_verified_at:
 fixed_in: []
 files:
   - path: pyproject.toml
-    lines: 148-149
+    lines: 152-153
   - path: pyproject.toml
-    lines: 178
+    lines: 182
   - path: pyproject.toml
-    lines: 185
+    lines: 189
 related: []
 ```
 
@@ -178,9 +178,9 @@ last_verified_at:
 fixed_in: []
 files:
   - path: Dockerfile
-    lines: 36-40
+    lines: 42-46
   - path: pyproject.toml
-    lines: 172
+    lines: 176
 related: [DOC-003]
 ```
 
@@ -196,7 +196,7 @@ related: [DOC-003]
 
 **Grade:** B
 
-DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. DOC-004 (medium) widens with the new translategemma worker still absent from the README. Two new DOC findings in 8c: DOC-005 (medium) — `shell/tls.py` back-compat shim docstring violates the greenfield rule [related: ARCH-017]; DOC-006 (low) — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections.
+DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. DOC-004 (medium) widens with the new translategemma worker still absent from the README. Two new DOC findings in 8c: DOC-005 (medium) — `shell/tls.py` back-compat shim docstring violates the greenfield rule [related: ARCH-017]; DOC-006 (low) — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections. **2026-06-26 refresh**: DOC-004 marked stale (README has been rewritten to include all 3 workers); DOC-007 added — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule.
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -264,18 +264,18 @@ last_verified_at:
   date: '2026-06-24'
 fixed_in: []
 files:
-- path: .env.example
-  lines: 5, 9, 29
-- path: .env.example
-  lines: 9-46
-- path: README.md
-  lines: 182-193
-- path: dashboard/app.py
-  lines: 58
-- path: src/acheron/shell/api/deps.py
-  lines: 26-32
-- path: docker-compose.yml
-  lines: 203-213
+  - path: .env.example
+    lines: 4-9, 29
+  - path: .env.example
+    lines: 9-29
+  - path: README.md
+    lines: 182-198
+  - path: dashboard/app.py
+    lines: 58
+  - path: src/acheron/shell/api/deps.py
+    lines: 25-32
+  - path: docker-compose.yml
+    lines: 35-36
 related:
 - DX-002
 - SEC-011
@@ -293,7 +293,7 @@ related:
 ### DOC-004 — README architecture tree, CI section, and Test paths omit the new `granite_speech` worker
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
@@ -303,11 +303,11 @@ last_verified_at:
 fixed_in: []
 files:
   - path: README.md
-    lines: 76-77
+    lines: 87-92
   - path: README.md
-    lines: 125
+    lines: 79
   - path: README.md
-    lines: 160-163
+    lines: 162-168
 related: [DOC-003]
 ```
 
@@ -356,10 +356,10 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: bc28597
   date: 2026-06-25
 fixed_in:
-- pending
+- bc28597
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 253-265
@@ -377,3 +377,134 @@ related:
 **Recommendation.** Rewrite orchestrator.py:219-223 to: `AcheronError: If plan compilation or input-budget validation fails (e.g. invalid language path, chunking exceeds worker max_input_tokens).` Or, more precise, list `InvalidLanguagePathError` and `ChunkingTooLongForWorkerError` separately. Add a `Raises:` section to planner.py:92-111 documenting `ValueError` (chars_per_token <= 0) and `ChunkingTooLongForWorkerError` (chunking_max_length exceeds a worker's max_input_tokens).
 
 **Verification.** Read both docstrings; the `Raises:` sections enumerate every exception the function body can raise. `ruff check --select D .` does not flag them. `python -c 'import inspect; from acheron.core.planner import validate_chunking_fits_workers; print(inspect.getdoc(validate_chunking_fits_workers))'` shows the new section.
+
+### DX-004 — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: .envrc.example
+    lines: 5
+  - path: Justfile
+    lines: 38-40
+  - path: pyproject.toml
+    lines: 198-202
+related: [DX-003]
+```
+
+**Issue.** The same workspace-topology gap that DX-003 flagged in `Justfile:40` is also present in `.envrc.example:5`: `[[ -d ".venv" ]] || ( uv venv && uv sync --all-extras )`. A developer who follows the direnv path (the recommended workflow per README.md:14) copies `.envrc.example` to `.envrc`, direnv creates the venv with `uv sync --all-extras`, and the resulting venv does not include `acheron-qwen3tts`, `acheron-granite-speech`, or `acheron-translategemma` as editable installs. The README does not currently mention the `--all-packages` flag; the Justfile recipe is the only place where it could be standardised, and `.envrc.example` is the direnv counterpart. Same shape of bug as DX-001 (`just certs` omission) and DX-003 (`uv sync` flag): a documented first-run path diverges from what the workspace actually requires.
+
+**Why it matters.** Two canonical onboarding paths (Justfile and direnv) both produce incomplete venvs. A developer who happens to use the direnv path (and skips the Justfile) will not see the `just install` DX-003 reminder either. Worker tests still pass by accident because each worker's `[tool.pytest.ini_options] pythonpath = ["../.."]` adds the project root to sys.path; the gap stays invisible until someone tries to import a worker module from a REPL, a script, or a new package. The fix is a one-line change to `.envrc.example:5` mirroring the Justfile fix.
+
+**Recommendation.** Change `.envrc.example:5` from `[[ -d ".venv" ]] || ( uv venv && uv sync --all-extras )` to `[[ -d ".venv" ]] || ( uv venv && uv sync --all-extras --all-packages )`. Pair with the DX-003 fix to keep both entry points in lockstep. Optionally add a one-line comment in `.envrc.example` noting that `--all-packages` is required because Acheron's worker packages are uv workspace members, not transitive deps.
+
+**Verification.** Fresh clone → `cp .envrc.example .envrc && direnv allow` (or `bash -c 'source .envrc'`) → `uv run python -c "import workers.qwen3tts.handler, workers.granite_speech.handler, workers.translategemma.handler"` resolves all three under the worktree, not ModuleNotFoundError. `just test` still passes. `just install` and the direnv path produce equivalent venvs.
+
+### PKG-004 — All three worker packages duplicate `pythonpath = ["../.."]` in `[tool.pytest.ini_options]`, masking the DX-003 workspace install gap
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: workers/qwen3tts/pyproject.toml
+    lines: 22
+  - path: workers/granite_speech/pyproject.toml
+    lines: 21
+  - path: workers/translategemma/pyproject.toml
+    lines: 21
+  - path: workers/_shared/pyproject.toml
+    lines: 2
+related: [DX-003, DX-004]
+```
+
+**Issue.** `workers/qwen3tts/pyproject.toml:22`, `workers/granite_speech/pyproject.toml:21`, `workers/translategemma/pyproject.toml:21`, and `workers/_shared/pyproject.toml:2` all set `[tool.pytest.ini_options] pythonpath = ["../.."]`. This prepends the project root to `sys.path` for every worker test run, which is why the workspace members (which `uv sync` did not install) can still be imported during `just test`. The same hack is also why DX-003's gap is invisible in CI: pytest finds the workers by walking up to the project root, not by importing an installed package. The hack is brittle in three ways: (a) it couples each worker's test config to the directory layout of the parent repo (e.g. a flat uv workspace install elsewhere would break); (b) it papers over a real install-time bug (DX-003) so the gap will not surface even when a developer tries to import a worker from a REPL or a new package; (c) the `pythonpath` hack duplicates the same one-liner across four files, so a future test-discovery refactor (e.g. switching to `import-mode=importlib` per pyproject.toml:142) has to update all four. AGENTS.md says: "Prefer strict domain separation, avoid string-based dispatch, and use typing in your favor" — the same spirit applies to test config; the right way for a workspace member to be importable is for it to be installed, not for sys.path to be patched.
+
+**Why it matters.** Coupled, repeated test config that exists to paper over an install-time gap. Once DX-003 is fixed (Justfile uses `--all-packages`), the hack becomes redundant — but it stays in the four `pyproject.toml` files unless someone remembers to clean it up. Better to remove the hack as part of the DX-003 fix so the test config does not silently change behaviour in the future.
+
+**Recommendation.** After fixing DX-003 (add `--all-packages` to `Justfile:40` and `.envrc.example:5`), remove `pythonpath = ["../.."]` from all four worker pyproject.toml files. If a worker test ever needs the project root on `sys.path` for a real reason, add a one-line comment explaining which import relies on it; otherwise, the workspace install should be the single source of truth.
+
+**Verification.** After the DX-003 fix and the four `pythonpath` removals, `just install && just test` still passes (643+ tests, coverage >= 80%). `uv run python -c "import workers.qwen3tts.handler"` still works from the project root. `uv run python -c "import workers.qwen3tts.handler"` from outside the worktree (e.g. `cd /tmp`) fails with `ModuleNotFoundError` (the correct behaviour, since it's a workspace install).
+
+### DOC-007 — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 1-9
+  - path: src/acheron/shell/logging_context.py
+    lines: 1-5
+  - path: src/acheron/shell/transports/_multipart.py
+    lines: 1-3
+  - path: src/acheron/tls.py
+    lines: 1-5
+  - path: src/acheron/worker_sdk/__init__.py
+    lines: 1-5
+  - path: src/acheron/worker_sdk/_caps.py
+    lines: 1-6
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 1-7
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 1-8
+  - path: src/acheron/worker_sdk/_server.py
+    lines: 1-4
+  - path: src/acheron/worker_sdk/artifacts.py
+    lines: 1-4
+  - path: src/acheron/worker_sdk/cli.py
+    lines: 1-8
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 1-14
+  - path: src/acheron/worker_sdk/config_loader.py
+    lines: 1-9
+  - path: src/acheron/worker_sdk/inputs.py
+    lines: 1-4
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 1-5
+  - path: src/acheron/worker_sdk/registration.py
+    lines: 1-7
+  - path: src/acheron/worker_sdk/schemas.py
+    lines: 1-3
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 1-8
+  - path: workers/granite_speech/handler.py
+    lines: 1-8
+  - path: workers/granite_speech/runpod_entrypoint.py
+    lines: 1-4
+  - path: workers/qwen3tts/handler.py
+    lines: 1-8
+  - path: workers/qwen3tts/runpod_entrypoint.py
+    lines: 1-4
+  - path: workers/translategemma/handler.py
+    lines: 1-8
+  - path: workers/translategemma/runpod_entrypoint.py
+    lines: 1-4
+related: [DOC-005]
+```
+
+**Issue.** AGENTS.md hard rule: "Usually module level docstrings should be 1 line. For function and method docstrings use google style as per ruff config in `pyproject.toml`. Be concise." A scan of non-test Python source under `src/`, `dashboard/`, and `workers/` finds 24 modules with multi-line module docstrings (the second paragraph is the offender; the first line is fine). The pattern is consistent — a short summary line, a blank line, then a 1–13 line paragraph explaining the module's place in the architecture (e.g. `tls.py:3-5` explains why it lives at the top level rather than under `shell/`; `worker_sdk/__init__.py:3-5` explains that importing the SDK transitively loads runpod). Most of these paragraphs are exactly the kind of "stale-prone structural rationale" that AGENTS.md's comment discipline section targets: they reference layout (top-level vs shell), import-linter contracts, or future plans. DOC-005 already flagged one of them — the second paragraph of `src/acheron/tls.py:3-5` — and the fix was supposed to be the canonical example. That fix was not applied (the paragraph is still there), and the same shape was not addressed across the other 23 modules. A reviewer cannot tell from `just lint-strict` that the rule is being violated (ruff's pydocstyle D rules check the opposite — D200/D202 want a one-line summary; they do not flag a 2-line docstring with a blank line in between).
+
+**Why it matters.** The docstrings will go stale as the architecture evolves. For example, `tls.py:3-5` references the `worker-sdk-no-shell` import-linter contract; if that contract is renamed (e.g. to `worker-sdk-no-orchestrator` in a future refactor), the docstring will silently lie. Same for `worker_sdk/__init__.py:3-5` referencing the runpod SDK loading: if the SDK is split or the lazy import is removed, the docstring becomes misleading. AGENTS.md calls this out by name: "Avoid stale-prone comments that reference impl details." A 1-line module docstring that says what the module does (not where it lives or why) is the discipline the project asks for. Bundling 24 sites into one story because the threshold is high and the remediation is mechanical (drop the second paragraph on each).
+
+**Recommendation.** For each of the 24 modules, reduce the module docstring to a single line that names the module's purpose. Examples of the trimmed form: `tls.py` -> `'''TLS helpers — env-var to SSL credentials conversion for HTTP and gRPC.'''`; `worker_sdk/__init__.py` -> `'''Acheron worker SDK — the blueprint for Layer 8 real GPU workers.'''`. The architectural rationale (why a module lives at the top level, why an import is lazy, etc.) belongs in the relevant import-linter contract definition or a top-level design doc, not in a module docstring that has to track every refactor. The fix is `ruff format` + manual trim per file; total effort is ~30 min of mechanical editing.
+
+**Verification.** Run the scan: `for f in $(rg -l '^\"\"\"' src/ dashboard/ workers/ --type py | rg -v '/tests/' | rg -v 'pyproject\.toml'); do head -1 "$f" | python3 -c "import sys; doc=sys.stdin.read(); m=__import__('re').match(r'^\"\"\"(.+?)\"\"\"$', doc); import sys; sys.exit(0 if m and '\n' not in m.group(1) and len(m.group(1)) < 200 else 1)" || echo "$f: multi-line docstring"; done` — output should be empty. `just lint-strict` passes. `grep -c '^\"\"\"$' <file>` continues to find one match per file (the closing triple-quote).

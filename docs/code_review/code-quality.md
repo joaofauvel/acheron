@@ -1,10 +1,10 @@
 ---
-branch: chore/code-review-update
+branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
 last_staleness_scan:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  date: 2026-06-26
 ---
 
 # Code quality
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape.
+MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape. **2026-06-26 refresh**: MAINT-020 (low) — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit (regression of MAINT-009); the regression touches 5 sites including a 5th new site introduced by the EXC-004 fix.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -143,10 +143,10 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: pending
+  commit: a0bfd98
   date: '2026-06-25'
 fixed_in:
-- pending
+- a0bfd98
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 359-384
@@ -170,10 +170,10 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 9dead43
   date: '2026-06-25'
 fixed_in:
-- pending
+- 9dead43
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 209-228
@@ -198,10 +198,10 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 9dead43
   date: '2026-06-25'
 fixed_in:
-- pending
+- 9dead43
 files:
 - path: src/acheron/shell/health_providers.py
   lines: 42-63, 80-111
@@ -227,10 +227,10 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: a0bfd98
   date: '2026-06-25'
 fixed_in:
-- pending
+- a0bfd98
 files:
   - path: src/acheron/shell/health.py
     lines: 133-152
@@ -253,25 +253,25 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: c3e1bb8
   date: '2026-06-25'
 fixed_in:
-- pending
+- c3e1bb8
 files:
-- path: src/acheron/shell/health_providers.py
-  lines: 49
-- path: src/acheron/shell/health_providers.py
-  lines: 80
-- path: src/acheron/shell/transports/http.py
-  lines: '189'
-- path: src/acheron/shell/local_handlers.py
-  lines: 317
-- path: src/acheron/shell/executors/streaming.py
-  lines: 155
-- path: src/acheron/worker_sdk/pricing.py
-  lines: 143
-- path: src/acheron/shell/cache.py
-  lines: 115
+  - path: src/acheron/shell/health_providers.py
+    lines: 49
+  - path: src/acheron/shell/health_providers.py
+    lines: 80
+  - path: src/acheron/shell/transports/http.py
+    lines: '189'
+  - path: src/acheron/shell/local_handlers.py
+    lines: 317
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 155
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 143
+  - path: src/acheron/shell/cache.py
+    lines: 115
 related: []
 ```
 
@@ -344,10 +344,10 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: a0bfd98
   date: '2026-06-25'
 fixed_in:
-- pending
+- a0bfd98
 files:
 - path: src/acheron/worker_sdk/app.py
   lines: 59-83
@@ -371,10 +371,10 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 712ae19
   date: '2026-06-25'
 fixed_in:
-- pending
+- 712ae19
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 51-62
@@ -400,9 +400,9 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
-  date: 2026-06-25
-fixed_in: [pending]
+  commit: 030cedd
+  date: '2026-06-25'
+fixed_in: [030cedd]
 files:
 - path: stubs/_sdk_base/__init__.py
   lines: 53-57, 101-105, 140-144
@@ -534,10 +534,10 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 135ae9f
   date: 2026-06-25
 fixed_in:
-- pending
+- 135ae9f
 files:
 - path: src/acheron/shell/health.py
   lines: 139-148
@@ -617,7 +617,7 @@ related:
 
 **Grade:** A
 
-TYPE-002 remains verified. All seven open TYPE stories (TYPE-001, 003, 004, 005, 006, 007, 008) re-resolved: most line numbers held, with notable shifts in `cloud.py` (TYPE-007 moved from 132-139 to 164-168; TYPE-008 expanded from 7 to 10 sites, with significant line shifts in `cloud.py` and `_edge_http.py`). The new `workers/granite_speech/handler.py` package is now in scope: TYPE-009 (low) — `GraniteSpeechRunpodHandler` types `self._model` and `self._processor` as `Any` with a 2-line stale-prone comment justifying a workspace-test detail; a Protocol stub under `TYPE_CHECKING` would be cleaner. Pattern-level: the worker packages are a new `Any`/`# type: ignore` surface that will multiply the worker_sdk count.
+TYPE-002 remains verified. All seven open TYPE stories (TYPE-001, 003, 004, 005, 006, 007, 008) re-resolved: most line numbers held, with notable shifts in `cloud.py` (TYPE-007 moved from 132-139 to 164-168; TYPE-008 expanded from 7 to 10 sites, with significant line shifts in `cloud.py` and `_edge_http.py`). The new `workers/granite_speech/handler.py` package is now in scope: TYPE-009 (low) — `GraniteSpeechRunpodHandler` types `self._model` and `self._processor` as `Any` with a 2-line stale-prone comment justifying a workspace-test detail; a Protocol stub under `TYPE_CHECKING` would be cleaner. Pattern-level: the worker packages are a new `Any`/`# type: ignore` surface that will multiply the worker_sdk count. **2026-06-26 refresh**: TYPE-011 (low) — WorkerSDK `Any`/`dict[str, Any]` count is now 25 across 8 files (was 14+ in TYPE-008), 2× the prior count.
 
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 
@@ -730,9 +730,9 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 725c202
   date: 2026-06-25
-fixed_in: [pending]
+fixed_in: [725c202]
 files:
   - path: src/acheron/shell/api/schemas.py
     lines: 70-78
@@ -759,9 +759,9 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 00222e1
   date: 2026-06-25
-fixed_in: [pending]
+fixed_in: [00222e1]
 files:
   - path: src/acheron/shell/api/schemas.py
     lines: 31
@@ -939,12 +939,12 @@ severity: medium
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 82aaa6d
   date: 2026-06-25
 fixed_in:
-- pending
+- 82aaa6d
 files:
-- path: workers/_shared.py
+- path: workers/_shared_utils.py
   lines: 82-104
 - path: workers/qwen3tts/handler.py
   lines: 131
@@ -972,12 +972,12 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 82aaa6d
   date: 2026-06-25
 fixed_in:
-- pending
+- 82aaa6d
 files:
-- path: workers/_shared.py
+- path: workers/_shared_utils.py
   lines: 40-71
 - path: workers/qwen3tts/handler.py
   lines: 138-156
@@ -1004,10 +1004,10 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 0ba9dcb
   date: 2026-06-25
 fixed_in:
-- pending
+- 0ba9dcb
 files:
 - path: workers/translategemma/handler.py
   lines: 170-177
@@ -1057,3 +1057,89 @@ related:
 **Recommendation.** Bundle the three handlers. Introduce a shared `_ModelProto` and `_ProcessorProto` Protocol in `worker_sdk/handler.py` (or a new `worker_sdk/_handler_types.py`) declaring the small subset of attributes the handlers actually use (`.generate`, `.apply_chat_template`, `.tokenizer`, `.decode`). Type the fields as `_ModelProto | None` and `_ProcessorProto | None`. Move the heavy `import torch` / `import transformers` under `TYPE_CHECKING` for type-checker satisfaction. Delete all three 2-line comments — the `TYPE_CHECKING` import explains itself. The qwen3tts `# type: ignore[no-any-return]` at line 172 disappears as a free side effect.
 
 **Verification.** `grep -rn ': Any = None' workers/` returns zero hits; the qwen3tts `# type: ignore[no-any-return]` at line 172 is gone; `just type-check`; `just test` (workspace tests still run because the lazy `import torch` and `import transformers` inside `startup` are unchanged).
+
+### MAINT-020 — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit; plus 1 new site introduced by EXC-004 fix (regression of MAINT-009)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/transports/http.py
+    lines: 206
+  - path: src/acheron/shell/local_handlers.py
+    lines: 317
+  - path: src/acheron/shell/executors/streaming.py
+    lines: 155
+  - path: src/acheron/shell/cache.py
+    lines: 116
+  - path: src/acheron/worker_sdk/app.py
+    lines: 116
+related: [MAINT-009, EXC-004, CORR-034]
+```
+
+**Issue.** Commit a7aaf1e 'fix: styling' reverted the MAINT-009 fix at 4 of 7 sites (the 4 sites in `shell/`, the 3 in `worker_sdk/` and `health_providers.py` survived):
+
+- `shell/transports/http.py:206` `except WorkerError, WorkerUnavailableError:` (was fixed at 62886b6, re-applied at c3e1bb8, reverted at a7aaf1e)
+- `shell/local_handlers.py:317` `except CacheMissError, CacheCorruptedError, OSError:`
+- `shell/executors/streaming.py:155` `except CacheMissError, CacheCorruptedError:`
+- `shell/cache.py:116` `except CacheMissError, CacheCorruptedError, OSError:`
+
+In addition, the EXC-004 fix at commit 285e5e4 (narrowing `except BaseException` in `create_worker_app` lifespan to specific types) introduced a NEW site at `worker_sdk/app.py:116`: `except httpx.HTTPError, OSError, KeyError, ValueError, TypeError:`. The `MAINT-009` fix did not cover this site. Functionally Python parses this as a tuple (same as the parenthesised form), but the linter flag and the greenfield-rubric clarity goal both fail. 5 sites total now need the `except (A, B):` parenthesised form.
+
+**Why it matters.** MAINT-009 is documented as a greenfield-clarity fix; the `except A, B:` form is Python 2 syntax that a reader familiar with Python 2 would misread as `except A as B:` and look for a `Y` binding. The previous fix-then-revert-then-re-apply-then-revert cycle (chore `ab45234` → fix `c3e1bb8` → fix `a7aaf1e`) shows the regression is fragile to 'format-only' commits. AGENTS.md says 'silent/unexpected behavior is worse than no control at all' and 'avoid linter and type ignores in general without a very good reason'. The current state means `rg 'except [A-Z][A-Za-z.]+, ' src/` returns 5 hits — the same anti-pattern the team has already fixed twice in this round.
+
+**Recommendation.** Re-apply the parenthesised form at all 5 sites in one commit:
+- `shell/transports/http.py:206` → `except (WorkerError, WorkerUnavailableError):`
+- `shell/local_handlers.py:317` → `except (CacheMissError, CacheCorruptedError, OSError):`
+- `shell/executors/streaming.py:155` → `except (CacheMissError, CacheCorruptedError):`
+- `shell/cache.py:116` → `except (CacheMissError, CacheCorruptedError, OSError):`
+- `worker_sdk/app.py:116` → `except (httpx.HTTPError, OSError, KeyError, ValueError, TypeError):`
+
+Add a pre-commit / CI check: `rg 'except [A-Z][A-Za-z0-9_.]*, [A-Z]' src/ workers/` returns zero hits. Also enable ruff `UP024` (which catches Python 2 except syntax) to make the regression self-detecting.
+
+**Verification.** `just lint-strict` (with `select = ["UP024"]` enabled); `rg 'except [A-Z][A-Za-z0-9_.]*, [A-Z]' src/ workers/` returns zero hits; `just test`; `just type-check`.
+
+### TYPE-011 — WorkerSDK `Any`/`dict[str, Any]` count is now 25 across 8 files — 2× larger than the 14+ figure in TYPE-008
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_caps.py
+    lines: 18
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 62, 227, 234, 321
+  - path: src/acheron/worker_sdk/_server.py
+    lines: 39
+  - path: src/acheron/worker_sdk/cli.py
+    lines: 29, 37, 61
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 42, 45, 77, 81, 87, 97, 103
+  - path: src/acheron/worker_sdk/config_loader.py
+    lines: 42, 55
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 191, 192, 200
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 96
+related: [TYPE-008]
+```
+
+**Issue.** TYPE-008 was opened at the B08 review with the headline '14+ `Any`/`dict[str, Any]` annotations in 5 files'. A direct count of the current `worker_sdk/` tree (post-B11/B12/B17) returns 25 such annotations across 8 files. The new entries are mostly in `cloud.py` (now 7) and `_edge_http.py` (now 4) — both grew during the streaming-multipart work and the 8b `BaseApp` expansion. The same `JsonValue` reuse story from TYPE-008 applies unchanged: `JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]` exists at `core/models.py:8` and is used for `WorkerCapabilities.metadata` everywhere else, but the SDK's wire-side dicts have not been converted.
+
+**Why it matters.** The TYPE-008 finding was deferred to B17 and never landed; the count has now grown by ~78% during the same round. AGENTS.md bans `Any` and `Mapping[str, Any] as documentation-via-runtime-error contract`. The worker SDK is the public surface that the next dozen worker packages will copy, so the typing tone of these 8 files sets the standard for the whole worker ecosystem. A future worker copy-paste of `_rp_handler(runpod_job: dict[str, Any])` will inherit the untyped wire-shape contract by example.
+
+**Recommendation.** Land the TYPE-008 fix scoped to the current set: replace `dict[str, Any]` with `dict[str, JsonValue]` for the wire-side payloads (RunPod input, multipart metadata header, settings dict) in `cloud.py`, `_edge_http.py`, `app.py`. For the runpod SDK boundary (`_rp_handler` shape in `cloud.py:42, 45`), keep `Callable[..., Awaitable[dict[str, Any]]]` because the runpod SDK uses raw dicts internally — but document the choice with a one-line comment. For the JSON GraphQL body in `pricing.py:191, 192, 200`, introduce a pydantic `GraphQLResponse` and let `_post_graphql` return the typed model internally. Skip the `type[Any]` annotations in `cli.py:29, 37, 61` and `settings.py:96` — they are intentional dispatch sites (intentional, see TYPE-008's plan).
+
+**Verification.** `rg 'dict\[str, Any\]' src/acheron/worker_sdk/` returns only justified sites (likely 0 in `cloud.py`/`_edge_http.py` after the fix); `just type-check`; `just test`.

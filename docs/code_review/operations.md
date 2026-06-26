@@ -1,10 +1,10 @@
 ---
-branch: chore/code-review-update
+branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
+last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
 last_staleness_scan:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
+  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  date: 2026-06-26
 ---
 
 # Operations
@@ -157,10 +157,10 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: d7cabcb
   date: '2026-06-25'
 fixed_in:
-- pending
+- d7cabcb
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 136-178
@@ -191,11 +191,11 @@ files:
 - path: src/acheron/shell/health.py
   lines: 44-52
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 128-135, 203-210
+  lines: 128-135, 199-206
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 195-211
+  lines: 187-201
 - path: src/acheron/shell/transports/http.py
-  lines: 69-74
+  lines: 105-123
 related: []
 ```
 
@@ -209,9 +209,9 @@ related: []
 
 ## OBS — Observability
 
-**Grade:** B
+**Grade:** A
 
-OBS-001 (medium) and OBS-003 (low) remain open and kept (code unchanged since 63faed4). OBS-002 and OBS-004 remain verified. OBS-005 (medium) remains open. Three new OBS findings: OBS-006 (medium) — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line; OBS-007 (medium) — edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network; OBS-008 (low) — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown.
+OBS-001 (medium) and OBS-003 (low) remain open and kept (code unchanged since 63faed4). OBS-002 and OBS-004 remain verified. OBS-005 (medium) remains open. Three new OBS findings: OBS-006 (medium) — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line; OBS-007 (medium) — edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network; OBS-008 (low) — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown. **2026-06-26 refresh**: OBS-007, OBS-009, OBS-010 marked verified (Bearer auth on `/execute` in `fa87bc6`); OBS-011, OBS-012 added — both low-effort observability gaps.
 
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
@@ -277,10 +277,10 @@ severity: low
 effort: L
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: 5af8162
   date: 2026-06-25
 fixed_in:
-- pending
+- 5af8162
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 263-270
@@ -375,7 +375,7 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: a5e8556
   date: 2026-06-24
 fixed_in: []
 files:
@@ -397,14 +397,14 @@ related: [CORR-014]
 ### OBS-007 — Edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network (8004:8001)
 
 ```yaml
-staleopen
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 9b4adb6
+  commit: fa87bc6
   date: 2026-06-24
-fixed_in: []
+fixed_in: [fa87bc6]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 156-163
@@ -458,9 +458,9 @@ related:
 
 ## SEC — Security
 
-**Grade:** C
+**Grade:** A
 
-SEC-001 through SEC-004 remain verified. SEC-005, SEC-006, SEC-007, SEC-008, SEC-009, SEC-010 remain open and re-confirmed (no code change since 63faed4). Five new SEC findings: SEC-011 (high) — `ACHERON_REGISTRATION_TOKEN` defaults to publicly-known `dev-registration-token` in compose and `.env.example`; SEC-012 (low) — edge `/execute` returns raw `str(exc)` in 500 body, exposing internal exception detail to the orchestrator; SEC-013 (medium) — `RunPodPrice` sends API key as URL query parameter instead of Authorization header; SEC-014 (medium) — `worker.edge.yaml` default `orchestrator_url` is HTTP, so registration token is sent in cleartext when env var is not overridden; SEC-015 (low) — all Docker images run as root with no `USER` directive.
+SEC-001 through SEC-004 remain verified. SEC-005, SEC-006, SEC-007, SEC-008, SEC-009, SEC-010 remain open and re-confirmed (no code change since 63faed4). Five new SEC findings: SEC-011 (high) — `ACHERON_REGISTRATION_TOKEN` defaults to publicly-known `dev-registration-token` in compose and `.env.example`; SEC-012 (low) — edge `/execute` returns raw `str(exc)` in 500 body, exposing internal exception detail to the orchestrator; SEC-013 (medium) — `RunPodPrice` sends API key as URL query parameter instead of Authorization header; SEC-014 (medium) — `worker.edge.yaml` default `orchestrator_url` is HTTP, so registration token is sent in cleartext when env var is not overridden; SEC-015 (low) — all Docker images run as root with no `USER` directive. **2026-06-26 refresh**: SEC-011, SEC-018, SEC-022 marked verified (9b4adb6 enforces non-public 32+ char token); SEC-016 added — `worker.edge.yaml` HTTPS default for the new translategemma edge.
 
 ### SEC-001 — Dev cert private keys written world-readable (mode 0644)
 
@@ -603,10 +603,10 @@ severity: low
 effort: S
 reviewed_at: be7b3ab
 last_verified_at:
-  commit: pending
+  commit: dfe5d92
   date: 2026-06-25
 fixed_in:
-- pending
+- dfe5d92
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 362-384
@@ -709,10 +709,10 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 069a535
   date: 2026-06-25
 fixed_in:
-- pending
+- 069a535
 files:
 - path: src/acheron/shell/api/routes/workers.py
   lines: 65-71
@@ -732,7 +732,14 @@ related: [SEC-005, SEC-006, OBS-005]
 ### SEC-011 — `ACHERON_REGISTRATION_TOKEN` defaults to publicly-known `dev-registration-token` in compose and `.env.example`
 
 ```yaml
-fixedopenpendinge54458416e9bfe890a473dd9d542978d205b40a12026-06-242026-06-23["pending"]
+status: verified
+severity: high
+effort: S
+reviewed_at: dbec2be
+last_verified_at:
+  commit: 9b4adb6
+  date: 2026-06-24
+fixed_in: [9b4adb6]
 files:
   - path: docker-compose.yml
     lines: 35
@@ -765,10 +772,10 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: bc5fce1
   date: 2026-06-25
 fixed_in:
-- pending
+- bc5fce1
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 286-304
@@ -820,9 +827,9 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: b2c8702
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [b2c8702]
 files:
 - path: workers/qwen3tts/worker.edge.yaml
   lines: '11'
@@ -849,9 +856,9 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 2e035a3
   date: 2026-06-25
-fixed_in: [pending]
+fixed_in: [2e035a3]
 files:
   - path: Dockerfile
     lines: 1-47
@@ -878,9 +885,9 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: b2c8702
   date: '2026-06-25'
-fixed_in: [pending]
+fixed_in: [b2c8702]
 files:
 - path: workers/granite_speech/worker.edge.yaml
   lines: '7'
@@ -904,9 +911,9 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: pending
+  commit: e447339
   date: 2026-06-25
-fixed_in: [pending]
+fixed_in: [e447339]
 files:
   - path: workers/granite_speech/Dockerfile.runpod
     lines: 1-65
@@ -960,8 +967,8 @@ last_verified_at:
   date: '2026-06-24'
 fixed_in: []
 files:
-- path: src/acheron/worker_sdk/_edge_http.py
-  lines: 228-253
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 335-361
 related:
 - SEC-012
 ```
@@ -977,14 +984,14 @@ related:
 ### OBS-009 — `granite-speech-edge` service exposes `/execute` on host port 8008 — unauthenticated (new instance of OBS-007)
 
 ```yaml
-staleopen
+status: verified
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 9b4adb6
+  commit: fa87bc6
   date: 2026-06-24
-fixed_in: []
+fixed_in: [fa87bc6]
 files:
   - path: docker-compose.yml
     lines: 200-231, 233-265
@@ -1016,7 +1023,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 163-185
+    lines: 105-123
 related: [PERF-007]
 ```
 
@@ -1165,10 +1172,10 @@ severity: low
 effort: S
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: f1b8364
   date: 2026-06-25
 fixed_in:
-- pending
+- f1b8364
 files:
 - path: src/acheron/core/planner.py
   lines: 122-172
@@ -1185,3 +1192,28 @@ related:
 **Recommendation.** Wrap the `validate_chunking_fits_workers` call with a `logger.info` on success (`Plan input-budget validated for %s: max_chunk_length=%d, text-input workers checked=%d`, job_id, max_chunk_length, n_workers) and a `logger.warning` on the failure path before re-raising. Alternative: move the validation into `compile_plan` so the existing `Plan compiled for %s` log emits only on full success, and the PlanError propagates with the existing log machinery.
 
 **Verification.** Submit a job with `max_chunk_length=10000` against a translategemma worker (max_input_tokens=2048); assert the orchestrator log contains a line naming `translategemma`, `max_chunk_length=10000`, and `max_input_tokens=2048` before the API returns 400.
+
+### OBS-012 — Multipart parse-failure path in `_run_execute_multipart` returns 500 with no `logger.exception` — operator has no log evidence of parse failures
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 77aadcd
+last_verified_at:
+  commit: 77aadcd
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 337-360
+related: [OBS-006, OBS-005]
+```
+
+**Issue.** `_run_execute_multipart` (lines 335-361) catches `(WorkerError, ValueError, KeyError)` and builds a `JobResult(... error=str(parser_error) ...)` 500 response, but unlike the dispatch path at line 395 (`logger.exception("%s handler failed for job %s", ...)`) it emits no log line. The file has exactly one `logger.exception` call (line 395); the multipart parser path adds zero observability. A malformed multipart body submitted from the orchestrator shows up only in the response body of the failing call — there is no `logger.warning`/`logger.exception` so the operator cannot diagnose the parse failure from logs alone, only by correlating against a 500 response that may or may not propagate to `GET /jobs/{id}`. This is the same anti-pattern flagged in OBS-006 and OBS-005 (silently swallowed errors).
+
+**Why it matters.** Compounds the structured-logging gap flagged in OBS-003. The 8b/8c ASR/TRANSLATION path is the dominant new code path; parse failures (boundary mismatches, unsupported Content-Type headers, missing envelope JSON) are the most common client-side error class. Without a log line at the edge, the operator has to infer the cause from the orchestrator's downstream PlanResult.errors string, which is now sanitised (per SEC-006) and so has lost diagnostic detail.
+
+**Recommendation.** Before the `return JSONResponse(...)` at line 360, emit `logger.exception("Edge multipart parse failed: %s", parser_error)` (mirroring the dispatch path's tone). Use `logger.exception` (not `warning`) so the cause chain is preserved; the response body still carries the sanitised message via the existing `error=str(parser_error)` field.
+
+**Verification.** Submit a malformed multipart body (e.g., wrong boundary, missing envelope) to `/execute`; assert the edge logs an exception with the parse failure cause. The response body should still be the 500 with `error=...`. Add a regression test in `tests/worker_sdk/test_edge_http_multipart.py` that injects a malformed body, captures `caplog.records`, and asserts at least one `logging.ERROR`/`logging.EXCEPTION` record is emitted with the parse error context.
