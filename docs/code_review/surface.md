@@ -410,14 +410,14 @@ related: [DX-003]
 ### PKG-004 — All three worker packages duplicate `pythonpath = ["../.."]` in `[tool.pytest.ini_options]`, masking the DX-003 workspace install gap
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: pending
   date: 2026-06-26
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: workers/qwen3tts/pyproject.toml
     lines: 22
