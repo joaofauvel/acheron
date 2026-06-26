@@ -871,24 +871,24 @@ related:
 ### CORR-032 — `TranslateGemmaRunpodHandler.handle` materializes the entire chunks.json in memory before validation
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
+  commit: pending
   date: '2026-06-24'
-fixed_in: []
+fixed_in: ["pending"]
 files:
-- path: workers/translategemma/handler.py
-  lines: 190-192
-- path: workers/_shared_utils.py
-  lines: 89
+  - path: workers/translategemma/handler.py
+    lines: 190-192
+  - path: workers/_shared_utils.py
+    lines: 89
 related:
-- CORR-017
-- CORR-018
-- CORR-019
-- MAINT-017
+  - CORR-017
+  - CORR-018
+  - CORR-019
+  - MAINT-017
 ```
 
 **Issue.** Line 187: `chunks_json_bytes = b"".join([chunk async for chunk in input.stream()])`. This loads the full chunks.json into RAM before validation. For a long chapter (e.g. 5000 chunks × 200 chars each = 1 MB JSON, or 20000 chunks × 250 chars = 5 MB), the handler holds the full JSON in memory plus the parsed list plus the validated chunks dict. The same anti-pattern exists on the orchestrator's request side (CORR-018) and the SDK's request parser (CORR-019), but the cloud handler is a third instance of the same shape. The Input Protocol has a `StreamInput` variant specifically to avoid this buffering, but `make_runpod_handler` always wraps in a `BytesInput` (cloud.py:54-58), so the cloud handler never sees a StreamInput from the RunPod forwarder.

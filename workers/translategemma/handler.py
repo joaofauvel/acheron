@@ -168,7 +168,13 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         torch.cuda.empty_cache()
 
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
-        """Translate the chunks from ``input`` (chunks.json as a multipart part)."""
+        """Translate the chunks from ``input`` (chunks.json as a multipart part).
+
+        The RunPod forwarder always delivers chunks.json as a :class:`BytesInput`
+        (base64-wrapped); for very long chapters (>10 MB) switch the cloud wrapper
+        to a shared-volume :class:`FileInput` and update ``parse_chunks_json`` to
+        stream the JSON array.
+        """
         src, tgt = self._validate_payload(job, input)
         # _validate_payload raised if input is None; mypy needs the explicit cast.
         chunks = await self._parse_chunks(cast("Input", input))
