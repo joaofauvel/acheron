@@ -170,6 +170,63 @@ class TestPlanRoundTrip:
         assert loaded.result.outputs[0].path == "/out/x.wav"
         assert loaded.result.outputs[0].checksum == "abc"
 
+    @pytest.mark.asyncio
+    async def test_result_with_metadata_round_trips(self, store: RedisJobStore) -> None:
+        """CORR-035: OutputFile.metadata must survive a Redis round-trip."""
+        job = _tracked()
+        job.result = PlanResult(
+            plan_id="plan-x",
+            status=PlanStatus.FAILED,
+            completed_steps=2,
+            total_steps=5,
+            outputs=(
+                OutputFile(
+                    path="/out/x.wav",
+                    filename="x.wav",
+                    size_bytes=42,
+                    checksum="abc",
+                    content_type="audio/wav",
+                    metadata={"sequence_id": "7", "chapter_id": "ch3"},
+                ),
+            ),
+            total_cost=0.5,
+            total_duration_seconds=1.2,
+            errors=(),
+        )
+        await store.put(job)
+        loaded = await store.get("job-1")
+        assert loaded is not None
+        assert loaded.result is not None
+        assert loaded.result.outputs[0].metadata == {"sequence_id": "7", "chapter_id": "ch3"}
+
+    @pytest.mark.asyncio
+    async def test_result_with_non_dict_metadata_falls_back_to_empty(
+        self,
+        store: RedisJobStore,
+        redis_url: str,
+    ) -> None:
+        """CORR-035: a non-dict metadata value must not crash; fall back to {}."""
+        from acheron.shell.stores.redis import _JOB_KEY
+
+        r = aioredis.Redis.from_url(redis_url)
+        try:
+            blob = (
+                '{"job_id":"j-bad","source_type":"epub",'
+                '"request":{"source_path":"/x","source_language":"en","target_language":"es"},'
+                '"strategy":"streaming","status":"failed","plan":null,'
+                '"result":{"plan_id":"p","status":"failed","completed_steps":1,'
+                '"total_steps":1,"outputs":[{"path":"/x","filename":"x","size_bytes":1,'
+                '"checksum":"c","content_type":"audio/wav","metadata":"not-a-dict"}],'
+                '"total_cost":0.0,"total_duration_seconds":0.0,"errors":[]}}'
+            )
+            await r.set(_JOB_KEY.format(job_id="j-bad"), blob)
+        finally:
+            await r.aclose()
+        loaded = await store.get("j-bad")
+        assert loaded is not None
+        assert loaded.result is not None
+        assert loaded.result.outputs[0].metadata == {}
+
 
 class TestAudioRequest:
     @pytest.mark.asyncio

@@ -60,12 +60,12 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  commit: pending
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 30-282
+    lines: 30-284
   - path: src/acheron/shell/cache.py
     lines: 27-128
 related: [DATA-002, MAINT-015]
@@ -691,26 +691,26 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
+  commit: pending
   date: 2026-06-23
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 296
+    lines: 298
   - path: src/acheron/shell/stores/redis.py
-    lines: 327
+    lines: 329
   - path: src/acheron/shell/stores/redis.py
-    lines: 334
+    lines: 336
   - path: src/acheron/shell/stores/redis.py
-    lines: 361
+    lines: 363
   - path: src/acheron/shell/stores/redis.py
-    lines: 362
+    lines: 364
   - path: src/acheron/shell/stores/redis.py
-    lines: 388
+    lines: 390
   - path: src/acheron/shell/stores/redis.py
-    lines: 405
+    lines: 407
   - path: src/acheron/shell/stores/redis.py
-    lines: 427
+    lines: 429
 related: []
 ```
 

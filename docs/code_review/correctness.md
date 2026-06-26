@@ -961,14 +961,14 @@ related: [CORR-031, MAINT-009, MAINT-020, EXC-004]
 ### CORR-035 — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary)
 
 ```yaml
-status: open
+status: fixed
 severity: high
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: pending
   date: 2026-06-26
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 166-175

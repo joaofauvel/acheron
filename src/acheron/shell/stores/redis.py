@@ -170,6 +170,7 @@ def _serialize_job(job: TrackedJob) -> str:
                     "size_bytes": o.size_bytes,
                     "checksum": o.checksum,
                     "content_type": o.content_type,
+                    "metadata": dict(o.metadata),
                 }
                 for o in job.result.outputs
             ],
@@ -263,6 +264,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
                     size_bytes=o["size_bytes"],
                     checksum=o["checksum"],
                     content_type=o["content_type"],
+                    metadata=o["metadata"] if isinstance(o.get("metadata"), dict) else {},
                 )
                 for o in rd["outputs"]
             ),
