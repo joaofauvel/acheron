@@ -218,6 +218,7 @@ class Orchestrator:
         await self._job_store.connect()
         self._started = True
         await self._register_built_in_local_workers()
+        await self._health_monitor.start()
 
     async def _load_or_create_registration_token(self) -> None:
         """Load a persisted registration token or mint and persist a fresh one.
@@ -247,7 +248,6 @@ class Orchestrator:
             logger.info("Generated and persisted registration token to %s", token_file)
         except OSError as exc:
             logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
-        await self._health_monitor.start()
 
     async def shutdown(self) -> None:
         """Stop the health monitor background task.
