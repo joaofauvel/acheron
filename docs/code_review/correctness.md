@@ -461,17 +461,18 @@ related: [ARCH-011]
 ### CORR-017 — `_build_multipart_response` materializes the entire artifact stream in memory, defeating the `StreamArtifact` design
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 136-169
+  lines: 136-178
 related:
 - PERF-006
 ```

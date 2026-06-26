@@ -5,7 +5,7 @@ import warnings
 
 from . import synthesis_pb2 as synthesis__pb2
 
-GRPC_GENERATED_VERSION = '1.81.1'
+GRPC_GENERATED_VERSION = "1.81.1"
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -17,11 +17,11 @@ except ImportError:
 
 if _version_not_supported:
     raise RuntimeError(
-        f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in synthesis_pb2_grpc.py depends on'
-        + f' grpcio>={GRPC_GENERATED_VERSION}.'
-        + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
-        + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
+        f"The grpc package installed is at version {GRPC_VERSION},"
+         " but the generated code in synthesis_pb2_grpc.py depends on"
+         f" grpcio>={GRPC_GENERATED_VERSION}."
+         f" Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}"
+         f" or downgrade your generated code using grpcio-tools<={GRPC_VERSION}."
     )
 
 
@@ -35,7 +35,7 @@ class SynthesisStub:
             channel: A grpc.Channel.
         """
         self.Synthesize = channel.unary_stream(
-                '/Synthesis/Synthesize',
+                "/Synthesis/Synthesize",
                 request_serializer=synthesis__pb2.SynthesisRequest.SerializeToString,
                 response_deserializer=synthesis__pb2.OutputChunk.FromString,
                 _registered_method=True)
@@ -47,22 +47,22 @@ class SynthesisServicer:
     def Synthesize(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
 
 def add_SynthesisServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'Synthesize': grpc.unary_stream_rpc_method_handler(
+            "Synthesize": grpc.unary_stream_rpc_method_handler(
                     servicer.Synthesize,
                     request_deserializer=synthesis__pb2.SynthesisRequest.FromString,
                     response_serializer=synthesis__pb2.OutputChunk.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'Synthesis', rpc_method_handlers)
+            "Synthesis", rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('Synthesis', rpc_method_handlers)
+    server.add_registered_method_handlers("Synthesis", rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -83,7 +83,7 @@ class Synthesis:
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/Synthesis/Synthesize',
+            "/Synthesis/Synthesize",
             synthesis__pb2.SynthesisRequest.SerializeToString,
             synthesis__pb2.OutputChunk.FromString,
             options,

@@ -231,10 +231,14 @@ async def _stream_multipart_request(
 
     async def _gen() -> AsyncIterator[bytes]:
         yield (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="request"\r\n'
-            f"Content-Type: application/json\r\n\r\n"
-        ).encode() + envelope + b"\r\n"
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="request"\r\n'
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+        )
         yield (
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="{form_field}"; filename="{file_path.name}"\r\n'

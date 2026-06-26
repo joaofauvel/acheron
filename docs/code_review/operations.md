@@ -152,17 +152,18 @@ related: [PERF-004]
 ### PERF-006 — Edge `/execute` buffers entire multipart body in memory; O(n²) append for FileArtifact streams
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 136-169
+  lines: 136-178
 related:
 - CORR-017
 ```

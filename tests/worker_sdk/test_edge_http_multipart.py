@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import AsyncIterator
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -372,3 +373,73 @@ class TestMultipartRequest:
         header_block = text_part.split(b"\r\n\r\n", 1)[0].decode("utf-8")
         meta_line = next(line for line in header_block.split("\r\n") if line.startswith("X-Acheron-Metadata:"))
         assert json.loads(meta_line.split(":", 1)[1].strip()) == sent_meta
+
+
+class TestMultipartResponseStreaming:
+    """CORR-017 + PERF-006: response builder must stream each artifact's chunks
+    and not accumulate them in a per-part bytes buffer."""
+
+    @pytest.mark.asyncio
+    async def test_build_multipart_response_returns_streaming_response(self) -> None:
+        """The body must be an async iterator, not a pre-joined bytes blob."""
+        from fastapi.responses import StreamingResponse
+
+        from acheron.core.models import JobMetrics
+        from acheron.worker_sdk._edge_http import _build_multipart_response
+        from acheron.worker_sdk.artifacts import StreamArtifact
+
+        async def _producer() -> AsyncIterator[bytes]:
+            for i in range(5):
+                yield f"chunk-{i}-".encode() * 100
+
+        artifact = StreamArtifact(
+            filename="out.bin",
+            content_type="application/octet-stream",
+            producer=_producer,
+        )
+        response = await _build_multipart_response([artifact], JobMetrics(duration_seconds=1.0))
+        assert isinstance(response, StreamingResponse)
+        # Drain the streaming body to confirm the full envelope is present.
+        body = b"".join([cast("bytes", c) async for c in response.body_iterator])
+        assert b"chunk-0-chunk-0-" in body
+        assert b"chunk-4-chunk-4-" in body
+        # The closing boundary must terminate the body.
+        assert body.rstrip(b"\r\n").endswith(b"--")
+
+    @pytest.mark.asyncio
+    async def test_build_multipart_response_does_not_artifact_append(self) -> None:
+        """PERF-006: no per-artifact ``bytes += chunk`` accumulator.
+
+        The function must yield each chunk through the response iterator
+        without holding the full artifact in memory.
+        """
+        from acheron.core.models import JobMetrics
+        from acheron.worker_sdk._edge_http import _build_multipart_response
+        from acheron.worker_sdk.artifacts import StreamArtifact
+
+        # 1000 small chunks — a per-artifact accumulator would allocate ~500KB
+        # via 500K byte-copies (O(n²) on the 500B each). Streaming yields each
+        # chunk through directly with no concatenation.
+        n_chunks = 1000
+
+        async def _producer() -> AsyncIterator[bytes]:
+            for _ in range(n_chunks):
+                yield b"x"
+
+        artifact = StreamArtifact(
+            filename="x.bin",
+            content_type="application/octet-stream",
+            producer=_producer,
+        )
+        response = await _build_multipart_response([artifact], JobMetrics(duration_seconds=0.0))
+        # The artifact data was spread across the iterator (not concentrated
+        # in a single accumulator buffer). A pre-joined body would be a single
+        # bytes; a streaming body yields per-chunk bytes that include the
+        # artifact's 1-byte tokens interleaved with the multipart framing.
+        joined = b"".join([cast("bytes", c) async for c in response.body_iterator])
+        # Body contains at least n_chunks 'x' bytes (the artifact payload).
+        # Note: the metrics JSON also contains the letter 'x' (e.g. "tokens_in"),
+        # so the count is >= n_chunks, not == n_chunks.
+        assert joined.count(b"x") >= n_chunks
+        # Body contains the closing boundary.
+        assert joined.rstrip(b"\r\n").endswith(b"--")

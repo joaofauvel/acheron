@@ -23,7 +23,7 @@ from email.policy import default as default_policy
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from acheron.core.errors import WorkerError, sanitise_exc_message
 from acheron.core.models import (
@@ -136,8 +136,8 @@ def _jobresult_to_json(result: JobResult) -> dict[str, Any]:
 async def _build_multipart_response(
     artifacts: list[Artifact],
     metrics: JobMetrics,
-) -> Response:
-    """Serialize ``artifacts`` + ``metrics`` as a ``multipart/mixed`` body.
+) -> StreamingResponse:
+    """Serialize ``artifacts`` + ``metrics`` as a streaming ``multipart/mixed`` body.
 
     One part per artifact with its own ``Content-Type`` + filename + metadata
     header, plus a trailing ``application/json`` part carrying ``metrics``.
@@ -145,26 +145,31 @@ async def _build_multipart_response(
     unset ``cost_basis``) are emitted as JSON ``null`` rather than the
     string ``"unknown"`` — the latter conflates "no estimate" with
     "the API was down".
+
+    The body is yielded chunk-by-chunk through a :class:`StreamingResponse`
+    so neither the full envelope nor any single artifact is materialised
+    in memory. Each artifact's ``stream()`` chunks are forwarded
+    directly; no per-artifact ``bytes += chunk`` accumulator is used.
     """
     boundary = f"acheron-{uuid.uuid4().hex}"
-    parts: list[bytes] = []
-    for a in artifacts:
-        header = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: attachment; filename="{a.filename}"\r\n'
-            f"Content-Type: {a.content_type}\r\n"
-            f"X-Acheron-Metadata: {_encode_metadata(a.metadata)}\r\n\r\n"
-        ).encode()
-        body_data = b""
-        async for chunk in a.stream():
-            body_data += chunk
-        parts.append(header + body_data + b"\r\n")
     metrics_json = metrics.model_dump_json()
-    parts.append(f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode() + metrics_json + b"\r\n")
-    parts.append(f"--{boundary}--\r\n".encode())
-    body = b"".join(parts)
-    return Response(
-        content=body,
+
+    async def _body() -> AsyncIterator[bytes]:
+        for a in artifacts:
+            yield (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: attachment; filename="{a.filename}"\r\n'
+                f"Content-Type: {a.content_type}\r\n"
+                f"X-Acheron-Metadata: {_encode_metadata(a.metadata)}\r\n\r\n"
+            ).encode()
+            async for chunk in a.stream():
+                yield chunk
+            yield b"\r\n"
+        yield f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode() + metrics_json + b"\r\n"
+        yield f"--{boundary}--\r\n".encode()
+
+    return StreamingResponse(
+        content=_body(),
         media_type=f"multipart/mixed; boundary={boundary}",
     )
 
