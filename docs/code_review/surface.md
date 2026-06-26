@@ -381,14 +381,14 @@ related:
 ### DX-004 — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: pending
   date: 2026-06-26
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: .envrc.example
     lines: 5
