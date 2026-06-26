@@ -43,6 +43,7 @@ packages = ["src/acheron"]
 target-version = "py314"
 line-length = 120
 src = ["src", "tests"]
+extend-exclude = ["src/acheron/proto"]
 
 [tool.ruff.format]
 quote-style = "double"

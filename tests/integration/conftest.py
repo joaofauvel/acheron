@@ -159,19 +159,19 @@ async def _start_uvicorn(app_factory: Callable[[], FastAPI]) -> tuple[str, async
     for route in original_app.routes:
         app.router.routes.append(route)
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
+    # Bind a socket first to learn the random port uvicorn will listen on,
+    # then hand the same socket to uvicorn via serve(sockets=[...]).
+    # uvicorn 0.49 only populates Server.servers when sockets are passed in.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    actual_port = sock.getsockname()[1]
+    sock.listen()
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=actual_port, log_level="warning")
     server = uvicorn.Server(config)
-    task = asyncio.create_task(server.serve())
+    task = asyncio.create_task(server.serve(sockets=[sock]))
 
-    actual_port = 0
-    for _ in range(60):
-        await asyncio.sleep(0.05)
-        if server.servers and server.servers[0].sockets:
-            actual_port = server.servers[0].sockets[0].getsockname()[1]
-            break
-
-    if actual_port:
-        await _wait_for_port("127.0.0.1", actual_port)
+    await _wait_for_port("127.0.0.1", actual_port)
 
     return f"http://127.0.0.1:{actual_port}", task
 
