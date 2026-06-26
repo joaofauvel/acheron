@@ -255,14 +255,14 @@ related: []
 ### DOC-003 — Configuration docs drift across README, .env.example, and an undocumented dashboard env var
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-24
+fixed_in: ["pending"]
 files:
   - path: .env.example
     lines: 4-9, 29

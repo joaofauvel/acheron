@@ -302,6 +302,7 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Orchestrator / TLS | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key. Set with `ACHERON_TLS_CERT_FILE` to enable HTTPS. |
 | Orchestrator / TLS | `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs. Falls back to `SSL_CERT_FILE`, then `./certs/acheron-ca.crt` in the CLI's CWD. |
 | Orchestrator / TLS | `ACHERON_ALLOW_INSECURE` | (unset) | Set to `1` to silence the plain-HTTP / insecure-gRPC WARNINGs emitted by `tls.py` when TLS env vars are unset. |
+| Dashboard | `ACHERON_TRUST_REVERSE_PROXY` | `0` | Set to `1` to trust the `X-Forwarded-User` header from a reverse proxy that authenticates and strips the header. Default `0` (unauthenticated). |
 | Worker / Transport | `ACHERON_WORKER__WORKER_ID` | (required) | Stable identifier for this worker instance. |
 | Worker / Transport | `ACHERON_WORKER__ORCHESTRATOR_URL` | (required) | Orchestrator URL the worker registers with and sends `/execute` to. |
 | Worker / Transport | `ACHERON_WORKER__LISTEN_HOST` | `0.0.0.0` | Bind host for the worker's HTTP/gRPC server. |
