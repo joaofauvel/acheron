@@ -211,33 +211,42 @@ class Orchestrator:
         if self._started:
             return
         self._verify_data_dir_writable()
-
-        if not self._settings.orchestrator.registration_token:
-            token_file = self._settings.orchestrator.data_dir / ".registration_token"
-            if token_file.is_file():
-                try:
-                    token = token_file.read_text(encoding="utf-8").strip()
-                    self._settings.orchestrator.registration_token = token
-                    logger.info("Loaded persistent registration token from %s", token_file)
-                except OSError as exc:
-                    logger.warning("Failed to read persistent registration token from %s: %s", token_file, exc)
-
-            if not self._settings.orchestrator.registration_token:
-                token = secrets.token_hex(16)
-                self._settings.orchestrator.registration_token = token
-                try:
-                    token_file.write_text(token, encoding="utf-8")
-                    token_file.chmod(0o600)
-                    logger.info("Generated and persisted registration token to %s", token_file)
-                except OSError as exc:
-                    logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
-
+        await self._load_or_create_registration_token()
         _validate_registration_token(self._settings.orchestrator.registration_token)
 
         await self._registry.connect()
         await self._job_store.connect()
         self._started = True
         await self._register_built_in_local_workers()
+
+    async def _load_or_create_registration_token(self) -> None:
+        """Load a persisted registration token or mint and persist a fresh one.
+
+        The token is written to ``<data_dir>/.registration_token`` (mode 0600)
+        if missing. Only the file path is logged; the token value is never
+        logged at any level (SEC-008).
+        """
+        if self._settings.orchestrator.registration_token:
+            return
+        token_file = self._settings.orchestrator.data_dir / ".registration_token"
+        if token_file.is_file():
+            try:
+                token = token_file.read_text(encoding="utf-8").strip()
+                self._settings.orchestrator.registration_token = token
+                logger.info("Loaded persistent registration token from %s", token_file)
+            except OSError as exc:
+                logger.warning("Failed to read persistent registration token from %s: %s", token_file, exc)
+
+        if self._settings.orchestrator.registration_token:
+            return
+        token = secrets.token_hex(16)
+        self._settings.orchestrator.registration_token = token
+        try:
+            token_file.write_text(token, encoding="utf-8")
+            token_file.chmod(0o600)
+            logger.info("Generated and persisted registration token to %s", token_file)
+        except OSError as exc:
+            logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
         await self._health_monitor.start()
 
     async def shutdown(self) -> None:

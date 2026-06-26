@@ -16,6 +16,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _fetch_provider_response(
+    provider_name: str,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: float = 10.0,
+) -> httpx.Response | None:
+    """Issue a GET to ``url`` and return the response, or ``None`` on transport failure.
+
+    Centralises the AsyncClient lifecycle, timeout, and
+    ``(httpx.HTTPError, OSError)``-to-``None`` translation that every
+    provider shares. A ``None`` return signals "transport failed" and
+    each provider maps that to ``WorkerStatus.OFFLINE``.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            return await client.get(url, headers=headers or {}, timeout=timeout)
+    except (httpx.HTTPError, OSError) as exc:
+        logger.warning(
+            "%s health check for %s failed: %s: %s",
+            provider_name,
+            url,
+            type(exc).__name__,
+            exc,
+        )
+        return None
 class RunPodHealthProvider(HealthProvider):
     """RunPod Serverless health provider.
 
@@ -32,26 +58,14 @@ class RunPodHealthProvider(HealthProvider):
 
     async def check_status(self, endpoint_id: str) -> WorkerStatus:
         """Map endpoint existence to BOOTING (cold start) or OFFLINE."""
-        headers = {"Authorization": f"Bearer {self._api_key}"}
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{self._BASE_URL}/endpoints/{endpoint_id}",
-                    headers=headers,
-                    timeout=10.0,
-                )
-        except (httpx.HTTPError, OSError) as exc:
-            logger.warning(
-                "%s health check for %s failed: %s: %s",
-                type(self).__name__,
-                endpoint_id,
-                type(exc).__name__,
-                exc,
-            )
+        resp = await _fetch_provider_response(
+            type(self).__name__,
+            f"{self._BASE_URL}/endpoints/{endpoint_id}",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+        )
+        if resp is None or resp.status_code != httpx.codes.OK:
             return WorkerStatus.OFFLINE
-        if resp.status_code == httpx.codes.OK:
-            return WorkerStatus.BOOTING
-        return WorkerStatus.OFFLINE
+        return WorkerStatus.BOOTING
 
 
 class HuggingFaceHealthProvider(HealthProvider):
@@ -70,27 +84,14 @@ class HuggingFaceHealthProvider(HealthProvider):
 
     async def check_status(self, endpoint_id: str) -> WorkerStatus:
         """Map ``status.state`` to BOOTING (initializing/starting/running) or OFFLINE."""
-        headers = {"Authorization": f"Bearer {self._api_key}"}
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{self._BASE_URL}/{endpoint_id}",
-                    headers=headers,
-                    timeout=10.0,
-                )
-        except (httpx.HTTPError, OSError) as exc:
-            logger.warning(
-                "%s health check for %s failed: %s: %s",
-                type(self).__name__,
-                endpoint_id,
-                type(exc).__name__,
-                exc,
-            )
+        resp = await _fetch_provider_response(
+            type(self).__name__,
+            f"{self._BASE_URL}/{endpoint_id}",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+        )
+        if resp is None or resp.status_code != httpx.codes.OK:
             return WorkerStatus.OFFLINE
-        if resp.status_code != httpx.codes.OK:
-            return WorkerStatus.OFFLINE
-        data = resp.json()
-        status_raw = data.get("status")
+        status_raw = resp.json().get("status")
         if isinstance(status_raw, dict):
             state = status_raw.get("state", "")
         elif isinstance(status_raw, str):

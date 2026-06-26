@@ -165,14 +165,15 @@ related:
 ### MAINT-006 — Orchestrator.start() inlines 17-line registration-token block; logs the token in plaintext
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 209-228
@@ -192,14 +193,15 @@ related:
 ### MAINT-007 — RunPodHealthProvider and HuggingFaceHealthProvider duplicate the HTTP fetch envelope
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: '2026-06-25'
+fixed_in:
+- pending
 files:
 - path: src/acheron/shell/health_providers.py
   lines: 42-63, 80-111
