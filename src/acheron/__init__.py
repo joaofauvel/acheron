@@ -9,9 +9,7 @@ from acheron.core.errors import (
     ChunkingError,
     InvalidLanguagePathError,
     PlanError,
-    PlanValidationError,
     WorkerError,
-    WorkerTimeoutError,
     WorkerUnavailableError,
 )
 from acheron.core.interfaces import Executor, Worker
@@ -60,12 +58,10 @@ __all__ = [
     "PlanError",
     "PlanResult",
     "PlanStep",
-    "PlanValidationError",
     "StepStatus",
     "Worker",
     "WorkerCapabilities",
     "WorkerError",
-    "WorkerTimeoutError",
     "WorkerType",
     "WorkerUnavailableError",
     "chunk_text",

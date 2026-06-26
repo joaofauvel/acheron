@@ -8,9 +8,7 @@ from acheron.core.errors import (
     ChunkingTooLongForWorkerError,
     InvalidLanguagePathError,
     PlanError,
-    PlanValidationError,
     WorkerError,
-    WorkerTimeoutError,
     WorkerUnavailableError,
 )
 
@@ -21,10 +19,8 @@ class TestExceptionHierarchy:
         [
             InvalidLanguagePathError,
             ChunkingTooLongForWorkerError,
-            PlanValidationError,
             PlanError,
             WorkerUnavailableError,
-            WorkerTimeoutError,
             WorkerError,
             CacheMissError,
             CacheCorruptedError,
@@ -39,9 +35,7 @@ class TestExceptionHierarchy:
         [
             (InvalidLanguagePathError, PlanError),
             (ChunkingTooLongForWorkerError, PlanError),
-            (PlanValidationError, PlanError),
             (WorkerUnavailableError, WorkerError),
-            (WorkerTimeoutError, WorkerError),
             (CacheMissError, CacheError),
             (CacheCorruptedError, CacheError),
         ],
@@ -57,11 +51,7 @@ class TestMessagePropagation:
 
     def test_catch_by_base(self) -> None:
         with pytest.raises(AcheronError):
-            raise WorkerTimeoutError("timed out after 30s")
-
-    def test_catch_by_intermediate(self) -> None:
-        with pytest.raises(PlanError):
-            raise PlanValidationError("missing step dependency")
+            raise WorkerUnavailableError("not reachable")
 
     def test_chunking_too_long_caught_by_plan_error(self) -> None:
         with pytest.raises(PlanError):

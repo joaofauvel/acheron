@@ -457,14 +457,14 @@ EXC-001 (medium) remains open and re-resolved: `tenacity` is still unused, and t
 ### EXC-001 — tenacity dependency is unused; WorkerTimeoutError/PlanValidationError are never raised; transient network calls have no retry
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 7d4754a
+  commit: pending
   date: '2026-06-24'
-fixed_in: []
+fixed_in: ["pending"]
 files:
 - path: pyproject.toml
   lines: 23

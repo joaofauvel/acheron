@@ -26,20 +26,12 @@ class ChunkingTooLongForWorkerError(PlanError):
     """
 
 
-class PlanValidationError(PlanError):
-    """Plan failed structural validation."""
-
-
 class WorkerError(AcheronError):
     """Errors related to worker communication or execution."""
 
 
 class WorkerUnavailableError(WorkerError):
     """Worker is not reachable or has been removed from the registry."""
-
-
-class WorkerTimeoutError(WorkerError):
-    """Worker did not respond within the configured timeout."""
 
 
 class CacheError(AcheronError):
