@@ -1,6 +1,7 @@
 """Tests for job API routes."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -147,7 +148,7 @@ class TestJobRoutes:
         assert resume_resp.json()["status"] == "running"
 
     @pytest.mark.asyncio
-    async def test_submit_job_unsupported_language(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    async def test_submit_job_unsupported_language(self, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """Test that submitting a job with unsupported language returns 422."""
         from httpx import ASGITransport, AsyncClient
 
@@ -155,6 +156,8 @@ class TestJobRoutes:
         from acheron.shell.cache import PlanCache
         from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
         app = create_app(
             registry=InMemoryWorkerStore(),
             job_store=InMemoryJobStore(),
@@ -191,3 +194,71 @@ class TestJobRoutes:
         assert response.status_code == 422
         body = response.json()
         assert any("executor_strategi" in str(d).lower() for d in body.get("detail", []))
+
+
+class TestJobRouteAuth:
+    """SEC-005: mutating job routes require auth when no open-registration flag is set."""
+
+    @pytest.mark.asyncio
+    async def test_submit_job_rejected_without_token_when_token_set(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ACHERON_REGISTRATION_TOKEN is set and open_registration is not, POST /jobs returns 401."""
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "x" * 64)
+        monkeypatch.delenv("ACHERON_OPEN_REGISTRATION", raising=False)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+        )
+        await app.state.orchestrator.start()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "/input/book.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        await app.state.orchestrator.shutdown()
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_resume_job_rejected_without_token_when_token_set(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ACHERON_REGISTRATION_TOKEN is set, POST /jobs/{id}/resume returns 401."""
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "x" * 64)
+        monkeypatch.delenv("ACHERON_OPEN_REGISTRATION", raising=False)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+        )
+        await app.state.orchestrator.start()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post("/jobs/j-1/resume")
+        await app.state.orchestrator.shutdown()
+        assert response.status_code == 401

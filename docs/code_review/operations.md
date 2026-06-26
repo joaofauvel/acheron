@@ -571,14 +571,14 @@ related: []
 ### SEC-005 — Job submission/listing/capabilities routes require no authentication
 
 ```yaml
-status: open
+status: fixed
 severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: dbec2be
+  commit: pending
   date: 2026-06-23
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 20-69

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
 from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy
-from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
+from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import JobListResponse, JobResponse, SubmitJobRequest
 
 if TYPE_CHECKING:
@@ -18,7 +18,11 @@ router = APIRouter()
 
 
 @router.post("", status_code=201, response_model=JobResponse)
-async def submit_job(body: SubmitJobRequest, orch: OrchestratorDep) -> JobResponse:
+async def submit_job(
+    body: SubmitJobRequest,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> JobResponse:
     """Submit a new job for processing."""
     try:
         strategy = ExecutorStrategy(body.executor_strategy)
@@ -63,7 +67,12 @@ async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
 
 
 @router.post("/{job_id}/resume", response_model=JobResponse)
-async def resume_job(job_id: str, orch: OrchestratorDep, force_fresh: bool = False) -> JobResponse:  # noqa: FBT001, FBT002
+async def resume_job(
+    job_id: str,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+    force_fresh: bool = False,  # noqa: FBT001, FBT002
+) -> JobResponse:
     """Resume a saved job."""
     try:
         tracked = await orch.resume_job(job_id, force_fresh=force_fresh)

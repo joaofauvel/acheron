@@ -117,6 +117,8 @@ async def wired_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIte
     registered before the first request. Teardown mirrors the production
     lifespan: shutdown the health monitor, then close stores.
     """
+    monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
     app = await make_app(tmp_path)
     await app.state.orchestrator.start()
     transport = ASGITransport(app=app)
