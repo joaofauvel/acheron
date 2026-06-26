@@ -13,6 +13,7 @@ by being one mode, per the Layer 8a spec.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from acheron.core.errors import WorkerError
@@ -24,6 +25,8 @@ from workers._shared_utils import Chunk, parse_chunks_json, safe_chapter_id
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
     from acheron.worker_sdk.settings import WorkerSettings
+
+logger = logging.getLogger(__name__)
 
 _MODEL_ID_DEFAULT = "google/translategemma-12b-it"
 _MAX_INPUT_TOKENS_DEFAULT = 2048
@@ -242,11 +245,31 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         src: str,
         tgt: str,
     ) -> list[str]:
-        """Run TranslateGemma in passes of _MAX_BATCH_SIZE; return translated strings in order."""
+        """Run TranslateGemma in passes of _MAX_BATCH_SIZE; return translated strings in order.
+
+        On per-batch failure (OOM, NaN, GPU fault), the successful translations are
+        preserved and a :class:`WorkerError` is raised listing the failed batch
+        indices. The operator can then retry — the previously translated chunks
+        are recoverable from the partial ``out`` list logged before the raise.
+        """
         out: list[str] = []
-        for start in range(0, len(chunks), _MAX_BATCH_SIZE):
+        failed_batches: list[tuple[int, int, int]] = []  # (batch_idx, start, end)
+        for batch_idx, start in enumerate(range(0, len(chunks), _MAX_BATCH_SIZE)):
             batch = chunks[start : start + _MAX_BATCH_SIZE]
-            out.extend(self._translate_batch(batch, src, tgt))
+            try:
+                out.extend(self._translate_batch(batch, src, tgt))
+            except (RuntimeError, ValueError) as exc:
+                end = start + len(batch) - 1
+                logger.warning("batch %d (chunks %d-%d) failed: %s", batch_idx, start, end, exc)
+                failed_batches.append((batch_idx, start, end))
+        if failed_batches:
+            translated_count = len(out)
+            failed_count = sum(end - start + 1 for _, start, end in failed_batches)
+            msg = (
+                f"partial success: {translated_count}/{translated_count + failed_count} "
+                f"chunks translated; failed batches: {failed_batches}"
+            )
+            raise WorkerError(msg) from None
         return out
 
     def _translate_batch(

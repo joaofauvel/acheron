@@ -787,14 +787,14 @@ related: [CORR-013, DATA-006, DATA-008]
 ### CORR-029 — `TranslateGemmaRunpodHandler._translate_batch` has no partial-success handling; mid-batch failure discards all completed work
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
+  commit: pending
   date: '2026-06-24'
-fixed_in: []
+fixed_in: ["pending"]
 files:
 - path: workers/translategemma/handler.py
   lines: 202-228, 230-241, 243-291

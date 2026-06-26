@@ -357,3 +357,54 @@ class TestTokenizerMutation:
 
         source = inspect.getsource(handler_module.TranslateGemmaRunpodHandler.startup)
         assert "pad_token_id" in source
+
+
+class TestPartialSuccess:
+    """CORR-029: a per-batch failure must not discard previously translated chunks."""
+
+    def test_translate_all_raises_worker_error_on_batch_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When one batch fails, _translate_all raises WorkerError with the failed batch info."""
+        from workers._shared_utils import Chunk
+        from workers.translategemma import handler as handler_module
+
+        h = _handler()
+        successful_calls: list[int] = []
+
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
+            if len(successful_calls) == 1:
+                msg = "GPU OOM"
+                raise RuntimeError(msg)
+            successful_calls.append(len(batch))
+            return [f"t_{i}" for i in range(len(batch))]
+
+        monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_batch", _spy)
+        chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(8)]
+        with pytest.raises(WorkerError, match="partial success"):
+            h._translate_all(chunks, "en", "es")
+        assert successful_calls == [4]  # first batch succeeded, second raised
+
+    def test_translate_all_logs_failed_batch_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The failed batch warning is logged with the chunk index range."""
+        from workers._shared_utils import Chunk
+        from workers.translategemma import handler as handler_module
+
+        h = _handler()
+        call_count = 0
+
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                msg = "simulated OOM"
+                raise RuntimeError(msg)
+            return [f"t_{i}" for i in range(len(batch))]
+
+        monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_batch", _spy)
+        chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(8)]
+        with caplog.at_level("WARNING", logger="workers.translategemma.handler"), pytest.raises(WorkerError):
+            h._translate_all(chunks, "en", "es")
+        assert any("batch 1 (chunks 4-7) failed" in record.message for record in caplog.records)
