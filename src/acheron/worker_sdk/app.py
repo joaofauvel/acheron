@@ -127,12 +127,7 @@ def create_worker_app(
             await handler.shutdown()
 
     app = FastAPI(title="acheron-worker-edge", lifespan=lifespan)
-    # Mount the inner app's routes manually so we don't run the inner lifespan.
-    # The inner EdgeApp is built only as a route source — its lifespan is dead
-    # code that this outer ``lifespan`` supersedes.
-    inner_paths = {"/health", "/capabilities", "/execute"}
-    for route in inner.app.routes:
-        path = getattr(route, "path", None)
-        if path in inner_paths:
-            app.routes.append(route)
+    # Include the inner router — adding a new route to EdgeApp picks it up here
+    # automatically; no inner_paths set or route-copy needed.
+    app.include_router(inner.router)
     return app

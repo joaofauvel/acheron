@@ -315,17 +315,21 @@ related: [MAINT-011, EXC-004]
 ### MAINT-011 — `create_worker_app` builds an `EdgeApp` only to copy its routes onto the outer app via path-string matching; the inner `EdgeApp` is dead code
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
+- path: src/acheron/worker_sdk/_edge_http.py
+  lines: 270-330
 - path: src/acheron/worker_sdk/app.py
-  lines: 99-146
+  lines: 128-131
+- path: tests/worker_sdk/test_app.py
+  lines: 74-95
 related:
 - CORR-015
 - ARCH-012

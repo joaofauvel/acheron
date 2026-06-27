@@ -15,6 +15,22 @@ from acheron.worker_sdk.inputs import Input
 from acheron.worker_sdk.settings import WorkerSettings
 
 
+def _all_paths(routes: object) -> set[str]:
+    """Recursively collect the path of every route in a FastAPI app, including
+    those nested inside an included APIRouter."""
+    paths: set[str] = set()
+    for r in routes:  # type: ignore[attr-defined]
+        path = getattr(r, "path", None)
+        if path:
+            paths.add(path)
+        # FastAPI wraps included routers in _IncludedRouter; the wrapped
+        # APIRouter is reachable via the ``original_router`` attribute.
+        nested = getattr(r, "original_router", None)
+        if nested is not None and nested is not routes:
+            paths.update(_all_paths(nested.routes))
+    return paths
+
+
 class _Stub(WorkerHandler):
     def capabilities(self) -> WorkerCapabilities:
         return WorkerCapabilities(
@@ -48,10 +64,34 @@ class TestCreateWorkerApp:
         h = _Stub()
         s = _settings(price_source="zero")
         app = create_worker_app(handler=h, settings=s, disable_registration=True)
-        paths = {getattr(r, "path", "") for r in app.routes}
+        # When routes are mounted via APIRouter.include_router, they live on the
+        # router, not on app.routes. Walk the included routes recursively.
+        paths = _all_paths(app.routes)
         assert "/health" in paths
         assert "/capabilities" in paths
         assert "/execute" in paths
+
+    def test_factory_picks_up_new_edge_routes_automatically(self) -> None:
+        """Regression for CORR-015: a new route added to EdgeApp's router
+        is reachable on the outer ``create_worker_app`` without copy-paste.
+        """
+
+        h = _Stub()
+        s = _settings(price_source="zero")
+        app = create_worker_app(handler=h, settings=s, disable_registration=True)
+
+        # Find the included edge router (the only non-default _IncludedRouter).
+        included = [r for r in app.routes if type(r).__name__ == "_IncludedRouter"]
+        assert included, "expected an APIRouter mounted via include_router"
+        edge_router = included[0].original_router  # type: ignore[attr-defined]
+
+        @edge_router.get("/version")  # type: ignore[untyped-decorator]
+        async def version() -> dict[str, str]:
+            return {"version": "test"}
+
+        # New route is now reachable on the outer app.
+        paths = _all_paths(app.routes)
+        assert "/version" in paths
 
     @respx.mock
     @pytest.mark.asyncio

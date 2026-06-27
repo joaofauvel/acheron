@@ -8,11 +8,10 @@ import logging
 import secrets
 import time
 import uuid
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from python_multipart.multipart import MultipartParser, parse_options_header
 
@@ -268,7 +267,14 @@ async def _build_multipart_response(
 
 
 class EdgeApp:
-    """Container for the edge FastAPI app + handler + price source."""
+    """Container for the edge FastAPI app + handler + price source.
+
+    The :attr:`router` is the canonical set of HTTP routes (``/health``,
+    ``/capabilities``, ``/execute``); :attr:`app` is a thin :class:`FastAPI`
+    wrapper that includes it. Callers that need to compose additional
+    routes or a custom lifespan (see :func:`acheron.worker_sdk.app.create_worker_app`)
+    should ``include_router`` :attr:`router` instead of copying routes.
+    """
 
     def __init__(
         self,
@@ -294,25 +300,17 @@ class EdgeApp:
             if scheme.lower() != "bearer" or not secrets.compare_digest(provided, self.registration_token):
                 raise HTTPException(status_code=401, detail="Invalid registration token")
 
-        @asynccontextmanager
-        async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
-            await handler.startup()
-            try:
-                yield
-            finally:
-                await handler.shutdown()
+        router = APIRouter()
 
-        app = FastAPI(title="acheron-worker-edge", lifespan=lifespan)
-
-        @app.get("/health")
+        @router.get("/health")
         async def health() -> dict[str, str]:
             return {"status": "ok"}
 
-        @app.get("/capabilities")
+        @router.get("/capabilities")
         async def get_capabilities() -> dict[str, Any]:
             return caps_to_dict(self.capabilities)
 
-        @app.post("/execute", dependencies=[Depends(_verify_bearer)])
+        @router.post("/execute", dependencies=[Depends(_verify_bearer)])
         async def execute(request: Request) -> Response:
             """Accept either ``application/json`` (legacy / TTS) or ``multipart/form-data`` (8b ASR)."""
             ctype = request.headers.get("content-type", "")
@@ -321,7 +319,9 @@ class EdgeApp:
             body = ExecuteRequest.model_validate(await request.json())
             return await self._run_execute(body)
 
-        self.app = app
+        self.router = router
+        self.app = FastAPI(title="acheron-worker-edge")
+        self.app.include_router(router)
 
     async def _run_execute_multipart(self, request: Request) -> Response:
         """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
