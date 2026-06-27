@@ -126,7 +126,20 @@ def test_status_not_found() -> None:
 def test_status_service() -> None:
     respx.get(f"{_BASE_URL}/health").mock(return_value=httpx.Response(200, json={"status": "ok"}))
     respx.get(f"{_BASE_URL}/workers").mock(
-        return_value=httpx.Response(200, json={"workers": [{"worker_id": "w1", "worker_type": "tts"}]})
+        return_value=httpx.Response(
+            200,
+            json={
+                "workers": [
+                    {
+                        "worker_id": "w1",
+                        "worker_type": "tts",
+                        "endpoint": "http://w1",
+                        "transport": "http",
+                        "consecutive_failures": 0,
+                    }
+                ]
+            },
+        )
     )
     respx.get(f"{_BASE_URL}/capabilities").mock(
         return_value=httpx.Response(200, json={"language_pairs": [{"src": "en", "dst": "es", "workers": ["w1"]}]})

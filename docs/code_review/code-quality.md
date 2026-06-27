@@ -622,19 +622,19 @@ TYPE-002 remains verified. All seven open TYPE stories (TYPE-001, 003, 004, 005,
 ### TYPE-001 — AcheronClient returns dict[str, Any] consumed via magic-string keys; metadata contracts partially resolved
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
 - path: src/acheron/api_client.py
-  lines: 41-128
+  lines: 45-129
 - path: src/acheron/cli.py
-  lines: 165-292
+  lines: 165-291
 related:
 - ARCH-004
 ```

@@ -172,10 +172,10 @@ def submit(  # noqa: PLR0913
             asr_model=asr_model,
         )
     )
-    console.print(f"Job submitted: [bold]{result['job_id']}[/bold]")
-    console.print(f"Status: {result['status']}")
-    if result.get("plan_id"):
-        console.print(f"Plan: {result['plan_id']}")
+    console.print(f"Job submitted: [bold]{result.job_id}[/bold]")
+    console.print(f"Status: {result.status.value}")
+    if result.plan_id:
+        console.print(f"Plan: {result.plan_id}")
 
 
 @main.command()
@@ -186,7 +186,7 @@ def status() -> None:
     pairs = _run(_get_client().get_capabilities())
     active_workers: dict[str, int] = {}
     for worker in workers_list:
-        worker_type = str(worker["worker_type"])
+        worker_type = str(worker.worker_type)
         active_workers[worker_type] = active_workers.get(worker_type, 0) + 1
 
     console.print(f"Orchestrator: [bold]{health.get('status', 'unknown')}[/bold]")
@@ -205,14 +205,14 @@ def status() -> None:
 def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     """Check job status."""
     result = _run(_get_client().get_job(job_id))
-    console.print(f"Job: [bold]{result['job_id']}[/bold]")
-    console.print(f"Status: {result['status']}")
-    if result.get("plan_id"):
-        console.print(f"Plan: {result['plan_id']}")
-    if result.get("total_steps"):
-        console.print(f"Steps: {result['completed_steps']}/{result['total_steps']}")
-    if verbose and result.get("errors"):
-        for err in result["errors"]:
+    console.print(f"Job: [bold]{result.job_id}[/bold]")
+    console.print(f"Status: {result.status.value}")
+    if result.plan_id:
+        console.print(f"Plan: {result.plan_id}")
+    if result.total_steps:
+        console.print(f"Steps: {result.completed_steps}/{result.total_steps}")
+    if verbose and result.errors:
+        for err in result.errors:
             console.print(f"[red]Error: {err}[/red]")
 
 
@@ -222,8 +222,8 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
 def resume(job_id: str, force_fresh: bool) -> None:  # noqa: FBT001
     """Resume a job."""
     result = _run(_get_client().resume_job(job_id, force_fresh=force_fresh))
-    console.print(f"Job resumed: [bold]{result['job_id']}[/bold]")
-    console.print(f"Status: {result['status']}")
+    console.print(f"Job resumed: [bold]{result.job_id}[/bold]")
+    console.print(f"Status: {result.status.value}")
 
 
 @main.command("jobs")
@@ -233,9 +233,9 @@ def list_jobs(active: bool, completed: bool) -> None:  # noqa: FBT001
     """List all jobs."""
     jobs = _run(_get_client().list_jobs())
     if active:
-        jobs = [j for j in jobs if j["status"] == "running"]
+        jobs = [j for j in jobs if j.status.value == "running"]
     elif completed:
-        jobs = [j for j in jobs if j["status"] in ("completed", "failed")]
+        jobs = [j for j in jobs if j.status.value in ("completed", "failed")]
     if not jobs:
         console.print("No jobs found.")
         return
@@ -245,8 +245,8 @@ def list_jobs(active: bool, completed: bool) -> None:  # noqa: FBT001
     table.add_column("Plan")
     table.add_column("Steps")
     for j in jobs:
-        steps = f"{j.get('completed_steps', 0)}/{j.get('total_steps', 0)}" if j.get("total_steps") else "-"
-        table.add_row(j["job_id"], j["status"], j.get("plan_id") or "-", steps)
+        steps = f"{j.completed_steps}/{j.total_steps}" if j.total_steps else "-"
+        table.add_row(j.job_id, j.status.value, j.plan_id or "-", steps)
     console.print(table)
 
 
@@ -265,11 +265,11 @@ def workers() -> None:
     table.add_column("Failures")
     for w in workers_list:
         table.add_row(
-            w["worker_id"],
-            w["worker_type"],
-            w["endpoint"],
-            w["transport"],
-            str(w["consecutive_failures"]),
+            w.worker_id,
+            w.worker_type,
+            w.endpoint,
+            w.transport,
+            str(w.consecutive_failures),
         )
     console.print(table)
 
@@ -288,5 +288,5 @@ def capabilities(src: str | None, dest: str | None) -> None:
     table.add_column("Target")
     table.add_column("Workers")
     for p in pairs:
-        table.add_row(p["src"], p["dst"], ", ".join(p["workers"]))
+        table.add_row(p.src, p.dst, ", ".join(p.workers))
     console.print(table)

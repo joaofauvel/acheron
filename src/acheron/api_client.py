@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import ssl
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import httpx
+
+from acheron.shell.api.schemas import (
+    CapabilitiesResponse,
+    JobListResponse,
+    JobResponse,
+    LanguagePair,
+    WorkerListResponse,
+    WorkerResponse,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,74 +55,73 @@ class AcheronClient:
         target_language: str,
         executor_strategy: str = "streaming",
         asr_model: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> JobResponse:
         """Submit a new job for processing."""
-        payload: dict[str, Any] = {
+        payload: dict[str, str | None] = {
             "source_type": source_type,
             "source_path": source_path,
             "source_language": source_language,
             "target_language": target_language,
             "executor_strategy": executor_strategy,
+            "asr_model": asr_model,
         }
-        if asr_model is not None:
-            payload["asr_model"] = asr_model
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.post("/jobs", json=payload)
             resp.raise_for_status()
-            return cast("dict[str, Any]", resp.json())
+            return JobResponse.model_validate(resp.json())
 
-    async def get_job(self, job_id: str) -> dict[str, Any]:
+    async def get_job(self, job_id: str) -> JobResponse:
         """Get job status and result."""
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.get(f"/jobs/{job_id}")
             resp.raise_for_status()
-            return cast("dict[str, Any]", resp.json())
+            return JobResponse.model_validate(resp.json())
 
-    async def resume_job(self, job_id: str, *, force_fresh: bool = False) -> dict[str, Any]:
+    async def resume_job(self, job_id: str, *, force_fresh: bool = False) -> JobResponse:
         """Resume a saved job."""
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.post(f"/jobs/{job_id}/resume", params={"force_fresh": force_fresh})
             resp.raise_for_status()
-            return cast("dict[str, Any]", resp.json())
+            return JobResponse.model_validate(resp.json())
 
-    async def get_health(self) -> dict[str, Any]:
+    async def get_health(self) -> dict[str, str]:
         """Get orchestrator health."""
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.get("/health")
             resp.raise_for_status()
-            return cast("dict[str, Any]", resp.json())
+            return cast("dict[str, str]", resp.json())
 
-    async def list_jobs(self) -> list[dict[str, Any]]:
+    async def list_jobs(self) -> list[JobResponse]:
         """List all jobs."""
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.get("/jobs")
             resp.raise_for_status()
-            return cast("list[dict[str, Any]]", resp.json()["jobs"])
+            return JobListResponse.model_validate(resp.json()).jobs
 
-    async def list_workers(self) -> list[dict[str, Any]]:
+    async def list_workers(self) -> list[WorkerResponse]:
         """List all registered workers."""
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.get("/workers")
             resp.raise_for_status()
-            return cast("list[dict[str, Any]]", resp.json()["workers"])
+            return WorkerListResponse.model_validate(resp.json()).workers
 
     async def get_capabilities(
         self,
         src: str | None = None,
         dest: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LanguagePair]:
         """Get supported language pairs."""
         params: dict[str, str] = {}
         if src is not None:
@@ -125,4 +133,4 @@ class AcheronClient:
         ) as client:
             resp = await client.get("/capabilities", params=params)
             resp.raise_for_status()
-            return cast("list[dict[str, Any]]", resp.json()["language_pairs"])
+            return CapabilitiesResponse.model_validate(resp.json()).language_pairs
