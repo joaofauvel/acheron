@@ -57,6 +57,33 @@ def _mark_loaded(h: Any) -> None:
     h._processor = object()
 
 
+class _FakeModel:
+    def generate(self, **kwargs: Any) -> Any:
+        return None
+
+
+class _FakeProcessor:
+    def __init__(self) -> None:
+        self.tokenizer = type("Tok", (), {"pad_token_id": None, "eos_token_id": 0})()
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return None
+
+    def apply_chat_template(self, messages: Any, tokenize: bool = False, add_generation_prompt: bool = False) -> Any:
+        return None
+
+    def decode(self, token_ids: Any, skip_special_tokens: bool = True) -> str:
+        return ""
+
+
+def test_handler_protocols_are_runtime_checkable() -> None:
+    from workers.translategemma.handler import _ModelProto, _ProcessorProto, _TokenizerProto
+
+    assert isinstance(_FakeModel(), _ModelProto)
+    assert isinstance(_FakeProcessor(), _ProcessorProto)
+    assert isinstance(_FakeProcessor().tokenizer, _TokenizerProto)
+
+
 def _spy_translate_all(monkeypatch: pytest.MonkeyPatch, translations: list[str]) -> None:
     """Patch _translate_all on a handler instance to return canned translations."""
     from workers.translategemma import handler as handler_module

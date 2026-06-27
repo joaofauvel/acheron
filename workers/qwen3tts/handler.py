@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
@@ -15,6 +15,20 @@ from workers._shared_utils import parse_chunks_json, safe_chapter_id
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
     from acheron.worker_sdk.settings import WorkerSettings
+
+
+@runtime_checkable
+class _Qwen3TTSModelProto(Protocol):
+    """Surface the subset of the qwen-tts model API the handler uses."""
+
+    def generate_custom_voice(
+        self,
+        text: list[str],
+        language: list[str],
+        speaker: list[str],
+        instruct: list[str],
+    ) -> tuple[list[Any], int]: ...
+
 
 _LANG_MAP = {
     "en": "English",
@@ -55,8 +69,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
 
     def __init__(self, settings: WorkerSettings) -> None:
         self._settings = settings
-        # The model is typed loosely so the workspace tests don't need torch.
-        self._model: Any = None
+        self._model: _Qwen3TTSModelProto | None = None
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static capabilities (no I/O, sync)."""
@@ -118,6 +131,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
         if input is None:
             msg = "Qwen3-TTS requires a chunks.json input (multipart part)"
             raise WorkerError(msg)
+        model = self._model
         chunks = await parse_chunks_json(input)
         if not chunks:
             return []
@@ -133,9 +147,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
         import soundfile as sf  # noqa: PLC0415 - lazy, not always installed
 
         def _generate() -> tuple[list[Any], int]:
-            return self._model.generate_custom_voice(  # type: ignore[no-any-return]
-                text=texts, language=languages, speaker=speakers, instruct=instructs
-            )
+            return model.generate_custom_voice(text=texts, language=languages, speaker=speakers, instruct=instructs)
 
         wavs, sr = await asyncio.to_thread(_generate)
 

@@ -57,6 +57,20 @@ class _FakeModel:
         return self._wavs, self._sr
 
 
+class _SpyingModel(_FakeModel):
+    """_FakeModel that records the speaker list it was called with."""
+
+    def __init__(self, wavs: list[np.ndarray], sr: int) -> None:
+        super().__init__(wavs, sr)
+        self.captured_speaker: list[str] = []
+
+    def generate_custom_voice(
+        self, text: list[str], language: list[str], speaker: list[str], instruct: list[str]
+    ) -> tuple[list[np.ndarray], int]:
+        self.captured_speaker = speaker
+        return self._wavs, self._sr
+
+
 class TestHandle:
     @pytest.mark.asyncio
     async def test_handle_returns_bytes_artifacts_in_order(self) -> None:
@@ -139,39 +153,21 @@ class TestHandle:
 
         settings = _settings(default_speaker="Ryan", per_language_defaults={"zh": "Vivian"})
         h = Qwen3TTSRunpodHandler(settings)
-        h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
 
-        captured: dict[str, Any] = {}
-
-        def _spy(
-            text: list[str], language: list[str], speaker: list[str], instruct: list[str]
-        ) -> tuple[list[np.ndarray], int]:
-            captured["speaker"] = speaker
-            return [np.zeros(50, dtype=np.float32)], 22050
-
-        h._model.generate_custom_voice = _spy
         await h.handle(
             _build_job(target_language="zh"),
             input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "你好"}]),
         )
-        assert captured["speaker"] == ["Vivian"]
+        assert h._model.captured_speaker == ["Vivian"]
 
     @pytest.mark.asyncio
     async def test_handle_uses_job_speaker_when_provided(self) -> None:
         from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 
         h = Qwen3TTSRunpodHandler(_settings(default_speaker="Ryan"))
-        h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
 
-        captured: dict[str, Any] = {}
-
-        def _spy(
-            text: list[str], language: list[str], speaker: list[str], instruct: list[str]
-        ) -> tuple[list[np.ndarray], int]:
-            captured["speaker"] = speaker
-            return [np.zeros(50, dtype=np.float32)], 22050
-
-        h._model.generate_custom_voice = _spy
         job = Job(
             job_id="j1",
             job_type=WorkerType.TTS,
@@ -179,7 +175,7 @@ class TestHandle:
             chapter_id="ch1",
         )
         await h.handle(job, input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]))
-        assert captured["speaker"] == ["Dylan"]
+        assert h._model.captured_speaker == ["Dylan"]
 
     @pytest.mark.asyncio
     async def test_handle_chunks_with_no_chapter_id_raises_worker_error(self) -> None:
@@ -260,3 +256,8 @@ class TestHandle:
         bad = BytesInput(content_type="application/json", data=b'{"a": 1}')
         with pytest.raises(WorkerError, match="JSON array"):
             await h.handle(_build_job(), input=bad)
+
+    def test_fake_model_satisfies_protocol(self) -> None:
+        from workers.qwen3tts.handler import _Qwen3TTSModelProto
+
+        assert isinstance(_FakeModel([], 22050), _Qwen3TTSModelProto)

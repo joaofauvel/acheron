@@ -1030,21 +1030,21 @@ related:
 ### TYPE-010 — All three RunPod worker handlers type self._model/self._processor as `Any` with a stale-prone impl-phase comment — third instance of TYPE-009
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
 - path: workers/translategemma/handler.py
-  lines: 108-111
+  lines: 144-147
 - path: workers/qwen3tts/handler.py
-  lines: 88-89, 29-32, 108-111
+  lines: 78-79
 - path: workers/granite_speech/handler.py
-  lines: 27-32
+  lines: 43-44
 related:
 - TYPE-009
 - CORR-033

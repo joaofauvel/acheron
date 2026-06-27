@@ -683,19 +683,19 @@ related: [DATA-006, CORR-013, CORR-028, CORR-031]
 ### TEST-014 — `workers/translategemma/tests/test_handler.py` does not cover the model.generate error path, partial-success, or pad_token_id init
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 0e6c576
-  date: '2026-06-24'
+  commit: pending
+  date: 2026-06-26
 fixed_in: []
 files:
 - path: workers/translategemma/tests/test_handler.py
   lines: 1-269
 - path: workers/translategemma/handler.py
-  lines: 160-275
+  lines: 190-305
 related:
 - CORR-029
 - CORR-033

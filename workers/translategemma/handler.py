@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
@@ -15,6 +15,40 @@ from workers._shared_utils import Chunk, parse_chunks_json, safe_chapter_id
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
     from acheron.worker_sdk.settings import WorkerSettings
+
+
+@runtime_checkable
+class _ModelProto(Protocol):
+    """Surface the subset of the transformers model API the handler uses."""
+
+    def generate(self, **kwargs: Any) -> Any: ...  # noqa: ANN401
+
+
+@runtime_checkable
+class _TokenizerProto(Protocol):
+    pad_token_id: int | None
+    eos_token_id: int | None
+
+
+@runtime_checkable
+class _ProcessorProto(Protocol):
+    """Surface the subset of the transformers processor API the handler uses."""
+
+    tokenizer: _TokenizerProto
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...  # noqa: ANN401
+    def apply_chat_template(
+        self,
+        messages: Any,  # noqa: ANN401
+        tokenize: bool = False,  # noqa: FBT001, FBT002
+        add_generation_prompt: bool = False,  # noqa: FBT001, FBT002
+    ) -> Any: ...  # noqa: ANN401
+    def decode(
+        self,
+        token_ids: Any,  # noqa: ANN401
+        skip_special_tokens: bool = True,  # noqa: FBT001, FBT002
+    ) -> str: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +141,8 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
 
     def __init__(self, settings: WorkerSettings) -> None:
         self._settings = settings
-        # The model + processor are typed loosely so the workspace tests
-        # don't need torch or transformers installed.
-        self._model: Any = None
-        self._processor: Any = None
+        self._model: _ModelProto | None = None
+        self._processor: _ProcessorProto | None = None
 
     def capabilities(self) -> WorkerCapabilities:
         """Return the worker's static description. No I/O — sync."""
@@ -145,9 +177,10 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
                 device_map="cuda:0",
                 torch_dtype=torch.bfloat16,
             )
-            tokenizer = self._processor.tokenizer
-            if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
-                tokenizer.pad_token_id = tokenizer.eos_token_id
+            if self._processor is not None:
+                tokenizer = self._processor.tokenizer
+                if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+                    tokenizer.pad_token_id = tokenizer.eos_token_id
 
         await asyncio.to_thread(_load)
 
@@ -271,6 +304,12 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         """Translate one batch (up to _MAX_BATCH_SIZE chunks) in a single model.generate call."""
         import torch
 
+        if self._model is None or self._processor is None:
+            msg = "TranslateGemma model not loaded (startup() not run)"
+            raise WorkerError(msg)
+        processor = self._processor
+        model = self._model
+
         max_input_tokens = self._settings.max_input_tokens or _MAX_INPUT_TOKENS_DEFAULT
         messages_per_chunk = [
             [
@@ -289,10 +328,9 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             for c in batch
         ]
         prompts = [
-            self._processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
-            for m in messages_per_chunk
+            processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True) for m in messages_per_chunk
         ]
-        inputs = self._processor(
+        inputs = processor(
             text=prompts,
             return_tensors="pt",
             padding=True,
@@ -300,12 +338,12 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             max_length=max_input_tokens,
         ).to("cuda:0")
         with torch.inference_mode():
-            outputs = self._model.generate(**inputs, max_new_tokens=_MAX_NEW_TOKENS, do_sample=False)
+            outputs = model.generate(**inputs, max_new_tokens=_MAX_NEW_TOKENS, do_sample=False)
         decoded: list[str] = []
         for i in range(len(batch)):
             prompt_len = int(inputs["attention_mask"][i].sum())
             new_tokens = outputs[i, prompt_len:]
-            text = self._processor.decode(new_tokens, skip_special_tokens=True).strip()
+            text = processor.decode(new_tokens, skip_special_tokens=True).strip()
             decoded.append(text)
         return decoded
 
