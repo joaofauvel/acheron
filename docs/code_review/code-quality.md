@@ -55,19 +55,23 @@ related: [CORR-002, ARCH-001, CORR-003]
 ### MAINT-002 — redis.py hand-rolls JSON ser/deser for domain models that cache.py serializes via pydantic, duplicating and drifting
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
   commit: pending
-  date: 2026-06-23
-fixed_in: []
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 30-284
-  - path: src/acheron/shell/cache.py
-    lines: 27-128
+    lines: 65-87
+  - path: src/acheron/shell/stores/redis.py
+    lines: 104-105
+  - path: src/acheron/shell/stores/redis.py
+    lines: 117
+  - path: src/acheron/shell/stores/redis.py
+    lines: 129
 related: [DATA-002, MAINT-015]
 ```
 

@@ -7,14 +7,21 @@ import time
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import redis.asyncio
+from pydantic import TypeAdapter
 
-from acheron.core.models import AudioRequest, EpubRequest, WorkerStatus
+from acheron.core.models import (
+    AudioRequest,
+    EpubRequest,
+    JsonValue,
+    WorkerCapabilities,
+    WorkerStatus,
+)
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
     from redis.asyncio.client import Pipeline as _RedisPipeline
 
-    from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
+    from acheron.core.models import WorkerType
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
 
@@ -51,47 +58,35 @@ _WORKERS_SET = "workers"
 _JOB_KEY = "job:{job_id}"
 _JOBS_SET = "jobs"
 
+_capabilities_adapter: TypeAdapter[WorkerCapabilities] = TypeAdapter(WorkerCapabilities)
+_metadata_adapter: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
+
 
 def _serialize_capabilities(cap: WorkerCapabilities) -> str:
-    return json.dumps(
-        {
-            "worker_type": cap.worker_type.value,
-            "supported_languages_in": sorted(cap.supported_languages_in),
-            "supported_languages_out": sorted(cap.supported_languages_out),
-            "supported_formats_in": sorted(cap.supported_formats_in),
-            "supported_formats_out": sorted(cap.supported_formats_out),
-            "max_payload_bytes": cap.max_payload_bytes,
-            "batch_capable": cap.batch_capable,
-            "model_source": cap.model_source,
-            "metadata": cap.metadata,
-        },
-        sort_keys=True,
-    )
+    return _capabilities_adapter.dump_json(cap).decode("utf-8")
 
 
 def _deserialize_capabilities(blob: str) -> WorkerCapabilities:
     from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
-    from acheron.core.models import WorkerCapabilities, WorkerType  # noqa: PLC0415
 
     try:
-        data = json.loads(blob)
-    except json.JSONDecodeError as exc:
-        msg = f"Capabilities blob is not valid JSON: {exc}"
-        raise CacheCorruptedError(msg) from exc
-    try:
-        return WorkerCapabilities(
-            worker_type=WorkerType(data["worker_type"]),
-            supported_languages_in=frozenset(data["supported_languages_in"]),
-            supported_languages_out=frozenset(data["supported_languages_out"]),
-            supported_formats_in=frozenset(data["supported_formats_in"]),
-            supported_formats_out=frozenset(data["supported_formats_out"]),
-            max_payload_bytes=data["max_payload_bytes"],
-            batch_capable=data["batch_capable"],
-            model_source=data["model_source"],
-            metadata=data["metadata"],
-        )
-    except (KeyError, ValueError) as exc:
+        return _capabilities_adapter.validate_json(blob)
+    except (ValueError, TypeError) as exc:
         msg = f"Capabilities blob is missing or has invalid fields: {exc}"
+        raise CacheCorruptedError(msg) from exc
+
+
+def _serialize_metadata(metadata: dict[str, JsonValue]) -> str:
+    return _metadata_adapter.dump_json(metadata).decode("utf-8")
+
+
+def _deserialize_metadata(blob: str) -> dict[str, JsonValue]:
+    from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
+
+    try:
+        return _metadata_adapter.validate_json(blob)
+    except (ValueError, TypeError) as exc:
+        msg = f"metadata is not valid JSON: {exc}"
         raise CacheCorruptedError(msg) from exc
 
 
@@ -107,7 +102,7 @@ def _worker_fields(
         "consecutive_failures": "0",
         "last_health_check": str(time.time()),
         "capabilities_json": _serialize_capabilities(capabilities),
-        "metadata_json": json.dumps(metadata, sort_keys=True),
+        "metadata_json": _serialize_metadata(metadata),
         "status": WorkerStatus.HEALTHY.value,
         "last_error": "",
     }
@@ -118,11 +113,8 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
     from acheron.shell.registry import RegisteredWorker  # noqa: PLC0415
 
     last_hc = fields.get("last_health_check") or ""
-    try:
-        metadata = json.loads(fields.get("metadata_json", "{}"))
-    except json.JSONDecodeError as exc:
-        msg = f"Worker {worker_id} metadata is not valid JSON: {exc}"
-        raise CacheCorruptedError(msg) from exc
+    metadata_blob = fields.get("metadata_json", "{}")
+    metadata = _deserialize_metadata(metadata_blob) if metadata_blob else {}
     status_str = fields.get("status") or WorkerStatus.HEALTHY.value
     try:
         status = WorkerStatus(status_str)
@@ -146,7 +138,7 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
 def _serialize_job(job: TrackedJob) -> str:
     from acheron.core.models import AudioRequest  # noqa: PLC0415
 
-    plan_dict = None
+    plan_dict: dict[str, Any] | None = None
     if job.plan is not None:
         plan_dict = {
             "plan_id": job.plan.plan_id,
@@ -223,9 +215,12 @@ def _deserialize_job(blob: str) -> TrackedJob:
     from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
     from acheron.core.models import (  # noqa: PLC0415
         AudioRequest,
+        CostBasis,
         EpubRequest,
         ExecutorStrategy,
+        OutputFile,
         Plan,
+        PlanResult,
         PlanStatus,
         PlanStep,
         StepStatus,
@@ -271,10 +266,8 @@ def _deserialize_job(blob: str) -> TrackedJob:
                 for s in data["plan"]["steps"]
             ),
         )
-    result = None
+    result: PlanResult | None = None
     if data.get("result") is not None:
-        from acheron.core.models import CostBasis, OutputFile, PlanResult  # noqa: PLC0415
-
         rd = data["result"]
         basis_value = rd.get("total_cost_basis")
         result = PlanResult(
