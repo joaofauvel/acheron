@@ -1098,23 +1098,23 @@ related:
 ### CFG-012 — `WorkerCapabilities.max_input_tokens` is set by handlers but dropped at every wire boundary, so the orchestrator's plan-time check is silently bypassed
 
 ```yaml
-status: fixed
+status: verified
 severity: high
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: 56af1f0
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["56af1f0"]
 files:
   - path: src/acheron/worker_sdk/_caps.py
-    lines: 18-30
+    lines: 26-30
   - path: src/acheron/shell/api/schemas.py
-    lines: 50-61
+    lines: 58-66
   - path: src/acheron/shell/api/schemas.py
-    lines: 73-82
+    lines: 80-90
   - path: src/acheron/shell/api/routes/workers.py
-    lines: 31-41
+    lines: 31-50
 related: [CFG-011]
 ```
 
