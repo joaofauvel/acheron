@@ -15,7 +15,7 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 **Scope**: All dataclasses, enums, domain exceptions. Zero I/O.
 
 **Files**:
-- `src/acheron/core/models.py` — WorkerType, JobStatus, StepStatus, WorkerCapabilities, Job, OutputFile, JobResult, JobMetrics, Plan, PlanStep, PlanResult, BatchJob, BatchStatus
+- `src/acheron/core/models.py` — WorkerType, JobStatus, StepStatus, WorkerCapabilities, Job, OutputFile, JobResult, JobMetrics, Plan, PlanStep, PlanResult
 - `src/acheron/core/errors.py` — AcheronError hierarchy (PlanError, WorkerError, CacheError)
 - `tests/core/test_models.py`
 - `tests/core/test_errors.py`
@@ -27,10 +27,10 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 
 ### Layer 1 — Interfaces & Chunking
 
-**Scope**: ABCs for Worker/StreamingWorker/Executor. Text chunking engine (NLTK punkt + fallback).
+**Scope**: ABCs for Worker/Executor/HealthProvider. Text chunking engine (NLTK punkt + fallback).
 
 **Files**:
-- `src/acheron/core/interfaces.py` — Worker, StreamingWorker, Executor ABCs
+- `src/acheron/core/interfaces.py` — Worker, Executor, HealthProvider ABCs
 - `src/acheron/core/chunking.py` — `chunk_text(text, max_length=250) -> list[Chunk]`
 - `tests/core/test_interfaces.py`
 - `tests/core/test_chunking.py`
@@ -45,9 +45,9 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 
 **Files**:
 - `src/acheron/shell/registry.py` — WorkerRegistry (add, remove, health check, lookup)
-- `src/acheron/shell/cache.py` — Plan persistence, manifest read/write to `/data/jobs/`
+- `src/acheron/shell/cache.py` — Plan + step-output caching: `PlanCache` (plan persistence, manifest read/write to `/data/jobs/`), `StepCache` + `InMemoryStepCache` (async step-output cache, Layer 10)
 - `src/acheron/shell/transports/local.py` — LocalWorker (calls Python functions directly)
-- `tests/shell/test_registry.py`
+- `tests/shell/stores/` — registry + job-store tests (in-memory + Redis + factory + async migrations)
 - `tests/shell/test_cache.py`
 - `tests/shell/test_local_worker.py`
 
@@ -57,13 +57,13 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 
 ### Layer 3 — Planner + Executors
 
-**Scope**: Plan compilation (job request → Plan DAG). Sequential, Async, BatchAsync executors.
+**Scope**: Plan compilation (job request → Plan DAG). Sequential, Async, and Streaming executors (`StreamingExecutor` is the default for new jobs since Layer 9a).
 
 **Files**:
 - `src/acheron/core/planner.py` — Pure logic: validate language path, compile steps, assign workers
 - `src/acheron/shell/executors/sequential.py` — Step-by-step execution
 - `src/acheron/shell/executors/async_executor.py` — Concurrent DAG traversal
-- `src/acheron/shell/executors/batch_async.py` — Batch streaming for GPU workers
+- `src/acheron/shell/executors/streaming.py` — StreamingExecutor (per-stage `asyncio.Queue` pipeline, the new default strategy)
 - `tests/core/test_planner.py`
 - `tests/shell/test_executors.py`
 
@@ -94,12 +94,11 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 
 **Files**:
 - `src/acheron/shell/transports/http.py` — HttpWorker (RunPod, HF Inference Endpoints)
-- `src/acheron/shell/transports/grpc.py` — GrpcWorker (future)
+- `src/acheron/shell/transports/grpc.py` — GrpcWorker (Layer 6)
 - `dashboard/` — HTMX/Jinja separate container
 - `docker-compose.yml`
-- `Dockerfile.orchestrator`
-- `Dockerfile.tts-worker`
-- `Dockerfile.asr-worker`
+- `Dockerfile` — orchestrator image
+- `Dockerfile.edge` — `acheron-worker-edge` runtime image (Layer 8)
 
 **Deps**: Layer 0-4. External: RunPod API, HuggingFace
 
@@ -107,15 +106,14 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 
 ### Layer 6 — gRPC Streaming Transport
 
-**Scope**: GrpcWorker implementing `StreamingWorker` via bidirectional gRPC streams. `.proto` definitions for TTS/ASR streaming. Direct PCM byte streaming from GPU to orchestrator, bypassing worker disk I/O.
+**Scope**: GrpcWorker with a server-side gRPC stream. `.proto` definition for TTS streaming (TTS-only; ASR/translation use HTTP + multipart). Direct PCM/Artifact byte streaming from GPU to orchestrator, bypassing worker disk I/O.
 
 **Files:**
 - `src/acheron/shell/transports/grpc.py` — GrpcWorker
-- `proto/acheron/synthesis.proto` — TTS bidirectional streaming
-- `proto/acheron/transcription.proto` — ASR bidirectional streaming
+- `proto/synthesis.proto` — TTS streaming (server-side, with `Artifact` and legacy `pcm_data` modes)
 - `tests/shell/test_grpc_worker.py`
 
-**Design**: GrpcWorker implements the existing `Worker` + `StreamingWorker` interface. Streaming is internal to the worker — orchestrator sends a job, GrpcWorker opens a bidirectional gRPC stream to the GPU worker, receives audio bytes as they're generated, and returns assembled `JobResult`. No architectural changes to core/interfaces/planner.
+**Design**: GrpcWorker implements the existing `Worker` interface. The orchestrator sends a job; the worker streams PCM/Artifact chunks from a server-side `stream OutputChunk` RPC and returns the assembled `JobResult`. No architectural changes to core/interfaces/planner.
 
 **Deps**: Layer 0-5. External: grpcio, protobuf
 
@@ -129,14 +127,14 @@ Incremental implementation plan for [Acheron design spec](./architecture.md).
 - `src/acheron/shell/registry.py` — Redis-backed `WorkerRegistry`
 - `src/acheron/shell/job_store.py` — Redis-backed `JobStore`
 - `docker-compose.yml` — TLS, volumes, resource limits, healthchecks
-- `Dockerfile.orchestrator` — production-hardened image
+- `Dockerfile` — production-hardened orchestrator image
 
 **Design**:
 - `WorkerRegistry` and `JobStore` get Redis implementations alongside existing in-memory ones. Selected via config/env var.
 - Registration security: `registration_token` configuration value (overridable via `ACHERON_REGISTRATION_TOKEN` environment variable). `POST /workers` requires `Authorization: Bearer <token>`. Unset token auto-generates a secure token at startup and persists it to `{data_dir}/.registration_token`. Explicitly opt into open registration with `ACHERON_OPEN_REGISTRATION=1`.
-- TLS: self-signed certs or reverse proxy (nginx/caddy) for local dev. Production uses cert-manager or cloud provider certs.
+- TLS: in-process via `ACHERON_TLS_{CERT,KEY,CA}_FILE` env vars (self-signed dev certs via `just certs`; production uses real certs from cert-manager / cloud provider, optionally fronted by a deployer-managed nginx/caddy that terminates TLS in front of the orchestrator's HTTPS).
 - Persistent volumes: `/data/jobs/` for cached step outputs, Redis data volume.
-- Resource limits: CPU/memory constraints per container in Compose.
+- Resource limits: CPU/memory constraints per container in Compose — explicitly deferred per user decision (not yet in `docker-compose.yml`).
 - Healthchecks: `GET /health` on orchestrator and workers, integrated with Docker healthcheck and Compose `depends_on`.
 
 **Deps**: Layer 0-5. External: redis-py (already in deps)
@@ -151,7 +149,7 @@ Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Tr
 
 **Files** (per sub-project):
 - `workers/qwen3tts/` — Qwen3 TTS worker codebase + `Dockerfile.runpod` (sub-project 8a)
-- `workers/whisperv3large/` — Whisper-v3 Large ASR worker codebase + `Dockerfile.runpod` (sub-project 8b)
+- `workers/granite_speech/` — Granite-Speech-4.1 ASR worker codebase + `Dockerfile.runpod` (sub-project 8b)
 - `workers/translategemma/` — TranslateGemma-12B translation worker codebase + `Dockerfile.runpod` (sub-project 8c)
 - `src/acheron/worker_sdk/` — the blueprint (shipped with 8a, reused by 8b / 8c)
 
@@ -178,18 +176,18 @@ Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Tr
 | 3 | done | Planner, executors |
 | 4 | done | API + CLI |
 | 5 | done | HttpWorker, dashboard, Docker Compose, registration security |
-| 6 | done | gRPC streaming transport: GrpcWorker, proto, stub worker, transport-aware health monitor |
-| 7a | done | Storage abstraction + Redis backend (sync `redis.Redis` client) |
-| 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check, gRPC HTTP /health sidecar (FastAPI) |
+| 6 | done | gRPC streaming transport: GrpcWorker, proto (`proto/synthesis.proto`), stub worker package (`stubs/tts_grpc_stub/`), transport-aware health monitor |
+| 7a | done | Storage abstraction + Redis backend (`redis.asyncio.Redis` client; the sync `redis.Redis` version was migrated to async by Layer 9b-ii) |
+| 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check |
 | 7c | done | TLS via env vars: `ACHERON_TLS_{CERT,KEY,CA}_FILE`; dev cert script (`just certs`); compose wires certs, env vars, and HTTPS healthchecks; dashboard stays HTTP |
-| 8a | in progress | TTS worker (`qwen3tts`, RunPod Serverless) + `acheron.worker_sdk` blueprint. See [Layer 8a design](./layer-8a-tts-worker.md). |
-| 8b | planned | ASR worker (`whisperv3large`), reusing the blueprint. |
-| 8c | planned | Translation worker (`translategemma`), reusing the blueprint. Supersedes an earlier stub spec that predates the blueprint. |
+| 8a | done | TTS worker (`qwen3tts`, RunPod Serverless) + `acheron.worker_sdk` blueprint. See [Layer 8a design](./layer-8a-tts-worker.md). |
+| 8b | done | ASR worker (`granite_speech`, RunPod Serverless) against `ibm-granite/granite-speech-4.1-2b`. See [Layer 8b design](./layer-8b-asr-worker.md). |
+| 8c | done | Translation worker (`translategemma`, RunPod Serverless) against `google/translategemma-12b-it`. See [Layer 8c design](./layer-8c-translategemma-worker.md). Supersedes an earlier stub spec that predates the blueprint. |
 | 9b-i | done | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
 | 9b-ii | done | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
 | 9a | done | Streaming pipeline executor (`StreamingExecutor` is the new default; `PipelineError`; per-step timeout; per-stage queue with sentinel drain) |
 | 10 | done | Built-in local workers (Extraction, Chunking, Packaging), settings via `acheron.yaml`, API/CLI resume |
-| 11 | partial | Decoupled health checks (RunPod/HF), dashboard error & status updates. Worker packaging + CI/CD deferred to a separate plan. |
+| 11 | done | Decoupled health checks (RunPod/HF), dashboard error & status updates, worker packaging + GHCR CI/CD (shipped via Layer 8a/8b/8c). |
 
 
 ## Layer 7 — Decomposition
@@ -212,19 +210,18 @@ Make worker registry and job state survive orchestrator restarts by adding a Red
 Deployment-side hardening for the Docker Compose stack.
 
 - Docker healthchecks on every service (`GET /health` for orchestrator and workers)
-- Resource limits (`cpus`, `mem_limit`) on every service
+- Resource limits (`cpus`, `mem_limit`) on every service — explicitly deferred per user decision
 - Persistent volumes: `/data` mounted for orchestrator (step output cache), named `redis-data` for Redis
 - Orchestrator refuses to start if `/data` is not writable
 
-### Sub-project 7c — TLS termination via reverse proxy
+### Sub-project 7c — In-process TLS via env vars
 
-TLS via reverse proxy (nginx or caddy) with self-signed certs for local dev.
+Acheron does not ship a reverse proxy. The orchestrator and worker services serve HTTPS directly when `ACHERON_TLS_CERT_FILE` + `ACHERON_TLS_KEY_FILE` are set; client trust is configured via `ACHERON_TLS_CA_FILE` (or the standard `SSL_CERT_FILE`). The dashboard stays HTTP and is fronted by a deployer-managed proxy when public-facing.
 
-- New `proxy/` directory with `nginx.conf` and `Dockerfile`
-- Routes `/api/*` to orchestrator, `/` to dashboard
-- Self-signed cert generation script for local dev
-- `docker compose --profile tls up` opt-in
-- Production deploys use real certs via cert-manager or cloud provider
+- `src/acheron/tls.py` — env-var loader (`ACHERON_TLS_CERT_FILE`, `ACHERON_TLS_KEY_FILE`, `ACHERON_TLS_CA_FILE`) + `run_worker_server` / `run_orchestrator_server` accept the cert paths
+- `scripts/generate_dev_certs.py` + `just certs` — self-signed dev cert generator
+- `certs-init` Docker Compose service generates dev certs into a bind-mounted `certs/` directory on first run
+- Production deploys: real certs from cert-manager / cloud provider; the orchestrator reads them via the same env-var contract
 
 ---
 
@@ -244,7 +241,7 @@ Establish the worker blueprint: `WorkerHandler` ABC, composable `Artifact` outpu
 
 ### Sub-project 8b — ASR worker
 
-Replay the blueprint for `workers/whisperv3large/` against Whisper-v3 Large. gRPC `Artifact` mode is exercised if this sub-project picks the gRPC transport; otherwise HTTP + multipart.
+Replay the blueprint for `workers/granite_speech/` against `ibm-granite/granite-speech-4.1-2b` (2B params, 6 languages). gRPC `Artifact` mode is exercised if this sub-project picks the gRPC transport; otherwise HTTP + multipart.
 
 ### Sub-project 8c — Translation worker
 
@@ -266,7 +263,7 @@ Swap `RedisWorkerStore` and `RedisJobStore` from `redis.Redis` to `redis.asyncio
 
 ### Sub-project 9a — Streaming pipeline executor
 
-New `StreamingExecutor` is the new default strategy. Per-stage `asyncio.Queue` pipeline with bounded backpressure (linear topology — current plans have 4-5 single-step stages), fail-fast all-or-nothing job semantics, per-step `asyncio.wait_for()` timeout (default 1800s, configurable per instance), and `StepCache.save_outputs()` per chunk as resumability foundation. `StepCache` itself becomes async via aiofiles. New `PipelineError(AcheronError)` in `core/errors.py` for executor-internal invariants (cache, sentinel protocol, unexpected stage exceptions). `ExecutorStrategy.STREAMING` added; API and client default changed to `"streaming"`; `BatchAsyncExecutor` remains as opt-in. Per-chapter parallelism deferred to a future layer (plans are linear today).
+New `StreamingExecutor` is the new default strategy. Per-stage `asyncio.Queue` pipeline with bounded backpressure (linear topology — current plans have 4-5 single-step stages), fail-fast all-or-nothing job semantics, per-step `asyncio.wait_for()` timeout (default 1800s, configurable per instance), and `StepCache.save_outputs()` per chunk as resumability foundation. `StepCache` becomes async via `asyncio.to_thread` for blocking I/O (aiofiles was not used). New `PipelineError(AcheronError)` in `core/errors.py` for executor-internal invariants (cache, sentinel protocol, unexpected stage exceptions). `ExecutorStrategy.STREAMING` added; API and client default changed to `"streaming"`; `ExecutorStrategy.BATCH_ASYNC` removed. Per-chapter parallelism deferred to a future layer (plans are linear today).
 
 ---
 
@@ -286,5 +283,5 @@ Implement decoupled provider health checks, modular container image compilation,
 
 - **Decoupled health checks**: Abstract `HealthProvider` class configuration mapping platform-specific endpoints (RunPod/HF) using API keys defined in `acheron.yaml`. ✅
 - **Dashboard Updates**: Backend status endpoint (green/red dot) and worker status badges + error viewer. ✅
-- **Modular Workers + CI/CD**: Isolated worker packages and GHCR publish workflow. Deferred to a separate plan (requires Docker/CUDA build context).
+- **Modular Workers + CI/CD**: Isolated worker packages (`workers/qwen3tts/`, `workers/granite_speech/`, `workers/translategemma/`) and GHCR publish workflow (`.github/workflows/build-workers.yml`). ✅ Shipped via Layer 8a/8b/8c.
 
