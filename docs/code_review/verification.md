@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-TEST-001, TEST-003, TEST-004 remain verified. TEST-002, TEST-005, TEST-006, TEST-007 kept open (code unchanged since 63faed4, gaps remain). One new TEST finding: TEST-008 (low) — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test. Layer 8a added strong 1:1 test coverage for the new `worker_sdk/` (14 test files mirror the 13 source modules) and the qwen3tts worker (`_FakeModel` pattern), but the static-fallback pricing branch and the non-RunPod passthrough metadata assertion are untested. **2026-06-26 refresh**: TEST-018 (low) — `test_app.py` still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete, regression of TEST-008). TEST-019 (low) — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4). TEST-020 (low) — `test_pricing.py` has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract).
+TEST-001, TEST-003, TEST-004 remain verified. TEST-002, TEST-005, TEST-006, TEST-007 kept open (code unchanged since 63faed4, gaps remain). One new TEST finding: TEST-008 (low) — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test. Layer 8a added strong 1:1 test coverage for the new `worker_sdk/` (14 test files mirror the 13 source modules) and the qwen3tts worker (`_FakeModel` pattern), but the static-fallback pricing branch and the non-RunPod passthrough metadata assertion are untested. **2026-06-26 refresh**: TEST-018 (low) — `test_app.py` still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete, regression of TEST-008). TEST-019 (low) — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4). TEST-020 (low) — `test_pricing.py` has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract). **2026-06-26 round 2 refresh**: TEST-002, TEST-007, TEST-015 verified; TEST-021 added (medium, untested `_io.py`); TEST-022 added (medium, duplicated `redis_container`/`redis_url` fixtures across conftest files); TEST-014 remains stale but the underlying concerns are now addressed by the e9faa0d + 299f08c rewrite of translategemma test_handler.py; DATA-010 added (low, defensive isinstance contract test for `RedisJobStore._deserialize_job`).
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -134,8 +134,8 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
@@ -159,12 +159,12 @@ severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
+  commit: 59458ba
+  date: '2026-06-26'
 fixed_in: []
 files:
 - path: src/acheron/shell/health_providers.py
-  lines: 100-111
+  lines: 87-102
 related: []
 ```
 
@@ -234,7 +234,7 @@ related: []
 
 **Grade:** A
 
-REPRO-001 remains open (no fix in this delta; cited code unchanged). REPRO-002 remains verified. One new REPRO finding: REPRO-003 (low) — `tests/worker_sdk/conftest.py` `_no_sleep` fixture masks `asyncio.sleep` timing in retry/registration tests.
+REPRO-001 remains open (no fix in this delta; cited code unchanged). REPRO-002 remains verified. One new REPRO finding: REPRO-003 (low) — `tests/worker_sdk/conftest.py` `_no_sleep` fixture masks `asyncio.sleep` timing in retry/registration tests. **2026-06-26 round 2 refresh**: REPRO-001 verified (commit `299e592` sorted `RedisWorkerStore.list_all()` and `RedisJobStore.list_all()`); REPRO-004 added (low, integration test constructs `RedisWorkerStore`/`RedisJobStore` directly without using a fixture-managed factory).
 
 ### REPRO-001 — Redis list_all() returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend
 
@@ -299,12 +299,12 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
   - path: tests/worker_sdk/conftest.py
-    lines: 8-14
+    lines: 8-15
   - path: tests/worker_sdk/test_registration.py
     lines: 84-113
 related: []
@@ -322,7 +322,7 @@ related: []
 
 **Grade:** A
 
-DATA-001, DATA-002, DATA-003, DATA-004 are all verified. DATA-005 remains open. Two new DATA findings: DATA-006 (medium) — `HttpWorker._parse_multipart` edge cases (no metrics part, missing boundary, non-multipart body) are not covered; DATA-007 (low) — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests.
+DATA-001, DATA-002, DATA-003, DATA-004 are all verified. DATA-005 remains open. Two new DATA findings: DATA-006 (medium) — `HttpWorker._parse_multipart` edge cases (no metrics part, missing boundary, non-multipart body) are not covered; DATA-007 (low) — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests. **2026-06-26 round 2 refresh**: DATA-008 verified (covered by `tests/worker_sdk/test_edge_http_multipart.py` 8b additions); DATA-009 verified (boundary conditions added in `test_planner.py` per the 8c plan-time check); DATA-010 added (low, defensive isinstance contract test for `RedisJobStore._deserialize_job`); DATA-007 line numbers re-resolved (`FileArtifact.stream` body now delegates to `_io.py` after MAINT-015).
 
 ### DATA-001 — API pydantic schemas accept arbitrary extra fields, silently dropping client typos
 
@@ -492,19 +492,21 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 88-91
   - path: src/acheron/worker_sdk/artifacts.py
-    lines: 71-77
+    lines: 60-65
+  - path: src/acheron/worker_sdk/_io.py
+    lines: 43-50
   - path: tests/worker_sdk/test_runpod_client.py
     lines: 1-100
   - path: tests/worker_sdk/test_artifacts.py
     lines: 45-52
-related: [CORR-014]
+related: [CORR-014, TEST-021]
 ```
 
 **Issue.** Two undertested defensive branches: (1) `_runpod_client.py:89-93` raises `WorkerError` when the RunPod response's `output.artifacts` is not a list. `test_runpod_client.py`'s `test_returns_artifacts_on_success` exercises the happy path; no test writes a non-list `artifacts` value (e.g. dict, string, None) and asserts `WorkerError` with 'must be a list' in the message. (2) `artifacts.py:71-77` — `FileArtifact.stream` reads 64 KiB chunks. `test_artifacts.py:test_stream_reads_from_disk_in_chunks` writes 200 KiB (3 reads); no test for an empty file (zero reads, yields nothing), a 1-byte file (one read < 64 KiB), or a missing/non-existent path (`aiofiles.open` raises `FileNotFoundError` — does it propagate as-is, or get swallowed?).
@@ -523,15 +525,15 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/inputs.py
-    lines: 16-29, 59-74
+    lines: 17-22, 25-32, 35-47, 51-60
   - path: tests/worker_sdk/test_inputs.py
     lines: 1-86
-related: []
+related: [TEST-021]
 ```
 
 **Issue.** `test_inputs.py` covers happy paths and a few defensive cases (frozen dataclass, 64 KiB chunking, metadata defaults) but does not exercise: (1) `isinstance(b, Input)` against the `@runtime_checkable` Protocol — the contract every handler relies on; (2) `FileInput.stream()` on a non-existent path; (3) `StreamInput.stream()` when the producer yields no bytes; (4) `FileInput.stream()` on an empty file.
@@ -550,12 +552,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
-  - path: workers/_shared.py
-    lines: 10-31
+  - path: workers/_shared_utils.py
+    lines: 17-38
   - path: workers/_shared/tests/test_safe_chapter_id.py
     lines: 1-55
 related: []
@@ -577,14 +579,14 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
-- path: src/acheron/worker_sdk/cloud.py
-  lines: 32, 36, 40
-- path: tests/worker_sdk/test_cloud_audio.py
-  lines: 1-192
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 36, 39, 43
+  - path: tests/worker_sdk/test_cloud_audio.py
+    lines: 1-192
 related: []
 ```
 
@@ -690,27 +692,18 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
-- path: workers/translategemma/tests/test_handler.py
-  lines: 1-269
-- path: workers/translategemma/handler.py
-  lines: 190-305
-related:
-- CORR-029
-- CORR-033
-- MAINT-019
+  - path: workers/translategemma/tests/test_handler.py
+    lines: 362-437
+  - path: workers/translategemma/handler.py
+    lines: 144-147, 268-298, 330-345
+related: [TEST-016]
 ```
 
-**Issue.** test_handler.py (269 lines) covers the validation surface (11 `test_handle_with_*_raises` tests), happy path (single chunk, multi-chunk, empty chunks, empty body), and batched dispatch (10 chunks → 3 batches of [4,4,2]). The handler's GPU-side failure surface is not tested at all: (1) the production line 203 `translated = await asyncio.to_thread(self._translate_all, chunks, src, tgt)` has no try/except — when `_translate_batch` raises (CUDA OOM, NaN/inf in input_ids, processor shape mismatch, etc.) the exception propagates raw to the RunPod runtime; no test asserts that handle() either re-raises as `WorkerError` or wraps with chain. (2) When batch 1 succeeds and batch 2 fails, the handler currently aborts mid-stream, dropping batch 1's translations and producing no partial output — a regression that switched to per-batch exception capture (e.g. to surface partial-success) would be invisible. (3) The tokenizer boot path at handler.py:268-269 `if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None: tokenizer.pad_token_id = tokenizer.eos_token_id` is a one-shot init; no test exercises it because the test uses `_spy_translate_all` and never builds a real processor. (4) `_translate_all` is fed raw `chunks` whose `text` field is user-controlled ePUB text; a test that proves `text=None` (not str) is rejected by `_normalize_chunk` would be a useful guard.
-
-**Why it matters.** This handler runs in the RunPod serverless runtime — every uncaught exception translates to a billable cold-start. The token-billing and the silent-drop-batch-1 cases are the most operationally expensive untested paths in the new worker layer. A regression that allowed `text` to be a non-str (e.g. a dict the ePUB parser handed back) would crash inside `tokenizer(text=...)` deep in the model.generate call.
-
-**Recommendation.** Add 4 tests: (1) `test_handle_translate_batch_raises_propagates_as_workererror` — patch `_translate_batch` to raise `RuntimeError("CUDA OOM")`; assert `WorkerError` (or `RuntimeError`) propagates and no artifact is built; (2) `test_handle_partial_batch_failure_does_not_drop_successful_batch` — patch `_translate_batch` to raise on the second call only; assert behavior matches the chosen contract (re-raise or partial-output); (3) `test_translate_batch_initializes_pad_token_id_when_none` — instantiate a fake processor whose `tokenizer.pad_token_id is None` and `tokenizer.eos_token_id = 0`; call `_translate_batch` with a tiny batch; assert `tokenizer.pad_token_id == 0` after the call; (4) `test_handle_chunk_text_not_str_raises` — pass `chunks=[{"chapter_id":"ch1","sequence_id":0,"text":None}]`; assert `WorkerError` with 'text is required' (or whichever message the existing `_normalize_chunk` emits).
-
-**Verification.** Run `just test workers/translategemma/tests/test_handler.py`; the 4 new tests should pass without torch/transformers installed (use mock processor / spy).
+**Issue.** The cited 269-line test_handler.py and 305-line handler.py were substantially rewritten in the e9faa0d + 299f08c fixes (TYPE-010 + TEST-016): handler.py is now 357 lines and test_handler.py is now 437 lines. Of TEST-014's 4 recommended tests, 3 are now covered by the new `TestPartialSuccess` class (test_handler.py:389-436) with `test_translate_all_raises_worker_error_on_batch_failure` and `test_translate_all_logs_failed_batch_warning`, and the `TestTokenizerMutation` class (test_handler.py:367-387) with `test_translate_batch_does_not_mutate_tokenizer` and `test_startup_initialises_pad_token_id_once`. The 4th (`test_handle_chunk_text_not_str_raises`) is covered by the pre-existing `test_handle_chunk_with_no_text_raises`. TEST-014 stays stale because the cited file content is no longer present, but the underlying concern is now fully addressed. Recommend transitioning to `fixed` (verified once the next tackle pass lands).
 
 ### TEST-015 — `src/acheron/tls.py` (new top-level module, 114 lines) has no direct unit tests — only subprocess happy-path coverage
 
@@ -831,14 +824,14 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 47-50, 69-70
+    lines: 46-52, 69-70
   - path: tests/worker_sdk/test_app.py
-    lines: 121-156
+    lines: 161-190
 related: [TEST-008]
 ```
 
@@ -858,15 +851,17 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/artifacts.py
-    lines: 57-73
+    lines: 23-43, 47-53, 60-66
+  - path: src/acheron/worker_sdk/_io.py
+    lines: 22-29, 43-50
   - path: tests/worker_sdk/test_artifacts.py
     lines: 45-53
-related: []
+related: [TEST-021]
 ```
 
 **Issue.** TestBytesArtifact has 4 tests (test_stream_yields_data_once, test_metadata_default_empty, etc.) and TestStreamArtifact has 1; TestFileArtifact (artifacts.py:62-78) has only 1 test: `test_stream_reads_from_disk_in_chunks` (lines 47-52, 200 KiB → 3 reads). The dataclass fields are untested: `metadata` defaulting to `{}` (BytesArtifact has this test at line 28, FileArtifact doesn't), and the `stream()` path on an empty file (zero reads, yields `b''`) and on a missing path (`aiofiles.open` raises FileNotFoundError, line 73). The latter is a security boundary — FileArtifact is the worker-to-orchestrator channel for files on disk and a missing path on the worker's filesystem would surface as a raw exception to the orchestrator.
@@ -885,12 +880,12 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/pricing.py
-    lines: 41-67
+    lines: 36-37, 42-50, 55, 65-66
   - path: tests/worker_sdk/test_pricing.py
     lines: 1-50
 related: []
@@ -903,4 +898,110 @@ related: []
 **Recommendation.** Add 2 small tests in test_pricing.py: `test_zero_price_refresh_returns_true` and `test_static_price_refresh_returns_true`, each `@pytest.mark.asyncio`, asserting `await ZeroPrice().refresh() is True` and `await StaticPrice(dollars_per_hour=0.69).refresh() is True` respectively. These are the parallel contract tests to test_runpod_price.py's refresh coverage.
 
 **Verification.** Run `just test tests/worker_sdk/test_pricing.py`; the 2 new tests pass without fixtures.
+
+### TEST-021 — `src/acheron/worker_sdk/_io.py` has zero direct unit tests — the Streamable Protocol + 3 stream helpers extracted in MAINT-015 are only covered transitively
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_io.py
+    lines: 1-50
+related: [TEST-009, TEST-019, MAINT-015]
+```
+
+**Issue.** The new `src/acheron/worker_sdk/_io.py` module (50 lines, MAINT-015 fix) exports four public symbols: `@runtime_checkable Streamable` Protocol, `stream_bytes`, `stream_producer`, `stream_file`. The previous review's orientation-brief claimed '`_io.py` has dedicated `tests/worker_sdk/test_io.py`', but that test file does not exist — `ls tests/worker_sdk/test_io*` returns zero matches and `grep -rn 'stream_bytes\|stream_producer\|stream_file\|Streamable' tests/` returns no hits. Coverage of these four symbols is purely transitive via the `BytesInput`/`StreamInput`/`FileInput`/`BytesArtifact`/`StreamArtifact`/`FileArtifact` tests; the empty-producer branch of `stream_producer` (no yield), the empty-file branch of `stream_file` (0 reads), and the Streamable Protocol isinstance check against each variant are not directly asserted. The two worker handlers now import `Streamable` via the new typing chain (qwen3tts + translategemma), so a future contributor who, e.g., swaps `stream_file`'s 64-KiB chunk size for 4-KiB will pass the existing 200-KiB `FileArtifact` test but break any new handler that hard-codes the 64-KiB window in the multipart body framing.
+
+**Why it matters.** MAINT-015 fixed the duplicated `stream()` loop by extracting a shared base; the maintenance win is undone if the new base grows its own dead branches that nobody tests. Three regression classes: (1) the chunk-size constant drift (default 64 KiB is wire-formatted into the multipart body framing) — changing it requires updating every worker; (2) the Protocol becoming non-runtime-checkable silently breaks the dispatch contract; (3) the `stream_producer` empty-yield path becoming an infinite loop would hang any test that produces no bytes. The MAINT-015 verification said the new module is consumed by 5 call sites; a regression here affects all 5 in lockstep.
+
+**Recommendation.** Add `tests/worker_sdk/test_io.py` with: (1) `test_streamable_protocol_isinstance_on_each_variant` — assert `isinstance(BytesInput(...), Streamable)`, `isinstance(BytesArtifact(...), Streamable)`, `isinstance(StreamInput(...), Streamable)`, `isinstance(FileInput(...), Streamable)`; (2) `test_stream_bytes_yields_data_in_one_chunk`; (3) `test_stream_producer_empty_producer_yields_nothing`; (4) `test_stream_producer_propagates_exception`; (5) `test_stream_file_empty_file_yields_nothing`; (6) `test_stream_file_missing_path_raises_filenotfounderror`. Use the existing `_collect` helper from `test_inputs.py` and `test_artifacts.py` rather than duplicating it.
+
+**Verification.** Run `just test tests/worker_sdk/test_io.py` — all 6 tests pass without new dependencies. `grep -rn 'stream_bytes\|stream_producer\|stream_file' tests/` shows the four symbols are now also asserted at the base module level, not only via the variant classes.
+
+### TEST-022 — `redis_container`/`redis_url` fixtures duplicated verbatim between `tests/shell/stores/conftest.py` and `tests/integration/conftest.py` — fixture-hygiene violation
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: tests/integration/conftest.py
+    lines: 376-405
+  - path: tests/shell/stores/conftest.py
+    lines: 9-30
+related: [TEST-002, TEST-004]
+```
+
+**Issue.** The TEST-002 fix (c6f0e20) added `redis_container` (session-scoped) and `redis_url` (per-test, FLUSHDB-cleaned) fixtures to `tests/integration/conftest.py:376-405` to support the new `test_orchestrator_works_with_redis_backend` integration test. These two fixtures are a verbatim copy of the same fixtures in `tests/shell/stores/conftest.py:9-30` — same `RedisContainer('redis:7-alpine')`, same `get_container_host_ip()` / `get_exposed_port(6379)`, same `flushdb()` cleanup, same comment about 'mirrors the fixture in `tests/shell/stores/conftest.py`'. The integration copy's docstring even acknowledges the duplication. The 2 fixture files are NOT in a parent/child relationship (integration is `tests/integration/`, stores is `tests/shell/stores/`), so the integration conftest is loaded only by integration tests and vice versa — a future bug fix to the FLUSHDB pattern would have to be applied in both files. AGENTS.md rule: "Tests shouldn't use repo configuration files or depend on hardcoded project paths, as that makes for brittle tests. Use fixtures (such as conftest modules) and parameterization." The same rule's spirit applies to fixture duplication — duplicated fixtures are the same brittleness as duplicated env-config lookups.
+
+**Why it matters.** Three concrete regression risks: (1) a testcontainers API change requires the same fix in 2 places; (2) the `decode_responses=True` default is the only thing keeping the test job/worker blobs as `dict[str, str]` and not `dict[str, bytes]` — a drift between the two conftest.py files would cause one suite to pass and the other to fail with cryptic Pydantic validation errors at deserialization; (3) a future port change (e.g., `get_exposed_port` to handle IPv6) must be propagated identically.
+
+**Recommendation.** Pick one of: (a) Move both `redis_container` and `redis_url` to a `tests/conftest.py` (top-level) so they're available to every test in the repo without duplication. (b) If the integration test really needs a separate fixture, import the store conftest fixture with `pytest_plugins = ['tests.shell.stores.conftest']` or restructure as a pytest plugin in `tests/_fixtures/redis.py`. Option (a) is the smaller change.
+
+**Verification.** Run `just test`; `grep -rn 'def redis_container' tests/` returns exactly 1 hit (the shared location); `grep -rn 'def redis_url' tests/` returns exactly 1 hit; the integration test `test_orchestrator_works_with_redis_backend` continues to pass against the same `RedisContainer('redis:7-alpine')`.
+
+### REPRO-004 — `test_orchestrator_works_with_redis_backend` opens its own Redis stores without using the `redis_url` lifespan — duplicates the store-fixture cleanup path
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: tests/integration/test_worker_integration.py
+    lines: 236-282
+  - path: tests/integration/conftest.py
+    lines: 389-405
+related: [REPRO-001, TEST-002]
+```
+
+**Issue.** The new `test_orchestrator_works_with_redis_backend` (test_worker_integration.py:236-282) takes `redis_url` as a fixture and then constructs `RedisWorkerStore(redis_url)` + `RedisJobStore(redis_url)` directly, calling `connect()` and `close()` itself with a try/finally. The existing store tests use `tests/shell/stores/conftest.py` for the same fixtures but get the connection lifecycle from the store-fixture's `redis_url` (which only flushes the DB, not open/close). This is a test-shape inconsistency: the integration test is 'lower-level' than the store tests in how it manages the connection. The consequence: if the store's `connect()` ever gains a precondition (e.g., requires a `decode_responses=True` Redis instance, or needs to be paired with a fixture-managed aiohttp client), the integration test would silently skip it because it calls `connect()` directly.
+
+**Why it matters.** A maintenance hazard: a contributor who changes `RedisWorkerStore.__init__` (e.g., requires a `connection_pool_kwargs: dict` arg) updates the store-test fixture but the integration test's `RedisWorkerStore(redis_url)` direct call site silently falls through the new requirement. The integration test is the only test that exercises the orchestrator-against-Redis round trip, so its direct call site is the most important place to centralise construction. AGENTS.md's test-independence principle applies to direct construction of production objects without a fixture-managed factory.
+
+**Recommendation.** Replace the direct `RedisWorkerStore(redis_url)` + `RedisJobStore(redis_url)` construction with a fixture-managed pair, e.g. add `async def redis_stores(redis_url: str) -> AsyncIterator[tuple[RedisWorkerStore, RedisJobStore]]` to `tests/integration/conftest.py` (or, better, to a shared conftest after TEST-022 lands) that does connect/close and yields the pair. The test then reads `worker_store, job_store = redis_stores` and passes them into `Orchestrator(...)`. The fixture owns the `try/finally connect/close` pattern; the test owns the assertions.
+
+**Verification.** Run `just test tests/integration/test_worker_integration.py::TestWorkerIntegrationErrorPath::test_orchestrator_works_with_redis_backend`; refactor passes. `grep -n 'RedisWorkerStore\|RedisJobStore' tests/integration/test_worker_integration.py` returns only the type-annotation import line, not the construction site.
+
+### DATA-010 — `RedisJobStore._deserialize_job`'s defensive isinstance branch lacks a parametric test for the success-after-corrupt-blob case (raw metadata as JSON-valid non-dict value)
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 282-293
+  - path: tests/shell/stores/test_redis_job_store.py
+    lines: 203-227
+related: [DATA-005, DATA-007, CORR-035]
+```
+
+**Issue.** The CORR-035 fix (b34ced9) added `metadata=o['metadata'] if isinstance(o.get('metadata'), dict) else {}` to `_deserialize_job`'s per-output construction (redis.py:282-293). The new test `test_result_with_non_dict_metadata_falls_back_to_empty` (test_redis_job_store.py:203-227) covers the fallback for `metadata='not-a-dict'` — a JSON-valid string. The symmetric case where `metadata` is a JSON-valid number (e.g. `42`) or `null` (e.g. `None`) is not tested. Pydantic's `OutputFile.metadata` is typed as `dict[str, str]` (per the model definition), and the defensive isinstance check is the only thing preventing `TypeError: unhashable type: 'NoneType'` or `TypeError: 'int' object is not iterable` from propagating as a raw exception. The 5 test cases (`{}`, `'str'`, `None`, `42`, `[]`) would mirror the worker-metadata test pattern (DATA-005 / DATA-007 contract tests).
+
+**Why it matters.** The same crash mode the CORR-035 fix is designed to prevent — an orchestrator restart picking up a corrupt job blob from a previous version's bug — would surface again if a future refactor changes the isinstance check to `is not None` (which is wrong: `None` is not a dict and the fallback is correct, but `True` is also not a dict and would also fall through). The 5-case parametrise costs one commit and locks in the contract. The current single test case (`'not-a-dict'` string) leaves a 4-input gap.
+
+**Recommendation.** Parametrise the existing test in `tests/shell/stores/test_redis_job_store.py:203-227` (or add a new test in the same class) over `metadata = {} | 'str' | None | 42 | []` — each must round-trip to `{}`. Use `pytest.mark.parametrize('bad_metadata', [...])` and assert `loaded.result.outputs[0].metadata == {}` for all cases. Verify the existing `test_result_with_metadata_round_trips` (lines 174-202) is not changed.
+
+**Verification.** Run `just test tests/shell/stores/test_redis_job_store.py::TestPlanRoundTrip::test_result_with_non_dict_metadata_falls_back_to_empty` (or the new parametrised version); all 5 inputs produce `metadata == {}`.
 

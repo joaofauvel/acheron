@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-PERF-001, PERF-002, PERF-003 remain verified. PERF-004, PERF-005 remain open and kept (code unchanged since 63faed4). Two new PERF findings: PERF-006 (medium) — edge `/execute` buffers entire multipart body in memory with O(n²) append for `FileArtifact` streams; PERF-007 (medium) — per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse).
+PERF-001, PERF-002, PERF-003 remain verified. PERF-004, PERF-005 remain open and kept (code unchanged since 63faed4). Two new PERF findings: PERF-006 (medium) — edge `/execute` buffers entire multipart body in memory with O(n²) append for `FileArtifact` streams; PERF-007 (medium) — per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse). PERF-008 (medium) remains open (per-call client in `_post_multipart`). **2026-06-26 round 2 refresh**: no new PERF findings; PERF-007 line numbers re-resolved (DOC-007 trimmed the pricing.py module docstring by 6 lines).
 
 ### PERF-001 — Health checks run sequentially, blocking the whole sweep on slow/dead workers
 
@@ -184,16 +184,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
+  commit: 59458ba
+  date: '2026-06-26'
 fixed_in: []
 files:
 - path: src/acheron/shell/health.py
   lines: 44-52
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 122-129, 193-200
+  lines: 114-121, 185-192
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 181-195
+  lines: 173-187
 - path: src/acheron/shell/transports/http.py
   lines: 105-123
 related: []
@@ -211,7 +211,7 @@ related: []
 
 **Grade:** A
 
-OBS-001 (medium) and OBS-003 (low) remain open and kept (code unchanged since 63faed4). OBS-002 and OBS-004 remain verified. OBS-005 (medium) remains open. Three new OBS findings: OBS-006 (medium) — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line; OBS-007 (medium) — edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network; OBS-008 (low) — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown. **2026-06-26 refresh**: OBS-007, OBS-009, OBS-010 marked verified (Bearer auth on `/execute` in `fa87bc6`); OBS-011, OBS-012 added — both low-effort observability gaps.
+OBS-001 (medium) and OBS-003 (low) remain open and kept (code unchanged since 63faed4). OBS-002 and OBS-004 remain verified. OBS-005 (medium) remains open. Three new OBS findings: OBS-006 (medium) — `RunPodClient` and `RunPodPrice` swallow transport / API errors with no log line; OBS-007 (medium) — edge `/execute` endpoint is unauthenticated; `docker-compose` exposes it on host network; OBS-008 (low) — `create_worker_app` lifespan catches `BaseException` around price refresh, masking `CancelledError` during shutdown. **2026-06-26 refresh**: OBS-007, OBS-009, OBS-010 marked verified (Bearer auth on `/execute` in `fa87bc6`); OBS-011, OBS-012 added — both low-effort observability gaps. **2026-06-26 round 2 refresh**: OBS-001 verified (commit `8f54443`); OBS-013 added — the new `_drain_inflight_tasks` is silent on entry/completion/timeout and an unhandled `TimeoutError` can break clean shutdown with no log breadcrumb.
 
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
@@ -580,9 +580,9 @@ severity: low
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: 2026-06-23
-fixed_in: ["pending"]
+  commit: 050c578
+  date: 2026-06-26
+fixed_in: ["050c578"]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 20-69
@@ -967,9 +967,9 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: bb9ab27
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["bb9ab27"]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 355
@@ -1204,7 +1204,7 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
@@ -1220,3 +1220,28 @@ related: [OBS-006, OBS-005]
 **Recommendation.** Before the `return JSONResponse(...)` at line 360, emit `logger.exception("Edge multipart parse failed: %s", parser_error)` (mirroring the dispatch path's tone). Use `logger.exception` (not `warning`) so the cause chain is preserved; the response body still carries the sanitised message via the existing `error=str(parser_error)` field.
 
 **Verification.** Submit a malformed multipart body (e.g., wrong boundary, missing envelope) to `/execute`; assert the edge logs an exception with the parse failure cause. The response body should still be the 500 with `error=...`. Add a regression test in `tests/worker_sdk/test_edge_http_multipart.py` that injects a malformed body, captures `caplog.records`, and asserts at least one `logging.ERROR`/`logging.EXCEPTION` record is emitted with the parse error context.
+
+### OBS-013 — `Orchestrator._drain_inflight_tasks` is silent — no log on entry, completion, or 5s timeout firing
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 263-278
+related: [OBS-001, OBS-003, OBS-005]
+```
+
+**Issue.** The new `_drain_inflight_tasks` (orchestrator.py:263-278, added in OBS-001 fix `8f54443`) is the hot shutdown-time path that reconciles in-flight `_execute` tasks. It cancels `self._tasks`, awaits them inside `async with asyncio.timeout(5.0):`, and returns silently on either success or timeout. There is no log when the drain starts (operators have no visibility into how many tasks are being cancelled), no log when the drain completes (no visibility into how long it took), and no log when the 5s grace timeout fires. The `asyncio.timeout(5.0)` context manager raises `TimeoutError` from its `__aexit__` when the deadline elapses; that `TimeoutError` is not caught and propagates through `shutdown()` to the FastAPI lifespan, which may abort the orchestrator's shutdown sequence without any orchestrator-level log line to explain why.
+
+**Why it matters.** A noisy failure mode (drain takes >5s) now fails silently: the lifespan logs whatever it logs about an unhandled `TimeoutError`, but there is no orchestrator-level log that says "drained N tasks in M seconds" or "drain grace timeout fired, X tasks may not have reconciled". The OBS-001 fix added the cancel-and-await machinery but did not add the observability the OBS-003 free-form-logging gap originally called for. Combined with the unhandled `TimeoutError` in the lifespan, the operator gets a shutdown failure with no breadcrumb leading back to the drain — and the same scenario OBS-001 was supposed to make safe (a slow Redis put during shutdown) is now invisible to the operator.
+
+**Recommendation.** Wrap the drain in try/except: log `logger.info('Draining %d in-flight _execute tasks (grace=5.0s)', len(pending))` on entry; on success log `logger.info('Drained %d tasks in %.2fs', len(pending), elapsed)`; on `TimeoutError` log `logger.warning('Drain grace timeout (5.0s) fired with %d tasks still pending; persisted state may be inconsistent', still_pending)` and either continue with the still-pending tasks (let the event loop reap them) or set their status to FAILED via `_job_store.put` before re-raising. This mirrors the convention the OBS-005 health-provider fix adopted for distinguishing failure modes. Pair with the `shutdown_drain_seconds` settings field proposed in CFG-013 so the 5.0s magic number is configurable.
+
+**Verification.** Add a test in `tests/shell/test_orchestrator.py` that registers an `_execute` task that sleeps 10s, calls `orchestrator.shutdown()`, captures `caplog.records`, and asserts (a) an INFO line naming the task count is emitted on entry, (b) a WARNING line naming the timeout is emitted on `TimeoutError`, (c) `shutdown()` raises `TimeoutError` (preserved behaviour) but the operator-visible logs are present. Also add the success-path assertion with a fast-completing task to confirm the completion log is emitted.

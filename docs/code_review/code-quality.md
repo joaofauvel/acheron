@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape. **2026-06-26 refresh**: MAINT-020 (low) — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit (regression of MAINT-009); the regression touches 5 sites including a 5th new site introduced by the EXC-004 fix. **2026-06-26 (Round 4)**: MAINT-002 verified as a partial fix in `f129ae2` — `WorkerCapabilities` + worker `metadata` ser/de now use `pydantic.TypeAdapter`, but the outer `TrackedJob` / `Plan` / `PlanResult` / `OutputFile` ser/de (including the manual `source_type` match dispatch on `AudioRequest`/`EpubRequest`) remains hand-rolled. A full fix requires a shared `pydantic.BaseModel` for the TrackedJob wire format and a tagged-union discriminator for `JobRequest` — the remaining drift is tracked as a follow-up.
+MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape. **2026-06-26 refresh**: MAINT-020 (low) — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit (regression of MAINT-009); the regression touches 5 sites including a 5th new site introduced by the EXC-004 fix. **2026-06-26 (Round 4)**: MAINT-002 verified as a partial fix in `f129ae2` — `WorkerCapabilities` + worker `metadata` ser/de now use `pydantic.TypeAdapter`, but the outer `TrackedJob` / `Plan` / `PlanResult` / `OutputFile` ser/de (including the manual `source_type` match dispatch on `AudioRequest`/`EpubRequest`) remains hand-rolled. A full fix requires a shared `pydantic.BaseModel` for the TrackedJob wire format and a tagged-union discriminator for `JobRequest` — the remaining drift is tracked as a follow-up. **2026-06-26 round 2 refresh**: MAINT-011, MAINT-015 verified; MAINT-021 (medium) added — 4 `except Exception: logger.exception(...); raise` sites in `Orchestrator` duplicate the log+raise pattern and a private `_log_unexpected` helper would centralise the teardown contract (related to the OBS-001 fix's 4 new exception sites); TYPE-012 (medium) added — `cast("_RedisAwaitable", ...)` at the two redis store constructors is an unverified Protocol claim; adding `@runtime_checkable` + `isinstance` would make the typing claim load-bearing at runtime.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -474,9 +474,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
-  date: '2026-06-24'
-fixed_in: ["pending"]
+  commit: 8b21fab
+  date: 2026-06-26
+fixed_in: ["8b21fab"]
 files:
 - path: pyproject.toml
   lines: 23
@@ -639,9 +639,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: 1e569d5
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["1e569d5"]
 files:
 - path: src/acheron/api_client.py
   lines: 45-129
@@ -703,13 +703,13 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: fa59797
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["fa59797"]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 18-49
-related: []
+related: [TYPE-012]
 ```
 
 **Issue.** `redis.py:3-5` documents that `redis.asyncio` stubs type methods as `Awaitable[T] | T` and that the `T` branch is unreachable in async call sites. Despite the file-level justification, every `await self._redis.<method>()` call site carries a `# type: ignore[misc]` marker (8 sites: `ping` x2 at 296/402, `hgetall` at 327, `smembers` x2 at 331/424, `hincrby` at 361, `hset` at 362, `hset-with-mapping` at 388). The markers do not have per-site justification comments, and the rationale depends on a single header paragraph that could be deleted in a future refactor pass. The new `set_worker_status` method (lines 375-388) added another `hset(mapping=...)` call site at line 388, growing the list. A future `redis-py` version that fixes the stubs would leave the markers as dead annotations.
@@ -788,9 +788,9 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: bc37f87
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["bc37f87"]
 files:
 - path: src/acheron/shell/transports/grpc.py
   lines: 31
@@ -819,12 +819,12 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: d7e9014
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["d7e9014"]
 files:
-- path: src/acheron/worker_sdk/cloud.py
-  lines: 154
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 154
 related: []
 ```
 
@@ -844,18 +844,18 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/cloud.py
-  lines: 3, 21-22, 25
+  lines: 25, 28, 60, 64, 70, 80, 86
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 4, 42, 64, 68, 75, 144, 186
+  lines: 52, 217, 224, 310
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 7, 177, 178, 186
+  lines: 185, 186, 194
 - path: src/acheron/worker_sdk/cli.py
-  lines: 10, 21, 29, 53, 54
+  lines: 19, 27, 51
 - path: src/acheron/worker_sdk/app.py
   lines: 32-52
 related: []
@@ -1031,9 +1031,9 @@ severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: e9faa0d
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["e9faa0d"]
 files:
 - path: workers/translategemma/handler.py
   lines: 144-147
@@ -1109,26 +1109,26 @@ severity: low
 effort: M
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/_caps.py
-    lines: 5-11
+    lines: 5, 11
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 62, 227, 234, 321
+    lines: 52, 217, 224, 310
   - path: src/acheron/worker_sdk/_server.py
     lines: 34
   - path: src/acheron/worker_sdk/cli.py
-    lines: 29, 37, 61
+    lines: 19, 27, 51
   - path: src/acheron/worker_sdk/cloud.py
     lines: 25, 28, 60, 64, 70, 80, 86
   - path: src/acheron/worker_sdk/config_loader.py
-    lines: 42, 55
+    lines: 31, 44
   - path: src/acheron/worker_sdk/pricing.py
     lines: 185, 186, 194
   - path: src/acheron/worker_sdk/settings.py
-    lines: 96
+    lines: 86
 related: [TYPE-008]
 ```
 
@@ -1139,3 +1139,63 @@ related: [TYPE-008]
 **Recommendation.** Land the TYPE-008 fix scoped to the current set: replace `dict[str, Any]` with `dict[str, JsonValue]` for the wire-side payloads (RunPod input, multipart metadata header, settings dict) in `cloud.py`, `_edge_http.py`, `app.py`. For the runpod SDK boundary (`_rp_handler` shape in `cloud.py:42, 45`), keep `Callable[..., Awaitable[dict[str, Any]]]` because the runpod SDK uses raw dicts internally — but document the choice with a one-line comment. For the JSON GraphQL body in `pricing.py:191, 192, 200`, introduce a pydantic `GraphQLResponse` and let `_post_graphql` return the typed model internally. Skip the `type[Any]` annotations in `cli.py:29, 37, 61` and `settings.py:96` — they are intentional dispatch sites (intentional, see TYPE-008's plan).
 
 **Verification.** `rg 'dict\[str, Any\]' src/acheron/worker_sdk/` returns only justified sites (likely 0 in `cloud.py`/`_edge_http.py` after the fix); `just type-check`; `just test`.
+
+### MAINT-021 — 4 `except Exception: logger.exception(...); raise` sites in Orchestrator duplicate the log+raise pattern; a private helper would centralise the teardown contract
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 196-199
+  - path: src/acheron/shell/orchestrator.py
+    lines: 353-357
+  - path: src/acheron/shell/orchestrator.py
+    lines: 358-360
+  - path: src/acheron/shell/orchestrator.py
+    lines: 436-438
+related: [OBS-013]
+```
+
+**Issue.** Orchestrator now has 4 `except Exception: logger.exception(...); raise` sites all with the same shape: bare `Exception` catch, single `logger.exception(...)` with the failing object as argument, then `raise` (or implicit fall-through for the teardown case). Specifically: (1) `close()` lines 196-199 wraps the per-store teardown; (2) `_execute` lines 353-357 wraps the post-cancellation `self._job_store.put(tracked)` so the cancellation always propagates even when the persist fails; (3) `_execute` lines 358-360 wraps `_run_execution` at the top level so an unhandled exception is logged once before the task returns; (4) `_run_execution` lines 436-438 wraps the non-domain `Exception` arm parallel to the `AcheronError` arm at 433-435. The pattern is identical (log label + raise) and the 4 sites are clustered in two adjacent methods. MAINT-005 fixed a similar PlanResult-construction duplication by extracting `_record_failure`; this is the same shape on the exception-handling side.
+
+**Why it matters.** Each `except Exception: ...; raise` site independently chooses its log message and its decision about whether to chain. A future site that catches a narrower type (e.g. `(OSError, ConnectionError)` for the persist path) and forgets to update the others will silently diverge. The 353-357 site in particular catches a bare `Exception` around `self._job_store.put(tracked)` — a programming error (`KeyError`, `AttributeError` from a refactor) is logged at ERROR and then the `CancelledError` is re-raised, so the operator sees a 'failed to persist after cancellation' warning that is actually caused by a `KeyError` in the serialiser. The bare `Exception` is the kind of catch the EXC-002/EXC-004 fixes have been narrowing site-by-site; bundling 4 sites under a helper is the natural next step. Per AGENTS.md, the project's style favours making illegal states unrepresentable; here the illegal state is 'a programming error masquerading as a domain teardown failure'.
+
+**Recommendation.** Extract a private helper `_log_unexpected(label: str, exc: BaseException) -> None` that calls `logger.exception('%s: %s', label, exc)` and returns (caller handles the re-raise). Replace each `except Exception: logger.exception(...)` block with `except Exception as exc: _log_unexpected('<label>', exc)`. For the post-cancellation persist site (353-357), narrow the catch to `(OSError, ConnectionError, RuntimeError)` since those are the documented failure modes of a Redis put, and chain the original `CancelledError` via `raise ... from exc` on the persist failure so the trace shows the cancellation cause.
+
+**Verification.** `grep -c 'logger.exception' src/acheron/shell/orchestrator.py` drops from 4 (or whatever current count) to 1 (the helper). New test that injects a `_job_store.put` raising `KeyError` and asserts the post-cancellation trace is `KeyError -> CancelledError` (chained). `just test`; `just type-check`; `just lint-strict`.
+
+### TYPE-012 — `cast("_RedisAwaitable", ...)` at both redis store constructors is an unverified Protocol claim — runtime drift would surface as opaque `AttributeError`
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 29-49
+  - path: src/acheron/shell/stores/redis.py
+    lines: 311-316
+  - path: src/acheron/shell/stores/redis.py
+    lines: 423-428
+related: [TYPE-003]
+```
+
+**Issue.** TYPE-003 was verified by introducing a `_RedisAwaitable(Protocol)` (redis.py:29-49) that declares the 9 method signatures the stores actually use (ping, aclose, hgetall, smembers, hincrby, hset, exists, get, pipeline). The Protocol claim is enforced only by mypy; at runtime the `self._redis: _RedisAwaitable = cast("_RedisAwaitable", redis.asyncio.Redis.from_url(...))` calls at lines 312 and 424 lie to mypy and are not validated. If a future redis-py version returns a Redis that doesn't actually have one of the declared methods (e.g. renames `smembers` or removes `decode_responses=True` argument behavior), the protocol is structurally violated but no error is raised at construction. The first call to the renamed method would raise `AttributeError` from the live Redis instance, not from the typed Protocol claim. The Protocol class is declared but not `@runtime_checkable`, so an `isinstance(self._redis, _RedisAwaitable)` check is impossible without modifying the Protocol. The 2 cast sites form a pattern.
+
+**Why it matters.** The TYPE-003 partial fix is good in spirit (single source of truth for the redis surface) but the cast hides a real correctness gap: the Protocol is structural, the runtime value is concrete, and the two are not bridged. AGENTS.md says 'avoid linter and type ignores in general without a very good reason' — the cast at construction time is a typing marker with no runtime counterpart. The 2 sites are a pattern because both `RedisWorkerStore.__init__` and `RedisJobStore.__init__` do the exact same thing, so a third store (a future `RedisStreamStore` for SSE event persistence) would add a third identical cast. The pattern-level fix is to add `@runtime_checkable` to the Protocol and an `isinstance` check at construction that raises a typed error on drift. This makes the Protocol claim load-bearing at runtime, not just at type-check time.
+
+**Recommendation.** Add `@runtime_checkable` to the `_RedisAwaitable` Protocol declaration. Replace the `cast("_RedisAwaitable", ...)` at lines 312-316 and 424-428 with an `isinstance` check: `client = redis.asyncio.Redis.from_url(...)` then `if not isinstance(client, _RedisAwaitable): raise RuntimeError(...)`. The error message can introspect `dir(client)` to list the missing attributes. This is a 1-line pattern per constructor and converts the typing-debt cast into a runtime-enforced contract. The check runs once per process at startup, so the cost is negligible.
+
+**Verification.** `grep -n 'cast(' src/acheron/shell/stores/redis.py` returns 0 hits; the Protocol declaration has `@runtime_checkable`; new test that constructs `RedisWorkerStore(redis_url)` with a stub that does not implement one of the 9 methods and asserts the typed RuntimeError is raised. `just type-check` (the Protocol is now structural + runtime-checkable); `just test`; existing redis tests still pass.

@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified. **2026-06-26 refresh**: CORR-034 (medium) — Python 2 `except E1, E2:` syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031). CORR-035 (high) — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary).
+Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified. **2026-06-26 refresh**: CORR-034 (medium) — Python 2 `except E1, E2:` syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031). CORR-035 (high) — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary). **2026-06-26 round 2 refresh**: CORR-035 verified (commit `b34ced9`); CORR-015 marked stale (cherry-pick pattern fully resolved by `dcebea6`); CORR-029 verified in spirit (partial-success handling added in `e9faa0d`); CORR-032, CORR-033 verified in spirit (TYPE-010 rewrote the handler); CORR-036 added (medium) — translategemma `_translate_all` partial-success catch only covers `(RuntimeError, ValueError)`, so `IndexError`/`KeyError`/`AttributeError`/`MemoryError`/`TypeError`/`CancelledError` from `_translate_batch` bypass the partial-success contract and silently discard accumulated batches; CORR-037 (medium) — `Orchestrator._drain_inflight_tasks` docstring claims a `finally` block and `asyncio.wait` that don't exist in the code (see `asyncio.gather(..., return_exceptions=True)` and the lack of any `finally`); CORR-038 (medium) — the 5s drain timeout can abort mid-shutdown, cancelling the post-cancel `_job_store.put` and leaving the job in RUNNING; CORR-039 (medium) — `_execute`'s `except Exception` branch logs+re-raises without setting FAILED, so non-cancel exception paths can still leave jobs in RUNNING; CORR-040 (low) — `_execute`'s CancelledError handler persists FAILED but discards the partial `PlanResult`, under-counting cost for any in-flight job.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -326,12 +326,12 @@ severity: low
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
-    lines: 133-157
+    lines: 133-158
 related: [OBS-005]
 ```
 
@@ -406,29 +406,23 @@ related: [EXC-001]
 ### CORR-015 — `create_worker_app` cherry-picks routes from `EdgeApp` via hardcoded `inner_paths`; new routes silently dropped
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
+  commit: dcebea6
+  date: 2026-06-26
 fixed_in: []
 files:
-- path: src/acheron/worker_sdk/app.py
-  lines: 130-137
+  - path: src/acheron/worker_sdk/app.py
+    lines: 131-132
 related:
 - ARCH-012
 - MAINT-011
 ```
 
-**Issue.** `create_worker_app` builds an `inner = EdgeApp(...)` (which constructs its own FastAPI app with routes + lifespan) then constructs an outer `app` and copies routes via a hardcoded whitelist `inner_paths = {"/health", "/capabilities", "/execute"}`. If a new route is added to `EdgeApp` (e.g., `/metrics` for Prometheus, `/ready` for k8s readiness, `/version`), the outer `create_worker_app` silently drops it — the endpoint returns 404 from uvicorn. The duplicated construction also runs `EdgeApp`'s lifespan definition (`handler.startup()` + `handler.shutdown()`) as dead code that is never executed.
-
-**Why it matters.** The hardcoded whitelist creates a hidden maintenance contract: every new route in `EdgeApp` must also be added to `create_worker_app`'s whitelist. There is no test, no warning, and no type-level guarantee that the lists stay in sync. The next developer adding a route to `EdgeApp` (e.g., a `/metrics` endpoint for Prometheus scraping) will see it work in unit tests (where the inner app is the one being tested) and break in production (where the outer app serves the actual edge container). The inner `EdgeApp` construction also wastes resources at boot (FastAPI app with its own route table + lifespan that is never run).
-
-**Recommendation.** Either: (1) drop the inner `EdgeApp` construction entirely and inline the routes in `create_worker_app`'s outer app, or (2) use FastAPI's `app.mount("", inner.app)` instead of manually copying routes. Option (1) is simpler and matches the rest of the file's pattern (one FastAPI app, one lifespan). If keeping the inner `EdgeApp` is desired for testability, mount it instead of copying routes.
-
-**Verification.** Add a new trivial route (e.g., `GET /version` returning `{"version": "0.1.0"}`) to `EdgeApp` and call `create_worker_app`; assert the route is reachable in the resulting FastAPI app's test client. This test would currently fail because `/version` is not in the hardcoded whitelist.
+**Issue.** Cited `inner_paths` hardcoded whitelist (app.py:130-137) is gone in commit `dcebea6`; the fix is in place at app.py:131-132 (`app.include_router(inner.router)`). The cherry-pick pattern described in the original issue is fully resolved. Marking stale so a future tackle pass can verify and confirm `fixed` once the existing regression test `test_factory_picks_up_new_edge_routes_automatically` is confirmed green.
 
 ### CORR-016 — `worker_sdk` package docstring falsely claims it is GPU-SDK-free at import time
 
@@ -787,14 +781,14 @@ related: [CORR-013, DATA-006, DATA-008]
 ### CORR-029 — `TranslateGemmaRunpodHandler._translate_batch` has no partial-success handling; mid-batch failure discards all completed work
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date: '2026-06-24'
-fixed_in: ["pending"]
+  commit: e9faa0d
+  date: 2026-06-26
+fixed_in: ["e9faa0d"]
 files:
 - path: workers/translategemma/handler.py
   lines: 202-228, 230-241, 243-291
@@ -803,6 +797,7 @@ files:
 related:
 - CORR-026
 - MAINT-019
+- CORR-036
 ```
 
 **Issue.** `_translate_batch` runs a single `self._model.generate(...)` per batch. If the 3rd of 10 batches (chunks 9-12 of 40) raises (OOM mid-batch, GPU fault, NaN/inf in input_ids), the `try/except` in `handle` (lines 203+ `await asyncio.to_thread(self._translate_all, ...)`) propagates the exception, and the orchestrator's `/execute` returns a 500 `JobResult` with all 8 previously translated batches discarded. The 32 chunks that were already on the GPU and translated are lost; the operator pays the warm-up cost again on the next attempt. The handler does not emit partial artifacts and does not surface the per-batch progress in the error message.
@@ -871,14 +866,14 @@ related:
 ### CORR-032 — `TranslateGemmaRunpodHandler.handle` materializes the entire chunks.json in memory before validation
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date: '2026-06-24'
-fixed_in: ["pending"]
+  commit: dc34f00
+  date: 2026-06-26
+fixed_in: ["dc34f00"]
 files:
   - path: workers/translategemma/handler.py
     lines: 190-192
@@ -902,14 +897,14 @@ related:
 ### CORR-033 — `TranslateGemmaRunpodHandler._translate_batch` mutates the shared processor's tokenizer in-place
 
 ```yaml
-status: fixed
+status: verified
 severity: low
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
-  date: '2026-06-24'
-fixed_in: ["pending"]
+  commit: 299f08c
+  date: 2026-06-26
+fixed_in: ["299f08c"]
 files:
   - path: workers/translategemma/handler.py
     lines: 273-275
@@ -984,3 +979,128 @@ related: [CORR-013]
 **Recommendation.** Add 'metadata': dict(o.metadata) to the per-output dict in _serialize_job (line 166-175) and pass metadata=o.get('metadata', {}) to the OutputFile constructor in _deserialize_job (line 260-266). Defensively validate the deserialised value is a dict (e.g. via isinstance check) and fall back to {} on type drift, mirroring the worker-metadata check at line 99-100. Add a round-trip integration test in test_redis_job_store.py that seeds a PlanResult with a non-empty OutputFile.metadata and asserts the deserialised value equals the original.
 
 **Verification.** Add test_redis_job_store.py::TestPlanRoundTrip::test_result_with_metadata_round_trips: create a PlanResult with outputs=(OutputFile(..., metadata={'sequence_id': 7, 'chapter_id': 'ch3'}),), call store.put, then store.get, and assert loaded.result.outputs[0].metadata == {'sequence_id': 7, 'chapter_id': 'ch3'}. Add a second test for metadata containing nested non-str values to confirm the type drift fallback (empty dict on bad JSON shape).
+
+### CORR-036 — Translategemma `_translate_all` catches only `(RuntimeError, ValueError)` — other exception types bypass and lose partial translations
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: workers/translategemma/handler.py
+    lines: 265-295
+related: [CORR-029]
+```
+
+**Issue.** The CORR-029 partial-success fix in `TranslateGemmaRunpodHandler._translate_all` wraps each per-batch `_translate_batch` call in `try/except (RuntimeError, ValueError) as exc:` (line 284). Only `RuntimeError` (which covers `torch.cuda.OutOfMemoryError` and `torch._C._LinAlgError`) and `ValueError` are caught. Any other exception type that can plausibly occur in batched inference — `IndexError` (tokenizer config drift), `KeyError` (missing chat-template key), `AttributeError` (NoneType deref), `MemoryError` (host OOM), `TypeError` (model API change), or `asyncio.CancelledError` propagated from `asyncio.to_thread` — bypasses the catch entirely. The `out` accumulator is discarded, the in-flight step's cost is lost, and the previously translated batches are silently thrown away. The test `TestPartialSuccess::test_translate_all_raises_worker_error_on_batch_failure` only covers the `RuntimeError` path.
+
+**Why it matters.** The test only exercises the `RuntimeError` path; the published fix is correct for the documented cases but a single `IndexError` in the chat-template pipeline or a `MemoryError` on a long chapter will lose all batches the operator has already paid GPU time to produce. The same shape exists at the orchestrator level (the parallel `_translate_all` test on line 545 of `workers/translategemma/tests/test_handler.py` only patches `_translate_batch` to raise `RuntimeError`), so the contract is unverified for the wider exception set the docstring's 'OOM, NaN, GPU fault' enumeration implies.
+
+**Recommendation.** Widen the except to `except Exception as exc:` and document why the catch is broad (or, if a narrow set is intentional, explicitly enumerate it in a comment and add tests for each non-RuntimeError case the docstring lists). The existing `logger.warning('batch %d (chunks %d-%d) failed: %s', ...)` log line already attributes the failure correctly, so the operator-facing log shape is unchanged.
+
+**Verification.** Add tests that monkeypatch `_translate_batch` to raise `IndexError`, `KeyError`, `AttributeError`, and `MemoryError` in turn on the 2nd of 4 batches; assert the handler raises `WorkerError` with the 'partial success' message and the `successful_calls` list records 1 batch's worth of chunks translated (mirroring the existing RuntimeError test).
+
+### CORR-037 — `Orchestrator._drain_inflight_tasks` docstring contradicts its own code — 'asyncio.wait' / 'finally block' both wrong
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 263-269
+related: [OBS-001, CORR-038, CORR-039, CORR-040]
+```
+
+**Issue.** The docstring on `_drain_inflight_tasks` (orchestrator.py:264-269) says: 'Each task's `_execute` body writes a terminal status to the job store in its `finally` block, so awaiting the cancelled tasks is sufficient to reconcile the persisted state. Tasks that have already finished are silently dropped from the set; `asyncio.wait` swallows the `CancelledError` from each task.' Two concrete mismatches with the implementation (lines 270-277): (1) `_execute` has NO `finally` block — it has `try/except asyncio.CancelledError` and `try/except Exception`, both of which re-raise. The CancelledError handler writes the terminal status and the status-only put, but there is no `finally` envelope and no other code path is guaranteed to run after the cancellation. (2) The code calls `asyncio.gather(*pending, return_exceptions=True)`, not `asyncio.wait`. `gather` and `wait` differ in semantics: `gather` requires all tasks to complete (or for the wrapping timeout to fire) before returning; `wait` returns when the supplied `FIRST_COMPLETED` / `FIRST_EXCEPTION` / `ALL_COMPLETED` condition is met. The new OBS-001 fix uses `ALL_COMPLETED` semantics via `asyncio.timeout(5.0) + gather` (i.e. best-effort), which the docstring's 'awaiting the cancelled tasks is sufficient' overstates into a guarantee.
+
+**Why it matters.** Docstring-vs-code drift is a CORR finding per the bundle scope: a reader who consults the docstring to understand the contract is told two different things than the code does. The 'finally block' claim is particularly misleading because the post-OBS-001 `_execute` CancelledError handler is the only mechanism that reconciles state, and it is a `try/except` (not `try/finally`); a future maintainer who reads the docstring and adds cleanup to a (non-existent) `finally` block will silently no-op.
+
+**Recommendation.** Rewrite the docstring to match the implementation: '(1) cancellation arrives via `task.cancel()` on each tracked task; (2) the task's `_execute` body catches `asyncio.CancelledError`, sets `tracked.status = FAILED`, and awaits `_job_store.put`; (3) we collect the tasks with `asyncio.gather(..., return_exceptions=True)` inside an `asyncio.timeout(5.0)` so a slow store cannot hang shutdown indefinitely. The drain is best-effort: tasks whose `put` exceeds the timeout are not awaited to completion and remain in RUNNING in the store.'
+
+**Verification.** Update the docstring. `git grep -n 'asyncio.wait' src/acheron/shell/orchestrator.py` returns no matches. `just test` to confirm the new test `test_shutdown_drains_inflight_jobs_to_failed` still passes.
+
+### CORR-038 — `_drain_inflight_tasks`'s 5s timeout can abort the drain mid-shutdown — cancelled task's FAILED-status put is itself cancelled, job stays in RUNNING
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 270-277
+related: [OBS-001, CORR-037, CFG-013]
+```
+
+**Issue.** `_drain_inflight_tasks` (orchestrator.py:270-277) does: `for task in pending: task.cancel(); async with asyncio.timeout(5.0): await asyncio.gather(*pending, return_exceptions=True)`. When `asyncio.timeout(5.0)` fires, the `gather` is cancelled. Each underlying task is still running its `_execute` CancelledError handler at line 351 — that handler is currently `await self._job_store.put(tracked)`. If the job store is slow (a Redis instance under load, a flaky network, or a write that takes >5s), the `put` is itself cancelled by the gather's cancellation, `tracked.status = FAILED` is set in memory but never persisted, and the caller of `shutdown()` returns with the job still in the store as `PlanStatus.RUNNING`. This directly contradicts the new OBS-001 invariant ('no job is ever left in RUNNING after shutdown') and the `_execute` docstring's claim. The single new test `test_shutdown_drains_inflight_jobs_to_failed` uses `InMemoryJobStore` (no I/O), so the Redis-slow path is not covered.
+
+**Why it matters.** Medium because the failure mode is realistic in production (a Redis pool that has just been asked to persist 100 cancelled jobs in quick succession will have non-zero put latency) and the consequence is the exact pre-OBS-001 state the fix was meant to eliminate. The user sees 'no jobs in completed' but `jobs --active` shows the job as running. There is no test covering the timeout-fires path; the current `asyncio.timeout(5.0)` is a magic number with no knob.
+
+**Recommendation.** Two complementary fixes: (1) in `_execute`'s CancelledError handler, make the FAILED persist uninterruptible by wrapping the `put` call in `asyncio.shield(...)` so a `gather` cancellation does not cascade into the put; (2) change the drain to await each task individually with a per-task timeout, or extend the overall budget via the `shutdown_drain_seconds` setting proposed in CFG-013.
+
+**Verification.** Add a test that wraps the in-memory job_store in a slow proxy (e.g. `await asyncio.sleep(10)` inside `put`) and asserts that calling `orch.shutdown()` still results in `persisted.status == PlanStatus.FAILED` after the drain completes (or after the drain times out and the test asserts the new contract). Confirm `just test` is green with the new test, and that the `asyncio.shield` change is what makes the test pass rather than the timeout extension.
+
+### CORR-039 — `Orchestrator._execute`'s `except Exception` branch logs and re-raises without persisting FAILED — non-cancel exception paths can leave jobs in RUNNING
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 341-360
+related: [OBS-001, CORR-037, CORR-038]
+```
+
+**Issue.** The new `_execute` (orchestrator.py:341-360) has two handlers. The `except asyncio.CancelledError` (line 351) sets `tracked.status = PlanStatus.FAILED` and `await self._job_store.put(tracked)`, which fulfills the docstring's 'no job is ever left in RUNNING' invariant. The `except Exception` branch (line 358) only logs (`logger.exception('Job %s failed in _execute', tracked.job_id)`) and re-raises. It does NOT set status, does NOT persist. If `_run_execution`'s inner `await self._job_store.put(tracked)` (line 444, after the executor's try/except block) itself raises — e.g. Redis temporarily unavailable, a transient `CacheCorruptedError` on the next read, or any unhandled exception bubbling out of `_record_failure` — the inner `try/except` does not catch (it is around the executor, not the put), the exception propagates to `_execute`'s `except Exception`, the job is logged-as-failed but the persisted state remains whatever the last successful `put` left behind (typically `PlanStatus.RUNNING` from the initial `submit_job` put at orchestrator.py:333). The new test `test_shutdown_drains_inflight_jobs_to_failed` only exercises the CancelledError path, not this one.
+
+**Why it matters.** The OBS-001 fix was specifically scoped to the cancel-from-shutdown case; this finding shows the same invariant is now claimed in the docstring but not actually enforced for the general failure path. An operator who watches a job disappear from the API after a Redis blip and finds it still listed as `running` an hour later is seeing exactly the regression the docstring claims to prevent.
+
+**Recommendation.** Mirror the CancelledError branch's reconciliation: in the `except Exception` arm, also set `tracked.status = PlanStatus.FAILED` and call `await self._job_store.put(tracked)`, with the same defensive inner `try/except Exception` to log-and-swallow a second put failure.
+
+**Verification.** Add a test that monkeypatches `InMemoryJobStore.put` to raise on the second call (the one inside `_run_execution` after the executor returns) and asserts the persisted state ends in `PlanStatus.FAILED` (not RUNNING). Confirm `just test` passes; manually verify the new test fails without the fix.
+
+### CORR-040 — `Orchestrator._execute` on CancelledError sets status=FAILED but does not capture partial PlanResult — completed-step cost is silently zeroed for cancelled jobs
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 351-356
+related: [OBS-001, CORR-008]
+```
+
+**Issue.** The new CancelledError handler in `_execute` (orchestrator.py:351-356) sets `tracked.status = PlanStatus.FAILED` and re-persists, but never updates `tracked.result` before the put. For a job that has completed one or more steps before the cancel arrives, the executor has accumulated a partial `PlanResult` in its local scope (the streaming executor's `result` variable at streaming.py:177, the async/sequential accumulators) but has not yet returned it to `_run_execution`, so `tracked.result` is still whatever it was when `_execute` started (typically `None`, set by the `TrackedJob` constructor). The persisted FAILED record therefore has `result=None` and the partial cost of the already-completed steps is lost. CORR-008 fixed the same shape at the streaming executor level (preserve cost on a per-stage failure); the new orchestrator-level cancel does not extend that contract to the shutdown case. The new test `test_shutdown_drains_inflight_jobs_to_failed` uses an empty-chunks `JobMetrics(duration_seconds=0.0)` so it cannot surface the bug.
+
+**Why it matters.** Low because the typical user-visible symptom is just a slightly-under-counted bill (a 12-step job with 7 completed steps shows `total_cost=0.0` instead of the actual GPU cost for the 7 steps), but it is a real billing-accuracy regression introduced by the OBS-001 fix: every job cancelled by `orch.shutdown()` is miscounted. For a RunPod forwarder where the GPU cost is non-trivial, this is the difference between a clean bill and a 70% under-count.
+
+**Recommendation.** Have the executor publish partial results incrementally (e.g. a `tracked.result = partial_result` assignment after each successful step) so the in-memory `tracked.result` reflects work done so far. The minimal fix in `_execute`'s CancelledError handler is to construct a fallback `PlanResult` from the executor's local accumulator if exposed, but the cleaner fix is at the executor boundary — see CORR-008 for the pattern. Add a test that registers a handler that completes 3 of 5 steps then blocks, calls `orch.shutdown()` mid-block, and asserts the persisted FAILED record has `result.total_cost > 0`.
+
+**Verification.** Add the test described above. Confirm `just test` is green. Inspect the persisted job JSON (or the `InMemoryJobStore` snapshot) to assert `result.total_cost` matches the cost of the 3 completed steps, not zero.

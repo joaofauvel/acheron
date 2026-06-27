@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
@@ -81,9 +81,9 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
-  date: 2026-06-23
-fixed_in: ["pending"]
+  commit: 69170c4
+  date: 2026-06-26
+fixed_in: ["69170c4"]
 files:
   - path: Justfile
     lines: 38-40
@@ -144,9 +144,9 @@ severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
-  date: 2026-06-23
-fixed_in: ["pending"]
+  commit: cedb6db
+  date: 2026-06-26
+fixed_in: ["cedb6db"]
 files:
   - path: pyproject.toml
     lines: 152-153
@@ -173,9 +173,9 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
-  date: 2026-06-23
-fixed_in: ["pending"]
+  commit: 6ca8fd1
+  date: 2026-06-26
+fixed_in: ["6ca8fd1"]
 files:
   - path: Dockerfile
     lines: 42-46
@@ -196,7 +196,7 @@ related: [DOC-003]
 
 **Grade:** B
 
-DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. DOC-004 (medium) widens with the new translategemma worker still absent from the README. Two new DOC findings in 8c: DOC-005 (medium) — `shell/tls.py` back-compat shim docstring violates the greenfield rule [related: ARCH-017]; DOC-006 (low) — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections. **2026-06-26 refresh**: DOC-004 marked stale (README has been rewritten to include all 3 workers); DOC-007 added — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule.
+DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. DOC-004 (medium) widens with the new translategemma worker still absent from the README. Two new DOC findings in 8c: DOC-005 (medium) — `shell/tls.py` back-compat shim docstring violates the greenfield rule [related: ARCH-017]; DOC-006 (low) — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections. **2026-06-26 refresh**: DOC-004 marked stale (README has been rewritten to include all 3 workers); DOC-007 added — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule. **2026-06-26 round 2 refresh**: DOC-007 verified (commit `3a04ece`); DOC-008 (low) regression filed — the brand-new `src/acheron/worker_sdk/_io.py` opens with a 6-line docstring whose 4-line rationale paragraph is exactly the anti-pattern DOC-007 was supposed to eliminate.
 
 ### DOC-001 — Impl-phase and stale-prone comments violate AGENTS.md comment discipline
 
@@ -260,9 +260,9 @@ severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
-  date: 2026-06-24
-fixed_in: ["pending"]
+  commit: 9ea8951
+  date: 2026-06-26
+fixed_in: ["9ea8951"]
 files:
   - path: .env.example
     lines: 4-9, 29
@@ -298,16 +298,16 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
   - path: README.md
     lines: 87-92
   - path: README.md
-    lines: 79
+    lines: 70-84
   - path: README.md
-    lines: 162-168
+    lines: 188-190
 related: [DOC-003]
 ```
 
@@ -386,9 +386,9 @@ severity: medium
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: fba6d0b
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["fba6d0b"]
 files:
   - path: .envrc.example
     lines: 5
@@ -415,9 +415,9 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: b16b50b
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["b16b50b"]
 files:
   - path: workers/qwen3tts/pyproject.toml
     lines: 22
@@ -446,9 +446,9 @@ severity: medium
 effort: M
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: 3a04ece
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["3a04ece"]
 files:
   - path: src/acheron/shell/executors/streaming.py
     lines: 1
@@ -508,3 +508,28 @@ related: [DOC-005]
 **Recommendation.** For each of the 24 modules, reduce the module docstring to a single line that names the module's purpose. Examples of the trimmed form: `tls.py` -> `'''TLS helpers — env-var to SSL credentials conversion for HTTP and gRPC.'''`; `worker_sdk/__init__.py` -> `'''Acheron worker SDK — the blueprint for Layer 8 real GPU workers.'''`. The architectural rationale (why a module lives at the top level, why an import is lazy, etc.) belongs in the relevant import-linter contract definition or a top-level design doc, not in a module docstring that has to track every refactor. The fix is `ruff format` + manual trim per file; total effort is ~30 min of mechanical editing.
 
 **Verification.** Run the scan: `for f in $(rg -l '^\"\"\"' src/ dashboard/ workers/ --type py | rg -v '/tests/' | rg -v 'pyproject\.toml'); do head -1 "$f" | python3 -c "import sys; doc=sys.stdin.read(); m=__import__('re').match(r'^\"\"\"(.+?)\"\"\"$', doc); import sys; sys.exit(0 if m and '\n' not in m.group(1) and len(m.group(1)) < 200 else 1)" || echo "$f: multi-line docstring"; done` — output should be empty. `just lint-strict` passes. `grep -c '^\"\"\"$' <file>` continues to find one match per file (the closing triple-quote).
+
+### DOC-008 — `src/acheron/worker_sdk/_io.py` (new) re-introduces the multi-line docstring shape that DOC-007 eliminated
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_io.py
+    lines: 1-7
+related: [DOC-007]
+```
+
+**Issue.** The new shared-stream module `src/acheron/worker_sdk/_io.py:1-7` (created in the MAINT-015 Streamable extraction, commit `5e6c1e5`) opens with a one-line summary followed by a 4-line paragraph explaining the helpers' purpose and that duplication is now eliminated. AGENTS.md hard rule: "Usually module level docstrings should be 1 line." This is exactly the shape DOC-007 was filed to eliminate from 24 other files; the new file slipped through because no docstring-length check was run against additions. The 4-line paragraph also references the previous duplication that no longer exists — exactly the "stale-prone structural rationale" AGENTS.md targets ("Avoid stale-prone comments that reference impl details").
+
+**Why it matters.** The DOC-007 fix is incomplete. Twenty-four existing files were trimmed to align with the AGENTS.md hard rule, but the next module added to `src/acheron/worker_sdk/` reintroduced the same shape. A future reader of `_io.py`'s docstring will see the duplication-prevention paragraph, look at `inputs.py` and `artifacts.py` to confirm, and trust the docstring's claim — but the new docstring itself violates the rule the team spent a round enforcing. The pattern is regression: file created in the same round that closed DOC-007, slipped through verification.
+
+**Recommendation.** Trim `src/acheron/worker_sdk/_io.py:1-7` to a single line, e.g. `'''Shared stream helpers + Streamable Protocol for the Input/Artifact variants.'''`. The architectural rationale (why the duplication was removed, what the inputs/artifacts shape used to be) belongs in the MAINT-015 story description or a top-level design doc, not in a module docstring that has to track every refactor. Optionally add a `ruff` CI check (e.g. `pydocstyle`'s D400/D210 or a custom `docstring-line-count` rule) that flags any new module whose opening docstring contains a blank line, so future `__init__.py` additions cannot reintroduce the shape silently.
+
+**Verification.** `rg -n '^\"\"\"' src/acheron/worker_sdk/_io.py` returns a single line (no blank line after the opening `'''`); the closing `'''` is on the same line as the summary; `just lint-strict` passes.

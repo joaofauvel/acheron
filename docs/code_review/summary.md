@@ -1,140 +1,135 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
 # Code Review Summary
-
 ## Per-theme grades
 
 | Theme | Grade | Stories (open/in-progress/stale by severity) |
 |---|---|---|
-| ARCH | A | 0 critical, 0 high, 2 medium, 1 low |
-| CFG | A | 0 critical, 1 high, 0 medium, 0 low |
-| CORR | B | 0 critical, 1 high, 3 medium, 3 low |
-| DATA | A | 0 critical, 0 high, 0 medium, 1 low |
-| DOC | B | 0 critical, 0 high, 3 medium, 0 low |
-| DX | A | 0 critical, 0 high, 2 medium, 0 low |
-| EXC | A | 0 critical, 0 high, 1 medium, 0 low |
-| MAINT | B | 0 critical, 0 high, 3 medium, 1 low |
+| ARCH | B | 0 critical, 0 high, 3 medium, 1 low |
+| CFG | A | 0 critical, 0 high, 0 medium, 1 low |
+| CORR | B | 0 critical, 0 high, 6 medium, 2 low |
+| DATA | A | 0 critical, 0 high, 0 medium, 2 low |
+| DOC | A | 0 critical, 0 high, 1 medium, 1 low |
+| DX | A | 0 critical, 0 high, 0 medium, 0 low |
+| EXC | A | 0 critical, 0 high, 0 medium, 0 low |
+| MAINT | A | 0 critical, 0 high, 1 medium, 1 low |
 | OBS | A | 0 critical, 0 high, 1 medium, 1 low |
 | PERF | B | 0 critical, 0 high, 3 medium, 1 low |
-| PKG | A | 0 critical, 0 high, 1 medium, 2 low |
-| REPRO | A | 0 critical, 0 high, 1 medium, 1 low |
-| SEC | A | 0 critical, 0 high, 0 medium, 2 low |
-| TEST | B | 0 critical, 0 high, 4 medium, 8 low |
-| TYPE | A | 0 critical, 0 high, 2 medium, 5 low |
+| PKG | A | 0 critical, 0 high, 0 medium, 0 low |
+| REPRO | A | 0 critical, 0 high, 0 medium, 2 low |
+| SEC | A | 0 critical, 0 high, 0 medium, 0 low |
+| TEST | B | 0 critical, 0 high, 3 medium, 8 low |
+| TYPE | A | 0 critical, 0 high, 1 medium, 2 low |
 
-Themes dropped from the rubric since the 8c baseline (all stories verified): **CFG (11 verified)**, **ML (0 verified)**, **MATH (0 verified)**.
+Themes dropped from the rubric since the 8c baseline (all stories verified): **ML (0 verified)**, **MATH (0 verified)**.
 
-Grade changes vs `a7aaf1e` (the post-B11/B12/B19 summary baseline): **CFG A→A** (still 1 high from CFG-012, a new regression filed this pass), **ARCH A→A** (ARCH-011 now stale, 1 new low), **MAINT B→B** (1 new medium from MAINT-020 regression), **DOC A→B** (1 new medium from DOC-007 + DOC-004 moved to stale), **TEST B→B** (3 new stories filed: TEST-018 regression + TEST-019/-020), **TYPE A→A** (TYPE-011 new finding). **5 themes at B** (CORR, DOC, MAINT, PERF, TEST), **10 themes at A**, 0 at C, 0 at D. The 3 broken-YAML stories (OBS-007, SEC-011, OBS-009) are now repaired; OBS-007/OBS-009 marked verified (auth fix in `fa87bc6`); SEC-011 marked verified (dev-token validation in `9b4adb6`).
+Grade changes vs `77aadcd` (the previous refresh's baseline): **CFG A→A** (1 high from CFG-012 now verified, 1 new low CFG-013), **ARCH A→B** (ARCH-011/012 now stale, 1 new medium ARCH-024), **CORR A→B** (4 new mediums CORR-036/037/038/039 + CORR-015 stale + 1 new low CORR-040), **DOC A→A** (DOC-007 now verified, 1 new low DOC-008), **MAINT A→A** (1 new medium MAINT-021), **PERF A→B** (no grade change but 1 new medium story changes counts), **TEST B→B** (TEST-002/007/015 verified, 2 new mediums TEST-021/022 + 1 new low DATA-010), **TYPE A→A** (TYPE-001/003/006/007/010 verified, 1 new medium TYPE-012), **OBS A→A** (OBS-001 verified, 1 new medium OBS-013). **4 themes at B** (ARCH, CORR, PERF, TEST), **13 themes at A**, 0 at C, 0 at D.
 
 ## Top concerns
 
-High-severity open stories (focus areas for next tackling round):
+High-severity open stories: **none**. The Round 4 work verified both prior-high stories (CORR-035 via `b34ced9`, CFG-012 via `56af1f0`); all other open stories are `medium` or `low`.
 
-1. **CORR-035** — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary) [high, S] — `correctness.md`
-2. **CFG-012** — `WorkerCapabilities.max_input_tokens` is set by handlers but dropped at every wire boundary, so the orchestrator's plan-time check is silently bypassed [high, S] — `architecture.md`
+Top 10 medium-severity open stories (focus areas for the next tackling round):
 
-M-effort open stories (still in the Round 2 design but not yet landed):
-
-3. CORR-029 — `TranslateGemmaRunpodHandler._translate_batch` has no partial-success handling; mid-batch failure discards all completed work [medium, M] — `correctness.md` *(B15)*
-4. EXC-001 — tenacity dependency is unused; `WorkerTimeoutError`/`PlanValidationError` are never raised [medium, M] — `code-quality.md` *(B23)*
-5. MAINT-002 — `redis.py` hand-rolls JSON ser/deser for domain models that `cache.py` serializes via pydantic, duplicating and drifting [medium, M] — `code-quality.md` *(B19 — deferred)*
-6. MAINT-011 — `create_worker_app` builds an `EdgeApp` only to copy its routes onto the outer app via path-string matching; the inner `EdgeApp` is dead code [medium, M] — `code-quality.md` *(B12)*
-7. MAINT-015 — `inputs.py` is a near-verbatim copy of `artifacts.py` — same Protocol + three-variant shape duplicated 95% [medium, M] — `code-quality.md` *(B12)*
-8. OBS-001 — Shutdown does not drain in-flight `_execute` tasks; cancelled jobs stay stuck at "running" [medium, M] — `operations.md` *(B10)*
-9. REPRO-001 — `Redis.list_all()` returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend [medium, M] — `verification.md` *(B21)*
-10. TEST-002 — `test_orchestrator_works_with_redis_backend` tests memory, not Redis — misleading name and no Redis coverage [medium, M] — `verification.md` *(B21)*
-11. TEST-007 — `HealthMonitor._handle_failure` BOOTING→OFFLINE and OFFLINE→HEALTHY transitions are not covered [medium, M] — `verification.md` *(B10)*
-12. TEST-014 — `workers/translategemma/tests/test_handler.py` does not cover the `model.generate` error path, partial-success, or `pad_token_id` init [medium, M] — `verification.md` *(B20)*
-13. TEST-015 — `src/acheron/tls.py` (new top-level module, 114 lines) has no direct unit tests — only subprocess happy-path coverage [medium, M] — `verification.md` *(B20)*
-14. TYPE-001 — `AcheronClient` returns `dict[str, Any]` consumed via magic-string keys; metadata contracts partially resolved [medium, M] — `code-quality.md` *(B17)*
-15. TYPE-003 — `redis.py` accumulates 8 `# type: ignore[misc]` markers on `await self._redis.<method>()` calls [medium, M] — `code-quality.md` *(B17)*
-16. DOC-007 — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule [medium, M] — `surface.md`
-17. CORR-012 — Health monitor trusts provider `BOOTING` status without bounding duration — step handler treats BOOTING as always-healthy [low, M] — `correctness.md` *(B10)*
-18. CORR-032 — `TranslateGemmaRunpodHandler.handle` materializes the entire `chunks.json` in memory before validation [low, M] — `correctness.md` *(B15)*
-19. CORR-033 — `TranslateGemmaRunpodHandler._translate_batch` mutates the shared processor's tokenizer in-place [low, M] — `correctness.md` *(B15)*
-20. SEC-005 — Job submission/listing/capabilities routes require no authentication [low, M] — `operations.md` *(B24)*
-21. TYPE-006 — `grpc.py` accumulates 5 `# type: ignore[...]` markers for the new proto `Artifact` oneof; needs a local `.pyi` stub [low, M] — `code-quality.md` *(B17)*
-22. TYPE-007 — `RunPodForwarderHandler.__init__` calls `phantom_handler(settings)` under `# type: ignore[call-arg]`; needs a typed `RunPodHandlerProtocol` factory return [low, M] — `code-quality.md` *(B17)*
-23. TYPE-008 — WorkerSDK has 14+ `Any`/`dict[str, Any]` annotations in 5 files [low, M] — `code-quality.md` *(B17 — superseded by TYPE-011)*
-24. TYPE-010 — All three RunPod worker handlers type `self._model`/`self._processor` as `Any` with a stale-prone impl-phase comment — third instance of TYPE-009 [low, M] — `code-quality.md` *(B17)*
-25. MAINT-020 — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit; plus 1 new site introduced by EXC-004 fix [low, M] — `code-quality.md`
+1. **CORR-036** — translategemma `_translate_all` partial-success catch only covers `(RuntimeError, ValueError)`; `IndexError`/`KeyError`/`AttributeError`/`MemoryError`/`TypeError`/`CancelledError` bypass and lose partial translations [medium, S] — `correctness.md`
+2. **CORR-037** — `Orchestrator._drain_inflight_tasks` docstring claims `asyncio.wait` + `finally` block; the code uses `asyncio.gather` and an `except CancelledError` (no `finally`) [medium, S] — `correctness.md`
+3. **CORR-038** — 5s drain timeout can abort mid-shutdown, cancelling the post-cancel `_job_store.put` and leaving the job in RUNNING [medium, S] — `correctness.md`
+4. **CORR-039** — `_execute`'s `except Exception` branch logs+re-raises without persisting FAILED, so non-cancel exception paths can still leave jobs in RUNNING [medium, S] — `correctness.md`
+5. **ARCH-024** — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` (server-internal HTTP module) [medium, S] — `architecture.md`
+6. **OBS-013** — `Orchestrator._drain_inflight_tasks` is silent on entry/completion/timeout; an unhandled `TimeoutError` can break clean shutdown with no log breadcrumb [medium, S] — `operations.md`
+7. **TYPE-012** — `cast("_RedisAwaitable", ...)` at both redis store constructors is an unverified Protocol claim; adding `@runtime_checkable` + `isinstance` would make the typing claim load-bearing at runtime [medium, S] — `code-quality.md`
+8. **TEST-021** — `src/acheron/worker_sdk/_io.py` has zero direct unit tests; the Streamable Protocol + 3 stream helpers extracted in MAINT-015 are only covered transitively [medium, S] — `verification.md`
+9. **TEST-022** — `redis_container`/`redis_url` fixtures duplicated verbatim between `tests/shell/stores/conftest.py` and `tests/integration/conftest.py` [medium, S] — `verification.md`
+10. **MAINT-021** — 4 `except Exception: logger.exception(...); raise` sites in `Orchestrator` duplicate the log+raise pattern; a private `_log_unexpected` helper would centralise the teardown contract [medium, S] — `code-quality.md`
 
 ## Quick wins
 
 S-effort open stories (low-risk, short fixes):
 
-1. ARCH-011 — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time [medium, S, stale] — `architecture.md` *(B12)*
-2. ARCH-012 — `create_worker_app` cherry-picks routes from `EdgeApp.app.routes` via a hardcoded `inner_paths` set [medium, S] — `architecture.md` *(B12)*
-3. ARCH-023 — Cross-module import of module-private `_ENV_ONLY_FIELDS` from `worker_sdk/settings.py` to `worker_sdk/config_loader.py` — same PLC2701 anti-pattern as the original ARCH-005 [low, S] — `architecture.md`
-4. CORR-015 — `create_worker_app` cherry-picks routes from `EdgeApp` via hardcoded `inner_paths`; new routes silently dropped [medium, S] — `correctness.md` *(B12)*
-5. DOC-003 — Configuration docs drift across README, `.env.example`, and an undocumented dashboard env var [medium, S] — `surface.md` *(B23)*
-6. DOC-004 — README architecture tree, CI section, and Test paths omit the new `granite_speech` worker [medium, S, stale] — `surface.md`
-7. DX-003 — `just install` does not install the new `workers/qwen3tts/` workspace member, breaking the documented fresh-clone setup [medium, S] — `surface.md` *(B23)*
-8. DX-004 — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members [medium, S] — `surface.md`
-9. PERF-004 — `HealthMonitor._check_all` processes worker results sequentially with W Redis round-trips [medium, S] — `operations.md` *(B10)*
-10. PERF-005 — Provider status checks in `_handle_failure` run sequentially and can starve the health interval [medium, S] — `operations.md` *(B10)*
-11. PERF-007 — Per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse) [medium, S] — `operations.md` *(B10)*
-12. PKG-002 — `pyproject.toml` dead `root_package` key + duplicate `soundfile` dev entry — drift artifacts from the workspace scaffold merge [low, S] — `surface.md` *(B23)*
-13. PKG-003 — `Dockerfile:39` (certs-init stage) pins `cryptography~=49.0` while `pyproject.toml:168` pins `cryptography~=46.0` [low, S] — `surface.md` *(B23)*
-14. PKG-004 — All three worker packages duplicate `pythonpath = ["../.."]` in `[tool.pytest.ini_options]`, masking the DX-003 workspace install gap [low, S] — `surface.md`
-15. REPRO-003 — `tests/worker_sdk/conftest.py` `_no_sleep` fixture masks `asyncio.sleep` timing in retry/registration tests [low, S] — `verification.md` *(B21)*
-16. SEC-019 — Edge `/execute` multipart branch returns 500 body with `error=str(exc)`, exposing raw exception detail (new instance of SEC-012) [low, S] — `operations.md` *(B24)*
-17. DATA-007 — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests [low, S] — `verification.md`
-18. TEST-005 — `_metadata_str` helper in `health.py` has no direct unit tests [low, S] — `verification.md` *(B20)*
-19. TEST-006 — `HuggingFaceHealthProvider.check_status` has untested `str` and `else` branches [low, S] — `verification.md` *(B20)*
-20. TEST-009 — `test_inputs.py` missing `Protocol` isinstance, `FileInput` missing-path, `StreamInput` empty, and `FileInput` empty-file edge cases [low, S] — `verification.md` *(B20)*
-21. TEST-010 — `test_safe_chapter_id.py` missing unicode `chapter_id` coverage [low, S] — `verification.md` *(B20)*
-22. TEST-011 — `test_cloud_audio.py` missing default-content_type and default-metadata branches in `make_runpod_handler` [low, S] — `verification.md` *(B20)*
-23. TEST-018 — test_app.py still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete) [low, S] — `verification.md`
-24. TEST-019 — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4) [low, S] — `verification.md`
-25. TEST-020 — test_pricing.py has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract) [low, S] — `verification.md`
-26. OBS-012 — Multipart parse-failure path in `_run_execute_multipart` returns 500 with no `logger.exception` — operator has no log evidence of parse failures [low, S] — `operations.md`
-27. TYPE-011 — WorkerSDK `Any`/`dict[str, Any]` count is now 25 across 8 files — 2× larger than the 14+ figure in TYPE-008 [low, M] — `code-quality.md`
+1. ARCH-011 — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time [medium, S, stale] — `architecture.md`
+2. ARCH-012 — `create_worker_app` cherry-picks routes from `EdgeApp.app.routes` via a hardcoded `inner_paths` set [medium, S, stale] — `architecture.md`
+3. CORR-015 — `create_worker_app` cherry-picks routes from `EdgeApp` via hardcoded `inner_paths`; new routes silently dropped [medium, S, stale] — `correctness.md`
+4. DOC-004 — README architecture tree, CI section, and Test paths omit the new `granite_speech` worker [medium, S, stale] — `surface.md`
+5. PERF-004 — `HealthMonitor._check_all` processes worker results sequentially with W Redis round-trips [medium, S] — `operations.md`
+6. PERF-005 — Provider status checks in `_handle_failure` run sequentially and can starve the health interval [medium, S] — `operations.md`
+7. PERF-007 — Per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse) [medium, S] — `operations.md`
+8. TEST-021 — `src/acheron/worker_sdk/_io.py` has zero direct unit tests [medium, S] — `verification.md`
+9. TEST-022 — `redis_container`/`redis_url` fixtures duplicated verbatim between `tests/shell/stores/conftest.py` and `tests/integration/conftest.py` [medium, S] — `verification.md`
+10. OBS-012 — Multipart parse-failure path in `_run_execute_multipart` returns 500 with no `logger.exception` [low, S] — `operations.md`
+11. OBS-013 — `Orchestrator._drain_inflight_tasks` is silent on entry/completion/timeout [medium, S] — `operations.md`
+12. ARCH-023 — Cross-module import of module-private `_ENV_ONLY_FIELDS` from `worker_sdk/settings.py` to `worker_sdk/config_loader.py` [low, S] — `architecture.md`
+13. ARCH-024 — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` [medium, S] — `architecture.md`
+14. CORR-036/037/038/039 — translategemma partial-success + orchestrator drain-handler integrity [medium, S] — `correctness.md`
+15. DOC-008 — `src/acheron/worker_sdk/_io.py` re-introduces multi-line docstring shape [low, S] — `surface.md`
+16. MAINT-021 — 4 `except Exception: logger.exception(...); raise` sites in `Orchestrator` [medium, S] — `code-quality.md`
+17. TYPE-012 — `cast("_RedisAwaitable", ...)` is unverified Protocol claim [medium, S] — `code-quality.md`
+18. CFG-013 — 5s drain timeout is hard-coded; no `shutdown_drain_seconds` setting [low, S] — `architecture.md`
+19. CORR-012 — Health monitor trusts provider `BOOTING` without bounding duration [low, M] — `correctness.md`
+20. CORR-040 — `_execute` CancelledError handler persists FAILED but discards partial PlanResult (under-counts cost) [low, M] — `correctness.md`
+21. TEST-005 — `_metadata_str` helper in `health.py` has no direct unit tests [low, S] — `verification.md`
+22. TEST-006 — `HuggingFaceHealthProvider.check_status` has untested `str` and `else` branches [low, S] — `verification.md`
+23. TEST-009 — `test_inputs.py` missing `Protocol` isinstance, `FileInput` missing-path, `StreamInput` empty, `FileInput` empty-file edge cases [low, S] — `verification.md`
+24. TEST-010 — `test_safe_chapter_id.py` missing unicode `chapter_id` coverage [low, S] — `verification.md`
+25. TEST-011 — `test_cloud_audio.py` missing default-content_type and default-metadata branches [low, S] — `verification.md`
+26. TEST-018 — test_app.py still missing static-without-rate and registration_caps-passthrough tests [low, S] — `verification.md`
+27. TEST-019 — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4) [low, S] — `verification.md`
+28. TEST-020 — test_pricing.py has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` [low, S] — `verification.md`
+29. DATA-007 — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests [low, S] — `verification.md`
+30. DATA-010 — `RedisJobStore._deserialize_job` defensive isinstance branch lacks a parametric test [low, S] — `verification.md`
+31. REPRO-003 — `_no_sleep` fixture masks `asyncio.sleep` timing [low, S] — `verification.md`
+32. REPRO-004 — `test_orchestrator_works_with_redis_backend` opens its own Redis stores without using the `redis_url` lifespan [low, S] — `verification.md`
+33. TYPE-008 — WorkerSDK has 14+ `Any`/`dict[str, Any]` annotations in 5 files [low, M] — `code-quality.md`
+34. TYPE-011 — WorkerSDK `Any`/`dict[str, Any]` count is now 25 across 8 files [low, M] — `code-quality.md`
 
 ## Story counts
 
 | Status | Count |
 |---|---|
-| open | 51 |
+| open | 33 |
 | in-progress | 0 |
-| fixed | 52 |
-| verified | 90 |
-| stale | 3 |
+| fixed | 61 |
+| verified | 109 |
+| stale | 8 |
 | wontfix | 0 |
 | broken-yaml | 0 |
 
-Status deltas vs `a7aaf1e` (post-B11/B12/B19): no code change since a7aaf1e. This refresh pass: (1) resolved 81 `pending` SHA placeholders across all 6 bundle files by walking `git log --grep="(<ID>)"`, recovering the actual fix commits; (2) repaired 3 broken-YAML stories — OBS-007/OBS-009 marked verified (auth fix in `fa87bc6`); SEC-011 marked verified (dev-token validation in `9b4adb6`); (3) added 4 new stories for regressions found in Round 2 — CORR-034 (Python 2 except syntax re-introduced at 5 sites by `a7aaf1e`), MAINT-020 (same regression under MAINT lens), CFG-012 (CFG-011 fix broken at the wire boundary), TEST-018 (TEST-008 fix incomplete); (4) added 9 new findings — ARCH-023 (`_ENV_ONLY_FIELDS` cross-module import), CORR-035 (Redis metadata round-trip gap), TYPE-011 (25 `Any` annotations across worker_sdk, up from 14), TEST-019 (TestFileArtifact undertested), TEST-020 (no refresh() tests for ZeroPrice/StaticPrice), OBS-012 (multipart parse-failure log gap), DX-004 (`.envrc.example` missing `--all-packages`), PKG-004 (worker `pythonpath` hack), DOC-007 (24 multi-line module docstrings); (5) applied 14 staleness line-range updates; (6) marked 3 stories stale — ARCH-011 (docstring claim is now true), DOC-004 (README has been rewritten to include all 3 workers), PERF-008 (cited method removed but anti-pattern lives on at new location). The 3 previously broken-YAML stories (OBS-007, SEC-011, OBS-009) are now correctly verified with resolved `last_verified_at` and `fixed_in` SHAs.
+Status deltas vs `77aadcd` (the previous refresh's HEAD): 13 stories moved from `pending` to `verified` (DOC-007, EXC-001, MAINT-011, MAINT-015, TEST-002, TEST-007, TEST-015, REPRO-001, OBS-001, CORR-035, CFG-012, SEC-005, SEC-019) and 3 from `pending` to `verified` for the typed-WorkerCluster (TYPE-001, TYPE-003, TYPE-006, TYPE-007, TYPE-010); 1 marked `stale` (ARCH-012) and 1 stayed `stale` (ARCH-011); 1 previously-`stale` story re-resolved to a new `stale` note (TEST-014 — concern addressed by the TYPE-010 + 299f08c rewrite of translategemma test_handler.py, transition to `fixed` recommended in next tackle pass). 15 new findings filed: ARCH-024, CFG-013, CORR-036, CORR-037, CORR-038, CORR-039, CORR-040, DOC-008, MAINT-021, OBS-013, TEST-021, TEST-022, REPRO-004, DATA-010, TYPE-012 (note: DOC-008 is a regression of the now-verified DOC-007, filed as a new ID per update-mode immutability). 14 line-range re-resolutions applied. Round 4's 12 commits (TYPE-001..010 cleanup, DOC-007 docstring trim, SEC-005/SEC-019 auth fixes, EXC-001 dead-code removal, MAINT-002/011/015 worker-sdk refactors, REPRO-001 sorted Redis list_all, OBS-001 shutdown drain, TEST-002/007/015 test additions) all landed cleanly with 914 tests passing and 93.67% coverage.
 
 ## Changes since last review
 
-This refresh is a no-code-change pass: the diff `a7aaf1e..77aadcd` is 1 commit, 1 file (`docs/code_review/summary.md`, the previous refresh's own commit). No code changed since the last review, so:
-- 0 open-story regressions in the `verified`/`fixed`/`wontfix` immutable set — but 4 new regression stories filed as **new IDs** (CFG-012, CORR-034, MAINT-020, TEST-018) per the update-mode immutability rule, each linked to the original via `related: [<old-id>]`.
-- 0 staleness flips caused by code change (the 3 new stale stories — ARCH-011, DOC-004, PERF-008 — are staleness-by-evolution: the cited code has been replaced or rewritten in ways that invalidate the original framing).
-- 0 new findings of behaviour change. The 9 new findings are gaps that pre-existed but were uncovered by the audit pass: a fresh subagent sweep over each bundle's source + tests surfaced issues that the previous round-of-bundles work had not caught.
+This refresh covers `77aadcd..59458ba` (31 commits, 71 files): Round 4 B26-B29 tackle work (12 commits) plus 19 supporting commits. Code changes dominated by Type Cleanup (TYPE-001..010), `docstring-line-count` enforcement (DOC-007), worker-sdk refactors (MAINT-002/011/015 → APIRouter + Streamable Protocol + pydantic.TypeAdapter), and the OBS-001 drain + persist fix on shutdown. The post-refresh codebase has 914 tests passing (up from 895); coverage 93.67%.
 
-The next round of bundles (B25+ in the Round 2 design) should focus on: (1) CFG-012 + CORR-035 (the two new `high` open stories), (2) MAINT-020 + CORR-034 (the Python 2 except regression — small but cited twice to be sure the fix lands), (3) DOC-007 (24-file mechanical docstring trim), and (4) the TYPE cluster (TYPE-001, -003, -006, -007, -010, -011 — the worker_sdk `Any`/`# type: ignore` accumulation is the only remaining type-debt hotspot).
+- 0 high-severity open stories (both prior highs — CORR-035 and CFG-012 — verified in this round).
+- 15 new findings filed: 1 ARCH-024, 1 CFG-013, 5 CORR (036-040), 1 DOC-008 (regression of DOC-007), 1 MAINT-021, 1 OBS-013, 4 verification (TEST-021, TEST-022, REPRO-004, DATA-010), 1 TYPE-012.
+- 1 staleness flip (ARCH-011 → still stale, line refs updated; ARCH-012 → stale; CORR-015 → stale). TEST-014 stayed stale (cites now-vanished test code; the underlying concern is fully addressed by the 299f08c + e9faa0d rewrites).
+- 1 regression filed as a NEW story (DOC-008 re-introduces the multi-line docstring anti-pattern that DOC-007 was supposed to eliminate).
+- 14 line-range re-resolutions across the verification, operations, and code-quality bundles.
+
+The next tackling round should focus on: (1) the 5 new CORR findings (036-040) — the OBS-001 fix introduced a partial invariant ('no job is ever left in RUNNING') that the docstring now claims but the code only partially enforces; (2) TEST-021/022 — direct follow-on from MAINT-015 + TEST-002 fixes; (3) TYPE-012 + MAINT-021 — runtime-enforce the `_RedisAwaitable` Protocol and centralise the log+raise pattern in `Orchestrator`; (4) CFG-013 + OBS-013 — make the 5s drain timeout configurable and observable (the OBS-013 silent-drain gap is the operator-facing concern).
 
 ## Last orientation snapshot
 
 **Repository**: acheron — audiobook processing pipeline (FastAPI orchestrator + gRPC/HTTP workers + Redis/memory stores). Greenfield (per AGENTS.md).
 
-**Branch / HEAD**: `code-review-refresh` at `77aadcd` (off `master` at `a7aaf1e`; the only commit since is the prior summary refresh). 80 commits ahead of `c2a80fc` (the 8c post-review baseline); 62 commits ahead of `2b01434` (the B25 baseline).
+**Branch / HEAD**: `master` at `59458ba5b1c364bb86ea8390cd30f268b98a6acf`. 31 commits ahead of the previous refresh's HEAD (`77aadcd`); 12 of those are Round 4 (B26-B29) tackle work, the other 19 are supporting commits (TYPE-001..010 typed Pydantic models + Protocol fixes, DOC-007 24-file docstring trim, SEC-005/019 auth fixes, EXC-001 dead-code removal, PKG-002..004 cleanup, DX-003/004 uv workspace install, etc.).
 
-**Top-level layout**: `src/acheron/core/` (domain models, errors, chunking, planner, interfaces), `src/acheron/shell/` (orchestrator, API, executors: streaming/async/sequential, stores: memory/redis, transports: http/grpc/local, cache, health, TLS, step_handler, local_handlers, capabilities, health_providers, config), `src/acheron/worker_sdk/` (base SDK for building workers — config_loader, _caps, _edge_http, _runpod_client, _server, registration, pricing, artifacts, cloud, handler, app, cli, settings, schemas, inputs), `src/acheron/tls.py` (top-level — TLS helpers shared by shell + worker_sdk + workers), `dashboard/` (separate package), `stubs/` (6 generic SDK-backed stubs + _sdk_base + nltk mock — `tts_volume_stub` deleted in B05), `workers/{qwen3tts,granite_speech,translategemma}/` (RunPod serverless workers, uv workspace members; the translategemma edge uses `workers/_shared_utils.py` after the B16 rename of `workers/_shared.py`), `workers/_shared_utils.py` + `workers/_shared/` (shared helpers — `safe_chapter_id`, `chunks.py` extracted in B14), `tests/` (mirrors src: tests/core, tests/shell, tests/worker_sdk, tests/integration, tests/scripts; plus stubs/tests/, workers/<pkg>/tests/).
+**Top-level layout**: `src/acheron/core/` (domain models, errors, chunking, planner, interfaces), `src/acheron/shell/` (orchestrator, API, executors: streaming/async/sequential, stores: memory/redis, transports: http/grpc/local, cache, health, TLS, step_handler, local_handlers, capabilities, health_providers, config), `src/acheron/worker_sdk/` (base SDK for building workers — config_loader, _caps, _edge_http, _io, _runpod_client, _server, registration, pricing, artifacts, cloud, handler, app, cli, settings, schemas, inputs), `src/acheron/tls.py` (top-level — TLS helpers shared by shell + worker_sdk + workers), `dashboard/` (separate package), `stubs/` (6 generic SDK-backed stubs + _sdk_base + nltk mock), `workers/{qwen3tts,granite_speech,translategemma}/` (RunPod serverless workers, uv workspace members; the translategemma edge uses `workers/_shared_utils.py` after the B16 rename of `workers/_shared.py`), `workers/_shared_utils.py` + `workers/_shared/` (shared helpers — `safe_chapter_id`, `chunks.py` extracted in B14), `tests/` (mirrors src: tests/core, tests/shell, tests/worker_sdk, tests/integration, tests/scripts; plus stubs/tests/, workers/<pkg>/tests/).
 
-**No hexagonal layers**: flat package structure. Interfaces (ABCs) in `core/interfaces.py`. No `ports.py` files. `HealthProvider` ABC now lives in `core/interfaces.py` (ARCH-009 verified in B12).
+**No hexagonal layers**: flat package structure. Interfaces (ABCs) in `core/interfaces.py`. No `ports.py` files. `HealthProvider` ABC lives in `core/interfaces.py` (ARCH-009 verified in B12).
 
 **Boundaries** (enforced by import-linter): `core` must NOT import `shell`; `worker_sdk` must NOT import `shell`; `workers` must NOT import `shell`. The `src/acheron/tls.py` is at the top level so both `shell` and `worker_sdk`/`workers` can consume it without violating the import-linter contract.
 
-**Test landscape**: `tests/core/`, `tests/shell/{api,stores,transports}`, `tests/worker_sdk/` (20+ test files mirroring 14 source modules — new since the previous summary: `test_server.py` for B14's `run_worker_server`; `test_caps.py` for B18's collapsed helper), `tests/integration/`, `tests/scripts/`. New since the previous summary (9f9f3f5): +40 test cases across `test_app.py`, `test_edge_http.py`, `test_health.py`, `test_runpod_client.py`, `test_planner.py`, `test_server.py`, `test_schemas.py`, `test_caps.py`, `test_orchestrator.py`, `test_health_providers.py`, `test_step_handler.py`, `test_runpod_price.py`, `test_worker_store.py`, the 3 worker `test_handler.py` files, and `tests/integration/test_tls.py`.
+**Test landscape**: `tests/core/`, `tests/shell/{api,stores,transports,stubs}`, `tests/worker_sdk/` (15+ test files mirroring 14 source modules — new since the previous summary: `test_io.py` is a TODO from TEST-021; the others are stable), `tests/integration/` (now includes `redis_container`/`redis_url` fixtures duplicated from `tests/shell/stores/conftest.py` — see TEST-022), `tests/scripts/`, `tests/test_tls.py` (top-level, mirrors `src/acheron/tls.py`). 914 tests pass; 93.67% coverage. New since `77aadcd`: +19 tests across TEST-002 (Redis-backed orchestrator), TEST-007 (BOOTING→OFFLINE + OFFLINE→HEALTHY), TEST-015 (13 tls.py unit tests), and various incidental additions in the orchestrator and health-monitor test files.
 
-**Tooling**: `just certs install lint-imports lint-strict proto test type-check type-check-pyright validate`. All deps `~=` pinned. uv workspace members: `workers/{qwen3tts, granite_speech, translategemma, _shared}`. PKG-003 (cryptography pin drift) remains: `Dockerfile:42-46` pins `cryptography~=49.0` while root `pyproject.toml:176` pins `cryptography~=46.0`; not fixed yet (B23).
+**Tooling**: `just certs install lint-imports lint-strict proto test type-check type-check-pyright validate`. All deps `~=` pinned. uv workspace members: `workers/{qwen3tts, granite_speech, translategemma, _shared}`. PKG-003 was verified in this round (commit `6ca8fd1` aligned `Dockerfile` and `pyproject.toml` on `cryptography~=`).
 
-**Key entry points**: `acheron.cli:main`, `acheron.worker_sdk.cli:main` (`acheron-worker-edge`), `acheron.shell.api.__main__`, `acheron.shell.api.app:create_app`. Worker runpod entrypoints: `workers/<pkg>/runpod_entrypoint:main`. Worker edge entrypoints: `worker_sdk/cli.py` (configurable via `WORKER_HOST` env var; expects `/app/<name>.worker.yaml`); both edge and runpod entrypoints now call `worker_sdk._server.run_worker_server` instead of inlining the uvicorn+TLS boilerplate (B14).
+**Key entry points**: `acheron.cli:main`, `acheron.worker_sdk.cli:main` (`acheron-worker-edge`), `acheron.shell.api.__main__`, `acheron.shell.api.app:create_app`. Worker runpod entrypoints: `workers/<pkg>/runpod_entrypoint:main`. Worker edge entrypoints: `worker_sdk/cli.py` (configurable via `WORKER_HOST` env var; expects `/app/<name>.worker.yaml`); both edge and runpod entrypoints call `worker_sdk._server.run_worker_server` instead of inlining the uvicorn+TLS boilerplate (B14).
+
+**Changes since last review (delta)**: Round 4 type-cleanup pass (TYPE-001..010) typed AcheronClient to return Pydantic models, replaced the worker `self._model`/`self._processor` `Any` annotations with structural Protocols, and dropped 18+ `# type: ignore` markers. Worker SDK was refactored: MAINT-002 used `pydantic.TypeAdapter` for `WorkerCapabilities` + worker `metadata` ser/de in `redis.py` (partial — outer `TrackedJob`/`Plan`/`PlanResult`/`OutputFile` still hand-rolled); MAINT-011 replaced the `inner_paths` hardcoded whitelist with `APIRouter` via `app.include_router(inner.router)`; MAINT-015 extracted the duplicated `stream()` loop into a shared `Streamable` Protocol + `stream_bytes`/`stream_producer`/`stream_file` helpers in the new `src/acheron/worker_sdk/_io.py`. RESILIENCE: OBS-001 added `_drain_inflight_tasks` to `Orchestrator.shutdown()` and a `try/except CancelledError` arm in `_execute` that persists FAILED status; REPRO-001 sorted `RedisWorkerStore.list_all()` and `RedisJobStore.list_all()` for deterministic step_handler worker selection. SECURITY: SEC-005 gated mutating job routes on `RegistrationTokenDep`; SEC-019 sanitised the `/execute` multipart 500 body. DEPS: dropped `tenacity` (EXC-001) and `soundfile` dev entry (PKG-002); aligned `cryptography~=` across Dockerfile + pyproject (PKG-003); removed the worker `pythonpath` hack (PKG-004); `just install` and `.envrc` use `uv sync --all-packages` (DX-003/004). DOCS: DOC-007 trimmed 24 multi-line module docstrings to single-line summaries. New file: `src/acheron/worker_sdk/_io.py`; new top-level test: `tests/test_tls.py`. New fixture: `tests/integration/conftest.py::redis_container`/`redis_url` (TEST-002). Test count: 895 → 914 (+19). Net LoC: +666 / -204.

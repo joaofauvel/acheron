@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 77aadcd327643367129d4b3874a3c9c217b40084
+last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
 last_staleness_scan:
-  commit: 77aadcd327643367129d4b3874a3c9c217b40084
+  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
 ---
 
@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** A
 
-Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584. ARCH-011 marked stale in the 2026-06-26 refresh: the original false claim is gone, the unconditional `from acheron.worker_sdk.cloud import ...` is the documented behavior now, not a bug. One new finding: ARCH-023 (low) — cross-module import of module-private `_ENV_ONLY_FIELDS` is the same PLC2701 anti-pattern as the original ARCH-005.
+Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584. ARCH-011 marked stale in the 2026-06-26 refresh: the original false claim is gone, the unconditional `from acheron.worker_sdk.cloud import ...` is the documented behavior now, not a bug. One new finding: ARCH-023 (low) — cross-module import of module-private `_ENV_ONLY_FIELDS` is the same PLC2701 anti-pattern as the original ARCH-005. **2026-06-26 round 2 refresh**: ARCH-012 marked stale (the `inner_paths` cherry-pick pattern is fully resolved by `dcebea6`); ARCH-024 (medium) added — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` (a server-internal HTTP module), tying the public client to the server's HTTP layer; CFG-013 (low) added — the 5.0-second drain timeout in `Orchestrator._drain_inflight_tasks` is hard-coded and `OrchestratorSettings` has no equivalent field (silent knob per AGENTS.md).
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -319,18 +319,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: 2026-06-24
+  commit: 59458ba
+  date: 2026-06-26
 fixed_in: []
 files:
-- path: src/acheron/worker_sdk/__init__.py
-  lines: 1-8
-- path: src/acheron/worker_sdk/__init__.py
-  lines: 10-12, 22-27
-- path: src/acheron/worker_sdk/cloud.py
-  lines: 22-27
-- path: src/acheron/worker_sdk/_runpod_client.py
-  lines: 1-8, 10-12, 22-27
+  - path: src/acheron/worker_sdk/__init__.py
+    lines: 1-1
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 1-1
+  - path: src/acheron/worker_sdk/_runpod_client.py
+    lines: 1-1
 related:
 - CORR-016
 ```
@@ -346,31 +344,25 @@ related:
 ### ARCH-012 — `create_worker_app` cherry-picks routes from `EdgeApp.app.routes` via a hardcoded `inner_paths` set
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
+  commit: dcebea6
+  date: 2026-06-26
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/app.py
-  lines: 139-146
+  lines: 129-132
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 115-262
+  lines: 269-324
 related:
 - CORR-015
 - MAINT-011
 ```
 
-**Issue.** `create_worker_app` (app.py:87-144) constructs an `EdgeApp` (line 101) to get a route source, then builds a *separate* `FastAPI` app (line 135) with its own lifespan, and copies the inner app's routes into the outer app via a hardcoded set: `inner_paths = {"/health", "/capabilities", "/execute"}` (line 139) plus a path-attribute loop (lines 140-143). The inner `EdgeApp.app` instance is otherwise discarded — the docstring on line 137-138 explicitly says "the inner `EdgeApp` is built only as a route source — its lifespan is dead code that this outer `lifespan` supersedes." The construction-then-cherry-pick pattern is structural: if `EdgeApp` adds a route (e.g. `/metrics`, `/readyz`), `create_worker_app` silently drops it; if `EdgeApp` renames a route, the hardcoded set carries a dead entry.
-
-**Why it matters.** The pattern is brittle: two FastAPI app instances with one lifespan, and a string-typed route filter that the type system cannot keep in sync with the inner app's route table. A future maintainer adding a route to `EdgeApp` will not realise the `create_worker_app` surface is narrower, and a route-rename will silently fail at request time. The duplicated docstring on lines 93-97 and 98 (`"""Build the edge FastAPI app wired with registration + price refresh."""` twice) is a tell that the body has accreted without consolidation.
-
-**Recommendation.** Refactor `create_worker_app` to delegate route construction to a single `EdgeApp` (or equivalent) and have it expose the price-refresh + registration wiring as hooks/middleware. The simplest path: add a `lifespan=` parameter or a `register_health_check=` hook to `EdgeApp`, build the lifespan inline in `EdgeApp.__init__` accepting a registration hook, and have `create_worker_app` return `EdgeApp.app` directly. Drop the `inner_paths` filter and the dead lifespan in `EdgeApp`.
-
-**Verification.** just test (the existing tests for /health, /capabilities, /execute on the edge app continue to pass); add a test that registers a new `EdgeApp` route (e.g. a stub `/metrics`) and asserts `create_worker_app` exposes it; just lint-strict; just type-check. The duplicate docstring on app.py:98 should also be removed as part of the refactor.
+**Issue.** The `inner_paths` hardcoded set is gone in commit `dcebea6` (replaced by `app.include_router(inner.router)` at app.py:131-132, with `EdgeApp.router` exposed at _edge_http.py:303-324). The cherry-pick pattern described in the original issue is fully resolved. The duplicate docstring on the old app.py:98 was also removed in the same commit. Marking stale so a future tackle pass can verify and confirm `fixed`.
 
 ### ARCH-013 — `transports/grpc.py` and `transports/http.py` both duplicate the `data_dir` env-var fallback to `ACHERON_DATA_DIR`
 
@@ -1134,18 +1126,18 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: 59458ba
   date: 2026-06-26
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/settings.py
     lines: 16-22
   - path: src/acheron/worker_sdk/config_loader.py
-    lines: 23
-  - path: src/acheron/worker_sdk/config_loader.py
     lines: 12
   - path: src/acheron/worker_sdk/settings.py
-    lines: 107-117
+    lines: 97-107
+  - path: src/acheron/worker_sdk/config_loader.py
+    lines: 50
 related: [ARCH-005]
 ```
 
@@ -1156,3 +1148,57 @@ related: [ARCH-005]
 **Recommendation.** Pick one: (a) drop the leading underscore and rename to `ENV_ONLY_FIELDS` in `settings.py:26-32`, then update the import site in `config_loader.py:23`; (b) expose the env-only set as a method on `WorkerSettings` (e.g. `WorkerSettings.is_env_only_field(name) -> bool`) and have `config_loader.py:61` call it, removing the cross-module constant read entirely. Option (b) keeps the encapsulation strong and gives the validator room to evolve (e.g. per-field metadata); option (a) is the smaller change.
 
 **Verification.** `git grep -n '^from acheron.worker_sdk.settings import _' src/ tests/` returns no matches. `grep -rn '_ENV_ONLY_FIELDS' src/ tests/` shows only the definition site in `settings.py`. `just test` (the existing `tests/worker_sdk/test_settings.py` env-only-field cases continue to pass; the YAML-side rejection in `config_loader.py:61` still raises with the same message). `just lint-strict` and `just type-check`.
+
+### ARCH-024 — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` at module top — client depends on server-internal HTTP module
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/api_client.py
+    lines: 10-17
+  - path: src/acheron/shell/api/schemas.py
+    lines: 30-103
+related: []
+```
+
+**Issue.** The fix for TYPE-001 (typed Pydantic response models in `AcheronClient`) introduces an unconditional top-level import of `CapabilitiesResponse`, `JobListResponse`, `JobResponse`, `LanguagePair`, `WorkerListResponse`, `WorkerResponse` from `acheron.shell.api.schemas` (api_client.py:10-17). The same file also defines request schemas (`SubmitJobRequest`, `WorkerRegistrationRequest`, `WorkerCapabilitiesRequest`) that the client must not consume. Both request and response types live in the FastAPI app's HTTP-schemas module even though the wire-format response types are part of the API contract shared by client and server. The `api_client.py` module is a sibling of `shell/` (top-level under `acheron/`) — it is the public Python client, conceptually decoupled from the server's HTTP implementation. The current import makes the client reach into the server's HTTP-schemas module: any future HTTP-specific concern (e.g. `field_validator` referencing `Request.headers`, a server-only discriminator field) added to a response schema leaks into the client at type-check time and import time.
+
+**Why it matters.** AGENTS.md requires 'strict domain separation, avoid string-based dispatch' and 'make illegal states unrepresentable'. The response schemas are the wire-format contract — they belong in a layer both server and client can use. Embedding them in `shell/api/schemas.py` ties the client to the server's HTTP module. The import-linter contract is satisfied (`root_packages = ['acheron', 'workers']` only forbids `core → shell` and `worker_sdk → shell`/`workers → shell`), but the cleaner design is to extract the response schemas to a `core/schemas.py` (or extend `core/models.py`) so both server and client depend on a shared wire-format layer rather than on each other's modules. Medium because the import-linter contract is satisfied and the runtime cost is zero, but the design is brittle for any future HTTP-specific concern that creeps into a response schema.
+
+**Recommendation.** Extract the response schemas (`JobResponse`, `JobListResponse`, `WorkerResponse`, `WorkerListResponse`, `CapabilitiesResponse`, `LanguagePair`) to a new `acheron/core/schemas.py` (or extend `core/models.py`). Keep the request schemas (`SubmitJobRequest`, `WorkerRegistrationRequest`, `WorkerCapabilitiesRequest`) in `shell/api/schemas.py` since they are HTTP-validation concerns. Have `api_client.py` import the response schemas from the new core location. The FastAPI app's routes import the response schemas from the same core location and re-export them; the client and server both depend on a shared wire-format module. Drop the `shell/api/schemas` import from `api_client.py`.
+
+**Verification.** `git grep -n 'from acheron.shell.api.schemas' src/acheron/api_client.py` returns zero matches. `git grep -n 'class JobResponse\|class WorkerResponse\|class CapabilitiesResponse' src/acheron/core/` shows the response types live in `core/schemas.py` (or `core/models.py`). The 13 currently-passing `tests/test_api_client.py` cases continue to pass; `just type-check`; `just lint-imports` (no boundary regression).
+
+### CFG-013 — Magic 5.0-second drain timeout in `Orchestrator._drain_inflight_tasks` is hard-coded; `OrchestratorSettings` has no equivalent field
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 59458ba
+last_verified_at:
+  commit: 59458ba
+  date: 2026-06-26
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 263-278
+  - path: src/acheron/shell/config.py
+    lines: 50-56
+related: [CFG-006, CFG-009, OBS-013]
+```
+
+**Issue.** The OBS-001 fix added `_drain_inflight_tasks` (orchestrator.py:263-278) which calls `async with asyncio.timeout(5.0): await asyncio.gather(*pending, return_exceptions=True)`. The `5.0` is a magic constant. `OrchestratorSettings` (config.py:50-56) has `data_dir`, `registration_token`, `open_registration`, `health_check_interval_seconds` — the equivalent for the shutdown drain grace is missing. A job that needs >5s to write FAILED to the job store on shutdown (e.g. slow Redis under load, or a transient network blip) will be silently dropped: `asyncio.TimeoutError` from the inner `gather` will surface in the outer context but the cancelled task's `try: await self._job_store.put(tracked)` in `_execute` may not have completed, leaving the persisted state stale. The current value is the right default for in-memory and local-Redis setups, but an operator running against a remote Redis with a slow link has no way to extend the grace period.
+
+**Why it matters.** AGENTS.md: 'silent/unexpected behavior is worse than no control at all.' A value that should be a knob is silently a constant. The pattern matches CFG-006 (env vars read outside the settings loader) and CFG-009 (single-consumer top-level knob) — the value lives where it is not tunable, the same way `chars_per_token` and `max_input_tokens` did before their respective fixes. Low because the default is sensible for typical deployments, but a slow persistence backend silently loses the FAILED state on shutdown.
+
+**Recommendation.** Add `shutdown_drain_seconds: float = 5.0` to `OrchestratorSettings` (config.py:50-56). Have `Orchestrator._drain_inflight_tasks` read `self._settings.orchestrator.shutdown_drain_seconds` instead of the literal 5.0. Document the field in `acheron.yaml.example`. Optionally add a `WorkerSettings`-style `env_aliases` mapping in `_EnvAliasSettingsSource` so `ACHERON_SHUTDOWN_DRAIN_SECONDS` also works.
+
+**Verification.** `git grep -n 'asyncio.timeout(5.0)' src/` returns zero matches; `git grep -n 'shutdown_drain_seconds' src/acheron/shell/config.py` returns one definition. A test that constructs an `Orchestrator` with a Settings where `shutdown_drain_seconds=0.1` and asserts the drain returns within 0.2s even when a fake `_job_store.put` sleeps 1s. `just test`; `just type-check`; `just lint-strict`.
