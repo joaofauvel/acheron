@@ -47,8 +47,11 @@ Docker Compose (orchestrator host)
 
 ```python
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import TypeAlias
+
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 
 class WorkerType(Enum):
     EXTRACTION = "extraction"
@@ -63,33 +66,35 @@ class JobStatus(Enum):
     FAILED = "failed"
     PARTIAL = "partial"
 
-@dataclass
+@dataclass(frozen=True)
 class WorkerCapabilities:
     worker_type: WorkerType
-    supported_languages_in: set[str]   # ISO 639-1 codes
-    supported_languages_out: set[str]
-    supported_formats_in: set[str]     # e.g. {"epub", "mp3", "wav", "md"}
-    supported_formats_out: set[str]    # e.g. {"wav", "m4b", "md"}
+    supported_languages_in: frozenset[str]   # ISO 639-1 codes
+    supported_languages_out: frozenset[str]
+    supported_formats_in: frozenset[str]     # e.g. {"epub", "mp3", "wav", "md"}
+    supported_formats_out: frozenset[str]    # e.g. {"wav", "m4b", "md"}
     max_payload_bytes: int | None
     batch_capable: bool
     model_source: str | None           # e.g. "huggingface:Qwen/Qwen3-TTS-12Hz-1.7B"
-    metadata: dict                     # model name, VRAM usage, etc.
+    max_input_tokens: int | None = None  # per-chunk input token limit; None = unbounded
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
 
-@dataclass
+@dataclass(frozen=True)
 class Job:
     job_id: str
     job_type: WorkerType
-    payload: dict
+    payload: dict[str, JsonValue]
     chapter_id: str
-    sequence_ids: list[int] | None
+    sequence_ids: tuple[int, ...] | None = None
 
-@dataclass
+@dataclass(frozen=True)
 class OutputFile:
     path: str
     filename: str
     size_bytes: int
     checksum: str       # SHA-256
     content_type: str   # e.g. "audio/wav", "text/markdown"
+    metadata: dict[str, str] = field(default_factory=dict)
 
 @dataclass
 class JobResult:
@@ -216,8 +221,7 @@ Workers return artifacts as bytes — never as filesystem paths into the orchest
       "type": "TTS",
       "depends_on": ["translate-ch1"],
       "status": "pending",
-      "payload": {"chapter_id": "ch1", "chunks": [...]},
-      "batch": true
+      "payload": {"chapter_id": "ch1", "chunks": [...]}
     },
     {
       "step_id": "package-ch1",
@@ -269,10 +273,9 @@ type JobRequest = EpubRequest | AudioRequest
 class PlanStep:
     step_id: str
     type: WorkerType
-    depends_on: list[str]
+    depends_on: tuple[str, ...]
     status: StepStatus
-    payload: dict
-    batch: bool = False
+    payload: dict[str, JsonValue]
 
 @dataclass
 class Plan:
@@ -424,9 +427,9 @@ The orchestrator exposes a `/capabilities` endpoint that aggregates language pai
 GET /capabilities
 → {
     "language_pairs": [
-      {"src": "en", "dst": "es", "workers": ["runpod-asr", "openrouter", "runpod-tts"]},
-      {"src": "en", "dst": "fr", "workers": ["runpod-asr", "openrouter", "runpod-tts"]},
-      {"src": "fr", "dst": "en", "workers": ["openrouter", "runpod-tts"]}
+      {"src": "en", "dst": "es", "workers": ["granite-speech-1", "translategemma-1", "qwen3tts-1"]},
+      {"src": "en", "dst": "fr", "workers": ["granite-speech-1", "translategemma-1", "qwen3tts-1"]},
+      {"src": "fr", "dst": "en", "workers": ["translategemma-1", "qwen3tts-1"]}
     ]
   }
 ```
@@ -457,8 +460,8 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 
 | Failure Mode | Strategy |
 |---|---|
-| Network drop (push to worker) | Exponential backoff retry (tenacity). 5 failures → raise `WorkerError`, job fails. |
-| Worker crash mid-job | Health check fails 3 consecutive times → remove from registry. Re-dispatch to another worker of same type. No alternative → `WorkerError`, job fails. |
+| Network drop (push to worker) | First failure raises `WorkerUnavailableError` (`HttpWorker._request`). No transport-level retry; the per-step `asyncio.wait_for` timeout fails the job. Worker re-registration retries are in `register_with_orchestrator` (default 30, exponential backoff, capped at 30s). |
+| Worker crash mid-job | Health check fails 3 consecutive times → remove from registry. No automatic re-dispatch; the step fails, the executor surfaces the error, and the job is marked `failed`. |
 | Stage failure (`StreamingExecutor`) | Outer `asyncio.TaskGroup` cancels all sibling stages immediately. Job marked `failed`; `completed_steps` reflects the count of steps that actually wrote a manifest (not 0 on partial success). No partial audiobook written. |
 | Sequence gap in output | Packaging validates sequence continuity. Gap → abort that stage. |
 | Invalid language path | Planner rejects at plan compilation. No GPU time spent. |
@@ -471,7 +474,7 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 
 - **RunPod idle shutdown**: If queue empty for 300s, orchestrator calls RunPod API to terminate pod.
 - **Per-job cost tracking**: Each `JobResult` includes `JobMetrics` with `cost_estimate` and `cost_basis` (since [Layer 8a](./layer-8a-tts-worker.md)). Orchestrator aggregates per-job and per-worker. `cost_estimate is None` (basis `UNKNOWN`) means the worker could not price the step — it is skipped from `PlanResult.total_cost`, never silently coerced to `$0.00`.
-- **Cost sources**: RunPod serverless ($/hr fetched from the RunPod GraphQL `gpuTypes.lowestPrice.uninterruptablePrice`, multiplied by actual GPU-seconds — fault-tolerant fallback to cached/unknown), OpenRouter (tokens × price/token), local workers (`ZeroPrice`, basis `STATIC`). Worker-side pricing is best-effort: a transient API outage at startup does not block worker registration; mid-flight outages report `None`; `PlanResult.total_cost_basis` is the least-confident basis across steps.
+- **Cost sources**: RunPod serverless ($/hr fetched from the RunPod GraphQL `gpuTypes.lowestPrice.uninterruptablePrice`, multiplied by actual GPU-seconds — fault-tolerant fallback to cached/unknown), local workers (`ZeroPrice`, basis `STATIC`). Worker-side pricing is best-effort: a transient API outage at startup does not block worker registration; mid-flight outages report `None`; `PlanResult.total_cost_basis` is the least-confident basis across steps.
 - **Dashboard rendering**: the `Cost` table visualizes `cost_basis` as a colored badge (`Measured` green / `Cached` amber / `Unknown` gray / `Static` neutral) with a short, plain-English note in an adjacent column so operators can tell "real numbers from the provider" apart from "we gave up."
 
 ## Docker Deployment
@@ -483,7 +486,7 @@ The full production-ready compose is in `docker-compose.yml` at the repo root. K
 - Every service has a `healthcheck` block
 - The orchestrator uses the `acheron-data` named volume and reads `ACHERON_DATA_DIR=/data/jobs`
 - All inter-service `depends_on` use `condition: service_healthy`
-- The gRPC stub runs an HTTP sidecar on `WORKER_HTTP_PORT` (default 9002) so Docker can probe it
+- The gRPC stub's HTTP edge listens on its `listen_port` (compose maps 9002:8001) so Docker can probe it; the gRPC `Artifact` path is exercised in-process via `tests/shell/test_grpc_worker.py` and `_FakeSynthesisServicer`
 
 A representative service:
 
@@ -517,9 +520,9 @@ Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Tr
 
 Workers are completely decoupled, model-specific containers built with PyTorch and CUDA. They depend on the [`acheron.worker_sdk`](./layer-8a-tts-worker.md) blueprint subpackage of the orchestrator's `acheron` wheel — which imports only `acheron.core` types and never `acheron.shell`. They communicate with the orchestrator solely through the standardized REST/gRPC interfaces and never touch the orchestrator's I/O code.
 
-* **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B-CustomVoice for text synthesis via 9 built-in premium speakers. Min 24GB VRAM. Layer 8a (in progress).
-* **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM. Layer 8b (planned).
-* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 55 languages. Min ~16GB VRAM. Used when `source_language != target_language`; skipped otherwise. Layer 8c (planned).
+* **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B-CustomVoice for text synthesis via 9 built-in premium speakers. Min 24GB VRAM. Layer 8a.
+* **granite_speech-worker:** Run `ibm-granite/granite-speech-4.1-2b` for ASR. 6 languages (`en, fr, de, es, pt, ja`); 2B-param BF16 model that fits comfortably in 24GB. Layer 8b. See [Layer 8b spec](./layer-8b-asr-worker.md).
+* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 69 languages. A40 (48 GB) required. Used when `source_language != target_language`; skipped otherwise. Layer 8c.
 
 **Deployment & API:**
 * Workers ship one deployment mode each — the blueprint is one mode per worker. v1 (qwen3tts) ships RunPod Serverless only; a local-GPU `Qwen3TTSLocalHandler` would be a separate future worker package, not a runtime flag.
@@ -547,6 +550,7 @@ HTMX + Jinja2, separate container (`dashboard/`), polling orchestrator API every
 - `GET /partials/jobs` — jobs table partial
 - `GET /partials/workers` — workers table partial
 - `GET /partials/cost` — cost table partial
+- `GET /partials/status` — orchestrator status partial (proxied from `/api/status`)
 
 **Dependencies:** FastAPI, Jinja2, HTMX (CDN), httpx
 
@@ -596,20 +600,18 @@ These commands require API endpoints or worker-targeting plumbing that don't exi
 ```bash
 acheron job cancel job-xyz               # cancel a running job
 acheron job package job-xyz --output ./  # package completed job to M4B (manual run)
-acheron job submit podcast.mp3 --src en --dest es --asr whisper-v3   # pick a specific ASR worker
+acheron job submit podcast.mp3 --src en --dest es --asr granite-speech-1   # pick a specific ASR worker
 acheron job submit book.epub  --src en --dest es --tts  qwen3tts-1   # pick a specific TTS worker
-acheron job submit book.epub  --src en --dest es --translation openrouter  # pick a translation worker
+acheron job submit book.epub  --src en --dest es --translation translategemma-1  # pick a translation worker
 ```
 
 The `asr_model` field on `AudioRequest` / `SubmitJobRequest` is wired into the transcribe step's payload today, but `step_handler._language_matches` selects workers purely by `WorkerType` + language pair (first-registered-wins) — the field is a no-op. Per-step worker targeting (`asr_model`, `tts_model`, `translation_model` hints on the plan request, validated by the planner against the registry) is deferred to a separate sub-project. With one RunPod worker per `WorkerType` per deployment, language-match selection suffices in v1.
 
 ## Translation Engine
 
-Workers report supported language pairs. Translation can be backed by:
-- **API**: OpenRouter (DeepSeek-V3, Gemini 2.5 Flash)
-- **Local**: TranslateGemma on GPU worker
+Workers report supported language pairs. v1 is backed exclusively by the local TranslateGemma GPU worker (Layer 8c). API-backed translation (e.g. OpenRouter) is a deferred option, not in scope for v1.
 
-Prompt template for API translation (dynamically templated with target language):
+Prompt template for the v1 local worker (dynamically templated with target language):
 
 ```
 System: Eres un traductor profesional literario. Traduce el siguiente texto en {source_language} al {target_language}. Mantén estrictamente el formato Markdown, los nombres propios y la estructura de los párrafos. No agregues introducciones, comentarios ni notas al pie. Genera únicamente la traducción limpia.
@@ -622,7 +624,6 @@ System: Eres un traductor profesional literario. Traduce el siguiente texto en {
 - FastAPI
 - NLTK (punkt tokenizer)
 - FFmpeg (concatenation, M4B container packaging with chapter metadata)
-- tenacity (retry logic)
 - Redis client (redis-py) — Layer 7
 - httpx (worker communication)
 - click (CLI framework)
@@ -634,15 +635,17 @@ System: Eres un traductor profesional literario. Traduce el siguiente texto en {
 - Deployment mode: RunPod Serverless (24GB GPU list: L4 / A5000 / RTX 3090)
 - Output: `multipart/mixed` with `BytesArtifact` per chapter WAV
 
-**ASR Worker (Layer 8):**
+**ASR Worker (Layer 8b — `acheron.worker_sdk` blueprint + `granite_speech` worker):**
 - PyTorch + CUDA
 - HuggingFace Transformers
-- Whisper-v3 (Large)
+- `ibm-granite/granite-speech-4.1-2b` (2B params, BF16, 24GB GPU)
+- Deployment mode: RunPod Serverless
 
-**Translation Worker (Layer 8):**
+**Translation Worker (Layer 8c — `acheron.worker_sdk` blueprint + `translategemma` worker):**
 - PyTorch + CUDA
 - HuggingFace Transformers
 - TranslateGemma-12B (`google/translategemma-12b-it`)
+- Deployment mode: RunPod Serverless
 
 **Dashboard:**
 - Python 3.14+
