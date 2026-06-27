@@ -1,14 +1,10 @@
 """Redis-backed implementations of the store ABCs."""
 
-# redis.asyncio stubs type methods as ``Awaitable[T] | T``; we silence the
-# misc for each ``await self._redis.<method>`` since the ``T`` branch is
-# unreachable in async call sites.
-
 from __future__ import annotations
 
 import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import redis.asyncio
 
@@ -16,9 +12,38 @@ from acheron.core.models import AudioRequest, EpubRequest, WorkerStatus
 from acheron.shell.stores.base import JobStore, WorkerStore
 
 if TYPE_CHECKING:
+    from redis.asyncio.client import Pipeline as _RedisPipeline
+
     from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
+
+
+class _RedisAwaitable(Protocol):
+    """Subset of redis.asyncio.Redis that the stores actually use.
+
+    The actual redis.asyncio stubs type each method as ``Awaitable[T] | T``,
+    which forces a ``# type: ignore[misc]`` at every async call site even
+    though the ``T`` branch is unreachable. Typing ``self._redis`` as this
+    Protocol lets mypy trust the Protocol's signatures at the call sites
+    and removes the per-call markers.
+    """
+
+    async def ping(self) -> bool: ...
+    async def aclose(self) -> None: ...
+    async def hgetall(self, name: str) -> dict[str, str]: ...
+    async def smembers(self, name: str) -> set[str]: ...
+    async def hincrby(self, name: str, key: str, amount: int) -> int: ...
+    async def hset(
+        self,
+        name: str,
+        key: str | None = None,
+        value: str | None = None,
+        mapping: dict[str, str] | None = None,
+    ) -> int | None: ...
+    async def exists(self, name: str) -> bool: ...
+    async def get(self, name: str) -> str | None: ...
+    def pipeline(self, transaction: bool = True) -> _RedisPipeline: ...  # noqa: FBT001, FBT002
 
 
 _WORKER_KEY = "worker:{worker_id}"
@@ -291,11 +316,14 @@ class RedisWorkerStore(WorkerStore):
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
+        self._redis: _RedisAwaitable = cast(
+            "_RedisAwaitable",
+            redis.asyncio.Redis.from_url(redis_url, decode_responses=True),
+        )
 
     async def connect(self) -> None:
         """Verify the Redis server is reachable. Idempotent."""
-        await self._redis.ping()  # type: ignore[misc]
+        await self._redis.ping()
 
     async def close(self) -> None:
         """Close the underlying Redis connection pool."""
@@ -326,14 +354,14 @@ class RedisWorkerStore(WorkerStore):
 
     async def get(self, worker_id: str) -> RegisteredWorker | None:
         """Look up a worker by ID."""
-        fields: dict[str, str] = await self._redis.hgetall(_WORKER_KEY.format(worker_id=worker_id))  # type: ignore[misc]
+        fields: dict[str, str] = await self._redis.hgetall(_WORKER_KEY.format(worker_id=worker_id))
         if not fields:
             return None
         return _deserialize_worker(worker_id, fields)
 
     async def list_all(self) -> tuple[RegisteredWorker, ...]:
         """Return all registered workers."""
-        ids: set[str] = await self._redis.smembers(_WORKERS_SET)  # type: ignore[misc]
+        ids: set[str] = await self._redis.smembers(_WORKERS_SET)
         if not ids:
             return ()
         async with self._redis.pipeline(transaction=False) as pipe:
@@ -360,8 +388,8 @@ class RedisWorkerStore(WorkerStore):
         key = _WORKER_KEY.format(worker_id=worker_id)
         if not await self._redis.exists(key):
             return False
-        new_count: int = await self._redis.hincrby(key, "consecutive_failures", 1)  # type: ignore[misc]
-        await self._redis.hset(key, "last_health_check", str(time.time()))  # type: ignore[misc]
+        new_count: int = await self._redis.hincrby(key, "consecutive_failures", 1)
+        await self._redis.hset(key, "last_health_check", str(time.time()))
         if new_count >= self.max_failures:
             await self.unregister(worker_id)
             return True
@@ -387,7 +415,7 @@ class RedisWorkerStore(WorkerStore):
         key = _WORKER_KEY.format(worker_id=worker_id)
         if not await self._redis.exists(key):
             return
-        await self._redis.hset(  # type: ignore[misc]
+        await self._redis.hset(
             key,
             mapping={"status": status.value, "last_error": last_error or ""},
         )
@@ -400,11 +428,14 @@ class RedisJobStore(JobStore):
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
+        self._redis: _RedisAwaitable = cast(
+            "_RedisAwaitable",
+            redis.asyncio.Redis.from_url(redis_url, decode_responses=True),
+        )
 
     async def connect(self) -> None:
         """Verify the Redis server is reachable. Idempotent."""
-        await self._redis.ping()  # type: ignore[misc]
+        await self._redis.ping()
 
     async def close(self) -> None:
         """Close the underlying Redis connection pool."""
@@ -426,7 +457,7 @@ class RedisJobStore(JobStore):
 
     async def list_all(self) -> tuple[TrackedJob, ...]:
         """Return all tracked jobs."""
-        ids: set[str] = await self._redis.smembers(_JOBS_SET)  # type: ignore[misc]
+        ids: set[str] = await self._redis.smembers(_JOBS_SET)
         if not ids:
             return ()
         async with self._redis.pipeline(transaction=False) as pipe:

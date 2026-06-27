@@ -686,31 +686,17 @@ related: [CORR-001]
 ### TYPE-003 — redis.py accumulates 8 `# type: ignore[misc]` markers on `await self._redis.<method>()` calls
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
   commit: pending
-  date: 2026-06-23
-fixed_in: []
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 298
-  - path: src/acheron/shell/stores/redis.py
-    lines: 329
-  - path: src/acheron/shell/stores/redis.py
-    lines: 336
-  - path: src/acheron/shell/stores/redis.py
-    lines: 363
-  - path: src/acheron/shell/stores/redis.py
-    lines: 364
-  - path: src/acheron/shell/stores/redis.py
-    lines: 390
-  - path: src/acheron/shell/stores/redis.py
-    lines: 407
-  - path: src/acheron/shell/stores/redis.py
-    lines: 429
+    lines: 18-49
 related: []
 ```
 
