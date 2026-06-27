@@ -25,6 +25,11 @@ from acheron.core.models import (
 from acheron.proto import synthesis_pb2, synthesis_pb2_grpc
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
+# Alias the proto Artifact once at module top — the proto-generated name
+# is not in the mypy module's namespace, so the bare `synthesis_pb2.Artifact`
+# would otherwise need a per-site # type: ignore[name-defined].
+type _Artifact = synthesis_pb2.Artifact  # type: ignore[name-defined]
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,7 +54,7 @@ class GrpcWorker(Worker):
         data_dir: Path | str,
     ) -> None:
         self._channel = channel
-        self._stub = synthesis_pb2_grpc.SynthesisStub(channel)  # type: ignore[no-untyped-call]
+        self._stub = synthesis_pb2_grpc.SynthesisStub(channel)  # type: ignore[no-untyped-call]  # proto stubs are untyped
         self._health_stub = health_pb2_grpc.HealthStub(channel)
         self._data_dir = Path(data_dir)
 
@@ -70,7 +75,7 @@ class GrpcWorker(Worker):
             msg = f"GrpcWorker only supports TTS, got {job.job_type}"
             raise WorkerError(msg)
 
-        request = synthesis_pb2.SynthesisRequest(  # type: ignore[attr-defined]
+        request = synthesis_pb2.SynthesisRequest(  # type: ignore[attr-defined]  # proto-generated class not in mypy namespace
             job_id=job.job_id,
             text=str(job.payload.get("text", "")),
             language=str(job.payload.get("language", "")),
@@ -78,7 +83,7 @@ class GrpcWorker(Worker):
         )
 
         start_time = time.monotonic()
-        artifact_parts: list[synthesis_pb2.Artifact] = []  # type: ignore[name-defined]
+        artifact_parts: list[_Artifact] = []
         pcm_chunks: list[bytes] = []
 
         try:
@@ -105,7 +110,7 @@ class GrpcWorker(Worker):
     async def _assemble_artifacts(
         self,
         job_id: str,
-        artifacts: list[synthesis_pb2.Artifact],  # type: ignore[name-defined]
+        artifacts: list[_Artifact],
         duration: float,
     ) -> JobResult:
         plan_job_id = "-".join(job_id.split("-")[:-1]) if "-" in job_id else job_id
@@ -150,4 +155,4 @@ class GrpcWorker(Worker):
         except grpc.aio.AioRpcError:
             return False
         else:
-            return response.status == health_pb2.HealthCheckResponse.SERVING  # type: ignore[no-any-return]
+            return response.status == health_pb2.HealthCheckResponse.SERVING  # type: ignore[no-any-return]  # proto enum value is Any-typed

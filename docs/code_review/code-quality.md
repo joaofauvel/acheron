@@ -771,25 +771,23 @@ related: [TYPE-004]
 ### TYPE-006 — `grpc.py` accumulates 5 `# type: ignore[...]` markers for the new proto Artifact oneof
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
 - path: src/acheron/shell/transports/grpc.py
-  lines: 52, 73, 81, 108, 153
+  lines: 31
 - path: src/acheron/shell/transports/grpc.py
-  lines: 72
+  lines: 57
 - path: src/acheron/shell/transports/grpc.py
-  lines: 80
+  lines: 78
 - path: src/acheron/shell/transports/grpc.py
-  lines: 107
-- path: src/acheron/shell/transports/grpc.py
-  lines: 152
+  lines: 158
 related: []
 ```
 
