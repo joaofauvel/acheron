@@ -151,14 +151,15 @@ class RunPodForwarderHandler(WorkerHandler):
         self,
         settings: WorkerSettings,
         *,
-        phantom_handler: type[WorkerHandler] | None = None,
+        phantom_handler: Callable[[WorkerSettings], WorkerHandler] | None = None,
     ) -> None:
         self._settings = settings
         if phantom_handler is not None:
             # The phantom's __init__ is not part of the WorkerHandler Protocol
-            # (each handler defines its own constructor); we type-ignore the call
-            # site rather than widening the Protocol signature.
-            self._phantom: WorkerHandler | None = phantom_handler(settings)  # type: ignore[call-arg]
+            # (each handler defines its own constructor); we type the param as
+            # Callable[[WorkerSettings], WorkerHandler] so the call site is
+            # type-clean without widening the Protocol signature.
+            self._phantom: WorkerHandler | None = phantom_handler(settings)
         else:
             self._phantom = None
         self._client: RunPodClient | None = None

@@ -802,17 +802,17 @@ related: []
 ### TYPE-007 — `RunPodForwarderHandler.__init__` calls `phantom_handler(settings)` under `# type: ignore[call-arg]`
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 7d4754a
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
 - path: src/acheron/worker_sdk/cloud.py
-  lines: 158
+  lines: 154
 related: []
 ```
 
