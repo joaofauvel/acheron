@@ -46,15 +46,23 @@ async def test_multiple_submissions_get_unique_ids(runner: CliRunner, wired_app:
 
 @pytest.mark.asyncio
 async def test_active_filter_shows_running_jobs(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+    """After submit, jobs are reconciled to a terminal status (OBS-001 fix).
+    The active filter should not show them once they have completed or been
+    cancelled; the completed filter should.
+    """
     for name in ("a.epub", "b.epub"):
         (tmp_path / name).touch()
 
     runner.invoke(main, ["job", "submit", str(tmp_path / "a.epub"), "--src", "en", "--dest", "es"])
     runner.invoke(main, ["job", "submit", str(tmp_path / "b.epub"), "--src", "en", "--dest", "es"])
 
-    result = runner.invoke(main, ["jobs", "--active"])
-    assert result.exit_code == 0
-    assert "job-" in result.output
+    active_result = runner.invoke(main, ["jobs", "--active"])
+    assert active_result.exit_code == 0
+    assert "No jobs found" in active_result.output
+
+    completed_result = runner.invoke(main, ["jobs", "--completed"])
+    assert completed_result.exit_code == 0
+    assert completed_result.output.count("job-") == 2
 
 
 @pytest.mark.asyncio

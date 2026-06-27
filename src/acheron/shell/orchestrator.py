@@ -250,14 +250,32 @@ class Orchestrator:
             logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
 
     async def shutdown(self) -> None:
-        """Stop the health monitor background task.
+        """Stop the health monitor and drain in-flight ``_execute`` tasks.
 
-        Does not cancel ``_execute`` tasks spawned by ``submit_job``; those are
-        tracked on ``self._tasks`` and reaped when the event loop tears down.
-        For explicit cleanup of stores (Redis pools, file handles), call
-        :meth:`close` separately.
+        Cancels every task tracked on ``self._tasks`` and awaits them with
+        a grace timeout so any in-flight job moves to a terminal persisted
+        state before the orchestrator returns. For explicit cleanup of
+        stores (Redis pools, file handles), call :meth:`close` separately.
         """
         await self._health_monitor.stop()
+        await self._drain_inflight_tasks()
+
+    async def _drain_inflight_tasks(self) -> None:
+        """Cancel and await in-flight ``_execute`` tasks.
+
+        Each task's ``_execute`` body writes a terminal status to the job
+        store in its ``finally`` block, so awaiting the cancelled tasks is
+        sufficient to reconcile the persisted state. Tasks that have already
+        finished are silently dropped from the set; ``asyncio.wait`` swallows
+        the ``CancelledError`` from each task.
+        """
+        pending = list(self._tasks)
+        if not pending:
+            return
+        for task in pending:
+            task.cancel()
+        async with asyncio.timeout(5.0):
+            await asyncio.gather(*pending, return_exceptions=True)
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
@@ -321,9 +339,25 @@ class Orchestrator:
         return tracked
 
     async def _execute(self, tracked: TrackedJob) -> None:
-        """Run the plan executor and update job status."""
-        with bind_job_id(tracked.job_id):
-            await self._run_execution(tracked)
+        """Run the plan executor and update job status.
+
+        Wraps the run in try/except/finally so a CancelledError from
+        ``shutdown()`` (or an executor crash) always reconciles the job
+        store with a terminal status — no job is ever left in RUNNING.
+        """
+        try:
+            with bind_job_id(tracked.job_id):
+                await self._run_execution(tracked)
+        except asyncio.CancelledError:
+            tracked.status = PlanStatus.FAILED
+            try:
+                await self._job_store.put(tracked)
+            except Exception:
+                logger.exception("Failed to persist job %s after cancellation", tracked.job_id)
+            raise
+        except Exception:
+            logger.exception("Job %s failed in _execute", tracked.job_id)
+            raise
 
     def _invalidate_handler_cache(self) -> None:
         """Invalidate the step handler's worker-instance cache, if it exposes one.

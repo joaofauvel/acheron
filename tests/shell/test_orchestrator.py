@@ -235,6 +235,50 @@ class TestOrchestrator:
         assert await orch.get_job("nope") is None
 
     @pytest.mark.asyncio
+    async def test_shutdown_drains_inflight_jobs_to_failed(self, tmp_path: Path) -> None:
+        """OBS-001: shutdown() must cancel and await in-flight _execute tasks
+        and reconcile each job to a terminal status (FAILED on cancellation).
+        Previously the tasks were left running and the persisted status stayed
+        RUNNING forever.
+        """
+        from acheron.core.models import PlanStatus
+
+        handler_started = asyncio.Event()
+        release_handler = asyncio.Event()
+
+        async def _slow_handler(step: PlanStep, plan: Plan) -> JobResult:
+            handler_started.set()
+            await release_handler.wait()
+            return JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        job_store = InMemoryJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _slow_handler, job_store=job_store)
+        await orch.start()
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+        )
+        tracked = await orch.submit_job(request, ExecutorStrategy.STREAMING)
+        await handler_started.wait()
+        # Cancel the in-flight task via shutdown (drain must terminate the
+        # in-flight _execute and write FAILED to the store).
+        await orch.shutdown()
+        persisted = await job_store.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status == PlanStatus.FAILED
+        # Wake the handler so the test event loop can exit cleanly.
+        release_handler.set()
+
+    @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """Orchestrator.start() must await connect() on both stores before returning."""
         connect_calls: list[str] = []

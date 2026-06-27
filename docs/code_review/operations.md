@@ -216,21 +216,25 @@ OBS-001 (medium) and OBS-003 (low) remain open and kept (code unchanged since 63
 ### OBS-001 — Shutdown does not drain in-flight _execute tasks; cancelled jobs stay stuck at "running"
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
 - path: src/acheron/shell/orchestrator.py
-  lines: 237-245, 293-295, 299-388
+  lines: 252-280
 - path: src/acheron/shell/orchestrator.py
-  lines: 235-243, 291-293, 297-385
-- path: src/acheron/shell/orchestrator.py
-  lines: 235-243, 291-293, 297-385
+  lines: 341-360
+- path: tests/shell/test_orchestrator.py
+  lines: 237-282
+- path: tests/integration/test_job_lifecycle.py
+  lines: 75-110
+- path: tests/integration/test_multi_job.py
+  lines: 47-70
 related:
 - OBS-004
 ```

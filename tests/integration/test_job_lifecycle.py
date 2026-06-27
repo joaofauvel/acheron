@@ -73,24 +73,32 @@ async def test_submit_then_list_jobs(runner: CliRunner, wired_app: FastAPI, tmp_
 
 @pytest.mark.asyncio
 async def test_submit_then_list_jobs_active(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+    """After submit, the job is reconciled to a terminal status (OBS-001 fix
+    makes sure cancelled jobs are persisted as FAILED rather than stuck at
+    RUNNING). The active filter should not show the job once it has
+    completed or been cancelled.
+    """
     epub = tmp_path / "book.epub"
     epub.touch()
     runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
 
     result = runner.invoke(main, ["jobs", "--active"])
     assert result.exit_code == 0
-    assert "job-" in result.output
+    assert "No jobs found" in result.output
 
 
 @pytest.mark.asyncio
 async def test_submit_then_list_jobs_completed_filter(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+    """After submit, the job is reconciled to a terminal status (OBS-001 fix)
+    and shows up in the completed/failed filter, not in "no jobs found".
+    """
     epub = tmp_path / "book.epub"
     epub.touch()
     runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
 
     result = runner.invoke(main, ["jobs", "--completed"])
     assert result.exit_code == 0
-    assert "No jobs found" in result.output
+    assert "job-" in result.output
 
 
 @pytest.mark.asyncio
