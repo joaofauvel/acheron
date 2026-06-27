@@ -13,7 +13,7 @@ last_staleness_scan:
 
 **Grade:** B
 
-MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape. **2026-06-26 refresh**: MAINT-020 (low) — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit (regression of MAINT-009); the regression touches 5 sites including a 5th new site introduced by the EXC-004 fix.
+MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape. **2026-06-26 refresh**: MAINT-020 (low) — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit (regression of MAINT-009); the regression touches 5 sites including a 5th new site introduced by the EXC-004 fix. **2026-06-26 (Round 4)**: MAINT-002 verified as a partial fix in `f129ae2` — `WorkerCapabilities` + worker `metadata` ser/de now use `pydantic.TypeAdapter`, but the outer `TrackedJob` / `Plan` / `PlanResult` / `OutputFile` ser/de (including the manual `source_type` match dispatch on `AudioRequest`/`EpubRequest`) remains hand-rolled. A full fix requires a shared `pydantic.BaseModel` for the TrackedJob wire format and a tagged-union discriminator for `JobRequest` — the remaining drift is tracked as a follow-up.
 
 ### MAINT-001 — BatchAsyncExecutor is a verbatim duplicate of AsyncExecutor; entire batch submission machinery is vestigial
 
@@ -55,14 +55,14 @@ related: [CORR-002, ARCH-001, CORR-003]
 ### MAINT-002 — redis.py hand-rolls JSON ser/deser for domain models that cache.py serializes via pydantic, duplicating and drifting
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: f129ae2
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["f129ae2"]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 65-87
