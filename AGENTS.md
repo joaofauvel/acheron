@@ -28,3 +28,12 @@ AI agents MUST follow this sequence for all changes.
 - Prefer strict domain separation, avoid string-based dispatch, and use typing in your favor to avoid seas of complex branching that are brittle and hard to maintain and extend.
 - Make illegal states unrepresentable.
 - Tests should usually verify behavior, as opposed to state. Avoid tautological tests.
+
+## 3. Notes
+- PEP 758 – Allow except and except\* expressions without parentheses (https://peps.python.org/pep-0758/) was finalised 2025-03-14 for Python 3.14. The rationale: "Removing the requirement for parentheses simplifies the syntax, making it more consistent with other parts of the language. Readability: In cases where many exceptions are being caught, the removal of parentheses can improve readability by reducing visual clutter."
+  - Concrete changes in Python 3.14:
+    1. except A, B: (no parens, no as) is now valid; semantically identical to except (A, B):
+    2. except A, B as e: is not allowed — parens are still required when using as to avoid the Python 2 semantics trap
+    3. Same for except* clauses
+    4. Backwards compatible — the parenthesised form still works
+    5. ruff 0.15+ (and the target-version = "py314" setting) understand the new grammar and won't flag the unparenthesised form. In this codebase, since the rule is selected, ruff will enforce and autofix to the unparenthesised form.
