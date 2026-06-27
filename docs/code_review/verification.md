@@ -49,9 +49,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: c6f0e20
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["c6f0e20"]
 files:
   - path: tests/integration/test_worker_integration.py
     lines: 218-280
@@ -184,9 +184,9 @@ severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: pending
+  commit: 914dfc1
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["914dfc1"]
 files:
   - path: src/acheron/shell/health.py
     lines: 133-152
@@ -244,9 +244,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: 299e592
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["299e592"]
 files:
 - path: src/acheron/shell/stores/redis.py
   lines: 362-371
@@ -720,9 +720,9 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: pending
+  commit: a03f2c1
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["a03f2c1"]
 files:
   - path: src/acheron/tls.py
     lines: 1-109

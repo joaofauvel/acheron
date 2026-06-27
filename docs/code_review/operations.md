@@ -221,9 +221,9 @@ severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: pending
+  commit: 8f54443
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["8f54443"]
 files:
 - path: src/acheron/shell/orchestrator.py
   lines: 252-280
