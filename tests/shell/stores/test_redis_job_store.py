@@ -264,6 +264,19 @@ class TestList:
         jobs = await store.list_all()
         assert jobs == ()
 
+    @pytest.mark.asyncio
+    async def test_list_returns_jobs_in_sorted_id_order(self, store: RedisJobStore) -> None:
+        """REPRO-001: Redis set iteration is non-deterministic; list_all must
+        sort the ids so worker/job selection is reproducible across calls.
+        """
+        await store.put(_tracked("zeta"))
+        await store.put(_tracked("alpha"))
+        await store.put(_tracked("mu"))
+        first = await store.list_all()
+        second = await store.list_all()
+        assert [j.job_id for j in first] == ["alpha", "mu", "zeta"]
+        assert [j.job_id for j in second] == ["alpha", "mu", "zeta"]
+
 
 class TestFailFast:
     @pytest.mark.asyncio

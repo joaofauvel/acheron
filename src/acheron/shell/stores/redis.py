@@ -353,8 +353,8 @@ class RedisWorkerStore(WorkerStore):
         return _deserialize_worker(worker_id, fields)
 
     async def list_all(self) -> tuple[RegisteredWorker, ...]:
-        """Return all registered workers."""
-        ids: set[str] = await self._redis.smembers(_WORKERS_SET)
+        """Return all registered workers, sorted by id for deterministic ordering."""
+        ids = sorted(await self._redis.smembers(_WORKERS_SET))
         if not ids:
             return ()
         async with self._redis.pipeline(transaction=False) as pipe:
@@ -449,8 +449,8 @@ class RedisJobStore(JobStore):
         return _deserialize_job(blob)
 
     async def list_all(self) -> tuple[TrackedJob, ...]:
-        """Return all tracked jobs."""
-        ids: set[str] = await self._redis.smembers(_JOBS_SET)
+        """Return all tracked jobs, sorted by id for deterministic ordering."""
+        ids = sorted(await self._redis.smembers(_JOBS_SET))
         if not ids:
             return ()
         async with self._redis.pipeline(transaction=False) as pipe:

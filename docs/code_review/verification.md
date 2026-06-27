@@ -239,21 +239,21 @@ REPRO-001 remains open (no fix in this delta; cited code unchanged). REPRO-002 r
 ### REPRO-001 — Redis list_all() returns non-deterministic order — step_handler worker selection is non-deterministic with Redis backend
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e123f35
-  date: '2026-06-24'
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
 - path: src/acheron/shell/stores/redis.py
-  lines: 332-341
-- path: src/acheron/shell/step_handler.py
-  lines: 105-144
-- path: tests/integration/test_worker_integration.py
-  lines: 280-294
+  lines: 362-371
+- path: src/acheron/shell/stores/redis.py
+  lines: 458-467
+- path: tests/shell/stores/test_redis_job_store.py
+  lines: 267-282
 related: []
 ```
 
