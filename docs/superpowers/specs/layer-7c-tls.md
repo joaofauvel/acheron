@@ -2,7 +2,7 @@
 
 **TLS Support for Acheron Services**
 
-This is a sub-project of [Acheron design spec](./2026-06-16-acheron-design.md) and [implementation roadmap](./2026-06-16-implementation-roadmap.md). It gives every Acheron service the ability to serve TLS and every Acheron client the ability to verify TLS, configured entirely through environment variables. Cert provenance and reverse proxying remain the deployer's responsibility.
+This is a sub-project of [Acheron design spec](./architecture.md) and [implementation roadmap](./roadmap.md). It gives every Acheron service the ability to serve TLS and every Acheron client the ability to verify TLS, configured entirely through environment variables. Cert provenance and reverse proxying remain the deployer's responsibility.
 
 ## Goal
 
@@ -201,7 +201,7 @@ Each HTTP healthcheck is updated to read `SSL_CERT_FILE` and use it as the trust
 >
 > **Disabling TLS.** Leave `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` unset. All services fall back to HTTP. Useful for local dev without certs.
 
-**Master spec note.** One paragraph added to `docs/superpowers/specs/2026-06-16-acheron-design.md`'s Production Hardening section, plus a status-table update:
+**Master spec note.** One paragraph added to `docs/superpowers/specs/architecture.md`'s Production Hardening section, plus a status-table update:
 
 > Acheron services support TLS via environment variables; cert provenance and proxying are the deployer's responsibility. See the Layer 7c sub-spec for the env-var contract, dev cert script, and compose integration.
 
@@ -263,8 +263,8 @@ Per AGENTS.md: tests don't depend on hardcoded paths. The cert path fixture uses
 - `pyproject.toml` — `cryptography~=44.0` dev dependency; no new runtime deps
 - `.gitignore` — `certs/`
 - `README.md` — new "TLS" subsection in Deployment; new env vars in Configuration table
-- `docs/superpowers/specs/2026-06-16-acheron-design.md` — Production Hardening paragraph; status table update
-- `docs/superpowers/specs/2026-06-16-implementation-roadmap.md` — Layer 7c status: `done`
+- `docs/superpowers/specs/architecture.md` — Production Hardening paragraph; status table update
+- `docs/superpowers/specs/roadmap.md` — Layer 7c status: `done`
 
 ### Unchanged
 

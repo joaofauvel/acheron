@@ -8,7 +8,7 @@ Layer 9 replaces the wave-based batch executor with a streaming pipeline and mig
 
 Two independent, sequenced sub-projects:
 
-- **9a — Streaming Pipeline Executor**: per-stage `asyncio.Queue` pipeline, replacing `BatchAsyncExecutor` as the default for new jobs. Per-step `asyncio.wait_for()` timeout, outer `asyncio.TaskGroup` for clean cancellation, `None` sentinel protocol for stage drainage, `StepCache.save_outputs()` per chunk, `PlanResult.outputs` built by cache scan. See `docs/superpowers/specs/2026-06-19-layer9a-streaming-executor-design.md` for full design.
+- **9a — Streaming Pipeline Executor**: per-stage `asyncio.Queue` pipeline, replacing `BatchAsyncExecutor` as the default for new jobs. Per-step `asyncio.wait_for()` timeout, outer `asyncio.TaskGroup` for clean cancellation, `None` sentinel protocol for stage drainage, `StepCache.save_outputs()` per chunk, `PlanResult.outputs` built by cache scan. See `docs/superpowers/specs/layer-9a-streaming-executor.md` for full design.
 - **9b — Async Redis Stores**: `WorkerStore` and `JobStore` ABCs migrate to `async def`; Redis backends switch to `redis.asyncio.Redis`.
 
 9b is a prerequisite for 9a in production: without async Redis, `registry.list_all()` in the hot dispatch loop still blocks the event loop. Both sub-projects are independently testable and land in sequence.
@@ -135,7 +135,7 @@ All methods on `WorkerStore` and `JobStore` (in `shell/stores/base.py`) become `
 
 **`InMemoryWorkerStore` / `InMemoryJobStore`:** Trivially `async def` — no I/O, no internal `await`s. Behaviour unchanged.
 
-**`RedisWorkerStore` / `RedisJobStore`:** Switch from `redis.Redis` to `redis.asyncio.Redis`. All `pipe.execute()` become `await pipe.execute()`. `__init__` does no I/O; connectivity is verified via a new `async def connect()` instance method that `await`s `self._redis.ping()`. The store ABCs expose a concrete `connect()` with a no-op default; `Orchestrator.start()` awaits `connect()` on both stores. `close()` becomes `async def` and calls `await self._redis.aclose()`. See `docs/superpowers/specs/2026-06-19-layer9b-ii-redis-async-design.md` for full design.
+**`RedisWorkerStore` / `RedisJobStore`:** Switch from `redis.Redis` to `redis.asyncio.Redis`. All `pipe.execute()` become `await pipe.execute()`. `__init__` does no I/O; connectivity is verified via a new `async def connect()` instance method that `await`s `self._redis.ping()`. The store ABCs expose a concrete `connect()` with a no-op default; `Orchestrator.start()` awaits `connect()` on both stores. `close()` becomes `async def` and calls `await self._redis.aclose()`. See `docs/superpowers/specs/layer-9b-ii-redis-async.md` for full design.
 
 No new dependency: `redis.asyncio` is part of the existing `redis~=7.0` package.
 
@@ -150,9 +150,9 @@ No new dependency: `redis.asyncio` is part of the existing `redis~=7.0` package.
 ### Sub-project Split
 
 - **9b-i — Store ABC + InMemory async:** ABCs → `async def`, InMemory backends updated, all call sites `await`. See `docs/superpowers/specs/2026-06-19-layer9b-i-...-design.md` (now superseded by the 9b-ii spec).
-- **9b-ii — Redis async backend:** Done. `__init__` does no I/O; concrete `async def connect()` on the ABCs (no-op default); Redis stores override to `await self._redis.ping()`. `Orchestrator.start()` awaits `connect()` on both stores. `close()` → `aclose()`. See `docs/superpowers/specs/2026-06-19-layer9b-ii-redis-async-design.md`.
-- **9a — Streaming pipeline executor:** Per-stage `asyncio.Queue` pipeline. Per-step `asyncio.wait_for()` timeout, outer `asyncio.TaskGroup`, `None` sentinel drainage. `StepCache` becomes async via aiofiles. `STREAMING` is the new default strategy. All-or-nothing failure semantics: any stage failure → outer TaskGroup cancels siblings → `PlanResult.status == "failed"`. See `docs/superpowers/specs/2026-06-19-layer9a-streaming-executor-design.md`.
-- **9b-ii — Redis async backend:** Swap `redis.Redis` → `redis.asyncio.Redis` in both Redis stores. `__init__` does no I/O; a concrete `async def connect()` is added to the store ABCs (no-op default) and overridden by Redis stores to `await self._redis.ping()`. `Orchestrator.start()` awaits `connect()` on both stores. `close()` becomes `async def` and calls `await self._redis.aclose()`. See `docs/superpowers/specs/2026-06-19-layer9b-ii-redis-async-design.md` for full design.
+- **9b-ii — Redis async backend:** Done. `__init__` does no I/O; concrete `async def connect()` on the ABCs (no-op default); Redis stores override to `await self._redis.ping()`. `Orchestrator.start()` awaits `connect()` on both stores. `close()` → `aclose()`. See `docs/superpowers/specs/layer-9b-ii-redis-async.md`.
+- **9a — Streaming pipeline executor:** Per-stage `asyncio.Queue` pipeline. Per-step `asyncio.wait_for()` timeout, outer `asyncio.TaskGroup`, `None` sentinel drainage. `StepCache` becomes async via aiofiles. `STREAMING` is the new default strategy. All-or-nothing failure semantics: any stage failure → outer TaskGroup cancels siblings → `PlanResult.status == "failed"`. See `docs/superpowers/specs/layer-9a-streaming-executor.md`.
+- **9b-ii — Redis async backend:** Swap `redis.Redis` → `redis.asyncio.Redis` in both Redis stores. `__init__` does no I/O; a concrete `async def connect()` is added to the store ABCs (no-op default) and overridden by Redis stores to `await self._redis.ping()`. `Orchestrator.start()` awaits `connect()` on both stores. `close()` becomes `async def` and calls `await self._redis.aclose()`. See `docs/superpowers/specs/layer-9b-ii-redis-async.md` for full design.
 
 ## New Error Type
 

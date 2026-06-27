@@ -15,7 +15,7 @@ First of three Layer 8 sub-projects. Establishes the worker **blueprint** (`ache
 
 **Out of scope (deferred to separate sub-projects):**
 - 8b — `whisperv3large` ASR worker.
-- 8c — `translategemma` translation worker (supersedes an earlier stub spec that predates the blueprint; see [Layer 8c spec](./2026-06-23-layer8c-translategemma-worker-design.md)).
+- 8c — `translategemma` translation worker (supersedes an earlier stub spec that predates the blueprint; see [Layer 8c spec](./layer-8c-translategemma-worker.md)).
 - `Qwen3-TTS-12Hz-1.7B-Base` voice cloning (future sub-project after 8a/8b/8c).
 - Local-GPU edge mode (`acheron-worker-sdk local-edge` CLI subcommand and a `Qwen3TTSLocalHandler`). Workers commit to one deployment mode by being one mode; v1 ships RunPod serverless only.
 - Per-chunk `instruct` metadata in the plan payload (handler supports it; planner doesn't emit it yet).
@@ -770,7 +770,7 @@ The existing `RunPodHealthProvider` + `HealthMonitor._handle_failure` consume `h
 - `Qwen3TTSRunpodHandler.capabilities()` publishes `max_input_tokens=2048`
   (qwen3-tts is a 2K-context model). The
   `WorkerCapabilities.max_input_tokens` field is new in 8c; see
-  [Layer 8c spec](./2026-06-23-layer8c-translategemma-worker-design.md).
+  [Layer 8c spec](./layer-8c-translategemma-worker.md).
 - `handle(self, job, input: Input | None = None)` reads chunks from
   the `Input` parameter (8b's `BytesInput`): JSON-serialised
   `chunks.json` from the upstream chunking step, sent as a multipart
@@ -1000,11 +1000,11 @@ jobs:
 
 ## References
 
-- [Acheron design spec](./2026-06-16-acheron-design.md) — extended by this spec.
-- [Implementation roadmap](./2026-06-16-implementation-roadmap.md) — Layer 8 row updated to reflect 8a/8b/8c decomposition.
-- [Deployment & dashboard design](./2026-06-20-deployment-and-dashboard-design.md) — `HealthProvider` plumbing this spec reuses.
-- [gRPC streaming design](./2026-06-17-grpc-streaming-design.md) — extended additively here for the `Artifact` oneof.
-- [Piepline streaming design](./2026-06-18-pipeline-streaming-design.md) — `StreamingExecutor` reads `JobResult.cost_basis` unchanged.
+- [Acheron design spec](./architecture.md) — extended by this spec.
+- [Implementation roadmap](./roadmap.md) — Layer 8 row updated to reflect 8a/8b/8c decomposition.
+- [Deployment & dashboard design](./deployment-and-dashboard.md) — `HealthProvider` plumbing this spec reuses.
+- [gRPC streaming design](./grpc-streaming.md) — extended additively here for the `Artifact` oneof.
+- [Piepline streaming design](./pipeline-streaming.md) — `StreamingExecutor` reads `JobResult.cost_basis` unchanged.
 - [Qwen3-TTS model card](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) — CustomVoice variant with 9 built-in speakers.
 - [Qwen3-TTS repo](https://github.com/QwenLM/Qwen3-TTS) — `qwen-tts` PyPI package, `generate_custom_voice` API.
 - [RunPod serverless docs](https://docs.runpod.io/) — `runpod.serverless.start({"handler": ...})` cloud-side handler pattern, network volume + `HF_HUB_OFFLINE=1` model caching.

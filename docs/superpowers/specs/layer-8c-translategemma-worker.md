@@ -1250,12 +1250,12 @@ on:
 jobs:
   build-qwen3tts:
     # Job body identical to [Layer 8a spec, "GHCR CI Workflow"](
-    # ./2026-06-22-layer8a-tts-worker-design.md#ghcr-ci-workflow).
+    # ./layer-8a-tts-worker.md#ghcr-ci-workflow).
     # Publishes acheron-qwen3tts-runpod:latest and :<sha> from workers/qwen3tts/Dockerfile.runpod.
 
   build-granite-speech:
     # Job body identical to [Layer 8b spec, "GHCR CI Workflow"](
-    # ./2026-06-23-layer8b-asr-worker-design.md#ghcr-ci-workflow).
+    # ./layer-8b-asr-worker.md#ghcr-ci-workflow).
     # Publishes acheron-granite-speech-runpod:latest and :<sha> from workers/granite_speech/Dockerfile.runpod.
 
   build-translategemma:
@@ -1290,7 +1290,7 @@ jobs:
 
   build-edge:
     # Job body identical to [Layer 8a spec, "GHCR CI Workflow"](
-    # ./2026-06-22-layer8a-tts-worker-design.md#ghcr-ci-workflow).
+    # ./layer-8a-tts-worker.md#ghcr-ci-workflow).
     # Publishes acheron-worker-edge:latest and :<sha> from Dockerfile.edge.
 ```
 
@@ -1523,7 +1523,7 @@ docker-compose.yml         # EXTENDED: + translategemma-edge under runpod-transl
 pyproject.toml             # EXTENDED: workspace member acheron-translategemma
 Justfile                   # EXTENDED: build-worker translategemma
 docs/superpowers/specs/
-  2026-06-23-layer8c-translategemma-worker-design.md   # NEW (this file)
+  layer-8c-translategemma-worker.md   # NEW (this file)
 ```
 
 **Import boundaries** (no new import-linter contracts needed; the

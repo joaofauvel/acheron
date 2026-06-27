@@ -50,7 +50,7 @@ forward — no further SDK churn.
   multipart `BytesInput` (carrying `chunks.json`), not as a `None`
   payload. 8c also retroactively refactors the qwen3tts handler to read
   from `Input` (closing the latent end-to-end gap the 8a spec left
-  open). See [Layer 8c spec](./2026-06-23-layer8c-translategemma-worker-design.md).
+  open). See [Layer 8c spec](./layer-8c-translategemma-worker.md).
 - `granite-speech-4.1-2b-plus` (speaker-attributed ASR + word-level
   timestamps) — deferred to a future sub-project. v1 emits one transcript
   per chapter without word boundaries; the downstream `ChunkingHandler` is
@@ -1174,7 +1174,7 @@ on:
 
 jobs:
   build-qwen3tts:
-    # Job body identical to [Layer 8a spec, "GHCR CI Workflow"](./2026-06-22-layer8a-tts-worker-design.md#ghcr-ci-workflow).
+    # Job body identical to [Layer 8a spec, "GHCR CI Workflow"](./layer-8a-tts-worker.md#ghcr-ci-workflow).
     # Publishes acheron-qwen3tts-runpod:latest and :<sha> from workers/qwen3tts/Dockerfile.runpod.
 
   build-granite-speech:
@@ -1208,7 +1208,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-edge:
-    # Job body identical to [Layer 8a spec, "GHCR CI Workflow"](./2026-06-22-layer8a-tts-worker-design.md#ghcr-ci-workflow).
+    # Job body identical to [Layer 8a spec, "GHCR CI Workflow"](./layer-8a-tts-worker.md#ghcr-ci-workflow).
     # Publishes acheron-worker-edge:latest and :<sha> from Dockerfile.edge.
 ```
 

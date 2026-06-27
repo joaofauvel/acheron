@@ -12,7 +12,7 @@ In scope:
 - `src/acheron/shell/orchestrator.py`: `start()` awaits `connect()` on both stores.
 - `tests/shell/stores/conftest.py`: `redis_url` fixture uses `redis.asyncio.Redis` for `FLUSHDB`.
 - `tests/shell/stores/test_redis_worker_store.py`, `test_redis_job_store.py`: `store` fixture becomes async, awaits `connect()` and `close()`. Add `test_unreachable_redis_raises_on_connect`, `test_connect_is_idempotent`, `test_close_then_get_raises`.
-- `docs/superpowers/specs/2026-06-18-pipeline-streaming-design.md`: update the 9b-ii entry to match the actual implementation.
+- `docs/superpowers/specs/pipeline-streaming.md`: update the 9b-ii entry to match the actual implementation.
 
 Out of scope (handled in other layers):
 - The `StreamingExecutor` (9a).
@@ -182,7 +182,7 @@ async def connect(self) -> None:
 | `tests/shell/stores/conftest.py` | `redis_url` uses `redis.asyncio` for FLUSHDB |
 | `tests/shell/stores/test_redis_worker_store.py` | async `store` fixture; 2 new tests; 1 renamed test |
 | `tests/shell/stores/test_redis_job_store.py` | async `store` fixture; 1 renamed test |
-| `docs/superpowers/specs/2026-06-18-pipeline-streaming-design.md` | Update 9b-ii entry to match implementation |
+| `docs/superpowers/specs/pipeline-streaming.md` | Update 9b-ii entry to match implementation |
 
 ## Validation
 

@@ -2,7 +2,7 @@
 
 **Production Compose Hardening**
 
-This is a sub-project of [Acheron design spec](./2026-06-16-acheron-design.md) and [implementation roadmap](./2026-06-16-implementation-roadmap.md). It makes the Docker Compose stack production-ready: healthchecks, persistent volumes, and a fail-fast data dir check.
+This is a sub-project of [Acheron design spec](./architecture.md) and [implementation roadmap](./roadmap.md). It makes the Docker Compose stack production-ready: healthchecks, persistent volumes, and a fail-fast data dir check.
 
 ## Goal
 

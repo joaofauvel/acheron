@@ -2,7 +2,7 @@
 
 **Storage Abstraction + Redis Backend**
 
-This is a sub-project of [Acheron design spec](./2026-06-16-acheron-design.md) and [implementation roadmap](./2026-06-16-implementation-roadmap.md). It adds persistent storage to the orchestrator so worker registry and job state survive restarts.
+This is a sub-project of [Acheron design spec](./architecture.md) and [implementation roadmap](./roadmap.md). It adds persistent storage to the orchestrator so worker registry and job state survive restarts.
 
 ## Goal
 

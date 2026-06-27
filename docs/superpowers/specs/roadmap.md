@@ -1,6 +1,6 @@
 # Acheron — Implementation Roadmap
 
-Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-design.md).
+Incremental implementation plan for [Acheron design spec](./architecture.md).
 
 ## Architecture Principles
 
@@ -145,9 +145,9 @@ Incremental implementation plan for [Acheron design spec](./2026-06-16-acheron-d
 
 ### Layer 8 — Real GPU Workers (Plug-and-play)
 
-Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation). Each gets its own spec → plan → implementation cycle. See [Layer 8a TTS design](./2026-06-22-layer8a-tts-worker-design.md).
+Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation). Each gets its own spec → plan → implementation cycle. See [Layer 8a TTS design](./layer-8a-tts-worker.md).
 
-**Scope**: Decoupled, model-specific GPU workers with PyTorch/CUDA. Built on the [`acheron.worker_sdk`](./2026-06-22-layer8a-tts-worker-design.md) blueprint (a new subpackage of the existing `acheron` wheel that imports `acheron.core` only, never `acheron.shell`).
+**Scope**: Decoupled, model-specific GPU workers with PyTorch/CUDA. Built on the [`acheron.worker_sdk`](./layer-8a-tts-worker.md) blueprint (a new subpackage of the existing `acheron` wheel that imports `acheron.core` only, never `acheron.shell`).
 
 **Files** (per sub-project):
 - `workers/qwen3tts/` — Qwen3 TTS worker codebase + `Dockerfile.runpod` (sub-project 8a)
@@ -182,7 +182,7 @@ Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Tr
 | 7a | done | Storage abstraction + Redis backend (sync `redis.Redis` client) |
 | 7b | done | Production compose hardening: healthchecks on all services, named volumes, depends_on conditions, fail-fast data dir check, gRPC HTTP /health sidecar (FastAPI) |
 | 7c | done | TLS via env vars: `ACHERON_TLS_{CERT,KEY,CA}_FILE`; dev cert script (`just certs`); compose wires certs, env vars, and HTTPS healthchecks; dashboard stays HTTP |
-| 8a | in progress | TTS worker (`qwen3tts`, RunPod Serverless) + `acheron.worker_sdk` blueprint. See [Layer 8a design](./2026-06-22-layer8a-tts-worker-design.md). |
+| 8a | in progress | TTS worker (`qwen3tts`, RunPod Serverless) + `acheron.worker_sdk` blueprint. See [Layer 8a design](./layer-8a-tts-worker.md). |
 | 8b | planned | ASR worker (`whisperv3large`), reusing the blueprint. |
 | 8c | planned | Translation worker (`translategemma`), reusing the blueprint. Supersedes an earlier stub spec that predates the blueprint. |
 | 9b-i | done | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
@@ -230,7 +230,7 @@ TLS via reverse proxy (nginx or caddy) with self-signed certs for local dev.
 
 ## Layer 8 — Decomposition
 
-Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation). Each gets its own spec → plan → implementation cycle. The TTS sub-project (8a) establishes the [`acheron.worker_sdk`](./2026-06-22-layer8a-tts-worker-design.md) blueprint the other two reuse.
+Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation). Each gets its own spec → plan → implementation cycle. The TTS sub-project (8a) establishes the [`acheron.worker_sdk`](./layer-8a-tts-worker.md) blueprint the other two reuse.
 
 ### Sub-project 8a — TTS worker + worker SDK blueprint
 
@@ -240,7 +240,7 @@ Establish the worker blueprint: `WorkerHandler` ABC, composable `Artifact` outpu
 - Output contract: workers return artifacts as bytes (multipart/mixed for HTTP, `repeated Artifact` for gRPC). The orchestrator materializes them into its own `ACHERON_DATA_DIR` — no shared-volume assumption.
 - Pricing: `RunPodPrice` (GraphQL `gpuTypes.lowestPrice.uninterruptablePrice`) is the default, fault-tolerant to cached/unknown. Dashboard surfaces cost confidence (`Measured` / `Cached` / `Unknown` / `Static`).
 - CI publishes `acheron-qwen3tts-runpod` images to GHCR on tag and `main`.
-- See [Layer 8a TTS design](./2026-06-22-layer8a-tts-worker-design.md).
+- See [Layer 8a TTS design](./layer-8a-tts-worker.md).
 
 ### Sub-project 8b — ASR worker
 
@@ -254,7 +254,7 @@ Replay the blueprint for `workers/translategemma/` against `google/translategemm
 
 ## Layer 9 — Decomposition
 
-Layer 9 addresses pipeline-level streaming and async Redis, decomposed into three independent sub-projects. See [Layer 9 design spec](./2026-06-18-pipeline-streaming-design.md).
+Layer 9 addresses pipeline-level streaming and async Redis, decomposed into three independent sub-projects. See [Layer 9 design spec](./pipeline-streaming.md).
 
 ### Sub-project 9b-i — Store ABC + InMemory async
 
@@ -272,7 +272,7 @@ New `StreamingExecutor` is the new default strategy. Per-stage `asyncio.Queue` p
 
 ## Layer 10 — Built-in Local Workers & Resuming Core
 
-Implement real built-in workers, yaml-based configuration settings, and execution resuming functionality. See [Layer 10 design spec](./2026-06-20-local-workers-and-resuming-design.md).
+Implement real built-in workers, yaml-based configuration settings, and execution resuming functionality. See [Layer 10 design spec](./local-workers-and-resuming.md).
 
 - **Local Workers**: Implement standard ZIP+ElementTree parsing for EPUB chapter extraction, chunking logic via NLTK, and M4B concatenator and chapterizer metadata utilizing `ffmpeg` and `ffprobe`.
 - **Configuration settings**: Introduce `acheron.yaml` utilizing `pydantic` configuration validation in `src/acheron/shell/config.py`.
@@ -282,7 +282,7 @@ Implement real built-in workers, yaml-based configuration settings, and executio
 
 ## Layer 11 — Decoupled Platform Health Checks & Dashboard Integration
 
-Implement decoupled provider health checks, modular container image compilation, and dashboard updates. See [Layer 11 design spec](./2026-06-20-deployment-and-dashboard-design.md).
+Implement decoupled provider health checks, modular container image compilation, and dashboard updates. See [Layer 11 design spec](./deployment-and-dashboard.md).
 
 - **Decoupled health checks**: Abstract `HealthProvider` class configuration mapping platform-specific endpoints (RunPod/HF) using API keys defined in `acheron.yaml`. ✅
 - **Dashboard Updates**: Backend status endpoint (green/red dot) and worker status badges + error viewer. ✅

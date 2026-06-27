@@ -163,15 +163,15 @@ class StreamingWorker(Worker):
 
 ### Transport Implementations
 
-- **HttpWorker** — wraps a FastAPI/REST endpoint (RunPod, HuggingFace Inference Endpoints). Response dispatch is data-driven via `Content-Type`: `multipart/mixed` (the layered default, since [Layer 8a](./2026-06-22-layer8a-tts-worker-design.md)) is parsed into `OutputFile`s materialized into the orchestrator's `ACHERON_DATA_DIR`; `application/json` is the legacy path that round-trips `JobResult` with pre-materialized `OutputFile.path` strings and is preserved for the HTTP stubs.
-- **GrpcWorker** — wraps a gRPC bidirectional streaming service (Layer 6). `OutputChunk` carries an `oneof payload` of either legacy `pcm_data` (raw PCM, for low-latency live-streaming variants) or `Artifact` parts (structured output, since [Layer 8a](./2026-06-22-layer8a-tts-worker-design.md)). The orchestrator-side `GrpcWorker` consumes `Artifact` parts via the shared `_materialize_artifact` / `_build_result` helpers (in `shell/transports/_multipart.py`), identical to the HTTP multipart path; legacy `pcm_data` mode is preserved for the live-stream use case. Internal to the worker — orchestrator interface unchanged.
+- **HttpWorker** — wraps a FastAPI/REST endpoint (RunPod, HuggingFace Inference Endpoints). Response dispatch is data-driven via `Content-Type`: `multipart/mixed` (the layered default, since [Layer 8a](./layer-8a-tts-worker.md)) is parsed into `OutputFile`s materialized into the orchestrator's `ACHERON_DATA_DIR`; `application/json` is the legacy path that round-trips `JobResult` with pre-materialized `OutputFile.path` strings and is preserved for the HTTP stubs.
+- **GrpcWorker** — wraps a gRPC bidirectional streaming service (Layer 6). `OutputChunk` carries an `oneof payload` of either legacy `pcm_data` (raw PCM, for low-latency live-streaming variants) or `Artifact` parts (structured output, since [Layer 8a](./layer-8a-tts-worker.md)). The orchestrator-side `GrpcWorker` consumes `Artifact` parts via the shared `_materialize_artifact` / `_build_result` helpers (in `shell/transports/_multipart.py`), identical to the HTTP multipart path; legacy `pcm_data` mode is preserved for the live-stream use case. Internal to the worker — orchestrator interface unchanged.
 - **LocalWorker** — calls a Python function directly (CPU steps: extraction, chunking, packaging). The orchestrator auto-registers built-in local workers for `EXTRACTION`, `CHUNKING`, and `PACKAGING` if no external worker of that type is registered, so the default stack can run end-to-end without any extraction/chunking/packaging workers deployed.
 
 Workers register their transport endpoint. The orchestrator dispatches via the abstract interface. gRPC workers register without a URL scheme (`host:port`), since `grpc.insecure_channel` rejects `http://host:port` as a malformed hostname.
 
 ### Output contract (since Layer 8a)
 
-Workers return artifacts as bytes — never as filesystem paths into the orchestrator's volume. The orchestrator materializes received bytes into `ACHERON_DATA_DIR/{job_id}/{step_id}/{filename}` and computes `size_bytes` + SHA-256 `checksum` itself, so a worker need not share a filesystem with the orchestrator. This makes physically-separated workers (RunPod serverless, Hugging Face Inference Endpoints, dedicated remote hosts) first-class. A legacy JSON-`path` path remains for the HTTP stubs, but new workers built on the [`acheron.worker_sdk`](./2026-06-22-layer8a-tts-worker-design.md) blueprint use the `multipart/mixed` response shape.
+Workers return artifacts as bytes — never as filesystem paths into the orchestrator's volume. The orchestrator materializes received bytes into `ACHERON_DATA_DIR/{job_id}/{step_id}/{filename}` and computes `size_bytes` + SHA-256 `checksum` itself, so a worker need not share a filesystem with the orchestrator. This makes physically-separated workers (RunPod serverless, Hugging Face Inference Endpoints, dedicated remote hosts) first-class. A legacy JSON-`path` path remains for the HTTP stubs, but new workers built on the [`acheron.worker_sdk`](./layer-8a-tts-worker.md) blueprint use the `multipart/mixed` response shape.
 
 ### Worker Registry
 
@@ -348,7 +348,7 @@ type StepHandler = Callable[[PlanStep, Plan], Awaitable[JobResult]]
 
 **BatchAsyncExecutor** — extends AsyncExecutor with batch semantics. Batch-flagged steps receive all outputs from completed preceding steps so the handler can construct a `BatchJob` with the correct payloads.
 
-**StreamingExecutor** (default for all new jobs) — per-stage pipeline using bounded `asyncio.Queue`s. All stages of a plan run as concurrent tasks in a single outer `asyncio.TaskGroup`, with `asyncio.Queue(maxsize=4)` between adjacent stages providing native backpressure. Any stage failure cancels all sibling stages immediately (fail-fast, all-or-nothing semantics). Step results are written to `StepCache` (now async, via aiofiles) as they complete — not accumulated in memory. `asyncio.wait_for()` enforces a per-step timeout (default 1800s) at every worker dispatch. A `None` sentinel on each queue's `finally` block lets downstream stages drain and exit on cancel. `PlanResult.outputs` is built by scanning `StepCache` at the end; `total_cost` is the sum of per-step `JobMetrics.cost_estimate`; `completed_steps` reflects the actual number of steps whose manifest was readable (not 0 on partial-success). See [Layer 9 spec](./2026-06-18-pipeline-streaming-design.md) and the [9a focused spec](./2026-06-19-layer9a-streaming-executor-design.md). Today's plans have a linear topology (extract → chunk → translate? → synthesize → package); per-chapter parallelism is a future layer.
+**StreamingExecutor** (default for all new jobs) — per-stage pipeline using bounded `asyncio.Queue`s. All stages of a plan run as concurrent tasks in a single outer `asyncio.TaskGroup`, with `asyncio.Queue(maxsize=4)` between adjacent stages providing native backpressure. Any stage failure cancels all sibling stages immediately (fail-fast, all-or-nothing semantics). Step results are written to `StepCache` (now async, via aiofiles) as they complete — not accumulated in memory. `asyncio.wait_for()` enforces a per-step timeout (default 1800s) at every worker dispatch. A `None` sentinel on each queue's `finally` block lets downstream stages drain and exit on cancel. `PlanResult.outputs` is built by scanning `StepCache` at the end; `total_cost` is the sum of per-step `JobMetrics.cost_estimate`; `completed_steps` reflects the actual number of steps whose manifest was readable (not 0 on partial-success). See [Layer 9 spec](./pipeline-streaming.md) and the [9a focused spec](./layer-9a-streaming-executor.md). Today's plans have a linear topology (extract → chunk → translate? → synthesize → package); per-chapter parallelism is a future layer.
 
 All executors capture error details in `PlanResult.errors`.
 
@@ -401,11 +401,11 @@ After 3 consecutive failures, the worker is removed from the registry. The monit
 
 **Local worker handlers** are kept in a side dict on the orchestrator (`_local_handlers: dict[str, LocalJobHandler]`), not in `RegisteredWorker.metadata`. Worker `metadata` is a JSON-serializable contract used by persistence backends; coroutine handlers are not serializable. Use the `Orchestrator.register_worker(handler=...)` keyword-only parameter to register a local worker.
 
-**Production (Layer 7):** Layers 7a (storage abstraction + Redis backend), 7b (production compose hardening), and 7c (TLS support) are done. See [implementation roadmap](./2026-06-16-implementation-roadmap.md).
+**Production (Layer 7):** Layers 7a (storage abstraction + Redis backend), 7b (production compose hardening), and 7c (TLS support) are done. See [implementation roadmap](./roadmap.md).
 
-**Layer 9 — Pipeline Streaming & Async Redis:** `StreamingExecutor` (9a) and async Redis stores (9b). See [Layer 9 spec](./2026-06-18-pipeline-streaming-design.md).
+**Layer 9 — Pipeline Streaming & Async Redis:** `StreamingExecutor` (9a) and async Redis stores (9b). See [Layer 9 spec](./pipeline-streaming.md).
 
-**TLS (Layer 7c):** Acheron services support TLS via environment variables; cert provenance and reverse proxying are the deployer's responsibility. Three env vars control it: `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` for server-side TLS (both required together), and `SSL_CERT_FILE` for client-side trust (httpx and stdlib `ssl` honor it automatically). Unset env vars = HTTP. Production deploys generate real certs (Let's Encrypt via cert-manager, internal CA, etc.) with the right SANs; no Acheron code change. See the [Layer 7c sub-spec](./2026-06-18-layer7c-tls.md) for the env-var contract, dev cert script, and compose integration.
+**TLS (Layer 7c):** Acheron services support TLS via environment variables; cert provenance and reverse proxying are the deployer's responsibility. Three env vars control it: `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` for server-side TLS (both required together), and `SSL_CERT_FILE` for client-side trust (httpx and stdlib `ssl` honor it automatically). Unset env vars = HTTP. Production deploys generate real certs (Let's Encrypt via cert-manager, internal CA, etc.) with the right SANs; no Acheron code change. See the [Layer 7c sub-spec](./layer-7c-tls.md) for the env-var contract, dev cert script, and compose integration.
 
 **Layer 7b details:**
 
@@ -451,7 +451,7 @@ acheron job resume job-xyz
 acheron job resume job-xyz --force-fresh
 ```
 
-On resume, the executor checks each step: if the step is `complete` and its output directory has a valid manifest, skip it. Corrupted or partial cache → re-run that step. See the [local workers and resuming spec](./2026-06-20-local-workers-and-resuming-design.md) for endpoint details.
+On resume, the executor checks each step: if the step is `complete` and its output directory has a valid manifest, skip it. Corrupted or partial cache → re-run that step. See the [local workers and resuming spec](./local-workers-and-resuming.md) for endpoint details.
 
 ## Error Handling
 
@@ -470,7 +470,7 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 ## Cost Containment
 
 - **RunPod idle shutdown**: If queue empty for 300s, orchestrator calls RunPod API to terminate pod.
-- **Per-job cost tracking**: Each `JobResult` includes `JobMetrics` with `cost_estimate` and `cost_basis` (since [Layer 8a](./2026-06-22-layer8a-tts-worker-design.md)). Orchestrator aggregates per-job and per-worker. `cost_estimate is None` (basis `UNKNOWN`) means the worker could not price the step — it is skipped from `PlanResult.total_cost`, never silently coerced to `$0.00`.
+- **Per-job cost tracking**: Each `JobResult` includes `JobMetrics` with `cost_estimate` and `cost_basis` (since [Layer 8a](./layer-8a-tts-worker.md)). Orchestrator aggregates per-job and per-worker. `cost_estimate is None` (basis `UNKNOWN`) means the worker could not price the step — it is skipped from `PlanResult.total_cost`, never silently coerced to `$0.00`.
 - **Cost sources**: RunPod serverless ($/hr fetched from the RunPod GraphQL `gpuTypes.lowestPrice.uninterruptablePrice`, multiplied by actual GPU-seconds — fault-tolerant fallback to cached/unknown), OpenRouter (tokens × price/token), local workers (`ZeroPrice`, basis `STATIC`). Worker-side pricing is best-effort: a transient API outage at startup does not block worker registration; mid-flight outages report `None`; `PlanResult.total_cost_basis` is the least-confident basis across steps.
 - **Dashboard rendering**: the `Cost` table visualizes `cost_basis` as a colored badge (`Measured` green / `Cached` amber / `Unknown` gray / `Static` neutral) with a short, plain-English note in an adjacent column so operators can tell "real numbers from the provider" apart from "we gave up."
 
@@ -513,9 +513,9 @@ A representative service:
 
 ### GPU Worker (Decoupled & Plug-and-play) — Layer 8
 
-Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation); each gets its own spec → plan → implementation cycle. See [Layer 8a TTS design](./2026-06-22-layer8a-tts-worker-design.md) and the [implementation roadmap](./2026-06-16-implementation-roadmap.md).
+Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Translation); each gets its own spec → plan → implementation cycle. See [Layer 8a TTS design](./layer-8a-tts-worker.md) and the [implementation roadmap](./roadmap.md).
 
-Workers are completely decoupled, model-specific containers built with PyTorch and CUDA. They depend on the [`acheron.worker_sdk`](./2026-06-22-layer8a-tts-worker-design.md) blueprint subpackage of the orchestrator's `acheron` wheel — which imports only `acheron.core` types and never `acheron.shell`. They communicate with the orchestrator solely through the standardized REST/gRPC interfaces and never touch the orchestrator's I/O code.
+Workers are completely decoupled, model-specific containers built with PyTorch and CUDA. They depend on the [`acheron.worker_sdk`](./layer-8a-tts-worker.md) blueprint subpackage of the orchestrator's `acheron` wheel — which imports only `acheron.core` types and never `acheron.shell`. They communicate with the orchestrator solely through the standardized REST/gRPC interfaces and never touch the orchestrator's I/O code.
 
 * **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B-CustomVoice for text synthesis via 9 built-in premium speakers. Min 24GB VRAM. Layer 8a (in progress).
 * **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM. Layer 8b (planned).
