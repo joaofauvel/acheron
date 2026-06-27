@@ -519,7 +519,7 @@ Workers are completely decoupled, model-specific containers built with PyTorch a
 
 * **qwen3tts-worker:** Run Qwen3-TTS-12Hz-1.7B-CustomVoice for text synthesis via 9 built-in premium speakers. Min 24GB VRAM. Layer 8a (in progress).
 * **whisperv3large-worker:** Run Whisper-v3 Large ASR for audio transcription. Min 10GB VRAM. Layer 8b (planned).
-* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 55 languages. Min ~16GB VRAM. Used when `source_language != target_language`; skipped otherwise. Layer 8c (planned). Supersedes the stub spec at [2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md).
+* **translategemma-worker:** Run TranslateGemma-12B (`google/translategemma-12b-it`) for text translation across 55 languages. Min ~16GB VRAM. Used when `source_language != target_language`; skipped otherwise. Layer 8c (planned).
 
 **Deployment & API:**
 * Workers ship one deployment mode each — the blueprint is one mode per worker. v1 (qwen3tts) ships RunPod Serverless only; a local-GPU `Qwen3TTSLocalHandler` would be a separate future worker package, not a runtime flag.

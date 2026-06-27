@@ -15,7 +15,7 @@ First of three Layer 8 sub-projects. Establishes the worker **blueprint** (`ache
 
 **Out of scope (deferred to separate sub-projects):**
 - 8b — `whisperv3large` ASR worker.
-- 8c — `translategemma` translation worker (supersedes the stub spec at [2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md), which predates the blueprint).
+- 8c — `translategemma` translation worker (supersedes an earlier stub spec that predates the blueprint; see [Layer 8c spec](./2026-06-23-layer8c-translategemma-worker-design.md)).
 - `Qwen3-TTS-12Hz-1.7B-Base` voice cloning (future sub-project after 8a/8b/8c).
 - Local-GPU edge mode (`acheron-worker-sdk local-edge` CLI subcommand and a `Qwen3TTSLocalHandler`). Workers commit to one deployment mode by being one mode; v1 ships RunPod serverless only.
 - Per-chunk `instruct` metadata in the plan payload (handler supports it; planner doesn't emit it yet).
@@ -1010,4 +1010,4 @@ jobs:
 - [RunPod serverless docs](https://docs.runpod.io/) — `runpod.serverless.start({"handler": ...})` cloud-side handler pattern, network volume + `HF_HUB_OFFLINE=1` model caching.
 - [RunPod runpod-python SDK](https://github.com/runpod/runpod-python) — `endpoint = runpod.Endpoint(id)`; `req = endpoint.run(input)`; `req.status()`; `req.output(timeout=N)`.
 - [RunPod GraphQL GPU types](https://api.runpod.io/graphql) — `gpuTypes(input: {id: ...}) { lowestPrice(input: {gpuCount: 1, secureCloud: ...}) { uninterruptablePrice } }`.
-- The previous translation sub-project stub at [2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md) predates the blueprint and is superseded by 8c.
+- An earlier translation sub-project stub predates the blueprint and is superseded by 8c.

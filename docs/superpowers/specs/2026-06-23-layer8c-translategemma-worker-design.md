@@ -19,9 +19,7 @@ job-submission path calls both `compile_plan` (language path) and
 `validate_chunking_fits_workers` (length budget). Misconfigurations
 fail at plan compile time, before any GPU time is spent.
 
-The pre-blueprint translation stub spec at
-[2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md)
-is superseded by this design.
+The pre-blueprint translation stub spec is superseded by this design.
 
 ## Scope
 
@@ -103,8 +101,7 @@ is superseded by this design.
 
 Three high-level approaches were considered:
 
-**A) Standalone stack (the pre-blueprint
-`2026-06-21-translategemma-worker-design.md`).** FastAPI + `/health` +
+**A) Standalone stack (the pre-blueprint stub spec).** FastAPI + `/health` +
 `/capabilities` + `/execute`, self-registration, no SDK reuse. Zero
 coupling but bypasses 8a/8b's blueprint, the RunPod forwarder + edge
 container + GHCR CI, `CostBasis`, `_shared.safe_chapter_id`. **Rejected**

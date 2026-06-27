@@ -184,7 +184,7 @@ Layer 8 is decomposed into three independent sub-projects (8a TTS, 8b ASR, 8c Tr
 | 7c | done | TLS via env vars: `ACHERON_TLS_{CERT,KEY,CA}_FILE`; dev cert script (`just certs`); compose wires certs, env vars, and HTTPS healthchecks; dashboard stays HTTP |
 | 8a | in progress | TTS worker (`qwen3tts`, RunPod Serverless) + `acheron.worker_sdk` blueprint. See [Layer 8a design](./2026-06-22-layer8a-tts-worker-design.md). |
 | 8b | planned | ASR worker (`whisperv3large`), reusing the blueprint. |
-| 8c | planned | Translation worker (`translategemma`), reusing the blueprint. Supersedes the stub spec at [2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md). |
+| 8c | planned | Translation worker (`translategemma`), reusing the blueprint. Supersedes an earlier stub spec that predates the blueprint. |
 | 9b-i | done | Store ABC + InMemory async (`async def` ABCs, all call sites await) |
 | 9b-ii | done | Redis async backend (`redis.asyncio.Redis`, testcontainers integration tests) |
 | 9a | done | Streaming pipeline executor (`StreamingExecutor` is the new default; `PipelineError`; per-step timeout; per-stage queue with sentinel drain) |
@@ -248,7 +248,7 @@ Replay the blueprint for `workers/whisperv3large/` against Whisper-v3 Large. gRP
 
 ### Sub-project 8c — Translation worker
 
-Replay the blueprint for `workers/translategemma/` against `google/translategemma-12b-it`. Supersedes the stub spec at [2026-06-21-translategemma-worker-design.md](./2026-06-21-translategemma-worker-design.md), which predates the blueprint.
+Replay the blueprint for `workers/translategemma/` against `google/translategemma-12b-it`. Supersedes an earlier stub spec that predates the blueprint.
 
 ---
 
