@@ -374,3 +374,35 @@ def epub_file(tmp_path: Path) -> Path:
         ch1 = "<html><body><p>Hello chapter one text.</p></body></html>"
         z.writestr("OEBPS/ch1.xhtml", ch1)
     return epub_path
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> Any:
+    from testcontainers.redis import RedisContainer
+
+    container = RedisContainer("redis:7-alpine")
+    container.start()
+    return container
+
+
+@pytest_asyncio.fixture
+async def redis_url(redis_container: Any) -> AsyncIterator[str]:
+    """Yield a Redis URL and FLUSHDB the database before each test.
+
+    Mirrors the fixture in ``tests/shell/stores/conftest.py`` so integration
+    tests that exercise the Redis backend can opt in without that conftest
+    being auto-loaded.
+    """
+    import redis.asyncio
+
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
+    url = f"redis://{host}:{port}"
+
+    client = redis.asyncio.Redis.from_url(url, decode_responses=True)
+    try:
+        await client.flushdb()
+    finally:
+        await client.aclose()
+
+    yield url

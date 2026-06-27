@@ -215,26 +215,64 @@ class TestWorkerIntegrationErrorPath:
         assert tracked.result.total_steps == 5
 
     @pytest.mark.asyncio
-    async def test_orchestrator_works_with_redis_backend(self, tmp_path: Path) -> None:
-        """Orchestrator can start with ACHERON_STORE_BACKEND=redis (regression for C1)."""
-        import os
-
+    async def test_orchestrator_registers_local_workers_without_serializable_handlers(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Regression for C1: orchestrator can start with built-in local workers
+        even though their handler metadata is non-serializable (coroutine).
+        """
         from acheron.shell.cache import PlanCache
         from acheron.shell.stores.memory import InMemoryWorkerStore
 
-        os.environ["ACHERON_STORE_BACKEND"] = "memory"
+        reg = InMemoryWorkerStore()
+        cache = PlanCache(data_dir=tmp_path)
+        orch = Orchestrator(registry=reg, cache=cache)
+        await orch.start()
+        workers = await orch.list_workers()
+        assert "extraction-local" in {w.worker_id for w in workers}
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_works_with_redis_backend(
+        self,
+        tmp_path: Path,
+        redis_url: str,
+    ) -> None:
+        """Orchestrator with RedisWorkerStore + RedisJobStore round-trips a
+        registered worker and a persisted job through Redis. Regression for
+        TEST-002 — the previous "redis backend" test used InMemoryWorkerStore
+        so the bug it claimed to guard was never exercised.
+        """
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.stores.redis import RedisJobStore, RedisWorkerStore
+
+        worker_store = RedisWorkerStore(redis_url)
+        job_store = RedisJobStore(redis_url)
+        await worker_store.connect()
+        await job_store.connect()
         try:
-            reg = InMemoryWorkerStore()
             cache = PlanCache(data_dir=tmp_path)
-            # The orchestrator auto-registers built-in local workers, which used to
-            # put coroutine handlers in metadata — non-serializable, crashed with
-            # Redis backend. Should now work with any backend.
-            orch = Orchestrator(registry=reg, cache=cache)
+            orch = Orchestrator(
+                registry=worker_store,
+                cache=cache,
+                job_store=job_store,
+            )
             await orch.start()
-            workers = await orch.list_workers()
-            assert "extraction-local" in {w.worker_id for w in workers}
+            try:
+                workers = await orch.list_workers()
+                worker_ids = {w.worker_id for w in workers}
+                assert "extraction-local" in worker_ids
+
+                # Auto-registered workers must be visible via the Redis store
+                # directly, not just through the orchestrator's in-memory view.
+                re_loaded = await worker_store.get("extraction-local")
+                assert re_loaded is not None
+                assert re_loaded.endpoint == next(w.endpoint for w in workers if w.worker_id == "extraction-local")
+            finally:
+                await orch.shutdown()
         finally:
-            os.environ.pop("ACHERON_STORE_BACKEND", None)
+            await worker_store.close()
+            await job_store.close()
 
     @pytest.mark.asyncio
     async def test_worker_unreachable(self, tmp_path: Path, epub_file: Path) -> None:

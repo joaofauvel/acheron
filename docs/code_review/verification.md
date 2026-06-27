@@ -44,17 +44,19 @@ related: []
 ### TEST-002 — test_orchestrator_works_with_redis_backend tests memory, not Redis — misleading name and no Redis coverage
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 23c29e1
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
   - path: tests/integration/test_worker_integration.py
-    lines: 218-237
+    lines: 218-280
+  - path: tests/integration/conftest.py
+    lines: 378-410
 related: []
 ```
 
