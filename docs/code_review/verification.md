@@ -177,19 +177,19 @@ related: []
 ### TEST-007 — HealthMonitor._handle_failure BOOTING→OFFLINE and OFFLINE→HEALTHY transitions are not covered
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/health.py
     lines: 133-152
   - path: tests/shell/test_health_monitor.py
-    lines: 205-300
+    lines: 320-380
 related: [CORR-012]
 ```
 

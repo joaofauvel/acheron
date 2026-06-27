@@ -195,6 +195,21 @@ class _FakeProvider(HealthProvider):
         return self._status
 
 
+class _FlippableProvider(HealthProvider):
+    """Fake HealthProvider whose status can be reconfigured mid-test."""
+
+    def __init__(self, status: WorkerStatus) -> None:
+        self._status = status
+        self.called_with: str | None = None
+
+    def set_status(self, status: WorkerStatus) -> None:
+        self._status = status
+
+    async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        self.called_with = endpoint_id
+        return self._status
+
+
 class _RaisingProvider(HealthProvider):
     """Fake HealthProvider that always raises."""
 
@@ -315,4 +330,64 @@ class TestHealthMonitorProviderIntegration:
         await monitor.start()
         with pytest.raises(RuntimeError, match="provider bug"):
             await monitor._check_all()  # noqa: SLF001
+        await monitor.stop()
+
+    @pytest.mark.asyncio
+    async def test_booting_transitions_to_offline_when_provider_says_offline(self) -> None:
+        """TEST-007: a worker stuck in BOOTING must transition to OFFLINE when
+        the platform provider reports the endpoint is offline on a subsequent check.
+        """
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        fake = _FlippableProvider(WorkerStatus.BOOTING)
+        providers = {"runpod": fake}
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
+        await monitor.start()
+
+        async def _is_booting() -> bool:
+            w = await reg.get("w1")
+            return w is not None and w.status == WorkerStatus.BOOTING
+
+        await _poll_for(_is_booting)
+        fake.set_status(WorkerStatus.OFFLINE)
+
+        async def _is_offline_with_failure() -> bool:
+            w = await reg.get("w1")
+            return w is not None and w.status == WorkerStatus.OFFLINE and w.consecutive_failures >= 1
+
+        await _poll_for(_is_offline_with_failure)
+        await monitor.stop()
+        w = await reg.get("w1")
+        assert w is not None
+        assert w.status == WorkerStatus.OFFLINE
+        assert w.consecutive_failures >= 1
+
+    @pytest.mark.asyncio
+    async def test_offline_recovers_to_healthy_on_successful_probe(self) -> None:
+        """TEST-007: a worker marked OFFLINE must transition back to HEALTHY
+        once its health probe starts succeeding again (recovery path).
+        """
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://up", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        await reg.set_worker_status("w1", WorkerStatus.OFFLINE, "previous failure")
+        await reg.record_health_failure("w1")
+        w_before = await reg.get("w1")
+        assert w_before is not None
+        assert w_before.status == WorkerStatus.OFFLINE
+        assert w_before.consecutive_failures >= 1
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=True))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
+        await monitor.start()
+
+        async def _is_healthy_recovered() -> bool:
+            w = await reg.get("w1")
+            return (
+                w is not None
+                and w.status == WorkerStatus.HEALTHY
+                and w.consecutive_failures == 0
+                and (w.last_error is None or w.last_error == "")
+            )
+
+        await _poll_for(_is_healthy_recovered)
         await monitor.stop()
