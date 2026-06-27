@@ -432,20 +432,24 @@ related: []
 ### MAINT-015 — `inputs.py` is a near-verbatim copy of `artifacts.py` — same Protocol + three-variant shape duplicated 95%
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
-reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
+reviewed_at: dbec2be
 last_verified_at:
-  commit: e54458416e9bfe890a473dd9d542978d205b40a1
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
-  - path: src/acheron/worker_sdk/inputs.py
-    lines: 1-74
-  - path: src/acheron/worker_sdk/artifacts.py
-    lines: 1-78
-related: [MAINT-002, MAINT-013]
+- path: src/acheron/worker_sdk/_io.py
+  lines: 1-65
+- path: src/acheron/worker_sdk/inputs.py
+  lines: 1-66
+- path: src/acheron/worker_sdk/artifacts.py
+  lines: 1-72
+related:
+- MAINT-002
+- TEST-009
 ```
 
 **Issue.** `src/acheron/worker_sdk/inputs.py` (NEW 79 lines) is structurally a copy of `src/acheron/worker_sdk/artifacts.py` (78 lines): same `@runtime_checkable` Protocol (Input/Artifact), same three variants (Bytes/Stream/File), same field shape (content_type, metadata, stream), same FileX.stream() 64-KiB read loop, same `# noqa: TC003` import pattern, same `dataclass(frozen=True)` field metadata. The only differences are (a) `data: bytes` vs `filename: str` and (b) `producer: Callable` vs `path: Path`. ~80 lines of structural duplication; a new 8c worker will inevitably get a 4th copy unless a shared base is introduced.

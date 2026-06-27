@@ -7,26 +7,15 @@ from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-import aiofiles
+from acheron.worker_sdk._io import Streamable, stream_bytes, stream_file, stream_producer
 
 if TYPE_CHECKING:
     from acheron.core.models import JsonValue
 
 
 @runtime_checkable
-class Input(Protocol):
+class Input(Streamable, Protocol):
     """Transport-neutral input handed to WorkerHandler.handle() alongside the Job."""
-
-    @property
-    def content_type(self) -> str:  # noqa: D102
-        ...
-
-    @property
-    def metadata(self) -> dict[str, JsonValue]:  # noqa: D102
-        ...
-
-    def stream(self) -> AsyncIterator[bytes]:  # noqa: D102
-        ...
 
 
 @dataclass(frozen=True)
@@ -39,7 +28,8 @@ class BytesInput:
 
     async def stream(self) -> AsyncIterator[bytes]:
         """Yield the in-memory bytes as a single chunk."""
-        yield self.data
+        async for chunk in stream_bytes(self.data):
+            yield chunk
 
 
 @dataclass(frozen=True)
@@ -52,7 +42,7 @@ class StreamInput:
 
     async def stream(self) -> AsyncIterator[bytes]:
         """Yield chunks produced by ``self.producer()``."""
-        async for chunk in self.producer():
+        async for chunk in stream_producer(self.producer):
             yield chunk
 
 
@@ -66,9 +56,5 @@ class FileInput:
 
     async def stream(self) -> AsyncIterator[bytes]:
         """Yield the file's contents in 64 KiB chunks."""
-        async with aiofiles.open(self.path, "rb") as f:
-            while True:
-                chunk = await f.read(64 * 1024)
-                if not chunk:
-                    break
-                yield chunk
+        async for chunk in stream_file(self.path):
+            yield chunk
