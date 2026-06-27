@@ -320,9 +320,9 @@ severity: medium
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: dcebea6
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["dcebea6"]
 files:
 - path: src/acheron/worker_sdk/_edge_http.py
   lines: 270-330
@@ -437,9 +437,9 @@ severity: medium
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: pending
+  commit: 5e6c1e5
   date: 2026-06-26
-fixed_in: ["pending"]
+fixed_in: ["5e6c1e5"]
 files:
 - path: src/acheron/worker_sdk/_io.py
   lines: 1-65
