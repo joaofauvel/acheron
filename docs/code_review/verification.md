@@ -713,19 +713,19 @@ related:
 ### TEST-015 — `src/acheron/tls.py` (new top-level module, 114 lines) has no direct unit tests — only subprocess happy-path coverage
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: eb6849c85d83f2277eb450f18a11e63cae2defd1
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: 2026-06-26
+fixed_in: ["pending"]
 files:
   - path: src/acheron/tls.py
     lines: 1-109
-  - path: tests/integration/test_tls.py
-    lines: 176-205
+  - path: tests/test_tls.py
+    lines: 1-145
 related: [SEC-011, OBS-011]
 ```
 
