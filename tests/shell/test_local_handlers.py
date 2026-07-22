@@ -205,7 +205,7 @@ class TestExtractionHandlerPathSecurity:
     def test_absolute_path_outside_allowlist_raises(self, tmp_path: Path) -> None:
         handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
         with pytest.raises(PathNotAllowedError, match="not under allowlist"):
-            handler.extract_epub(Path("/etc/passwd"))
+            handler.extract_epub(tmp_path.parent / "outside.epub")
 
     def test_symlink_pointing_outside_allowlist_raises(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "outside_target_for_symlink_test"
