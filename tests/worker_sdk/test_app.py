@@ -154,6 +154,7 @@ class TestCreateWorkerApp:
         from acheron.worker_sdk.app import _endpoint_url
 
         monkeypatch.delenv("WORKER_HOST", raising=False)
+        monkeypatch.delenv("ACHERON_WORKER__WORKER_HOST", raising=False)
         s = _settings(price_source="zero")
         assert _endpoint_url(s) == "http://localhost:0"
 
@@ -275,3 +276,68 @@ class TestLifespanPriceRefreshExceptionHandling:
         with pytest.raises(KeyboardInterrupt):
             async with app.router.lifespan_context(app):
                 pass
+
+
+class TestLifespanCleanup:
+    @pytest.mark.asyncio
+    async def test_lifespan_closes_price_source_on_normal_shutdown(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from acheron.worker_sdk.pricing import RunPodPrice
+
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "k")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "eid123")
+        close_calls = 0
+
+        async def _refresh(self: RunPodPrice) -> bool:
+            return True
+
+        async def _close(self: RunPodPrice) -> None:
+            nonlocal close_calls
+            close_calls += 1
+
+        monkeypatch.setattr(RunPodPrice, "refresh", _refresh)
+        monkeypatch.setattr(RunPodPrice, "close", _close)
+        app = create_worker_app(handler=_Stub(), settings=_settings(), disable_registration=True)
+
+        async with app.router.lifespan_context(app):
+            pass
+
+        assert close_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_lifespan_closes_price_source_when_handler_shutdown_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from acheron.worker_sdk.pricing import RunPodPrice
+
+        monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "k")
+        monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "eid123")
+        close_calls = 0
+
+        async def _refresh(self: RunPodPrice) -> bool:
+            return True
+
+        async def _close(self: RunPodPrice) -> None:
+            nonlocal close_calls
+            close_calls += 1
+
+        class _FailingShutdownHandler(_Stub):
+            async def shutdown(self) -> None:
+                msg = "handler shutdown failed"
+                raise RuntimeError(msg)
+
+        monkeypatch.setattr(RunPodPrice, "refresh", _refresh)
+        monkeypatch.setattr(RunPodPrice, "close", _close)
+        app = create_worker_app(
+            handler=_FailingShutdownHandler(),
+            settings=_settings(),
+            disable_registration=True,
+        )
+
+        with pytest.raises(RuntimeError, match="handler shutdown failed"):
+            async with app.router.lifespan_context(app):
+                pass
+
+        assert close_calls == 1

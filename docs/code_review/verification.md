@@ -1073,11 +1073,14 @@ related: []
 ### TEST-026 — Worker app lifecycle cleanup is not verified
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/app.py
     lines: 109-131
@@ -1128,11 +1131,14 @@ related: []
 ### REPRO-006 — Localhost-default test depends on ambient nested worker environment
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/settings.py
     lines: 53-56
