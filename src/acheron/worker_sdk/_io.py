@@ -1,10 +1,4 @@
-"""Shared stream helpers + Protocol for the Input/Artifact variants.
-
-Both ``worker_sdk.inputs`` (handler input) and ``worker_sdk.artifacts`` (handler
-output) are three-variant ``bytes`` / ``stream`` / ``file`` shapes; this module
-captures the shared ``Streamable`` Protocol and the per-variant stream helpers
-so they are not duplicated in two files.
-"""
+"""Shared stream helpers for worker inputs and artifacts."""
 
 from __future__ import annotations
 

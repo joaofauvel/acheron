@@ -27,6 +27,7 @@ from acheron.core.models import (
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores.memory import InMemoryWorkerStore
+from acheron.shell.stores.redis import RedisJobStore, RedisWorkerStore
 
 
 async def _wait_for_completion(tracked: Any, timeout: float = 5.0) -> None:  # noqa: ASYNC109
@@ -236,7 +237,7 @@ class TestWorkerIntegrationErrorPath:
     async def test_orchestrator_works_with_redis_backend(
         self,
         tmp_path: Path,
-        redis_url: str,
+        redis_stores: tuple[RedisWorkerStore, RedisJobStore],
     ) -> None:
         """Orchestrator with RedisWorkerStore + RedisJobStore round-trips a
         registered worker and a persisted job through Redis. Regression for
@@ -244,35 +245,27 @@ class TestWorkerIntegrationErrorPath:
         so the bug it claimed to guard was never exercised.
         """
         from acheron.shell.cache import PlanCache
-        from acheron.shell.stores.redis import RedisJobStore, RedisWorkerStore
 
-        worker_store = RedisWorkerStore(redis_url)
-        job_store = RedisJobStore(redis_url)
-        await worker_store.connect()
-        await job_store.connect()
+        worker_store, job_store = redis_stores
+        cache = PlanCache(data_dir=tmp_path)
+        orch = Orchestrator(
+            registry=worker_store,
+            cache=cache,
+            job_store=job_store,
+        )
+        await orch.start()
         try:
-            cache = PlanCache(data_dir=tmp_path)
-            orch = Orchestrator(
-                registry=worker_store,
-                cache=cache,
-                job_store=job_store,
-            )
-            await orch.start()
-            try:
-                workers = await orch.list_workers()
-                worker_ids = {w.worker_id for w in workers}
-                assert "extraction-local" in worker_ids
+            workers = await orch.list_workers()
+            worker_ids = {w.worker_id for w in workers}
+            assert "extraction-local" in worker_ids
 
-                # Auto-registered workers must be visible via the Redis store
-                # directly, not just through the orchestrator's in-memory view.
-                re_loaded = await worker_store.get("extraction-local")
-                assert re_loaded is not None
-                assert re_loaded.endpoint == next(w.endpoint for w in workers if w.worker_id == "extraction-local")
-            finally:
-                await orch.shutdown()
+            # Auto-registered workers must be visible via the Redis store
+            # directly, not just through the orchestrator's in-memory view.
+            re_loaded = await worker_store.get("extraction-local")
+            assert re_loaded is not None
+            assert re_loaded.endpoint == next(w.endpoint for w in workers if w.worker_id == "extraction-local")
         finally:
-            await worker_store.close()
-            await job_store.close()
+            await orch.shutdown()
 
     @pytest.mark.asyncio
     async def test_worker_unreachable(self, tmp_path: Path, epub_file: Path) -> None:

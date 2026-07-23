@@ -13,7 +13,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-_ENV_ONLY_FIELDS: frozenset[str] = frozenset(
+ENV_ONLY_FIELDS: frozenset[str] = frozenset(
     {
         "registration_token",
         "runpod_api_key",
@@ -94,7 +94,7 @@ class WorkerSettings(BaseSettings):
         """
         if not isinstance(data, Mapping):
             return data
-        for field_name in _ENV_ONLY_FIELDS & data.keys():
+        for field_name in ENV_ONLY_FIELDS & data.keys():
             if data[field_name] is None:
                 continue
             env_var = f"ACHERON_WORKER__{field_name.upper()}"

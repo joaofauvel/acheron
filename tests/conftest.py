@@ -12,6 +12,8 @@ import pytest_asyncio
 import redis.asyncio
 from testcontainers.redis import RedisContainer
 
+from acheron.shell.stores.redis import RedisJobStore, RedisWorkerStore
+
 
 @pytest.fixture
 def dev_certs(tmp_path: Path) -> Path:
@@ -51,3 +53,17 @@ async def redis_url(redis_container: RedisContainer) -> AsyncIterator[str]:
         await client.aclose()
 
     yield url
+
+
+@pytest_asyncio.fixture
+async def redis_stores(redis_url: str) -> AsyncIterator[tuple[RedisWorkerStore, RedisJobStore]]:
+    """Yield connected Redis stores and close them after each test."""
+    worker_store = RedisWorkerStore(redis_url)
+    job_store = RedisJobStore(redis_url)
+    await worker_store.connect()
+    await job_store.connect()
+    try:
+        yield worker_store, job_store
+    finally:
+        await worker_store.close()
+        await job_store.close()

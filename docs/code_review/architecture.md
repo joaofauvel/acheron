@@ -1121,14 +1121,14 @@ related: [CFG-011]
 ### ARCH-023 — Cross-module import of module-private `_ENV_ONLY_FIELDS` from `worker_sdk/settings.py` to `worker_sdk/config_loader.py` — same PLC2701 anti-pattern as the original ARCH-005
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/settings.py
     lines: 16-22

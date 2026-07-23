@@ -512,17 +512,17 @@ related: [DOC-005]
 ### DOC-008 — `src/acheron/worker_sdk/_io.py` (new) re-introduces the multi-line docstring shape that DOC-007 eliminated
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/_io.py
-    lines: 1-7
+    lines: 1
 related: [DOC-007]
 ```
 

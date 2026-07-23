@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from acheron.worker_sdk.settings import _ENV_ONLY_FIELDS, WorkerSettings
+from acheron.worker_sdk.settings import ENV_ONLY_FIELDS, WorkerSettings
 
 
 def _candidate_paths() -> list[Path]:
@@ -47,7 +47,7 @@ def load_settings() -> WorkerSettings:
             yaml_data = _load_yaml(path)
             break
 
-    offenders = _ENV_ONLY_FIELDS & yaml_data.keys()
+    offenders = ENV_ONLY_FIELDS & yaml_data.keys()
     if offenders:
         msg = (
             "Fields are env-only and cannot be set via constructor or YAML: "
