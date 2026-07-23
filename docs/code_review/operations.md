@@ -1243,16 +1243,19 @@ related: [OBS-001, OBS-003, OBS-005]
 ### PERF-009 — Cache invalidation can close HTTP clients used by active jobs
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/step_handler.py
-    lines: 143-160
+    lines: 143-179
   - path: src/acheron/shell/orchestrator.py
-    lines: 374-402
+    lines: 439-443
 related: [CORR-041, OBS-014]
 ```
 
@@ -1270,7 +1273,7 @@ reviewed_at: c53da1d
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 215-222, 315-327, 406-422
+    lines: 215, 493-525
   - path: src/acheron/shell/api/app.py
     lines: 38-42
 related: [CORR-038, CFG-013]
