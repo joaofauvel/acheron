@@ -281,7 +281,11 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
             batch = chunks[start : start + _MAX_BATCH_SIZE]
             try:
                 out.extend(self._translate_batch(batch, src, tgt))
-            except (RuntimeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001
+                # Broad on purpose: batched inference can raise far more than
+                # OOM/ValueError (tokenizer drift, host OOM, model API changes),
+                # and any of them must not discard already-paid-for translations.
+                # CancelledError (BaseException) still propagates.
                 end = start + len(batch) - 1
                 logger.warning("batch %d (chunks %d-%d) failed: %s", batch_idx, start, end, exc)
                 failed_batches.append((batch_idx, start, end))

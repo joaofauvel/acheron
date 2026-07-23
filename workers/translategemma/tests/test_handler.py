@@ -410,6 +410,30 @@ class TestPartialSuccess:
             h._translate_all(chunks, "en", "es")
         assert successful_calls == [4]  # first batch succeeded, second raised
 
+    @pytest.mark.parametrize("exc_type", [IndexError, KeyError, AttributeError, MemoryError, TypeError])
+    def test_translate_all_preserves_partial_success_for_other_exceptions(
+        self, monkeypatch: pytest.MonkeyPatch, exc_type: type[Exception]
+    ) -> None:
+        """CORR-036: non-RuntimeError batch failures also keep previously translated chunks."""
+        from workers._shared_utils import Chunk
+        from workers.translategemma import handler as handler_module
+
+        h = _handler()
+        successful_calls: list[int] = []
+
+        def _spy(self: Any, batch: list[Chunk], src: str, tgt: str) -> list[str]:
+            if len(successful_calls) == 1:
+                msg = "simulated batch failure"
+                raise exc_type(msg)
+            successful_calls.append(len(batch))
+            return [f"t_{i}" for i in range(len(batch))]
+
+        monkeypatch.setattr(handler_module.TranslateGemmaRunpodHandler, "_translate_batch", _spy)
+        chunks = [Chunk(chapter_id="ch1", sequence_id=i, text=f"chunk-{i}") for i in range(8)]
+        with pytest.raises(WorkerError, match="partial success"):
+            h._translate_all(chunks, "en", "es")
+        assert successful_calls == [4]  # first batch succeeded, second raised
+
     def test_translate_all_logs_failed_batch_warning(
         self,
         monkeypatch: pytest.MonkeyPatch,

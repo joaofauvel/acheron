@@ -983,14 +983,14 @@ related: [CORR-013]
 ### CORR-036 — Translategemma `_translate_all` catches only `(RuntimeError, ValueError)` — other exception types bypass and lose partial translations
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: 7711af9
+  date: 2026-07-22
+fixed_in: ["pending"]
 files:
   - path: workers/translategemma/handler.py
     lines: 265-295
