@@ -1,6 +1,7 @@
 """Integration tests for the Redis job store."""
 
 from collections.abc import AsyncIterator
+from typing import Self, cast
 
 import pytest
 import pytest_asyncio
@@ -22,7 +23,8 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.shell.job_store import TrackedJob
-from acheron.shell.stores.redis import RedisJobStore
+from acheron.shell.stores.base import StoreError
+from acheron.shell.stores.redis import RedisJobStore, _RedisAwaitable
 
 
 def _tracked(job_id: str = "job-1") -> TrackedJob:
@@ -286,3 +288,35 @@ class TestFailFast:
         store = RedisJobStore("redis://localhost:1")
         with pytest.raises((RedisConnectionError, redis.RedisError)):
             await store.connect()
+
+
+class TestFailureNormalization:
+    @pytest.mark.asyncio
+    async def test_put_chains_redis_error_as_store_error(self) -> None:
+        class _FailingPipeline:
+            async def __aenter__(self) -> Self:
+                return self
+
+            async def __aexit__(self, *_args: object) -> None:
+                return None
+
+            def set(self, *_args: object, **_kwargs: object) -> _FailingPipeline:
+                return self
+
+            def sadd(self, *_args: object, **_kwargs: object) -> _FailingPipeline:
+                return self
+
+            async def execute(self) -> list[object]:
+                raise redis.RedisError("pipeline unavailable")
+
+        class _FailingRedis:
+            def pipeline(self, **_kwargs: object) -> _FailingPipeline:
+                return _FailingPipeline()
+
+        store = object.__new__(RedisJobStore)
+        store._redis = cast("_RedisAwaitable", _FailingRedis())  # noqa: SLF001
+
+        with pytest.raises(StoreError) as exc_info:
+            await store.put(_tracked())
+
+        assert isinstance(exc_info.value.__cause__, redis.RedisError)

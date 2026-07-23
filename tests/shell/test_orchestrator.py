@@ -30,6 +30,7 @@ from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache
 from acheron.shell.config import Settings
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
+from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 from tests.shell.conftest import translation_caps, tts_caps
 
@@ -87,6 +88,20 @@ class _KeyErrorOnSecondPutJobStore(InMemoryJobStore):
         if self._puts == 2:
             msg = "serialiser drift"
             raise KeyError(msg)
+        await super().put(copy.deepcopy(job))
+
+
+class _StoreErrorOnSecondPutJobStore(InMemoryJobStore):
+    """Raises a domain persistence error during cancellation reconciliation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._puts = 0
+
+    async def put(self, job: TrackedJob) -> None:
+        self._puts += 1
+        if self._puts == 2:
+            raise StoreError("store temporarily unavailable")
         await super().put(copy.deepcopy(job))
 
 
@@ -568,6 +583,32 @@ class TestOrchestrator:
         exc = task.exception()
         assert isinstance(exc, KeyError)
         assert isinstance(exc.__context__, asyncio.CancelledError)
+
+    @pytest.mark.asyncio
+    async def test_cancel_store_error_is_swallowed_after_reconciliation_failure(self, tmp_path: Path) -> None:
+        """TEST-030: StoreError during cancellation persistence must not escape shutdown."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        job_store = _StoreErrorOnSecondPutJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=job_store)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        await orch.shutdown()
+
+        assert tracked.status == PlanStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
