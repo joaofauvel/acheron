@@ -902,14 +902,14 @@ related: []
 ### TEST-021 — `src/acheron/worker_sdk/_io.py` has zero direct unit tests — the Streamable Protocol + 3 stream helpers extracted in MAINT-015 are only covered transitively
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: 2c44856
+  date: 2026-07-22
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/_io.py
     lines: 1-50
