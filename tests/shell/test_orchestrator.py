@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import time
 from pathlib import Path
 
 import pytest
@@ -44,15 +43,20 @@ async def _success_handler(_step: PlanStep, _plan: Plan) -> JobResult:
     )
 
 
-class _SlowPutJobStore(InMemoryJobStore):
-    """Job store whose put is slower than a test-scale drain grace.
+class _ControlledPutJobStore(InMemoryJobStore):
+    """Job store that gates the first reconciliation write."""
 
-    Snapshots each job like a remote store would, so only puts that run to
-    completion become visible to readers.
-    """
+    def __init__(self) -> None:
+        super().__init__()
+        self.persist_started = asyncio.Event()
+        self.release_persist = asyncio.Event()
+        self._puts = 0
 
     async def put(self, job: TrackedJob) -> None:
-        await asyncio.sleep(1.0)
+        self._puts += 1
+        if self._puts == 2:
+            self.persist_started.set()
+            await self.release_persist.wait()
         await super().put(copy.deepcopy(job))
 
 
@@ -343,11 +347,12 @@ class TestOrchestrator:
         settings = Settings()
         settings.orchestrator.data_dir = tmp_path
         settings.orchestrator.shutdown_drain_seconds = 0.1
+        job_store = _ControlledPutJobStore()
         orch = Orchestrator(
             reg,
             PlanCache(tmp_path),
             _blocking_handler,
-            job_store=_SlowPutJobStore(),
+            job_store=job_store,
             settings=settings,
         )
         await orch.start()
@@ -357,10 +362,12 @@ class TestOrchestrator:
         )
         await handler_started.wait()
 
-        start = time.monotonic()
+        shutdown_task = asyncio.create_task(orch.shutdown())
+        await job_store.persist_started.wait()
         with pytest.raises(TimeoutError):
-            await orch.shutdown()
-        assert time.monotonic() - start < 0.5
+            await shutdown_task
+        job_store.release_persist.set()
+        await orch.close()
 
     @pytest.mark.asyncio
     async def test_shutdown_drain_logs_entry_and_completion(
@@ -409,11 +416,12 @@ class TestOrchestrator:
         settings = Settings()
         settings.orchestrator.data_dir = tmp_path
         settings.orchestrator.shutdown_drain_seconds = 0.1
+        job_store = _ControlledPutJobStore()
         orch = Orchestrator(
             reg,
             PlanCache(tmp_path),
             _blocking_handler,
-            job_store=_SlowPutJobStore(),
+            job_store=job_store,
             settings=settings,
         )
         await orch.start()
@@ -423,9 +431,13 @@ class TestOrchestrator:
         )
         await handler_started.wait()
 
+        shutdown_task = asyncio.create_task(orch.shutdown())
+        await job_store.persist_started.wait()
         with caplog.at_level("WARNING", logger="acheron.shell.orchestrator"), pytest.raises(TimeoutError):
-            await orch.shutdown()
+            await shutdown_task
         assert any("Drain grace timeout" in r.message and "still pending" in r.message for r in caplog.records)
+        job_store.release_persist.set()
+        await orch.close()
 
     @pytest.mark.asyncio
     async def test_shutdown_persists_failed_despite_drain_timeout(self, tmp_path: Path) -> None:
@@ -440,7 +452,7 @@ class TestOrchestrator:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
-        job_store = _SlowPutJobStore()
+        job_store = _ControlledPutJobStore()
         settings = Settings()
         settings.orchestrator.data_dir = tmp_path
         settings.orchestrator.shutdown_drain_seconds = 0.1
@@ -452,8 +464,11 @@ class TestOrchestrator:
         )
         await handler_started.wait()
 
+        shutdown_task = asyncio.create_task(orch.shutdown())
+        await job_store.persist_started.wait()
         with pytest.raises(TimeoutError):
-            await orch.shutdown()
+            await shutdown_task
+        job_store.release_persist.set()
         await orch.close()
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
@@ -487,11 +502,13 @@ class TestOrchestrator:
     async def test_shutdown_persists_partial_result_cost(self, tmp_path: Path) -> None:
         """CORR-040: a cancelled job persists the cost of completed steps, not zero."""
         third_step_done = asyncio.Event()
+        fourth_step_started = asyncio.Event()
         steps_done = 0
 
         async def _partial_handler(_step: PlanStep, plan: Plan) -> JobResult:
             nonlocal steps_done
             if steps_done >= 3:
+                fourth_step_started.set()
                 await asyncio.Event().wait()  # block at step 4 until cancelled
                 raise AssertionError("unreachable")
             result = JobResult(
@@ -516,10 +533,7 @@ class TestOrchestrator:
             ExecutorStrategy.STREAMING,
         )
         await third_step_done.wait()
-        for _ in range(100):  # let the step-3 progress record land
-            if tracked.result is not None and tracked.result.completed_steps == 3:
-                break
-            await asyncio.sleep(0.01)
+        await fourth_step_started.wait()
         await orch.shutdown()
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
@@ -792,7 +806,11 @@ class TestOrchestrator:
         await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
 
     @pytest.mark.asyncio
-    async def test_sequential_executor_uses_step_cache(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    async def test_sequential_executor_uses_step_cache(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("en"))
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
@@ -842,6 +860,15 @@ class TestOrchestrator:
         # Resume job and verify
         orch._active_jobs.clear()  # noqa: SLF001
         handler_calls = 0
+        progress: list[int] = []
+        record_progress = orch._record_step_progress  # noqa: SLF001
+
+        def capture_progress(tracked_job: TrackedJob, plan: Plan, result: JobResult) -> None:
+            record_progress(tracked_job, plan, result)
+            assert tracked_job.result is not None
+            progress.append(tracked_job.result.completed_steps)
+
+        monkeypatch.setattr(orch, "_record_step_progress", capture_progress)
         await orch.resume_job(tracked.job_id)
 
         # Wait for execute tasks
@@ -849,6 +876,10 @@ class TestOrchestrator:
         await asyncio.gather(*tasks)
 
         assert handler_calls == 0
+        assert tracked.status == PlanStatus.COMPLETED
+        assert tracked.result is not None
+        assert tracked.result.completed_steps == tracked.result.total_steps
+        assert progress == list(range(1, len(plan.steps) + 1))
 
     @pytest.mark.asyncio
     async def test_plan_result_errors_sanitised_on_handler_failure(

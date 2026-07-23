@@ -1031,11 +1031,14 @@ related: [TEST-002]
 ### TEST-024 — Orchestrator progress tracking lacks sequential and cache-hit assertions
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 575-637
@@ -1103,11 +1106,14 @@ related: []
 ### REPRO-005 — Shutdown tests depend on fixed sleeps and wall-clock thresholds
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: tests/shell/test_orchestrator.py
     lines: 43-67, 335-370, 402-477
