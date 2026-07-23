@@ -1094,11 +1094,14 @@ related: []
 ### TEST-027 — Multipart duplicate-input rejection branches lack coverage
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 189-219

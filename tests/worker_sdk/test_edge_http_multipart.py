@@ -245,6 +245,64 @@ class TestMultipartRequest:
         assert handler.received_content_type == ["application/json; charset=utf-8"]
 
     @pytest.mark.asyncio
+    async def test_multipart_request_rejects_duplicate_json_inputs(self, app_and_handler: Any) -> None:
+        """Two JSON input parts after the envelope produce a structured failure."""
+        app, handler = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "translation",
+                "payload": {"chunks": [{"text": "hola"}]},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                files=[
+                    ("request", ("", envelope, "application/json")),
+                    ("chunks-1", ("chunks-1.json", b'{"chunks": []}', "application/json")),
+                    ("chunks-2", ("chunks-2.json", b'{"chunks": []}', "application/json")),
+                ],
+            )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert "more than one worker input part" in body["error"]
+        assert handler.received == []
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_rejects_duplicate_audio_inputs(self, app_and_handler: Any) -> None:
+        """Two audio input parts produce a structured failure without dispatch."""
+        app, handler = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                files=[
+                    ("request", ("", envelope, "application/json")),
+                    ("audio-1", ("one.mp3", b"one", "audio/mpeg")),
+                    ("audio-2", ("two.mp3", b"two", "audio/mpeg")),
+                ],
+            )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert "more than one worker input part" in body["error"]
+        assert handler.received == []
+
+    @pytest.mark.asyncio
     async def test_multipart_request_propagates_per_part_metadata(self, app_and_handler: Any) -> None:
         """CORR-024: an audio part carrying an ``X-Acheron-Metadata`` header
         must reach the handler as ``BytesInput.metadata`` (the request-side
