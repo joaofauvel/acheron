@@ -97,7 +97,12 @@ class HealthMonitor:
         self._owns_http_client = http_client is None
         self._booting_timeout = _BOOTING_TIMEOUT_SECONDS
         self._booting_since: dict[str, float] = {}
+        self._booting_fingerprints: dict[str, tuple[str, str]] = {}
         self._task: asyncio.Task[None] | None = None
+
+    def _clear_booting_state(self, worker_id: str) -> None:
+        self._booting_since.pop(worker_id, None)
+        self._booting_fingerprints.pop(worker_id, None)
 
     async def start(self) -> None:
         """Start the health check background task. Idempotent."""
@@ -139,7 +144,7 @@ class HealthMonitor:
         registered_ids = {worker.worker_id for worker in workers}
         for worker_id in tuple(self._booting_since):
             if worker_id not in registered_ids:
-                self._booting_since.pop(worker_id)
+                self._clear_booting_state(worker_id)
         if not workers:
             return
         results = await asyncio.gather(
@@ -161,7 +166,7 @@ class HealthMonitor:
         else:
             outcome = result
         if outcome.healthy:
-            self._booting_since.pop(worker.worker_id, None)
+            self._clear_booting_state(worker.worker_id)
             await self._registry.record_health_success(worker.worker_id)
         else:
             await self._handle_failure(worker, outcome.error or "health check failed")
@@ -185,6 +190,10 @@ class HealthMonitor:
                 platform_status = WorkerStatus.OFFLINE
                 message = f"{error}; provider {provider_name} error: {exc}"
             if platform_status == WorkerStatus.BOOTING:
+                fingerprint = (worker.endpoint, worker.transport)
+                if self._booting_fingerprints.get(worker.worker_id) != fingerprint:
+                    self._booting_fingerprints[worker.worker_id] = fingerprint
+                    self._booting_since.pop(worker.worker_id, None)
                 since = self._booting_since.setdefault(worker.worker_id, time.monotonic())
                 if time.monotonic() - since < self._booting_timeout:
                     await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
@@ -193,11 +202,11 @@ class HealthMonitor:
                 message = f"{message}; provider BOOTING timeout exceeded"
                 logger.warning("Worker %s exceeded BOOTING timeout of %.1fs", worker.worker_id, self._booting_timeout)
             else:
-                self._booting_since.pop(worker.worker_id, None)
+                self._clear_booting_state(worker.worker_id)
         else:
-            self._booting_since.pop(worker.worker_id, None)
+            self._clear_booting_state(worker.worker_id)
         await self._registry.set_worker_status(worker.worker_id, WorkerStatus.OFFLINE, message)
         removed = await self._registry.record_health_failure(worker.worker_id)
         if removed:
-            self._booting_since.pop(worker.worker_id, None)
+            self._clear_booting_state(worker.worker_id)
             logger.warning("Removed unhealthy worker %s after 3 failures", worker.worker_id)

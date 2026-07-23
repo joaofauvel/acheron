@@ -1177,7 +1177,7 @@ fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 83-126
-related: [TYPE-012, TYPE-014, TEST-023]
+related: [TYPE-012, TYPE-014, TEST-028]
 ```
 
 **Issue.** `_missing_protocol_members()` checks only whether Redis and pipeline members are callable. Synchronous implementations of methods later awaited by the stores can pass construction-time validation and fail with `TypeError` at runtime.
@@ -1191,20 +1191,20 @@ related: [TYPE-012, TYPE-014, TEST-023]
 ### CORR-044 — BOOTING timeout state survives worker re-registration
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 04219ce
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/health.py
     lines: 98-99
   - path: src/acheron/shell/health.py
     lines: 165-198
-related: [CORR-012, TEST-024, PERF-011]
+related: [CORR-012, TEST-029, PERF-011]
 ```
 
 **Issue.** `_booting_since` is keyed only by `worker_id` and is not cleared when a worker is removed or its registration is replaced. A fresh worker using the same ID can inherit an expired BOOTING deadline.

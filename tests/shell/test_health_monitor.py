@@ -380,6 +380,30 @@ class TestHealthMonitorProviderIntegration:
         assert worker.status == WorkerStatus.OFFLINE
 
     @pytest.mark.asyncio
+    async def test_reregistered_worker_gets_fresh_booting_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reg = InMemoryWorkerStore()
+        reg.max_failures = 100
+        await reg.register("w1", "http://old", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = {"runpod": _FakeProvider(WorkerStatus.BOOTING)}
+        monitor = HealthMonitor(reg, health_check=AsyncMock(), providers=providers)
+        monitor._booting_timeout = 10.0  # noqa: SLF001
+        now = 0.0
+        monkeypatch.setattr("acheron.shell.health.time.monotonic", lambda: now)
+
+        worker = await reg.get("w1")
+        assert worker is not None
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+
+        now = 100.0
+        await reg.register("w1", "http://new", "http", _tts_caps_with_provider("runpod", "ep-2"))
+        worker = await reg.get("w1")
+        assert worker is not None
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+
+        assert worker.status == WorkerStatus.BOOTING
+        assert worker.consecutive_failures == 0
+
+    @pytest.mark.asyncio
     async def test_offline_provider_increments_failures(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
