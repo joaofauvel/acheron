@@ -209,14 +209,24 @@ class Orchestrator:
         Tears down the Redis connection pool (or any other backend-held resources).
         In-flight execution tasks must be drained via ``shutdown()`` first. Any
         shielded reconciliation writes that outlived the drain grace are given
-        one bounded grace period before the stores are closed.
+        one bounded grace period before the stores are closed. Each resource
+        cleanup is bounded by the same grace period.
         """
-        await self._wait_for_background_persists()
+        pending = await self._wait_for_background_persists(
+            max_wait=self._settings.orchestrator.shutdown_drain_seconds,
+        )
+        for task in pending:
+            task.cancel()
+        await asyncio.sleep(0)
         for close_attr in ("_handler", "_registry", "_job_store"):
             try:
                 close = getattr(getattr(self, close_attr), "close", None)
                 if close is not None:
-                    await close()
+                    try:
+                        async with asyncio.timeout(self._settings.orchestrator.shutdown_drain_seconds):
+                            await close()
+                    except TimeoutError:
+                        logger.warning("Timed out closing %s", close_attr)
             except Exception as exc:  # noqa: BLE001
                 _log_unexpected(f"Failed to close {close_attr}", exc)
 
@@ -495,13 +505,13 @@ class Orchestrator:
         *,
         max_wait: float | None = None,
         raise_on_timeout: bool = False,
-    ) -> None:
+    ) -> set[asyncio.Task[None]]:
         if job_id is None:
             tasks = list(self._background_persists)
         else:
             tasks = list(self._background_persists_by_job.get(job_id, ()))
         if not tasks:
-            return
+            return set()
         done, pending = await asyncio.wait(tasks, timeout=max_wait)
         if pending:
             logger.warning(
@@ -522,6 +532,7 @@ class Orchestrator:
                     result,
                     exc_info=(type(result), result, result.__traceback__),
                 )
+        return pending
 
     async def _invalidate_handler_cache(self) -> None:
         """Invalidate the step handler's worker-instance cache, if it exposes one.

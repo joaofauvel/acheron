@@ -1139,19 +1139,21 @@ related: [OBS-001, CORR-008]
 ### CORR-042 — `Orchestrator.close` can wait indefinitely for background persists
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 893e2a3
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 206-214
   - path: src/acheron/shell/orchestrator.py
     lines: 488-505
+  - path: tests/shell/test_orchestrator.py
+    lines: 373-410
 related: [CORR-038, CFG-013]
 ```
 

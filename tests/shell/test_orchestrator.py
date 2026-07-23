@@ -50,6 +50,7 @@ class _ControlledPutJobStore(InMemoryJobStore):
     def __init__(self) -> None:
         super().__init__()
         self.persist_started = asyncio.Event()
+        self.persist_cancelled = asyncio.Event()
         self.release_persist = asyncio.Event()
         self._puts = 0
 
@@ -57,7 +58,11 @@ class _ControlledPutJobStore(InMemoryJobStore):
         self._puts += 1
         if self._puts == 2:
             self.persist_started.set()
-            await self.release_persist.wait()
+            try:
+                await self.release_persist.wait()
+            except asyncio.CancelledError:
+                self.persist_cancelled.set()
+                raise
         await super().put(copy.deepcopy(job))
 
 
@@ -383,6 +388,39 @@ class TestOrchestrator:
             await shutdown_task
         job_store.release_persist.set()
         await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_close_bounds_and_cancels_background_persist(self, tmp_path: Path) -> None:
+        """CORR-042: close() must not wait indefinitely for reconciliation writes."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        settings.orchestrator.shutdown_drain_seconds = 0.05
+        job_store = _ControlledPutJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=job_store, settings=settings)
+        await orch.start()
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        shutdown_task = asyncio.create_task(orch.shutdown())
+        await job_store.persist_started.wait()
+        with pytest.raises(TimeoutError):
+            await shutdown_task
+
+        await asyncio.wait_for(orch.close(), timeout=0.5)
+        assert job_store.persist_cancelled.is_set()
 
     @pytest.mark.asyncio
     async def test_shutdown_drain_logs_entry_and_completion(
