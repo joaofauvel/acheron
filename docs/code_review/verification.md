@@ -1052,11 +1052,14 @@ related: []
 ### TEST-025 — API route mapping of `total_cost_basis` is not directly tested
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 96-108

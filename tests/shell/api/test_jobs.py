@@ -8,6 +8,54 @@ import pytest
 
 class TestJobRoutes:
     @pytest.mark.asyncio
+    async def test_get_job_maps_total_cost_basis(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.core.models import CostBasis, EpubRequest, ExecutorStrategy, PlanResult, PlanStatus
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.job_store import TrackedJob
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        jobs = InMemoryJobStore()
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=jobs,
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+        )
+        await app.state.orchestrator.start()
+        await jobs.put(
+            TrackedJob(
+                job_id="job-measured",
+                request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                status=PlanStatus.COMPLETED,
+                result=PlanResult(
+                    plan_id="plan-measured",
+                    status=PlanStatus.COMPLETED,
+                    completed_steps=1,
+                    total_steps=1,
+                    outputs=(),
+                    total_cost=0.25,
+                    total_duration_seconds=1.0,
+                    total_cost_basis=CostBasis.MEASURED,
+                ),
+            )
+        )
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.get("/jobs/job-measured")
+        finally:
+            await app.state.orchestrator.shutdown()
+            await app.state.orchestrator.close()
+        assert response.status_code == 200
+        assert response.json()["total_cost_basis"] == "measured"
+
+    @pytest.mark.asyncio
     async def test_submit_job(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.post(
             "/jobs",
