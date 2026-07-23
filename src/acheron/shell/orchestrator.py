@@ -13,8 +13,6 @@ import weakref
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from redis.exceptions import RedisError
-
 from acheron.core.errors import (
     AcheronError,
     JobAlreadyRunningError,
@@ -52,6 +50,7 @@ from acheron.shell.local_handlers import (
 from acheron.shell.logging_context import bind_job_id
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
+from acheron.shell.stores.base import StoreError
 
 if TYPE_CHECKING:
     from acheron.core.interfaces import Executor
@@ -417,7 +416,7 @@ class Orchestrator:
             self._record_cancellation(tracked)
             try:
                 await self._persist_shielded(tracked)
-            except (OSError, ConnectionError, RuntimeError, RedisError) as exc:
+            except (OSError, ConnectionError, StoreError) as exc:
                 _log_unexpected(f"Failed to persist job {tracked.job_id} after cancellation", exc)
             raise
         except Exception as exc:

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import time
-from typing import TYPE_CHECKING, Any, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast, runtime_checkable
 
 import redis.asyncio
 from pydantic import TypeAdapter
@@ -18,14 +17,36 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerStatus,
 )
-from acheron.shell.stores.base import JobStore, WorkerStore
+from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
 
 if TYPE_CHECKING:
-    from redis.asyncio.client import Pipeline as _RedisPipeline
+    from types import TracebackType
 
     from acheron.core.models import WorkerType
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
+
+
+@runtime_checkable
+class _RedisPipelineAwaitable(Protocol):
+    async def __aenter__(self) -> Self: ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+
+    async def execute(self) -> list[object]: ...
+
+    def delete(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
+    def get(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
+    def hgetall(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
+    def hset(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
+    def sadd(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
+    def set(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
+    def srem(self, *args: object, **kwargs: object) -> _RedisPipelineAwaitable: ...
 
 
 @runtime_checkable
@@ -56,7 +77,23 @@ class _RedisAwaitable(Protocol):
     ) -> int | None: ...
     async def exists(self, name: str) -> bool: ...
     async def get(self, name: str) -> str | None: ...
-    def pipeline(self, transaction: bool = True) -> _RedisPipeline: ...  # noqa: FBT001, FBT002
+    def pipeline(self, transaction: bool = True) -> _RedisPipelineAwaitable: ...  # noqa: FBT001, FBT002
+
+
+def _protocol_method_names(protocol: type[object], *, include_private: bool = False) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name, member in vars(protocol).items()
+        if callable(member) and (include_private or not name.startswith("_"))
+    )
+
+
+def _missing_protocol_members(value: object, protocol: type[object], *, include_private: bool = False) -> list[str]:
+    return [
+        name
+        for name in _protocol_method_names(protocol, include_private=include_private)
+        if not callable(getattr(value, name, None))
+    ]
 
 
 _WORKER_KEY = "worker:{worker_id}"
@@ -67,86 +104,26 @@ _JOBS_SET = "jobs"
 _capabilities_adapter: TypeAdapter[WorkerCapabilities] = TypeAdapter(WorkerCapabilities)
 _metadata_adapter: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
 
-_REQUISITE_REDIS_METHODS = (
-    "ping",
-    "aclose",
-    "hgetall",
-    "smembers",
-    "hincrby",
-    "hset",
-    "exists",
-    "get",
-    "pipeline",
-)
-_ASYNC_REDIS_CALLS: dict[str, tuple[object, ...]] = {
-    "ping": (),
-    "aclose": (),
-    "hgetall": ("",),
-    "smembers": ("",),
-    "hincrby": ("", "", 1),
-    "hset": ("", "key", "value"),
-    "exists": ("",),
-    "get": ("",),
-}
-_PIPELINE_METHODS = ("__aenter__", "__aexit__", "execute", "hset", "sadd", "srem", "delete", "set", "get")
-_ASYNC_PIPELINE_CALLS: dict[str, tuple[object, ...]] = {
-    "__aenter__": (),
-    "__aexit__": (None, None, None),
-    "execute": (),
-}
-
-
-def _returns_awaitable(method: object, args: tuple[object, ...]) -> bool:
-    if not callable(method):
-        return False
-    try:
-        result = method(*args)
-    except TypeError, ValueError, RedisError:
-        return False
-    try:
-        return inspect.isawaitable(result)
-    finally:
-        close = getattr(result, "close", None)
-        if callable(close):
-            close()
-
-
-def _has_pipeline_surface(client: object) -> bool:
-    pipeline = getattr(client, "pipeline", None)
-    if not callable(pipeline):
-        return False
-    try:
-        instance = pipeline(transaction=True)
-    except TypeError, ValueError, RedisError:
-        return False
-    return all(callable(getattr(instance, name, None)) for name in _PIPELINE_METHODS) and all(
-        _returns_awaitable(getattr(instance, name, None), args) for name, args in _ASYNC_PIPELINE_CALLS.items()
-    )
-
-
-def _is_redis_awaitable(client: object) -> TypeGuard[_RedisAwaitable]:
-    """Check that every store-used Redis member has the expected async surface."""
-    return all(_returns_awaitable(getattr(client, name, None), args) for name, args in _ASYNC_REDIS_CALLS.items()) and (
-        _has_pipeline_surface(client)
-    )
-
 
 def _checked_redis_client(redis_url: str) -> _RedisAwaitable:
-    """Build a redis.asyncio.Redis client and verify it satisfies the ``_RedisAwaitable`` surface.
+    """Build a Redis client and verify its store-facing Protocol surfaces.
 
     Raises:
         TypeError: If the client is missing any declared method (e.g. after a
             redis-py rename). Lists the missing attribute names.
     """
     client: object = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
-    missing = [name for name in _REQUISITE_REDIS_METHODS if not callable(getattr(client, name, None))]
+    missing = _missing_protocol_members(client, _RedisAwaitable)
     if missing:
         msg = f"redis.asyncio.Redis no longer satisfies the _RedisAwaitable surface; missing: {missing}"
         raise TypeError(msg)
-    if not _is_redis_awaitable(client):
-        msg = "redis.asyncio.Redis no longer exposes awaitable commands and an async pipeline"
+    typed_client = cast("_RedisAwaitable", client)
+    pipeline = typed_client.pipeline(transaction=True)
+    missing_pipeline = _missing_protocol_members(pipeline, _RedisPipelineAwaitable, include_private=True)
+    if missing_pipeline:
+        msg = f"redis.asyncio.Redis no longer satisfies the pipeline Protocol surface; missing: {missing_pipeline}"
         raise TypeError(msg)
-    return client
+    return typed_client
 
 
 def _serialize_capabilities(cap: WorkerCapabilities) -> str:
@@ -445,7 +422,10 @@ class RedisWorkerStore(WorkerStore):
             for wid in ids:
                 pipe.hgetall(_WORKER_KEY.format(worker_id=wid))
             results = await pipe.execute()
-        return tuple(_deserialize_worker(wid, fields) for wid, fields in zip(ids, results, strict=True) if fields)
+        worker_results = cast("list[dict[str, str]]", results)
+        return tuple(
+            _deserialize_worker(wid, fields) for wid, fields in zip(ids, worker_results, strict=True) if fields
+        )
 
     async def find_by_type(self, worker_type: WorkerType) -> tuple[RegisteredWorker, ...]:
         """Find workers matching a given WorkerType."""
@@ -517,10 +497,14 @@ class RedisJobStore(JobStore):
 
     async def put(self, job: TrackedJob) -> None:
         """Store or update a tracked job."""
-        async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.set(_JOB_KEY.format(job_id=job.job_id), _serialize_job(job))
-            pipe.sadd(_JOBS_SET, job.job_id)
-            await pipe.execute()
+        try:
+            async with self._redis.pipeline(transaction=True) as pipe:
+                pipe.set(_JOB_KEY.format(job_id=job.job_id), _serialize_job(job))
+                pipe.sadd(_JOBS_SET, job.job_id)
+                await pipe.execute()
+        except RedisError as exc:
+            msg = f"Failed to persist job {job.job_id}"
+            raise StoreError(msg) from exc
 
     async def get(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
@@ -538,4 +522,5 @@ class RedisJobStore(JobStore):
             for jid in ids:
                 pipe.get(_JOB_KEY.format(job_id=jid))
             results = await pipe.execute()
-        return tuple(_deserialize_job(blob) for blob in results if blob is not None)
+        job_results = cast("list[str | None]", results)
+        return tuple(_deserialize_job(blob) for blob in job_results if blob is not None)

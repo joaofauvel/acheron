@@ -1206,14 +1206,21 @@ related: [CFG-006, CFG-009, OBS-013]
 ### ARCH-025 — Orchestrator catches Redis-specific errors across the JobStore abstraction
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 16, 418-421
+    lines: 53, 419-420
+  - path: src/acheron/shell/stores/base.py
+    lines: 14-15
+  - path: src/acheron/shell/stores/redis.py
+    lines: 497-507
 related: []
 ```
 

@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
 
 
+class StoreError(RuntimeError):
+    """Backend failure normalized at the store boundary."""
+
+
 class WorkerStore(ABC):
     """Persistent or in-memory store of registered workers and their health state."""
 
