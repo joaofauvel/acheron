@@ -254,21 +254,27 @@ class Orchestrator:
         """Stop the health monitor and drain in-flight ``_execute`` tasks.
 
         Cancels every task tracked on ``self._tasks`` and awaits them with
-        a grace timeout so any in-flight job moves to a terminal persisted
-        state before the orchestrator returns. For explicit cleanup of
-        stores (Redis pools, file handles), call :meth:`close` separately.
+        a grace timeout so any in-flight job reconciles to a terminal
+        persisted state. On timeout the reconcile continues in the
+        background and the ``TimeoutError`` propagates. For explicit
+        cleanup of stores (Redis pools, file handles), call :meth:`close`
+        separately.
         """
         await self._health_monitor.stop()
         await self._drain_inflight_tasks()
 
     async def _drain_inflight_tasks(self) -> None:
-        """Cancel and await in-flight ``_execute`` tasks.
+        """Cancel and await in-flight ``_execute`` tasks, best-effort.
 
-        Each task's ``_execute`` body writes a terminal status to the job
-        store in its ``finally`` block, so awaiting the cancelled tasks is
-        sufficient to reconcile the persisted state. Tasks that have already
-        finished are silently dropped from the set; ``asyncio.wait`` swallows
-        the ``CancelledError`` from each task.
+        Cancellation arrives via ``task.cancel()``; each task's ``_execute``
+        body catches ``asyncio.CancelledError``, marks the job FAILED, and
+        persists it inside ``asyncio.shield`` so a firing drain grace cannot
+        abort the write — a still-running persist completes in the
+        background. The tasks are collected with
+        ``asyncio.gather(..., return_exceptions=True)`` inside
+        ``asyncio.timeout(orchestrator.shutdown_drain_seconds)`` so a slow
+        store cannot hang shutdown indefinitely; on timeout a warning is
+        logged and the ``TimeoutError`` propagates to the caller.
         """
         pending = list(self._tasks)
         if not pending:

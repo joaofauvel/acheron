@@ -1008,14 +1008,14 @@ related: [CORR-029]
 ### CORR-037 — `Orchestrator._drain_inflight_tasks` docstring contradicts its own code — 'asyncio.wait' / 'finally block' both wrong
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 7c950a7
+  commit: 5f8f0d8
   date: 2026-07-22
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 264-272
@@ -1088,12 +1088,12 @@ severity: low
 effort: M
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 7c950a7
+  commit: 5f8f0d8
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 366-374
+    lines: 372-380
 related: [OBS-001, CORR-008]
 ```
 
