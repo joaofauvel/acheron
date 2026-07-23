@@ -129,17 +129,19 @@ related: []
 ### TEST-005 — `_metadata_str` helper in health.py has no direct unit tests
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/health.py
     lines: 38-41
+  - path: tests/shell/test_health_monitor.py
+    lines: 54-82
 related: []
 ```
 
@@ -154,17 +156,19 @@ related: []
 ### TEST-006 — HuggingFaceHealthProvider.check_status has untested `str` and `else` branches
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 59458ba
-  date: '2026-06-26'
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
 - path: src/acheron/shell/health_providers.py
-  lines: 87-102
+  lines: 87-105
+- path: tests/shell/test_health_providers.py
+  lines: 94-128
 related: []
 ```
 
@@ -294,17 +298,17 @@ related: [PERF-001]
 ### REPRO-003 — `tests/worker_sdk/conftest.py` `_no_sleep` fixture masks `asyncio.sleep` timing in retry/registration tests
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: tests/worker_sdk/conftest.py
-    lines: 8-15
+    lines: 1
   - path: tests/worker_sdk/test_registration.py
     lines: 84-113
 related: []
@@ -487,14 +491,14 @@ related: [CORR-013, CORR-028, CORR-031]
 ### DATA-007 — `_runpod_client` output.artifacts-not-list path and FileArtifact stream edge cases lack direct tests
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 88-91
@@ -503,9 +507,9 @@ files:
   - path: src/acheron/worker_sdk/_io.py
     lines: 43-50
   - path: tests/worker_sdk/test_runpod_client.py
-    lines: 1-100
+    lines: 47-211
   - path: tests/worker_sdk/test_artifacts.py
-    lines: 45-52
+    lines: 45-75
 related: [CORR-014, TEST-021]
 ```
 
@@ -520,19 +524,19 @@ related: [CORR-014, TEST-021]
 ### TEST-009 — `test_inputs.py` missing Protocol isinstance, FileInput missing-path, StreamInput empty, and FileInput empty-file edge cases
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/inputs.py
     lines: 17-22, 25-32, 35-47, 51-60
   - path: tests/worker_sdk/test_inputs.py
-    lines: 1-86
+    lines: 1-112
 related: [TEST-021]
 ```
 
@@ -547,19 +551,19 @@ related: [TEST-021]
 ### TEST-010 — `test_safe_chapter_id.py` missing unicode `chapter_id` coverage
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: workers/_shared_utils.py
     lines: 17-38
   - path: workers/_shared/tests/test_safe_chapter_id.py
-    lines: 1-55
+    lines: 1-60
 related: []
 ```
 
@@ -574,19 +578,19 @@ related: []
 ### TEST-011 — `test_cloud_audio.py` missing default-content_type and default-metadata branches in `make_runpod_handler`
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/cloud.py
     lines: 36, 39, 43
   - path: tests/worker_sdk/test_cloud_audio.py
-    lines: 1-192
+    lines: 1-280
 related: []
 ```
 
@@ -819,19 +823,19 @@ related:
 ### TEST-018 — test_app.py still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete, regression of TEST-008)
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/app.py
     lines: 46-52, 69-70
   - path: tests/worker_sdk/test_app.py
-    lines: 161-190
+    lines: 161-234
 related: [TEST-008]
 ```
 
@@ -846,21 +850,21 @@ related: [TEST-008]
 ### TEST-019 — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4)
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/artifacts.py
     lines: 23-43, 47-53, 60-66
   - path: src/acheron/worker_sdk/_io.py
     lines: 22-29, 43-50
   - path: tests/worker_sdk/test_artifacts.py
-    lines: 45-53
+    lines: 45-75
 related: [TEST-021]
 ```
 
@@ -875,19 +879,19 @@ related: [TEST-021]
 ### TEST-020 — test_pricing.py has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract)
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 36-37, 42-50, 55, 65-66
   - path: tests/worker_sdk/test_pricing.py
-    lines: 1-50
+    lines: 1-108
 related: []
 ```
 
@@ -954,19 +958,19 @@ related: [TEST-002, TEST-004]
 ### REPRO-004 — `test_orchestrator_works_with_redis_backend` opens its own Redis stores without using the `redis_url` lifespan — duplicates the store-fixture cleanup path
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: c832a73
-  date: 2026-07-22
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: tests/integration/test_worker_integration.py
-    lines: 236-275
-  - path: tests/integration/conftest.py
-    lines: 389-405
+    lines: 236-276
+  - path: tests/conftest.py
+    lines: 40-65
 related: [REPRO-001, TEST-002]
 ```
 
@@ -981,19 +985,19 @@ related: [REPRO-001, TEST-002]
 ### DATA-010 — `RedisJobStore._deserialize_job`'s defensive isinstance branch lacks a parametric test for the success-after-corrupt-blob case (raw metadata as JSON-valid non-dict value)
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 76c2ea4
-  date: 2026-07-22
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 310-320
   - path: tests/shell/stores/test_redis_job_store.py
-    lines: 203-227
+    lines: 203-230
 related: [DATA-005, DATA-007, CORR-035]
 ```
 
@@ -1004,4 +1008,3 @@ related: [DATA-005, DATA-007, CORR-035]
 **Recommendation.** Parametrise the existing test in `tests/shell/stores/test_redis_job_store.py:203-227` (or add a new test in the same class) over `metadata = {} | 'str' | None | 42 | []` — each must round-trip to `{}`. Use `pytest.mark.parametrize('bad_metadata', [...])` and assert `loaded.result.outputs[0].metadata == {}` for all cases. Verify the existing `test_result_with_metadata_round_trips` (lines 174-202) is not changed.
 
 **Verification.** Run `just test tests/shell/stores/test_redis_job_store.py::TestPlanRoundTrip::test_result_with_non_dict_metadata_falls_back_to_empty` (or the new parametrised version); all 5 inputs produce `metadata == {}`.
-

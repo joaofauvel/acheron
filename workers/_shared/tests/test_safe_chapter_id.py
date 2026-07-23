@@ -9,6 +9,10 @@ from acheron.core.errors import WorkerError
 
 
 class TestSafeChapterId:
+    @pytest.mark.parametrize("chapter_id", ["第1章", "café", "Ω"])
+    def test_unicode_chapter_id_passes(self, chapter_id: str) -> None:
+        assert safe_chapter_id(chapter_id) == chapter_id
+
     def test_plain_chapter_id_passes(self) -> None:
         assert safe_chapter_id("ch1") == "ch1"
         assert safe_chapter_id("chapter_001") == "chapter_001"

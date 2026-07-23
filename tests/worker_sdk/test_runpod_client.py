@@ -45,6 +45,21 @@ def _patch_endpoint(monkeypatch: pytest.MonkeyPatch, fake: _FakeEndpoints) -> No
 
 
 class TestRunPodClient:
+    @pytest.mark.parametrize("artifacts", [{}, "not-a-list", None])
+    @pytest.mark.asyncio
+    async def test_non_list_artifacts_raise_worker_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        artifacts: object,
+    ) -> None:
+        from acheron.core.errors import WorkerError
+
+        fake = _FakeEndpoints(output={"artifacts": artifacts})
+        _patch_endpoint(monkeypatch, fake)
+        client = RunPodClient(api_key="k", endpoint_id="eid", execution_timeout_s=60.0)
+        with pytest.raises(WorkerError, match="artifacts must be a list"):
+            await client.run(payload={})
+
     @pytest.mark.asyncio
     async def test_returns_artifacts_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fake = _FakeEndpoints(output={"artifacts": [{"filename": "out.wav", "data": "AAEC"}]})
@@ -162,3 +177,21 @@ class TestRunPodClient:
         assert any("eid-boom" in r.message and "HTTPError" in r.message for r in caplog.records), (
             f"expected log with endpoint_id+exc_class, got: {[r.message for r in caplog.records]}"
         )
+
+    @pytest.mark.asyncio
+    async def test_output_failure_logs_and_reraises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        fake = _FakeEndpoints(exc=httpx.HTTPError("output unavailable"))
+        _patch_endpoint(monkeypatch, fake)
+        client = RunPodClient(api_key="rk", endpoint_id="eid-output", execution_timeout_s=60.0)
+        with (
+            caplog.at_level(logging.ERROR, logger="acheron.worker_sdk._runpod_client"),
+            pytest.raises(httpx.HTTPError, match="output unavailable"),
+        ):
+            await client.run(payload={})
+        assert any("eid-output" in r.message and "HTTPError" in r.message for r in caplog.records)

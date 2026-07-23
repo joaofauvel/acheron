@@ -102,6 +102,38 @@ class TestHuggingFaceHealthProvider:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_string_status_returns_booting(self) -> None:
+        respx.get(f"{_HF_BASE}/my-ns/ep-1").mock(return_value=httpx.Response(200, json={"status": "running"}))
+        provider = HuggingFaceHealthProvider(api_key="hf-key")
+        status = await provider.check_status("my-ns/ep-1")
+        assert status == WorkerStatus.BOOTING
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_string_paused_status_returns_offline(self) -> None:
+        respx.get(f"{_HF_BASE}/my-ns/ep-1").mock(return_value=httpx.Response(200, json={"status": "paused"}))
+        provider = HuggingFaceHealthProvider(api_key="hf-key")
+        status = await provider.check_status("my-ns/ep-1")
+        assert status == WorkerStatus.OFFLINE
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_empty_dict_state_returns_offline(self) -> None:
+        respx.get(f"{_HF_BASE}/my-ns/ep-1").mock(return_value=httpx.Response(200, json={"status": {"state": ""}}))
+        provider = HuggingFaceHealthProvider(api_key="hf-key")
+        status = await provider.check_status("my-ns/ep-1")
+        assert status == WorkerStatus.OFFLINE
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_non_string_status_returns_offline(self) -> None:
+        respx.get(f"{_HF_BASE}/my-ns/ep-1").mock(return_value=httpx.Response(200, json={"status": None}))
+        provider = HuggingFaceHealthProvider(api_key="hf-key")
+        status = await provider.check_status("my-ns/ep-1")
+        assert status == WorkerStatus.OFFLINE
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_paused_returns_offline(self) -> None:
         respx.get(f"{_HF_BASE}/my-ns/ep-1").mock(return_value=httpx.Response(200, json={"status": {"state": "paused"}}))
         provider = HuggingFaceHealthProvider(api_key="hf-key")

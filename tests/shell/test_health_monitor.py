@@ -15,8 +15,9 @@ import pytest_asyncio
 from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.core.interfaces import HealthProvider
-from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
-from acheron.shell.health import HealthMonitor, HealthProbeResult, _default_health_check
+from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
+from acheron.shell.health import HealthMonitor, HealthProbeResult, _default_health_check, _metadata_str
+from acheron.shell.registry import RegisteredWorker
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 if TYPE_CHECKING:
@@ -51,6 +52,35 @@ def _tts_caps() -> WorkerCapabilities:
 
 
 class TestHealthMonitor:
+    @pytest.mark.parametrize(
+        ("metadata", "expected"),
+        [
+            ({}, ""),
+            ({"health_provider": None}, ""),
+            ({"health_provider": 123}, ""),
+            ({"health_provider": "runpod"}, "runpod"),
+        ],
+    )
+    def test_metadata_str_only_returns_strings(self, metadata: dict[str, JsonValue], expected: str) -> None:
+        worker = RegisteredWorker(
+            worker_id="w1",
+            endpoint="http://worker",
+            transport="http",
+            capabilities=WorkerCapabilities(
+                worker_type=WorkerType.TTS,
+                supported_languages_in=frozenset(),
+                supported_languages_out=frozenset(),
+                supported_formats_in=frozenset(),
+                supported_formats_out=frozenset(),
+                max_payload_bytes=None,
+                batch_capable=False,
+                model_source=None,
+                metadata=metadata,
+            ),
+        )
+
+        assert _metadata_str(worker, "health_provider") == expected
+
     @pytest.mark.asyncio
     async def test_start_and_stop(self) -> None:
         reg = InMemoryWorkerStore()

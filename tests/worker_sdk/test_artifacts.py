@@ -44,6 +44,24 @@ class TestStreamArtifact:
 
 class TestFileArtifact:
     @pytest.mark.asyncio
+    async def test_metadata_defaults_to_empty(self, tmp_path: Path) -> None:
+        a = FileArtifact(filename="blob.bin", content_type="application/octet-stream", path=tmp_path / "blob.bin")
+        assert a.metadata == {}
+
+    @pytest.mark.asyncio
+    async def test_empty_file_streams_nothing(self, tmp_path: Path) -> None:
+        path = tmp_path / "empty.bin"
+        path.touch()
+        a = FileArtifact(filename="empty.bin", content_type="application/octet-stream", path=path)
+        assert await _collect(a) == b""
+
+    @pytest.mark.asyncio
+    async def test_missing_path_raises(self, tmp_path: Path) -> None:
+        a = FileArtifact(filename="missing.bin", content_type="application/octet-stream", path=tmp_path / "missing.bin")
+        with pytest.raises(FileNotFoundError):
+            await _collect(a)
+
+    @pytest.mark.asyncio
     async def test_stream_reads_from_disk_in_chunks(self, tmp_path: Path) -> None:
         path = tmp_path / "blob.bin"
         path.write_bytes(b"x" * 200_000)  # larger than the 64kb read window

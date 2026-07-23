@@ -57,6 +57,42 @@ class TestSerialiseJobForRunpod:
 
 class TestMakeRunpodHandlerAudioForward:
     @pytest.mark.asyncio
+    async def test_missing_content_type_defaults_to_audio_wav(self) -> None:
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        await wrapped(
+            {
+                "input": {
+                    "job_id": "j-1",
+                    "job_type": "asr",
+                    "payload": {},
+                    "chapter_id": "ch1",
+                    "input_audio": {"data": "AAAAAA==", "metadata": {}},
+                }
+            }
+        )
+        assert handler.received_input is not None
+        assert handler.received_input.content_type == "audio/wav"
+
+    @pytest.mark.asyncio
+    async def test_missing_metadata_defaults_to_empty_dict(self) -> None:
+        handler = _CaptureHandler()
+        wrapped = make_runpod_handler(handler)
+        await wrapped(
+            {
+                "input": {
+                    "job_id": "j-1",
+                    "job_type": "asr",
+                    "payload": {},
+                    "chapter_id": "ch1",
+                    "input_audio": {"content_type": "audio/wav", "data": "AAAAAA=="},
+                }
+            }
+        )
+        assert handler.received_input is not None
+        assert handler.received_input.metadata == {}
+
+    @pytest.mark.asyncio
     async def test_passes_input_when_input_audio_present(self) -> None:
         handler = _CaptureHandler()
         wrapped = make_runpod_handler(handler)

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from acheron.core.models import JsonValue
-from acheron.worker_sdk.inputs import BytesInput, FileInput, StreamInput
+from acheron.worker_sdk.inputs import BytesInput, FileInput, Input, StreamInput
 
 
 async def _collect(async_iter: AsyncIterator[bytes]) -> list[bytes]:
@@ -18,6 +18,9 @@ async def _collect(async_iter: AsyncIterator[bytes]) -> list[bytes]:
 
 
 class TestBytesInput:
+    def test_implements_input_protocol(self) -> None:
+        assert isinstance(BytesInput(content_type="audio/wav", data=b"x"), Input)
+
     def test_content_type_property(self) -> None:
         b = BytesInput(content_type="audio/mpeg", data=b"\xff\xfb\x90\x00")
         assert b.content_type == "audio/mpeg"
@@ -43,6 +46,14 @@ class TestBytesInput:
 
 
 class TestStreamInput:
+    def test_empty_producer_streams_nothing(self) -> None:
+        async def producer():
+            return
+            yield b"unreachable"
+
+        stream = StreamInput(content_type="audio/wav", producer=producer)
+        assert asyncio.run(_collect(stream.stream())) == []
+
     def test_stream_delegates_to_producer(self) -> None:
         async def producer():
             yield b"chunk1"
@@ -66,6 +77,17 @@ class TestStreamInput:
 
 
 class TestFileInput:
+    def test_missing_path_raises(self, tmp_path: Path) -> None:
+        stream = FileInput(content_type="audio/wav", path=tmp_path / "missing.wav")
+        with pytest.raises(FileNotFoundError):
+            asyncio.run(_collect(stream.stream()))
+
+    def test_empty_file_streams_nothing(self, tmp_path: Path) -> None:
+        path = tmp_path / "empty.wav"
+        path.touch()
+        stream = FileInput(content_type="audio/wav", path=path)
+        assert asyncio.run(_collect(stream.stream())) == []
+
     def test_content_type_and_path(self, tmp_path: Path) -> None:
         p = tmp_path / "audio.wav"
         p.write_bytes(b"RIFFDATA")

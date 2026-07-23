@@ -194,6 +194,30 @@ class TestBuildPriceSource:
         assert isinstance(source, ZeroPrice)
         assert any("RUNPOD_API_KEY" in r.message and "prices will be unknown" in r.message for r in caplog.records)
 
+    def test_build_price_source_static_without_rate_returns_zero_stub(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from acheron.worker_sdk.app import _build_price_source
+        from acheron.worker_sdk.pricing import ZeroPrice
+
+        with caplog.at_level("WARNING", logger="acheron.worker_sdk.app"):
+            settings = _settings(price_source="zero").model_copy(
+                update={"price_source": "static", "dollars_per_hour": None}
+            )
+            source = _build_price_source(settings)
+        assert isinstance(source, ZeroPrice)
+        assert any("dollars_per_hour not set" in r.message for r in caplog.records)
+
+    def test_registration_caps_unchanged_for_non_runpod_source(self) -> None:
+        from acheron.worker_sdk.app import _registration_caps
+
+        caps = _Stub().capabilities()
+        enriched = _registration_caps(caps, _settings(price_source="zero"))
+        assert enriched == caps
+        assert "health_provider" not in enriched.metadata
+        assert "health_endpoint_id" not in enriched.metadata
+
 
 class TestLifespanPriceRefreshExceptionHandling:
     """EXC-004 + OBS-008: price refresh exceptions are narrowed; BaseException subclasses propagate."""

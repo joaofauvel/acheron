@@ -199,11 +199,13 @@ class TestPlanRoundTrip:
         assert loaded.result is not None
         assert loaded.result.outputs[0].metadata == {"sequence_id": "7", "chapter_id": "ch3"}
 
+    @pytest.mark.parametrize("metadata_json", ['"not-a-dict"', "null", "123", "[]", "{}"])
     @pytest.mark.asyncio
     async def test_result_with_non_dict_metadata_falls_back_to_empty(
         self,
         store: RedisJobStore,
         redis_url: str,
+        metadata_json: str,
     ) -> None:
         """CORR-035: a non-dict metadata value must not crash; fall back to {}."""
         from acheron.shell.stores.redis import _JOB_KEY
@@ -216,7 +218,7 @@ class TestPlanRoundTrip:
                 '"strategy":"streaming","status":"failed","plan":null,'
                 '"result":{"plan_id":"p","status":"failed","completed_steps":1,'
                 '"total_steps":1,"outputs":[{"path":"/x","filename":"x","size_bytes":1,'
-                '"checksum":"c","content_type":"audio/wav","metadata":"not-a-dict"}],'
+                '"checksum":"c","content_type":"audio/wav","metadata":' + metadata_json + "}],"
                 '"total_cost":0.0,"total_duration_seconds":0.0,"errors":[]}}'
             )
             await r.set(_JOB_KEY.format(job_id="j-bad"), blob)

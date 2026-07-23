@@ -13,6 +13,10 @@ class TestZeroPrice:
         assert est.cost == 0.0
         assert to_cost_basis(est).value == "static"
 
+    @pytest.mark.asyncio
+    async def test_refresh_returns_true(self) -> None:
+        assert await ZeroPrice().refresh() is True
+
 
 class TestStaticPrice:
     @pytest.mark.asyncio
@@ -25,6 +29,10 @@ class TestStaticPrice:
     async def test_zero_gpu_seconds_yields_zero(self) -> None:
         est = await StaticPrice(dollars_per_hour=0.69).estimate(gpu_seconds=0.0)
         assert est.cost == 0.0
+
+    @pytest.mark.asyncio
+    async def test_refresh_returns_true(self) -> None:
+        assert await StaticPrice(dollars_per_hour=0.69).refresh() is True
 
 
 class TestRunPodPrice:
