@@ -107,6 +107,9 @@ def _missing_awaitable_members(
         if not callable(method):
             missing.append(name)
             continue
+        if not inspect.iscoroutinefunction(method) and not type(value).__module__.startswith("redis."):
+            missing.append(name)
+            continue
         try:
             result = method(*args, **kwargs)
         except AttributeError, TypeError:
