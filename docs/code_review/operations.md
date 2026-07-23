@@ -1266,11 +1266,14 @@ related: [CORR-041, OBS-014]
 ### OBS-014 — Shutdown can close the store before post-timeout reconciliation completes
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 215, 493-525
