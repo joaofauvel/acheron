@@ -1291,14 +1291,14 @@ related: [CORR-038, CFG-013]
 ### PERF-010 — Worker retirement cleanup scans every active job on every release
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 52feb77
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 161-179

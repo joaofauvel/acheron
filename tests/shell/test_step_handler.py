@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -328,6 +329,37 @@ class TestStepHandler:
 
         assert workers[0].close_calls == 0
         await handler.release_job(plan.job_id)
+        assert workers[0].close_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_shared_retired_worker_closes_after_last_job_release(self) -> None:
+        class ClosableLocalWorker(LocalWorker):
+            def __init__(self) -> None:
+                super().__init__(WorkerType.TTS, _echo_job_result)
+                self.close_calls = 0
+
+            async def close(self) -> None:
+                self.close_calls += 1
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        workers: list[ClosableLocalWorker] = []
+
+        def _factory(_registered: RegisteredWorker) -> ClosableLocalWorker:
+            worker = ClosableLocalWorker()
+            workers.append(worker)
+            return worker
+
+        handler = CachingStepHandler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
+        plan_a = replace(_make_plan(), job_id="job-a", plan_id="plan-a")
+        plan_b = replace(_make_plan(), job_id="job-b", plan_id="plan-b")
+        await handler(plan_a.steps[0], plan_a)
+        await handler(plan_b.steps[0], plan_b)
+        await handler._invalidate_worker_cache()  # noqa: SLF001
+
+        await handler.release_job("job-a")
+        assert workers[0].close_calls == 0
+        await handler.release_job("job-b")
         assert workers[0].close_calls == 1
 
 
