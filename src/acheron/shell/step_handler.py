@@ -100,6 +100,8 @@ class CachingStepHandler:
         self._cached_workers: tuple[RegisteredWorker, ...] | None = None
         self._cached_plan_id: str | None = None
         self._worker_instances: dict[str, Worker] = {}
+        self._retired_worker_instances: list[Worker] = []
+        self._job_worker_instances: dict[str, list[Worker]] = {}
 
     async def __call__(self, step: PlanStep, plan: Plan) -> JobResult:
         """Dispatch the step to a selected worker; cache workers per plan_id."""
@@ -138,6 +140,9 @@ class CachingStepHandler:
         if worker_instance is None:
             worker_instance = self._factory(selected)
             self._worker_instances[selected.worker_id] = worker_instance
+        job_instances = self._job_worker_instances.setdefault(plan.job_id, [])
+        if all(worker is not worker_instance for worker in job_instances):
+            job_instances.append(worker_instance)
         return await worker_instance.execute(job)
 
     async def _invalidate_worker_cache(self) -> None:
@@ -147,11 +152,25 @@ class CachingStepHandler:
         so a worker re-registration, removal, or endpoint change is reflected
         on the next dispatch.
         """
-        workers = tuple(self._worker_instances.values())
+        self._retired_worker_instances.extend(self._worker_instances.values())
         self._cached_workers = None
         self._cached_plan_id = None
         self._worker_instances.clear()
-        for worker in workers:
+        await self._close_retired_workers()
+
+    async def release_job(self, job_id: str) -> None:
+        """Release worker instances retained for a completed job."""
+        self._job_worker_instances.pop(job_id, None)
+        await self._close_retired_workers()
+
+    async def _close_retired_workers(self) -> None:
+        active_workers = {id(worker) for workers in self._job_worker_instances.values() for worker in workers}
+        retired = self._retired_worker_instances
+        self._retired_worker_instances = []
+        for worker in retired:
+            if id(worker) in active_workers:
+                self._retired_worker_instances.append(worker)
+                continue
             close = getattr(worker, "close", None)
             if close is not None:
                 try:

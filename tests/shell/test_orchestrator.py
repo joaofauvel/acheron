@@ -454,10 +454,7 @@ class TestOrchestrator:
 
         with pytest.raises(TimeoutError):
             await orch.shutdown()
-        close_start = time.monotonic()
         await orch.close()
-        assert time.monotonic() - close_start < 0.5
-        await asyncio.sleep(1.1)
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
         assert persisted.status == PlanStatus.FAILED

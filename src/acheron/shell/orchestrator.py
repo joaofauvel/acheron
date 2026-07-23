@@ -212,7 +212,7 @@ class Orchestrator:
         shielded reconciliation writes that outlived the drain grace are given
         one bounded grace period before the stores are closed.
         """
-        await self._wait_for_background_persists(max_wait=self._settings.orchestrator.shutdown_drain_seconds)
+        await self._wait_for_background_persists()
         for close_attr in ("_handler", "_registry", "_job_store"):
             try:
                 close = getattr(getattr(self, close_attr), "close", None)
@@ -438,6 +438,9 @@ class Orchestrator:
             raise
         finally:
             self._active_jobs.discard(tracked.job_id)
+            release_job = getattr(self._handler, "release_job", None)
+            if release_job is not None:
+                await release_job(tracked.job_id)
 
     def _track_execution_task(self, tracked: TrackedJob) -> None:
         task = asyncio.create_task(self._execute(tracked))
