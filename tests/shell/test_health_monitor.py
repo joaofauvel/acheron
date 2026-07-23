@@ -404,6 +404,29 @@ class TestHealthMonitorProviderIntegration:
         assert worker.consecutive_failures == 0
 
     @pytest.mark.asyncio
+    async def test_changed_transport_starts_a_fresh_booting_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reg = InMemoryWorkerStore()
+        reg.max_failures = 100
+        await reg.register("w1", "worker", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        monitor = HealthMonitor(reg, providers={"runpod": _FakeProvider(WorkerStatus.BOOTING)})
+        monitor._booting_timeout = 10.0  # noqa: SLF001
+        now = 0.0
+        monkeypatch.setattr("acheron.shell.health.time.monotonic", lambda: now)
+
+        worker = await reg.get("w1")
+        assert worker is not None
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+
+        now = 100.0
+        await reg.register("w1", "worker", "grpc", _tts_caps_with_provider("runpod", "ep-2"))
+        worker = await reg.get("w1")
+        assert worker is not None
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+
+        assert worker.status == WorkerStatus.BOOTING
+        assert worker.consecutive_failures == 0
+
+    @pytest.mark.asyncio
     async def test_offline_provider_increments_failures(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))

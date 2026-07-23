@@ -1182,14 +1182,14 @@ related: [TYPE-014, CORR-043]
 ### TEST-029 — BOOTING timeout bookkeeping lacks re-registration coverage
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 8a2b341
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/health.py
     lines: 103-104, 165-198
