@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
+last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: e0246e0
+  date: 2026-07-23
 ---
 
 # Verification
@@ -1151,3 +1151,88 @@ related: []
 ```
 
 **Recommendation.** Clear `ACHERON_WORKER__WORKER_HOST` in the test or construct isolated settings.
+
+### TEST-028 — Redis protocol tests accept synchronous commands
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 83-126
+  - path: tests/shell/stores/test_redis_worker_store.py
+    lines: 513-539
+related: [TYPE-014, CORR-043]
+```
+
+**Issue.** `_missing_protocol_members()` checks only callability, while the replacement test accepts a synchronous Redis `ping`. The store later awaits that method and fails with `TypeError`.
+
+**Why it matters.** An incompatible async Redis surface can pass construction and fail during startup or persistence, bypassing the intended fail-fast contract.
+
+**Recommendation.** Restore non-invasive awaitability validation for client commands and pipeline execution, with tests rejecting synchronous members.
+
+**Verification.** Add stub-client tests for synchronous `ping` and pipeline `execute`, assert construction raises `TypeError`, and run the Redis protocol test class.
+
+### TEST-029 — BOOTING timeout bookkeeping lacks re-registration coverage
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 103-104, 165-198
+  - path: tests/shell/test_health_monitor.py
+    lines: 625-666
+related: [CORR-044, PERF-011]
+```
+
+**Issue.** Timeout tests cover removal but not registering the same worker ID afterward. `_booting_since` can survive removal, so a replacement inherits the old timestamp and can be marked OFFLINE immediately.
+
+**Why it matters.** Workers reconnecting with an existing ID may be removed again before receiving their intended BOOTING grace period.
+
+**Recommendation.** Clear `_booting_since` when a worker is removed and add a deterministic re-registration test.
+
+**Verification.** Use a controllable clock or timeout fixture; expire a worker, re-register the same ID, and assert the new BOOTING interval starts fresh.
+
+### TEST-030 — Redis StoreError cancellation contract lacks a failure-path regression test
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 498-507
+  - path: src/acheron/shell/orchestrator.py
+    lines: 585-593
+  - path: tests/shell/test_orchestrator.py
+    lines: 480-498
+  - path: tests/shell/stores/test_redis_job_store.py
+    lines: 283-288
+related: [ARCH-025]
+```
+
+**Issue.** `RedisJobStore.put()` now converts `RedisError` to `StoreError`, and cancellation catches `StoreError`, but tests cover only successful Redis persistence and in-memory exception fakes. No test verifies the exception chain or cancellation behavior for `StoreError`.
+
+**Why it matters.** A regression in error normalization or the narrow catch could make shutdown propagate a backend error instead of preserving the cancellation contract.
+
+**Recommendation.** Add a fake-pipeline test asserting `StoreError` is raised from `RedisError`, then exercise cancellation with a `JobStore` raising `StoreError`.
+
+**Verification.** Run the Redis job-store failure tests and orchestrator cancellation tests without requiring a real Redis server.

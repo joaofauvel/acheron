@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
+last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: e0246e0
+  date: 2026-07-23
 ---
 
 # Architecture
@@ -319,16 +319,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: c53da1d
+  commit: e0246e0
   date: 2026-07-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 1-1
+    lines: 1-5
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 1-1
+    lines: 10-12
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 1-1
+    lines: 12-12
 related:
 - CORR-016
 ```
@@ -349,14 +349,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dcebea6
+  commit: e0246e0
   date: 2026-06-26
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/app.py
-  lines: 129-132
+   lines: 132-135
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 269-324
+   lines: 315-336
 related:
 - CORR-015
 - MAINT-011

@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
+last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
 last_staleness_scan:
-  commit: c53da1d
+  commit: e0246e0
   date: 2026-07-23
 ---
 
@@ -1287,3 +1287,84 @@ related: [CORR-038, CFG-013]
 **Why it matters.** A job can remain persisted as `RUNNING` even though shutdown attempted reconciliation, with no reliable terminal state for the next process.
 
 **Recommendation.** Keep the store alive until reconciliation completes, or persist terminal failure synchronously before closing the backend.
+
+### PERF-010 — Worker retirement cleanup scans every active job on every release
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/step_handler.py
+    lines: 161-179
+  - path: src/acheron/shell/orchestrator.py
+    lines: 438-442
+related: [PERF-009]
+```
+
+**Issue.** Every completed execution calls `release_job()`, which rebuilds `active_workers` by scanning every worker-instance list in `_job_worker_instances`. With many concurrent jobs, repeated releases perform quadratic reference scans even when no retired worker can be closed.
+
+**Why it matters.** Job completion cleanup is on the execution path, so concurrency can turn worker retirement into avoidable event-loop latency.
+
+**Recommendation.** Maintain per-worker reference counts or a reverse worker-to-job index so release updates only affected instances.
+
+**Verification.** Instrument cleanup for many concurrent jobs and assert total reference work grows linearly rather than quadratically.
+
+### PERF-011 — Health monitor retains BOOTING timestamps for removed workers
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 98-99
+  - path: src/acheron/shell/health.py
+    lines: 183-198
+related: [CORR-012, CORR-044]
+```
+
+**Issue.** `_booting_since` is removed on healthy or non-BOOTING outcomes, but not when a worker exceeds the BOOTING timeout and is removed by `record_health_failure()`.
+
+**Why it matters.** Worker churn can grow health-monitor state without bound, and a re-registered worker ID can reuse a stale timestamp and be treated as already expired.
+
+**Recommendation.** Remove the timestamp when the registry reports removal and key the timer by the current registration identity where needed.
+
+**Verification.** Repeatedly timeout and remove workers, assert `_booting_since` remains bounded, then re-register an old ID and verify a fresh BOOTING interval.
+
+### OBS-015 — Shutdown waits indefinitely for background persistence tasks
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 206-215
+  - path: src/acheron/shell/orchestrator.py
+    lines: 492-525
+related: [OBS-014, CORR-042]
+```
+
+**Issue.** `Orchestrator.close()` calls `_wait_for_background_persists()` with `max_wait=None`. A stalled shielded reconciliation write can therefore block close indefinitely.
+
+**Why it matters.** A slow or unavailable persistence backend can prevent the FastAPI lifespan from completing shutdown and offers no bounded recovery path.
+
+**Recommendation.** Restore a bounded final wait, log unresolved job IDs, and define whether writes are cancelled or handed to durable reconciliation after the deadline.
+
+**Verification.** Use a `JobStore` whose `put()` never completes, invoke `close()`, and assert it returns within the configured shutdown bound with an unresolved-write warning.

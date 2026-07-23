@@ -1,9 +1,9 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
+last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
 last_staleness_scan:
-  commit: c53da1d
+  commit: e0246e0
   date: 2026-07-23
 ---
 
@@ -442,18 +442,18 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: dcebea6
-  date: 2026-06-26
+  commit: e0246e0
+  date: 2026-07-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 131-132
+    lines: 133-135
 related:
 - ARCH-012
 - MAINT-011
 ```
 
-**Issue.** Cited `inner_paths` hardcoded whitelist (app.py:130-137) is gone in commit `dcebea6`; the fix is in place at app.py:131-132 (`app.include_router(inner.router)`). The cherry-pick pattern described in the original issue is fully resolved. Marking stale so a future tackle pass can verify and confirm `fixed` once the existing regression test `test_factory_picks_up_new_edge_routes_automatically` is confirmed green.
+**Issue.** The cited `inner_paths` hardcoded whitelist is gone. The fix is in place at app.py:133-135 (`app.include_router(inner.router)`), and the cherry-pick pattern described in the original issue remains resolved. The stale status is retained until a future tackle pass confirms the existing regression test is green.
 
 ### CORR-016 — `worker_sdk` package docstring falsely claims it is GPU-SDK-free at import time
 
@@ -1135,3 +1135,82 @@ related: [OBS-001, CORR-008]
 **Recommendation.** Have the executor publish partial results incrementally (e.g. a `tracked.result = partial_result` assignment after each successful step) so the in-memory `tracked.result` reflects work done so far. The minimal fix in `_execute`'s CancelledError handler is to construct a fallback `PlanResult` from the executor's local accumulator if exposed, but the cleaner fix is at the executor boundary — see CORR-008 for the pattern. Add a test that registers a handler that completes 3 of 5 steps then blocks, calls `orch.shutdown()` mid-block, and asserts the persisted FAILED record has `result.total_cost > 0`.
 
 **Verification.** Add the test described above. Confirm `just test` is green. Inspect the persisted job JSON (or the `InMemoryJobStore` snapshot) to assert `result.total_cost` matches the cost of the 3 completed steps, not zero.
+
+### CORR-042 — `Orchestrator.close` can wait indefinitely for background persists
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 206-214
+  - path: src/acheron/shell/orchestrator.py
+    lines: 488-505
+related: [CORR-038, CFG-013]
+```
+
+**Issue.** `close()` calls `_wait_for_background_persists()` without `max_wait`, so a shielded persistence task that never completes can block shutdown indefinitely.
+
+**Why it matters.** If shutdown leaves a reconciliation write blocked, the FastAPI lifespan cannot complete and the configured shutdown drain bound provides no protection for the final close path.
+
+**Recommendation.** Pass a bounded wait to `_wait_for_background_persists()` and define the policy for unresolved writes after the deadline.
+
+**Verification.** Use a `JobStore` whose `put` never completes, invoke `close()`, and assert it returns within the configured shutdown bound.
+
+### CORR-043 — Redis surface validation accepts synchronous methods as async
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 83-126
+related: [TYPE-012, TYPE-014, TEST-023]
+```
+
+**Issue.** `_missing_protocol_members()` checks only whether Redis and pipeline members are callable. Synchronous implementations of methods later awaited by the stores can pass construction-time validation and fail with `TypeError` at runtime.
+
+**Why it matters.** The runtime compatibility check does not enforce the async contract it claims to validate, so an incompatible client or fake survives startup and fails during health checks or persistence.
+
+**Recommendation.** Validate awaitability of the async Redis and pipeline methods without executing network commands during construction.
+
+**Verification.** Supply a fake client with the required names as synchronous callables and assert construction raises `TypeError`; verify a valid async fake passes.
+
+### CORR-044 — BOOTING timeout state survives worker re-registration
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/health.py
+    lines: 98-99
+  - path: src/acheron/shell/health.py
+    lines: 165-198
+related: [CORR-012, TEST-024, PERF-011]
+```
+
+**Issue.** `_booting_since` is keyed only by `worker_id` and is not cleared when a worker is removed or its registration is replaced. A fresh worker using the same ID can inherit an expired BOOTING deadline.
+
+**Why it matters.** Restarted or redeployed workers can be marked OFFLINE immediately, losing their intended startup grace period.
+
+**Recommendation.** Reset the timer when the registration identity changes or the worker is removed, or key it by a registration generation.
+
+**Verification.** Expire a BOOTING worker, re-register the same ID with a new endpoint, and assert the new registration receives a fresh timeout.

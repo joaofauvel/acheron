@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
+last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: e0246e0
+  date: 2026-07-23
 ---
 
 # Surface
@@ -101,6 +101,33 @@ related: []
 **Recommendation.** Change `Justfile:40` from `uv sync --all-extras` to `uv sync --all-extras --all-packages`. Optionally update README.md:43 to match. A one-line fix that aligns the recipe with the new workspace member.
 
 **Verification.** Fresh clone → `just install` → `uv run python -c "import workers.qwen3tts.handler; print(workers.qwen3tts.handler.__file__)"` prints a path under the worktree, not a ModuleNotFoundError. `just test` still passes (643+ tests, coverage ≥ 80%).
+
+### DX-007 — Worker CI pull-request filter omits the root acheron package initializer
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: .github/workflows/build-workers.yml
+    lines: 7-18
+  - path: src/acheron/__init__.py
+    lines: 1-36
+related: [DX-006]
+```
+
+**Issue.** The worker workflow pull-request path filter covers workers, `worker_sdk`, `core`, TLS, protobuf, packaging, and Docker files, but omits `src/acheron/__init__.py`. Worker imports execute this initializer before loading `acheron.core` or `acheron.worker_sdk`.
+
+**Why it matters.** A pull request can change package exports or import side effects used by workers without triggering the worker image build, moving failures from review to post-merge CI.
+
+**Recommendation.** Add `src/acheron/__init__.py` to the `pull_request.paths` list in `.github/workflows/build-workers.yml`.
+
+**Verification.** Change `src/acheron/__init__.py` in a test branch and confirm the worker build workflow is selected for the pull request.
 
 ## PKG — Packaging
 
@@ -298,26 +325,26 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: c53da1d
+  commit: e0246e0
   date: 2026-07-23
 fixed_in: []
 files:
   - path: README.md
-    lines: 87-92
+    lines: 120-122
   - path: README.md
-    lines: 70-84
+    lines: 187-191
   - path: README.md
-    lines: 188-190
+    lines: 220
 related: [DOC-003]
 ```
 
-**Issue.** The new `workers/granite_speech/` workspace member is wired into the workspace, has its own CI job, its own Dockerfile.runpod, its own tests, and its own `docker-compose.yml` service — but the README's onboarding map still names only the qwen3tts worker. (1) Architecture tree (README.md:76-77) lists `qwen3tts/` under `workers/`, with no `granite_speech/` entry. (2) Test paths (README.md:125) lists only `workers/qwen3tts/tests/`, omitting both `workers/granite_speech/tests/` and `workers/_shared/tests/`. (3) CI section (README.md:160-163) lists two published images — `acheron-qwen3tts-runpod` and `acheron-worker-edge` — but `.github/workflows/build-workers.yml:48-76` adds a third `build-granite-speech` job publishing `acheron-granite-speech-runpod:latest` and `:<sha>`, which is not in the README.
+**Issue.** The cited README omission no longer matches the current file: all three worker packages are named at README.md:122, all three published images are listed at README.md:189-191, and all three edge services are listed at README.md:220. The former test-path list is no longer present.
 
-**Why it matters.** The README is the primary onboarding map for the package. The drift is exactly the shape AGENTS.md targets (the qwen3tts/granite_speech asymmetry would not be visible to a new contributor reading the README).
+**Why it matters.** The previous documentation drift has been addressed, so the original finding remains stale rather than reopening.
 
-**Recommendation.** Update README.md:76-77 to add `granite_speech/  # Granite-Speech ASR RunPod + edge worker` under `workers/`. Update README.md:125 to add `workers/granite_speech/tests/`, `workers/_shared/tests/`. Update README.md:160-163 to add `acheron-granite-speech-runpod` to the CI bullet list.
+**Recommendation.** No change required for this story; retain it as stale unless a future README revision reintroduces the omission.
 
-**Verification.** `grep -n 'granite' README.md` returns hits in the architecture tree, test paths, and CI section.
+**Verification.** Confirm README.md lists qwen3tts, granite_speech, and translategemma in the worker, image, and edge-service references.
 
 ## DOC (8c delta)
 

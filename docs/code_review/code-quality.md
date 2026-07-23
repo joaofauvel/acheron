@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
+last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: e0246e0
+  date: 2026-07-23
 ---
 
 # Code quality
@@ -1056,7 +1056,7 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
+  commit: e0246e0
   date: 2026-06-26
 fixed_in: []
 files:
@@ -1069,7 +1069,7 @@ files:
   - path: src/acheron/shell/cache.py
     lines: 116
   - path: src/acheron/worker_sdk/app.py
-    lines: 116
+    lines: 117
 related: [MAINT-009, EXC-004, CORR-034]
 ```
 
@@ -1248,3 +1248,30 @@ related: [TYPE-012]
 **Issue.** `_RedisAwaitable` is duplicated by several requisite-method tables, and constructors execute synthetic Redis calls to infer awaitability. Adding or changing a store method requires synchronized edits across independent contracts.
 
 **Recommendation.** Centralize the runtime contract behind a typed Redis adapter or a single non-invasive surface check.
+
+### TYPE-014 — Redis Protocol validation checks callable presence but not awaitable behavior
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: e0246e0
+last_verified_at:
+  commit: e0246e0
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 83-96
+  - path: src/acheron/shell/stores/redis.py
+    lines: 108-126
+related: [TYPE-012, TYPE-013, CORR-043, TEST-023]
+```
+
+**Issue.** The replacement Redis surface check tests only whether declared attributes are callable. A synchronous replacement for `ping`, `execute`, or another command therefore passes `_checked_redis_client` and fails later at the first `await` with `TypeError`.
+
+**Why it matters.** The TYPE-013 startup contract no longer detects incompatible async behavior, deferring a Redis client mismatch to live health checks, persistence, or worker operations.
+
+**Recommendation.** Retain Protocol-derived member discovery but restore a safe awaitability check for async commands and pipeline execution, without executing network calls during validation.
+
+**Verification.** Add a fake client with all required callable names but synchronous `ping` or `pipeline.execute`, assert `_checked_redis_client` raises `TypeError`, and verify a valid async fake passes.
