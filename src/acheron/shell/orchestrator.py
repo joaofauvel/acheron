@@ -60,6 +60,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _log_unexpected(label: str, exc: BaseException) -> None:
+    """Log an unexpected exception with a label; the caller decides whether to re-raise."""
+    logger.exception("%s: %s", label, exc)
+
+
 _MIN_TOKEN_LENGTH = 32
 _PUBLIC_TOKEN_VALUES = frozenset({"dev-registration-token"})
 
@@ -202,8 +207,8 @@ class Orchestrator:
         for close_attr in ("_registry", "_job_store"):
             try:
                 await getattr(self, close_attr).close()
-            except Exception:
-                logger.exception("Failed to close %s", close_attr)
+            except Exception as exc:  # noqa: BLE001
+                _log_unexpected(f"Failed to close {close_attr}", exc)
 
     async def start(self) -> None:
         """Start background tasks and register built-in local workers.
@@ -382,17 +387,20 @@ class Orchestrator:
             try:
                 # Shielded so a drain-grace timeout cannot abort the persist;
                 # the put completes in the background after shutdown returns.
+                # Narrow catch: a programming error (KeyError, AttributeError)
+                # must surface chained to the CancelledError, not be mistaken
+                # for a store outage.
                 await asyncio.shield(self._job_store.put(tracked))
-            except Exception:
-                logger.exception("Failed to persist job %s after cancellation", tracked.job_id)
+            except (OSError, ConnectionError, RuntimeError) as exc:
+                _log_unexpected(f"Failed to persist job {tracked.job_id} after cancellation", exc)
             raise
-        except Exception:
-            logger.exception("Job %s failed in _execute", tracked.job_id)
+        except Exception as exc:
+            _log_unexpected(f"Job {tracked.job_id} failed in _execute", exc)
             tracked.status = PlanStatus.FAILED
             try:
                 await asyncio.shield(self._job_store.put(tracked))
-            except Exception:
-                logger.exception("Failed to persist job %s after execution failure", tracked.job_id)
+            except Exception as persist_exc:  # noqa: BLE001
+                _log_unexpected(f"Failed to persist job {tracked.job_id} after execution failure", persist_exc)
             raise
 
     def _invalidate_handler_cache(self) -> None:
@@ -465,10 +473,10 @@ class Orchestrator:
                         result.total_steps,
                     )
             except AcheronError as exc:
-                logger.exception("Plan execution failed for %s", tracked.job_id)
+                _log_unexpected(f"Plan execution failed for {tracked.job_id}", exc)
                 self._record_failure(tracked, exc)
-            except Exception as exc:
-                logger.exception("Unexpected error executing %s", tracked.job_id)
+            except Exception as exc:  # noqa: BLE001
+                _log_unexpected(f"Unexpected error executing {tracked.job_id}", exc)
                 self._record_failure(tracked, exc)
             await self._job_store.put(tracked)
         finally:

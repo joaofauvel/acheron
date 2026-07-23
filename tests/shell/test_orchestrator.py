@@ -71,6 +71,21 @@ class _FailingSecondPutJobStore(InMemoryJobStore):
         await super().put(copy.deepcopy(job))
 
 
+class _KeyErrorOnSecondPutJobStore(InMemoryJobStore):
+    """Raises KeyError on the second put (programming-error stand-in)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._puts = 0
+
+    async def put(self, job: TrackedJob) -> None:
+        self._puts += 1
+        if self._puts == 2:
+            msg = "serialiser drift"
+            raise KeyError(msg)
+        await super().put(copy.deepcopy(job))
+
+
 def _single_step_plan(job_id: str) -> Plan:
     return Plan(
         plan_id=f"{job_id}-plan",
@@ -503,6 +518,32 @@ class TestOrchestrator:
         assert persisted.result is not None
         assert persisted.result.completed_steps == 3
         assert persisted.result.total_cost == 1.5
+
+    @pytest.mark.asyncio
+    async def test_cancel_persist_keyerror_propagates_chained(self, tmp_path: Path) -> None:
+        """MAINT-021: a programming error in the post-cancel persist surfaces chained to the CancelledError."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=_KeyErrorOnSecondPutJobStore())
+        await orch.start()
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+        (task,) = tuple(orch._tasks)  # noqa: SLF001
+        await orch.shutdown()
+        exc = task.exception()
+        assert isinstance(exc, KeyError)
+        assert isinstance(exc.__context__, asyncio.CancelledError)
 
     @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

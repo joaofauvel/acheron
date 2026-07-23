@@ -1143,14 +1143,14 @@ related: [TYPE-008]
 ### MAINT-021 — 4 `except Exception: logger.exception(...); raise` sites in Orchestrator duplicate the log+raise pattern; a private helper would centralise the teardown contract
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 463e6f4
+  commit: 7711af9
   date: 2026-07-22
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 202-206
