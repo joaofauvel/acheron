@@ -57,6 +57,9 @@ def _decode_metadata(header: str | None) -> dict[str, JsonValue]:
     if not header:
         return {}
     parsed = json.loads(header)
+    if not isinstance(parsed, dict):
+        msg = "X-Acheron-Metadata must contain a JSON object"
+        raise TypeError(msg)
     return {str(k): cast("JsonValue", v) for k, v in parsed.items()}
 
 
@@ -65,16 +68,16 @@ class _ParsedMultipartPart:
     """A single parsed part of the ``multipart/form-data`` request body.
 
     Built by the streaming parser in :meth:`EdgeApp._parse_multipart_request`
-    from the low-level :class:`MultipartParser` callbacks. The audio part
-    is later converted to a :class:`BytesInput` so the handler API is
-    unchanged from the caller's perspective.
+    from the low-level :class:`MultipartParser` callbacks. The audio or
+    chunks part is later converted to a :class:`BytesInput` so the handler API
+    is unchanged from the caller's perspective.
     """
 
     field_name: bytes
     file_name: bytes | None
     content_type: str
     data: bytes
-    metadata: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
 
 
 class _MultipartStreamState:
@@ -125,7 +128,7 @@ class _MultipartStreamState:
                 file_name=self.file_name,
                 content_type=self.part_content_type or "application/octet-stream",
                 data=self.part_data.getvalue(),
-                metadata=cast("dict[str, str]", self.part_metadata),
+                metadata=dict(self.part_metadata),
             )
         )
 
@@ -184,24 +187,33 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
 
 
 def _build_job_and_input(parts: list[_ParsedMultipartPart]) -> tuple[Job, BytesInput | None]:
-    """Classify the parsed parts into a Job + optional audio input."""
+    """Classify the parsed parts into a Job and optional worker input."""
     envelope_json: bytes | None = None
-    audio_input: BytesInput | None = None
+    input_obj: BytesInput | None = None
     for p in parts:
-        if p.field_name == b"request":
-            envelope_json = p.data
-            continue
-        if p.field_name == b"audio" and p.content_type.startswith("audio/"):
-            audio_input = BytesInput(
+        content_type = p.content_type.split(";", 1)[0].strip().lower()
+        if content_type == "application/json":
+            if envelope_json is None:
+                envelope_json = p.data
+                continue
+            if input_obj is not None:
+                msg = "Multipart body contains more than one worker input part"
+                raise WorkerError(msg)
+            input_obj = BytesInput(
                 content_type=p.content_type,
                 data=p.data,
-                metadata=cast("dict[str, JsonValue]", p.metadata),
+                metadata=p.metadata,
             )
             continue
-        if p.field_name == b"chunks" or (p.field_name and p.content_type == "application/json"):
-            # TRANSLATION/TTS path: the second JSON part is chunks.json;
-            # the handler uses the first JSON envelope's payload, not the
-            # chunks file body. Skip silently — CORR-025 regression guard.
+        if content_type.startswith("audio/"):
+            if input_obj is not None:
+                msg = "Multipart body contains more than one worker input part"
+                raise WorkerError(msg)
+            input_obj = BytesInput(
+                content_type=p.content_type,
+                data=p.data,
+                metadata=p.metadata,
+            )
             continue
         msg = f"Multipart part has unsupported Content-Type: {p.content_type} (expected application/json or audio/*)"
         raise WorkerError(msg)
@@ -211,7 +223,7 @@ def _build_job_and_input(parts: list[_ParsedMultipartPart]) -> tuple[Job, BytesI
         raise WorkerError(msg)
 
     body_req = ExecuteRequest.model_validate(json.loads(envelope_json))
-    return _job_from_request(body_req), audio_input
+    return _job_from_request(body_req), input_obj
 
 
 def _jobresult_to_json(result: JobResult) -> dict[str, Any]:
@@ -327,7 +339,7 @@ class EdgeApp:
         """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
         try:
             job, input_obj = await self._parse_multipart_request(request)
-        except (WorkerError, ValueError, KeyError) as exc:
+        except (WorkerError, ValueError, KeyError, TypeError) as exc:
             parser_error: WorkerError
             if isinstance(exc, WorkerError):
                 parser_error = exc

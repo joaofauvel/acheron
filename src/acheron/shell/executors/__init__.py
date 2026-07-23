@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from acheron.core.models import ExecutorStrategy
+from acheron.core.models import ExecutorStrategy, JobResult, Plan, PlanStep
 from acheron.shell.executors.async_executor import AsyncExecutor
 from acheron.shell.executors.sequential import SequentialExecutor
 from acheron.shell.executors.streaming import StreamingExecutor
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from acheron.core.interfaces import Executor
     from acheron.shell.cache import InMemoryStepCache, StepCache
     from acheron.shell.executors._utils import StepHandler
@@ -20,6 +22,7 @@ def create_executor(
     handler: StepHandler,
     *,
     step_cache: StepCache | InMemoryStepCache | None = None,
+    on_step_complete: Callable[[PlanStep, Plan, JobResult], None] | None = None,
 ) -> Executor:
     """Create an executor instance for the given strategy."""
     match strategy:
@@ -31,7 +34,7 @@ def create_executor(
             if step_cache is None:
                 msg = "StreamingExecutor requires a step_cache"
                 raise ValueError(msg)
-            return StreamingExecutor(handler, step_cache)
+            return StreamingExecutor(handler, step_cache, on_step_complete=on_step_complete)
 
 
 __all__ = [

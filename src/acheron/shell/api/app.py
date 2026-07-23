@@ -36,8 +36,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        await orch.shutdown()
-        await orch.close()
+        try:
+            await orch.shutdown()
+        finally:
+            await orch.close()
 
 
 def create_app(

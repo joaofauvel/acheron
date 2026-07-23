@@ -41,11 +41,13 @@ class StreamingExecutor(Executor):
         *,
         queue_size: int = 4,
         step_timeout: float = 1800.0,
+        on_step_complete: Callable[[PlanStep, Plan, JobResult], None] | None = None,
     ) -> None:
         self._handler = handler
         self._cache = step_cache
         self._queue_size = queue_size
         self._step_timeout = step_timeout
+        self._on_step_complete = on_step_complete
 
     async def run(self, plan: Plan) -> PlanResult:
         """Run the plan as a streaming pipeline. Returns a PlanResult."""
@@ -224,6 +226,7 @@ class StreamingExecutor(Executor):
                     metrics=JobMetrics(duration_seconds=0.0),
                 )
                 record_cost(0.0, result.metrics)
+                self._notify_step_complete(step, plan, result)
                 await downstream.put(result)
                 return
 
@@ -255,9 +258,14 @@ class StreamingExecutor(Executor):
                 msg = f"save_outputs failed for step {step.step_id}"
                 raise PipelineError(msg) from exc
 
+            self._notify_step_complete(step, plan, result)
             await downstream.put(result)
         finally:
             await downstream.put(_END)
+
+    def _notify_step_complete(self, step: PlanStep, plan: Plan, result: JobResult) -> None:
+        if self._on_step_complete is not None:
+            self._on_step_complete(step, plan, result)
 
     def _empty_result(self, plan: Plan, start: float) -> PlanResult:
         return PlanResult(

@@ -57,7 +57,7 @@ _MAX_INPUT_TOKENS_DEFAULT = 2048
 _MAX_BATCH_SIZE = 4
 _MAX_NEW_TOKENS = 1024
 
-# All 55 ISO 639-1 alpha-2 codes TranslateGemma supports. v1 advertises
+# All 69 ISO 639-1 alpha-2 codes TranslateGemma supports. v1 advertises
 # the full set so the orchestrator can plan any pair; language-path
 # validation at plan compile time still rejects pairs outside
 # SUPPORTED_LANGUAGES.
@@ -270,10 +270,10 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
     ) -> list[str]:
         """Run TranslateGemma in passes of _MAX_BATCH_SIZE; return translated strings in order.
 
-        On per-batch failure (OOM, NaN, GPU fault), the successful translations are
-        preserved and a :class:`WorkerError` is raised listing the failed batch
-        indices. The operator can then retry — the previously translated chunks
-        are recoverable from the partial ``out`` list logged before the raise.
+        On per-batch failure (OOM, NaN, GPU fault), successful translations remain
+        in the in-process accumulator and a :class:`WorkerError` is raised listing
+        the failed batch indices. The successful count is logged so a retry can be
+        correlated with the work already completed.
         """
         out: list[str] = []
         failed_batches: list[tuple[int, int, int]] = []  # (batch_idx, start, end)
@@ -292,6 +292,11 @@ class TranslateGemmaRunpodHandler(WorkerHandler):
         if failed_batches:
             translated_count = len(out)
             failed_count = sum(end - start + 1 for _, start, end in failed_batches)
+            logger.warning(
+                "partial translation: %d/%d chunks translated before failure",
+                translated_count,
+                translated_count + failed_count,
+            )
             msg = (
                 f"partial success: {translated_count}/{translated_count + failed_count} "
                 f"chunks translated; failed batches: {failed_batches}"

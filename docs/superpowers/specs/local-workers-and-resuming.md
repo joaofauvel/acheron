@@ -10,8 +10,9 @@ We add a settings module utilizing `pydantic` in `src/acheron/shell/config.py`.
   ```yaml
   orchestrator:
     data_dir: "/data/jobs"
-    registration_token: "dev-registration-token"
+    # registration_token: null  # auto-generated when omitted
     health_check_interval_seconds: 30
+    shutdown_drain_seconds: 5
 
   workers:
     chunking:
@@ -95,5 +96,4 @@ The built-in workers execute as `local` transport handlers registered by the orc
 * Test stub workers (such as the ASR stub in `tests/integration/test_worker_integration.py` and the TTS stub in `stubs/worker_stub.py`) must write real, mock files to the filesystem with **real SHA-256 checksums** in order to test resuming and step validation correctly. Empty checksums cause `step_has_valid_cache` to always return `False`, defeating the cache-skip feature.
 * The `wired_orchestrator` test fixture must export both `ACHERON_DATA_DIR` and `ACHERON_ORCHESTRATOR__DATA_DIR` environment variables to point to the pytest `tmp_path`, ensuring uvicorn stub processes write to the exact directory monitored by the orchestrator.
 * An `epub_file` pytest fixture provides a minimal valid EPUB (with `container.xml`, OPF manifest/spine, and a chapter XHTML) for integration tests, replacing hardcoded `/tmp/test.epub` paths.
-
 

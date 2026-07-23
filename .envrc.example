@@ -6,3 +6,8 @@
 
 export VIRTUAL_ENV=".venv"
 layout python
+
+# Optional: Colima on macOS uses a Docker CLI context that the Python Docker
+# SDK does not discover automatically. Replace "default" with your profile.
+# export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+# export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"

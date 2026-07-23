@@ -1,13 +1,14 @@
 """Pydantic Settings schema for acheron.yaml configuration."""
 
 import logging
+import math
 import os
 import re
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
@@ -55,6 +56,14 @@ class OrchestratorSettings(BaseModel):
     open_registration: bool = False
     health_check_interval_seconds: int = Field(default=30)
     shutdown_drain_seconds: float = Field(default=5.0)
+
+    @field_validator("shutdown_drain_seconds")
+    @classmethod
+    def _validate_shutdown_drain_seconds(cls, value: float) -> float:
+        if not math.isfinite(value) or value < 0:
+            msg = "shutdown_drain_seconds must be a finite non-negative number"
+            raise ValueError(msg)
+        return value
 
 
 class ChunkingSettings(BaseModel):

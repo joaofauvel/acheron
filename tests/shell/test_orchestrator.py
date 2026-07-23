@@ -319,6 +319,11 @@ class TestOrchestrator:
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
         assert persisted.status == PlanStatus.FAILED
+        assert persisted.result is not None
+        assert persisted.result.status == PlanStatus.FAILED
+        assert persisted.result.completed_steps == 0
+        assert persisted.result.total_steps == (len(tracked.plan.steps) if tracked.plan else 0)
+        assert persisted.result.errors == ("execution cancelled during shutdown",)
         # Wake the handler so the test event loop can exit cleanly.
         release_handler.set()
 
@@ -449,10 +454,15 @@ class TestOrchestrator:
 
         with pytest.raises(TimeoutError):
             await orch.shutdown()
-        await asyncio.sleep(1.2)  # outlast the shielded 1s put
+        close_start = time.monotonic()
+        await orch.close()
+        assert time.monotonic() - close_start < 0.5
+        await asyncio.sleep(1.1)
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
         assert persisted.status == PlanStatus.FAILED
+        assert persisted.result is not None
+        assert persisted.result.status == PlanStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_execute_persists_failed_when_completion_put_raises(self, tmp_path: Path) -> None:
@@ -473,6 +483,8 @@ class TestOrchestrator:
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
         assert persisted.status == PlanStatus.FAILED
+        assert persisted.result is not None
+        assert persisted.result.status == PlanStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_shutdown_persists_partial_result_cost(self, tmp_path: Path) -> None:
@@ -540,7 +552,8 @@ class TestOrchestrator:
         )
         await handler_started.wait()
         (task,) = tuple(orch._tasks)  # noqa: SLF001
-        await orch.shutdown()
+        with pytest.raises(KeyError):
+            await orch.shutdown()
         exc = task.exception()
         assert isinstance(exc, KeyError)
         assert isinstance(exc.__context__, asyncio.CancelledError)
@@ -638,6 +651,22 @@ class TestOrchestrator:
         for task in tuple(orch._tasks):  # noqa: SLF001
             task.cancel()
         await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_resume_job_rejects_a_newly_submitted_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+
+        with pytest.raises(JobAlreadyRunningError):
+            await orch.resume_job(tracked.job_id)
+        await orch.shutdown()
 
     @pytest.mark.asyncio
     async def test_resume_job_rejects_active_running_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

@@ -12,22 +12,30 @@ Containerize the orchestrator and dashboard, add stub TTS/ASR workers for local 
 
 | Service | Image | Port | Notes |
 |---------|-------|------|-------|
-| `redis` | `redis:7-alpine` | 6379 | Registry + job store backing (future use) |
-| `orchestrator` | `Dockerfile.orchestrator` | 8000 | FastAPI app |
-| `dashboard` | `dashboard/Dockerfile` | 8080 | HTMX UI, polls orchestrator |
-| `tts-stub` | `Dockerfile.worker-stub` | 8001 | Instant mock TTS, self-registers |
-| `asr-stub` | `Dockerfile.worker-stub` | 8002 | Instant mock ASR, self-registers |
+| `redis` | `redis:7-alpine` | 6379 | Registry + job store backing |
+| `certs-init` | `Dockerfile` target `certs-init` | — | Generates development certificates |
+| `orchestrator` | `Dockerfile` target `orchestrator` | 8000 | FastAPI app |
+| `dashboard` | `Dockerfile` target `dashboard` | 8080 | HTMX UI, polls orchestrator |
+| `tts-local-stub` | `Dockerfile` target `worker-stub-base` | 8001 | Instant mock TTS, self-registers |
+| `asr-local-stub` | `Dockerfile` target `worker-stub-base` | 8002 | Instant mock ASR, self-registers |
+| `translation-local-stub` | `Dockerfile` target `worker-stub-base` | 8003 | Instant mock translation, self-registers |
+| `tts-runpod-stub` | `Dockerfile` target `worker-stub-base` | 8006 | Static-price TTS stub |
+| `translation-runpod-stub` | `Dockerfile` target `worker-stub-base` | 8007 | Static-price translation stub |
+| `tts-grpc-stub` | `Dockerfile` target `worker-stub-base` | 9002 | gRPC TTS stub with HTTP health edge |
+| `qwen3tts-edge` | `Dockerfile.edge` | 8001 | Optional RunPod TTS edge |
+| `granite-speech-edge` | `Dockerfile.edge` | 8001 | Optional RunPod ASR edge |
+| `translategemma-edge` | `Dockerfile.edge` | 8001 | Optional RunPod translation edge |
 
 ## Orchestrator Container
 
-Same pattern as dashboard Dockerfile (`python:3.14-slim`, `uv sync`). Entrypoint: `uvicorn acheron.shell.api.app:create_app --factory --host 0.0.0.0 --port 8000`.
+The `orchestrator` target in `Dockerfile` runs the FastAPI service on port 8000.
 
 Env vars:
-- `REDIS_URL=redis://redis:6379` (future use, not consumed yet)
+- `REDIS_URL=redis://redis:6379`
 
 ## Stub Worker Container
 
-Single `Dockerfile.worker-stub` reused by both TTS and ASR stubs. A minimal FastAPI app (`stubs/worker_stub.py`).
+The `worker-stub-base` target is reused by the local TTS, ASR, and translation stubs. Each uses the worker SDK edge app.
 
 ### Startup
 
@@ -39,7 +47,7 @@ Single `Dockerfile.worker-stub` reused by both TTS and ASR stubs. A minimal Fast
 ### Endpoints
 
 - `GET /health` — returns 200
-- `POST /submit` — returns instant mock `JobResult`:
+- `POST /execute` — returns an instant mock `JobResult`:
   - TTS: `status=completed`, `output_data` = base64-encoded silent WAV (valid RIFF header, ~100 bytes)
   - ASR: `status=completed`, `output_data` = base64-encoded `b"mock transcription"`
 
@@ -49,9 +57,11 @@ Note: stubs return inline `output_data` (base64) instead of `output_path` since 
 
 - `WORKER_TYPE` — `TTS` or `ASR`
 - `WORKER_ENDPOINT` — e.g. `http://tts-stub:8001`
-- `ORCHESTRATOR_URL` — `http://orchestrator:8000`
+- `ACHERON_WORKER__ORCHESTRATOR_URL` — `http://orchestrator:8000`
+- `ACHERON_WORKER__WORKER_HOST` — service hostname used by the orchestrator
 - `WORKER_PORT` — port to listen on (8001 or 8002)
-- `ACHERON_REGISTRATION_TOKEN` — shared secret for registration
+- `ACHERON_REGISTRATION_TOKEN` — orchestrator registration secret
+- `ACHERON_WORKER__REGISTRATION_TOKEN` — worker-side copy of the registration secret
 
 ## Registration Security
 
@@ -60,7 +70,7 @@ Shared secret model:
 - `POST /workers` requires `Authorization: Bearer <token>` header
 - Missing or invalid token → 401 Unauthorized
 - Docker Compose sets the same token across all services
-- Default token for local dev: `dev-registration-token` (overridable)
+- The token is required; generate one with `openssl rand -hex 32`.
 
 ## Docker Compose
 
@@ -77,48 +87,54 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile.orchestrator
+      target: orchestrator
     ports: ["8000:8000"]
     environment:
       REDIS_URL: redis://redis:6379
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
     depends_on:
       redis: { condition: service_healthy }
 
   dashboard:
     build:
       context: .
-      dockerfile: dashboard/Dockerfile
+      target: dashboard
     ports: ["8080:8080"]
     environment:
       ACHERON_URL: http://orchestrator:8000
     depends_on: [orchestrator]
 
-  tts-stub:
+  tts-local-stub:
     build:
       context: .
-      dockerfile: Dockerfile.worker-stub
+      target: worker-stub-base
     ports: ["8001:8001"]
     environment:
-      WORKER_TYPE: TTS
-      WORKER_ENDPOINT: http://tts-stub:8001
-      ORCHESTRATOR_URL: http://orchestrator:8000
-      WORKER_PORT: "8001"
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-    depends_on: [orchestrator]
+      WORKER_NAME: tts-local-stub
+      ACHERON_WORKER__WORKER_ID: tts-local-stub
+      ACHERON_WORKER__WORKER_HOST: tts-local-stub
+      ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__PRICE_SOURCE: zero
+      ACHERON_WORKER__LISTEN_PORT: "8001"
+    depends_on:
+      orchestrator: { condition: service_healthy }
 
-  asr-stub:
+  asr-local-stub:
     build:
       context: .
-      dockerfile: Dockerfile.worker-stub
+      target: worker-stub-base
     ports: ["8002:8002"]
     environment:
-      WORKER_TYPE: ASR
-      WORKER_ENDPOINT: http://asr-stub:8002
-      ORCHESTRATOR_URL: http://orchestrator:8000
-      WORKER_PORT: "8002"
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
-    depends_on: [orchestrator]
+      WORKER_NAME: asr-local-stub
+      ACHERON_WORKER__WORKER_ID: asr-local-stub
+      ACHERON_WORKER__WORKER_HOST: asr-local-stub
+      ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__PRICE_SOURCE: zero
+      ACHERON_WORKER__LISTEN_PORT: "8002"
+    depends_on:
+      orchestrator: { condition: service_healthy }
 ```
 
 ## File Layout

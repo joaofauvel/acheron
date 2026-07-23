@@ -93,7 +93,8 @@ services:
       WORKER_NAME: tts-local-stub
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
       ACHERON_WORKER__WORKER_ID: tts-local-stub
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__WORKER_HOST: tts-local-stub
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_WORKER__PRICE_SOURCE: zero
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
@@ -124,6 +125,7 @@ services:
       <<: *stub_env
       WORKER_NAME: asr-local-stub
       ACHERON_WORKER__WORKER_ID: asr-local-stub
+      ACHERON_WORKER__WORKER_HOST: asr-local-stub
       ACHERON_WORKER__LISTEN_PORT: "8002"
     volumes:
       - ./certs:/certs:ro
@@ -149,6 +151,7 @@ services:
       <<: *stub_env
       WORKER_NAME: translation-local-stub
       ACHERON_WORKER__WORKER_ID: translation-local-stub
+      ACHERON_WORKER__WORKER_HOST: translation-local-stub
       ACHERON_WORKER__LISTEN_PORT: "8003"
     volumes:
       - ./certs:/certs:ro
@@ -173,6 +176,7 @@ services:
     environment:
       WORKER_NAME: qwen3tts
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__WORKER_HOST: qwen3tts-edge
       ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID:-}
@@ -207,6 +211,7 @@ services:
     environment:
       WORKER_NAME: granite_speech
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__WORKER_HOST: granite-speech-edge
       ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID:-}
@@ -240,6 +245,7 @@ services:
     environment:
       WORKER_NAME: translategemma
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      ACHERON_WORKER__WORKER_HOST: translategemma-edge
       ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID:-}
@@ -275,6 +281,7 @@ services:
       <<: *stub_env
       WORKER_NAME: tts-runpod-stub
       ACHERON_WORKER__WORKER_ID: tts-runpod-stub
+      ACHERON_WORKER__WORKER_HOST: tts-runpod-stub
       ACHERON_WORKER__LISTEN_PORT: "8006"
       ACHERON_WORKER__PRICE_SOURCE: static
       ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
@@ -302,6 +309,7 @@ services:
       <<: *stub_env
       WORKER_NAME: translation-runpod-stub
       ACHERON_WORKER__WORKER_ID: translation-runpod-stub
+      ACHERON_WORKER__WORKER_HOST: translation-runpod-stub
       ACHERON_WORKER__LISTEN_PORT: "8007"
       ACHERON_WORKER__PRICE_SOURCE: static
       ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
@@ -329,6 +337,7 @@ services:
       <<: *stub_env
       WORKER_NAME: tts-grpc-stub
       ACHERON_WORKER__WORKER_ID: tts-grpc-stub
+      ACHERON_WORKER__WORKER_HOST: tts-grpc-stub
       ACHERON_WORKER__LISTEN_PORT: "9002"
     volumes:
       - ./certs:/certs:ro

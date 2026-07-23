@@ -18,7 +18,7 @@ orchestrator:
   # {data_dir}/.registration_token. Workers must present this token to register.
   # To bypass security completely for development, set the environment variable
   # ACHERON_OPEN_REGISTRATION=1 or set ``open_registration: true`` here.
-  # registration_token: "dev-registration-token"
+  # registration_token: null
   # open_registration: false
 
   # Interval in seconds at which the orchestrator health-checks remote workers

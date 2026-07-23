@@ -291,3 +291,16 @@ class TestProtocolEnforcement:
         monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: _StubClient())
         with pytest.raises(TypeError, match="smembers"):
             RedisWorkerStore("redis://localhost:6379")
+
+    def test_init_raises_when_protocol_member_is_not_callable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _StubClient:
+            ping = None
+
+        monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: _StubClient())
+        with pytest.raises(TypeError, match="ping"):
+            RedisWorkerStore("redis://localhost:6379")
+
+    def test_init_raises_when_command_is_synchronous(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(aioredis.Redis, "ping", lambda _self: True)
+        with pytest.raises(TypeError, match="awaitable"):
+            RedisWorkerStore("redis://localhost:6379")

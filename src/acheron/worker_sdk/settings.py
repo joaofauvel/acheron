@@ -52,7 +52,7 @@ class WorkerSettings(BaseSettings):
 
     worker_host: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("worker_host", "WORKER_HOST"),
+        validation_alias=AliasChoices("worker_host", "WORKER_HOST", "ACHERON_WORKER__WORKER_HOST"),
     )
     log_level: str = "INFO"
     runpod_base_url: str | None = None

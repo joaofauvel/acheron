@@ -137,6 +137,25 @@ class TestNormalCompletion:
         assert calls == ["chunk", "package"]
         assert {out.filename for out in result.outputs} == {"cached-extract.txt", "chunked.txt", "out.wav"}
 
+    @pytest.mark.asyncio
+    async def test_step_completion_callback_includes_cached_steps(self, tmp_path: Path, step_cache: StepCache) -> None:
+        plan = _linear_plan(job_id="job-progress-cache")
+        await step_cache.save_outputs(plan.job_id, "extract", (_real_output(tmp_path, "cached-extract.txt"),))
+        outputs = {
+            "chunk": [_real_output(tmp_path, "chunked.txt")],
+            "package": [_real_output(tmp_path, "out.wav", body=b"audio-bytes")],
+        }
+        handler, _ = _make_handler(outputs)
+        completed: list[str] = []
+
+        def on_step_complete(step: PlanStep, _plan: Plan, _result: JobResult) -> None:
+            completed.append(step.step_id)
+
+        executor = StreamingExecutor(handler, step_cache, on_step_complete=on_step_complete)
+        await executor.run(plan)
+
+        assert completed == ["extract", "chunk", "package"]
+
 
 class TestStepTimeout:
     @pytest.mark.asyncio

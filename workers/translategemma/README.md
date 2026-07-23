@@ -40,7 +40,7 @@ template to `:<sha>` for reproducibility.
    `translategemma-edge`):
 
    ```env
-   ACHERON_REGISTRATION_TOKEN=<orchestrator's token>
+   ACHERON_WORKER__REGISTRATION_TOKEN=<orchestrator's token>
    ACHERON_WORKER__RUNPOD_API_KEY=<your RunPod API key>
    ACHERON_WORKER__RUNPOD_ENDPOINT_ID=<endpoint id from step 3>
    ```
@@ -56,6 +56,7 @@ template to `:<sha>` for reproducibility.
 |----------|-----------|-------------|
 | `ACHERON_WORKER__WORKER_ID` | yes (or via worker.yaml) | Worker ID used at registration. Default in worker.yaml: `translategemma-1`. |
 | `ACHERON_WORKER__ORCHESTRATOR_URL` | yes | Orchestrator base URL. |
+| `ACHERON_WORKER__WORKER_HOST` | Compose deployments | Hostname the orchestrator uses to reach this edge container. |
 | `ACHERON_WORKER__REGISTRATION_TOKEN` | env-only | Bearer token used for `POST /workers`. |
 | `ACHERON_WORKER__RUNPOD_API_KEY` | env-only | RunPod API key. |
 | `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | env-only | The RunPod serverless endpoint ID. |
@@ -88,10 +89,10 @@ worker package, not a config knob on this one.
 
 ## Languages and variants
 
-`google/translategemma-12b-it` supports 55 languages. v1 advertises the full
+`google/translategemma-12b-it` supports 69 languages. v1 advertises the full
 set so the orchestrator can plan any pair; language-path validation at plan
 compile time still rejects pairs outside the orchestrator's
 `SUPPORTED_LANGUAGES={en, es, fr, de}`.
 
-`google/translategemma-4b-it` is the smaller sibling. The same 55-language
+`google/translategemma-4b-it` is the smaller sibling. The same 69-language
 set; same `capabilities()` shape (drop-in replacement via `model_id` knob).

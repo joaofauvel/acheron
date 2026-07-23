@@ -805,8 +805,8 @@ Documented in `workers/qwen3tts/README.md`. The deployer **never builds the work
    - `ghcr.io/<repo>/acheron-qwen3tts-runpod:<sha>` (immutable per commit)
    The workflow uses `docker/build-push-action` with `cache-from: type=gha` to cache the slow `pip install torch / qwen-tts / flash-attn` layers.
 2. **Create the RunPod serverless template** referencing the pushed image, the GPU type list (`[L4, A5000, RTX 3090]` — 24GB minimum per the GPU choice), the network volume for the HF cache, and env vars:
-   - `ACHERON_ORCHESTRATOR_URL=http://orchestrator-host:8000` (reachable from inside RunPod)
-   - `ACHERON_REGISTRATION_TOKEN=<token>` (env-only)
+   - `ACHERON_WORKER__ORCHESTRATOR_URL=http://orchestrator-host:8000` (reachable from inside RunPod)
+   - `ACHERON_WORKER__REGISTRATION_TOKEN=<token>` (env-only)
    - `ACHERON_RUNPOD_ENDPOINT_ID` (set after step 3 — RunPod assigns the endpoint ID; redeploy template with it for cold-start metadata to flow correctly).
 3. **Create the RunPod serverless endpoint** from the template. Note the endpoint ID. Set `workers_max: 1` for v1 (one replica suffices for a single book), `idle_timeout: 300` (matches the existing cost-containing shard strategy).
 4. **Run the edge container** (the orchestrator host's `docker-compose.yml` adds a `qwen3tts-edge` service running the published generic `acheron-worker-edge` image):
@@ -814,9 +814,10 @@ Documented in `workers/qwen3tts/README.md`. The deployer **never builds the work
    qwen3tts-edge:
      image: ghcr.io/<repo>/acheron-worker-edge:latest
      environment:
-       WORKER_NAME: qwen3tts
-        ACHERON_ORCHESTRATOR_URL: http://orchestrator:8000
-        ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
+        WORKER_NAME: qwen3tts
+        ACHERON_WORKER__ORCHESTRATOR_URL: http://orchestrator:8000
+        ACHERON_WORKER__WORKER_HOST: qwen3tts-edge
+        ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
         ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY}
         ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID}
      volumes:

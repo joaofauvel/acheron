@@ -400,7 +400,7 @@ After 3 consecutive failures, the worker is removed from the registry. The monit
 - `InMemoryWorkerStore` / `InMemoryJobStore` — async, dict-backed, used for dev and tests
 - `RedisWorkerStore` / `RedisJobStore` — `redis.asyncio.Redis` client, JSON-serialized state in Redis hashes and sets. The `TrackedJob` round-trip persists the full job state including the `Plan` and `PlanResult`.
 
-`Orchestrator.close()` releases store resources with exception isolation (one store's close failing doesn't skip the other), called from the FastAPI lifespan. `Orchestrator.close()` teardown must run after `Orchestrator.shutdown()` has drained in-flight `_execute` tasks — otherwise a job whose `put()` races the Redis pool teardown will see a `ConnectionError` mid-flight.
+`Orchestrator.close()` releases store resources with exception isolation (one store's close failing doesn't skip the other), called from the FastAPI lifespan. `Orchestrator.close()` gives shielded reconciliation writes one bounded grace period before tearing down stores; a write that remains stuck is logged as an operational failure.
 
 **Local worker handlers** are kept in a side dict on the orchestrator (`_local_handlers: dict[str, LocalJobHandler]`), not in `RegisteredWorker.metadata`. Worker `metadata` is a JSON-serializable contract used by persistence backends; coroutine handlers are not serializable. Use the `Orchestrator.register_worker(handler=...)` keyword-only parameter to register a local worker.
 
@@ -468,7 +468,7 @@ On resume, the executor checks each step: if the step is `complete` and its outp
 | Worker timeout | Per-step `asyncio.wait_for()` timeout (default 1800s). Raises `WorkerError("step <id> timed out after Ns")`, fails the job. |
 | Unexpected stage failure | Wrapped as `PipelineError(AcheronError)` with the stage id and exception type: `PipelineError("unexpected failure in stage {id}: {Type}") from exc`. Never silently swallowed. |
 | Cache read/write failure | `StepCache.save_outputs` raises `OSError` or `CacheCorruptedError`; the stage wraps as `PipelineError("save_outputs failed for step {id}") from exc`. A corrupted manifest on the cache scan path is silently skipped (treated as "no outputs for this step"). |
-| `Orchestrator.close()` during in-flight dispatch | Callers must `shutdown()` first; close() teardown tears down the Redis pool, which forces a `ConnectionError` on any pending `put()`. Documented in the close() docstring. |
+| `Orchestrator.close()` during in-flight dispatch | The lifespan drains execution tasks first, then gives shielded reconciliation writes a bounded wait before closing the Redis pool. |
 
 ## Cost Containment
 
@@ -499,7 +499,7 @@ A representative service:
       - "8000:8000"
     environment:
       REDIS_URL: redis://redis:6379
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-dev-registration-token}
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_DATA_DIR: /data/jobs
     volumes:
       - acheron-data:/data

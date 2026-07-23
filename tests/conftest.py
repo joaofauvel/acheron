@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
@@ -26,10 +26,15 @@ def dev_certs(tmp_path: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def redis_container() -> RedisContainer:
+def redis_container() -> Iterator[RedisContainer]:
+    from testcontainers.redis import RedisContainer
+
     container = RedisContainer("redis:7-alpine")
     container.start()
-    return container
+    try:
+        yield container
+    finally:
+        container.stop()
 
 
 @pytest_asyncio.fixture

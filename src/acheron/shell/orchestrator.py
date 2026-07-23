@@ -13,6 +13,8 @@ import weakref
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from redis.exceptions import RedisError
+
 from acheron.core.errors import (
     AcheronError,
     JobAlreadyRunningError,
@@ -38,6 +40,7 @@ from acheron.core.planner import ChunkingLimits, compile_plan
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
+from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.health_providers import create_health_providers
@@ -51,6 +54,7 @@ from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 
 if TYPE_CHECKING:
+    from acheron.core.interfaces import Executor
     from acheron.core.models import JobRequest
     from acheron.shell.cache import PlanCache
     from acheron.shell.executors._utils import StepHandler
@@ -117,9 +121,13 @@ class Orchestrator:
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)
         self._tasks: set[asyncio.Task[None]] = set()
+        self._background_persists: set[asyncio.Task[None]] = set()
+        self._background_persists_by_job: dict[str, set[asyncio.Task[None]]] = {}
+        self._lifecycle_lock = asyncio.Lock()
         self._active_jobs: set[str] = set()
         self._job_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._started = False
+        self._shutting_down = False
         self._health_providers = create_health_providers(self._settings)
         self._health_monitor = HealthMonitor(
             registry,
@@ -200,10 +208,11 @@ class Orchestrator:
         """Release any resources held by the stores. Idempotent and exception-isolated.
 
         Tears down the Redis connection pool (or any other backend-held resources).
-        Callers must drain in-flight ``_execute`` tasks via ``shutdown()`` first —
-        otherwise a job whose ``put()`` races the pool teardown will see a
-        ``ConnectionError`` mid-flight.
+        In-flight execution tasks must be drained via ``shutdown()`` first. Any
+        shielded reconciliation writes that outlived the drain grace are given
+        one bounded grace period before the stores are closed.
         """
+        await self._wait_for_background_persists(max_wait=self._settings.orchestrator.shutdown_drain_seconds)
         for close_attr in ("_registry", "_job_store"):
             try:
                 await getattr(self, close_attr).close()
@@ -287,26 +296,46 @@ class Orchestrator:
         store cannot hang shutdown indefinitely; on timeout a warning is
         logged and the ``TimeoutError`` propagates to the caller.
         """
-        pending = list(self._tasks)
+        async with self._lifecycle_lock:
+            self._shutting_down = True
+            pending = [task for task in self._tasks if not task.done()]
         if not pending:
             return
-        grace = self._settings.orchestrator.shutdown_drain_seconds
-        logger.info("Draining %d in-flight _execute tasks (grace=%.1fs)", len(pending), grace)
+        # Let newly-created tasks enter _execute before cancellation so its
+        # reconciliation handler also covers tasks that were just spawned.
+        await asyncio.sleep(0)
         for task in pending:
             task.cancel()
+        grace = self._settings.orchestrator.shutdown_drain_seconds
+        logger.info("Draining %d in-flight _execute tasks (grace=%.1fs)", len(pending), grace)
         start = time.monotonic()
         try:
             async with asyncio.timeout(grace):
-                await asyncio.gather(*pending, return_exceptions=True)
+                results = await asyncio.gather(*pending, return_exceptions=True)
         except TimeoutError:
             still_pending = sum(1 for task in pending if not task.done())
             logger.warning(
-                "Drain grace timeout (%.1fs) fired with %d/%d tasks still pending; persisted state may be inconsistent",
+                "Drain grace timeout (%.1fs) fired with %d/%d tasks still pending and "
+                "%d reconciliation writes; persisted state may be inconsistent",
                 grace,
                 still_pending,
                 len(pending),
+                len(self._background_persists),
             )
             raise
+        unexpected = [
+            result
+            for result in results
+            if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError)
+        ]
+        if unexpected:
+            for exc in unexpected:
+                logger.error(
+                    "In-flight _execute task failed during drain: %s",
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            raise unexpected[0]
         logger.info("Drained %d tasks in %.2fs", len(pending), time.monotonic() - start)
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
@@ -362,46 +391,133 @@ class Orchestrator:
             plan=plan,
             status=PlanStatus.RUNNING,
         )
-        await self._job_store.put(tracked)
-
-        task = asyncio.create_task(self._execute(tracked))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        async with self._lifecycle_lock:
+            if self._shutting_down:
+                msg = "Orchestrator is shutting down; new jobs are not accepted"
+                raise RuntimeError(msg)
+            await self._job_store.put(tracked)
+            self._active_jobs.add(tracked.job_id)
+            self._track_execution_task(tracked)
 
         return tracked
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status.
 
-        Wraps the run in try/except/finally so a CancelledError from
-        ``shutdown()`` (or an executor crash) always reconciles the job
-        store with a terminal status — no job is ever left in RUNNING.
+        Reconciles cancellation and unexpected failures with a terminal status
+        before re-raising so callers can observe the original task failure.
         """
         try:
             with bind_job_id(tracked.job_id):
                 await self._run_execution(tracked)
         except asyncio.CancelledError:
             tracked.status = PlanStatus.FAILED
-            if tracked.result is not None:
-                tracked.result = replace(tracked.result, status=PlanStatus.FAILED)
+            self._record_cancellation(tracked)
             try:
-                # Shielded so a drain-grace timeout cannot abort the persist;
-                # the put completes in the background after shutdown returns.
-                # Narrow catch: a programming error (KeyError, AttributeError)
-                # must surface chained to the CancelledError, not be mistaken
-                # for a store outage.
-                await asyncio.shield(self._job_store.put(tracked))
-            except (OSError, ConnectionError, RuntimeError) as exc:
+                await self._persist_shielded(tracked)
+            except (OSError, ConnectionError, RuntimeError, RedisError) as exc:
                 _log_unexpected(f"Failed to persist job {tracked.job_id} after cancellation", exc)
             raise
         except Exception as exc:
             _log_unexpected(f"Job {tracked.job_id} failed in _execute", exc)
             tracked.status = PlanStatus.FAILED
+            if tracked.result is None:
+                self._record_failure(tracked, exc)
+            else:
+                tracked.result = replace(
+                    tracked.result,
+                    status=PlanStatus.FAILED,
+                    errors=(*tracked.result.errors, sanitise_exc_message(exc)),
+                )
             try:
-                await asyncio.shield(self._job_store.put(tracked))
+                await self._persist_shielded(tracked)
             except Exception as persist_exc:  # noqa: BLE001
                 _log_unexpected(f"Failed to persist job {tracked.job_id} after execution failure", persist_exc)
             raise
+        finally:
+            self._active_jobs.discard(tracked.job_id)
+
+    def _track_execution_task(self, tracked: TrackedJob) -> None:
+        task = asyncio.create_task(self._execute(tracked))
+        self._tasks.add(task)
+
+        def _discard(done: asyncio.Task[None]) -> None:
+            self._tasks.discard(done)
+            if done.cancelled():
+                return
+            exc = done.exception()
+            if exc is not None:
+                logger.error(
+                    "Job task failed after completion: %s",
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+
+        task.add_done_callback(_discard)
+
+    def _track_persist(self, tracked: TrackedJob) -> asyncio.Task[None]:
+        task = asyncio.create_task(self._job_store.put(tracked))
+        self._background_persists.add(task)
+        self._background_persists_by_job.setdefault(tracked.job_id, set()).add(task)
+
+        def _discard(done: asyncio.Task[None]) -> None:
+            self._background_persists.discard(done)
+            job_tasks = self._background_persists_by_job.get(tracked.job_id)
+            if job_tasks is not None:
+                job_tasks.discard(done)
+                if not job_tasks:
+                    self._background_persists_by_job.pop(tracked.job_id, None)
+            if done.cancelled():
+                return
+            exc = done.exception()
+            if exc is not None:
+                logger.error(
+                    "Background persist failed for job %s: %s",
+                    tracked.job_id,
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+
+        task.add_done_callback(_discard)
+        return task
+
+    async def _persist_shielded(self, tracked: TrackedJob) -> None:
+        """Persist a job without letting cancellation interrupt the store write."""
+        await asyncio.shield(self._track_persist(tracked))
+
+    async def _wait_for_background_persists(
+        self,
+        job_id: str | None = None,
+        *,
+        max_wait: float | None = None,
+        raise_on_timeout: bool = False,
+    ) -> None:
+        if job_id is None:
+            tasks = list(self._background_persists)
+        else:
+            tasks = list(self._background_persists_by_job.get(job_id, ()))
+        if not tasks:
+            return
+        done, pending = await asyncio.wait(tasks, timeout=max_wait)
+        if pending:
+            logger.warning(
+                "Timed out waiting for %d background reconciliation writes%s",
+                len(pending),
+                f" for job {job_id}" if job_id else "",
+            )
+            if raise_on_timeout:
+                msg = "Background reconciliation did not finish before the timeout"
+                raise RuntimeError(msg)
+        for task in done:
+            if task.cancelled():
+                continue
+            result = task.exception()
+            if result is not None:
+                logger.error(
+                    "Background persist failed while waiting: %s",
+                    result,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
 
     def _invalidate_handler_cache(self) -> None:
         """Invalidate the step handler's worker-instance cache, if it exposes one.
@@ -433,35 +549,7 @@ class Orchestrator:
                     tracked.status = PlanStatus.FAILED
                     logger.error("No plan for %s", tracked.job_id)
                 else:
-                    handler = self._handler
-                    if tracked.strategy != ExecutorStrategy.STREAMING:
-
-                        async def caching_handler(step: PlanStep, plan: Plan) -> JobResult:
-                            if await self._step_cache.step_has_valid_cache(plan.job_id, step.step_id):
-                                outputs = await self._step_cache.load_outputs(plan.job_id, step.step_id)
-                                return JobResult(
-                                    job_id=plan.job_id,
-                                    status=JobStatus.SUCCESS,
-                                    outputs=outputs,
-                                    metrics=JobMetrics(duration_seconds=0.0),
-                                )
-                            res = await self._handler(step, plan)
-                            if res.status == JobStatus.SUCCESS:
-                                await self._step_cache.save_outputs(plan.job_id, step.step_id, res.outputs)
-                            return res
-
-                        handler = caching_handler
-
-                    async def progress_handler(step: PlanStep, plan: Plan) -> JobResult:
-                        res = await handler(step, plan)
-                        self._record_step_progress(tracked, plan, res)
-                        return res
-
-                    executor = create_executor(
-                        tracked.strategy,
-                        progress_handler,
-                        step_cache=self._step_cache,
-                    )
+                    executor = self._create_executor(tracked)
                     result = await executor.run(tracked.plan)
                     tracked.result = result
                     tracked.status = result.status
@@ -482,10 +570,46 @@ class Orchestrator:
         finally:
             self._active_jobs.discard(tracked.job_id)
 
+    def _create_executor(self, tracked: TrackedJob) -> Executor:
+        handler = self._handler
+        if tracked.strategy != ExecutorStrategy.STREAMING:
+
+            async def caching_handler(step: PlanStep, plan: Plan) -> JobResult:
+                if await self._step_cache.step_has_valid_cache(plan.job_id, step.step_id):
+                    outputs = await self._step_cache.load_outputs(plan.job_id, step.step_id)
+                    return JobResult(
+                        job_id=plan.job_id,
+                        status=JobStatus.SUCCESS,
+                        outputs=outputs,
+                        metrics=JobMetrics(duration_seconds=0.0),
+                    )
+                res = await self._handler(step, plan)
+                if res.status == JobStatus.SUCCESS:
+                    await self._step_cache.save_outputs(plan.job_id, step.step_id, res.outputs)
+                return res
+
+            handler = caching_handler
+
+        async def progress_handler(step: PlanStep, plan: Plan) -> JobResult:
+            res = await handler(step, plan)
+            self._record_step_progress(tracked, plan, res)
+            return res
+
+        if tracked.strategy == ExecutorStrategy.STREAMING:
+
+            def on_step_complete(_step: PlanStep, plan: Plan, result: JobResult) -> None:
+                self._record_step_progress(tracked, plan, result)
+
+            return create_executor(
+                tracked.strategy,
+                self._handler,
+                step_cache=self._step_cache,
+                on_step_complete=on_step_complete,
+            )
+        return create_executor(tracked.strategy, progress_handler, step_cache=self._step_cache)
+
     def _record_step_progress(self, tracked: TrackedJob, plan: Plan, result: JobResult) -> None:
-        """Accumulate a successful step into ``tracked.result`` so a mid-plan cancel keeps partial cost."""
-        if result.status is not JobStatus.SUCCESS:
-            return
+        """Accumulate completed step metrics so a mid-plan cancel keeps partial state."""
         partial = tracked.result or PlanResult(
             plan_id=plan.plan_id,
             status=PlanStatus.RUNNING,
@@ -497,10 +621,35 @@ class Orchestrator:
         )
         tracked.result = replace(
             partial,
-            completed_steps=partial.completed_steps + 1,
-            outputs=(*partial.outputs, *result.outputs),
+            completed_steps=partial.completed_steps + int(result.status is JobStatus.SUCCESS),
+            outputs=(*partial.outputs, *result.outputs) if result.status is JobStatus.SUCCESS else partial.outputs,
             total_cost=partial.total_cost + (result.metrics.cost_estimate or 0.0),
+            total_duration_seconds=partial.total_duration_seconds + result.metrics.duration_seconds,
+            total_cost_basis=aggregate_cost_basis(
+                [
+                    JobMetrics(duration_seconds=0.0, cost_basis=partial.total_cost_basis),
+                    result.metrics,
+                ]
+            ),
+            errors=partial.errors + ((result.error,) if result.error else ()),
         )
+
+    def _record_cancellation(self, tracked: TrackedJob) -> None:
+        message = "execution cancelled during shutdown"
+        if tracked.result is None:
+            tracked.result = PlanResult(
+                plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
+                status=PlanStatus.FAILED,
+                completed_steps=0,
+                total_steps=len(tracked.plan.steps) if tracked.plan else 0,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=0.0,
+                errors=(message,),
+            )
+            return
+        errors = tracked.result.errors if message in tracked.result.errors else (*tracked.result.errors, message)
+        tracked.result = replace(tracked.result, status=PlanStatus.FAILED, errors=errors)
 
     def _record_failure(self, tracked: TrackedJob, exc: BaseException) -> None:
         """Mark ``tracked`` as failed and build the resulting :class:`PlanResult`."""
@@ -528,6 +677,11 @@ class Orchestrator:
             self._job_locks[job_id] = lock
 
         async with lock:
+            await self._wait_for_background_persists(
+                job_id,
+                max_wait=self._settings.orchestrator.shutdown_drain_seconds,
+                raise_on_timeout=True,
+            )
             tracked = await self._job_store.get(job_id)
             if tracked is None:
                 msg = f"Job not found: {job_id}"
@@ -549,14 +703,15 @@ class Orchestrator:
                 if job_dir.exists():
                     await asyncio.to_thread(shutil.rmtree, job_dir, ignore_errors=True)
 
-            self._active_jobs.add(job_id)
-            tracked.status = PlanStatus.RUNNING
-            tracked.result = None
-            await self._job_store.put(tracked)
-
-            task = asyncio.create_task(self._execute(tracked))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            async with self._lifecycle_lock:
+                if self._shutting_down:
+                    msg = "Orchestrator is shutting down; jobs cannot be resumed"
+                    raise RuntimeError(msg)
+                self._active_jobs.add(job_id)
+                tracked.status = PlanStatus.RUNNING
+                tracked.result = None
+                await self._job_store.put(tracked)
+                self._track_execution_task(tracked)
             return tracked
 
     async def list_jobs(self) -> tuple[TrackedJob, ...]:

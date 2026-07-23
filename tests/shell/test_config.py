@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from acheron.shell.config import Settings, load_settings
+from acheron.shell.config import OrchestratorSettings, Settings, load_settings
 
 
 def test_default_settings() -> None:
@@ -14,6 +14,13 @@ def test_default_settings() -> None:
     assert settings.workers.packaging.bitrate == "128k"
     assert settings.workers.packaging.max_fmt_chunk_length == 65536
     assert settings.chars_per_token == 1
+    assert settings.orchestrator.shutdown_drain_seconds == 5.0
+
+
+@pytest.mark.parametrize("value", [-1.0, float("inf"), float("nan")])
+def test_shutdown_drain_seconds_rejects_unsafe_values(value: float) -> None:
+    with pytest.raises(ValueError, match="shutdown_drain_seconds"):
+        OrchestratorSettings(shutdown_drain_seconds=value)
 
 
 def test_chars_per_token_override_from_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

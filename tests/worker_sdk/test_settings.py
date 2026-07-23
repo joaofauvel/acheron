@@ -81,6 +81,14 @@ class TestDefaults:
         s = WorkerSettings()  # type: ignore[call-arg]
         assert s.worker_host == "edge-host-1"
 
+    def test_worker_host_from_nested_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The namespaced worker env form maps to worker_host."""
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_HOST", "edge-host-2")
+        s = WorkerSettings()  # type: ignore[call-arg]
+        assert s.worker_host == "edge-host-2"
+
 
 class TestEnvOnlyFields:
     @pytest.mark.parametrize(

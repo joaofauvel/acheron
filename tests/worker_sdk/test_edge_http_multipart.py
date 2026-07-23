@@ -214,12 +214,8 @@ class TestMultipartRequest:
 
     @pytest.mark.asyncio
     async def test_multipart_request_with_two_json_parts(self, app_and_handler: Any) -> None:
-        """The translation path sends two application/json parts (envelope +
-        chunks.json). Subsequent JSON parts are silently accepted; the envelope
-        is the first one. Regression for the strict CORR-025 fix accidentally
-        rejecting the chunks.json part.
-        """
-        app, _ = app_and_handler
+        """The translation path passes the chunks.json part to the handler."""
+        app, handler = app_and_handler
         transport = ASGITransport(app=app)
         envelope = json.dumps(
             {
@@ -235,10 +231,12 @@ class TestMultipartRequest:
                 "/execute",
                 files={
                     "request": ("", envelope, "application/json"),
-                    "chunks": ("chunks.json", b'{"chunks": []}', "application/json"),
+                    "chunks-renamed": ("chunks.json", b'{"chunks": []}', "application/json; charset=utf-8"),
                 },
             )
         assert resp.status_code == 200
+        assert handler.received == [b'{"chunks": []}']
+        assert handler.received_content_type == ["application/json; charset=utf-8"]
 
     @pytest.mark.asyncio
     async def test_multipart_request_propagates_per_part_metadata(self, app_and_handler: Any) -> None:
@@ -288,6 +286,51 @@ class TestMultipartRequest:
             )
         assert resp.status_code == 200
         assert handler.received_metadata == [{"speaker_hint": "alice", "language": "en"}]
+
+    @pytest.mark.asyncio
+    async def test_multipart_request_rejects_non_object_metadata(self, app_and_handler: Any) -> None:
+        """Malformed metadata is returned as a structured JobResult failure."""
+        app, _ = app_and_handler
+        transport = ASGITransport(app=app)
+        envelope = json.dumps(
+            {
+                "job_id": "j-1",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        boundary = "acheron-invalid-metadata"
+        body = (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="request"\r\n'
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+            + (
+                (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="audio"; filename="podcast.mp3"\r\n'
+                    f"Content-Type: audio/mpeg\r\n"
+                    f"X-Acheron-Metadata: []\r\n\r\n"
+                ).encode()
+                + b"audio"
+                + b"\r\n"
+            )
+            + f"--{boundary}--\r\n".encode()
+        )
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/execute",
+                content=body,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+
+        assert resp.status_code == 500
+        assert resp.json()["status"] == "failed"
 
     @pytest.mark.asyncio
     async def test_multipart_metadata_round_trips_request_to_response(self) -> None:

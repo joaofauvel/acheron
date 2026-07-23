@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeGuard, runtime_checkable
 
 import redis.asyncio
 from pydantic import TypeAdapter
+from redis.exceptions import RedisError
 
 from acheron.core.models import (
     AudioRequest,
@@ -65,22 +67,6 @@ _JOBS_SET = "jobs"
 _capabilities_adapter: TypeAdapter[WorkerCapabilities] = TypeAdapter(WorkerCapabilities)
 _metadata_adapter: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
 
-
-def _checked_redis_client(redis_url: str) -> _RedisAwaitable:
-    """Build a redis.asyncio.Redis client and verify it satisfies the ``_RedisAwaitable`` surface.
-
-    Raises:
-        TypeError: If the client is missing any declared method (e.g. after a
-            redis-py rename). Lists the missing attribute names.
-    """
-    client = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
-    missing = [name for name in _REQUISITE_REDIS_METHODS if not hasattr(client, name)]
-    if missing:
-        msg = f"redis.asyncio.Redis no longer satisfies the _RedisAwaitable surface; missing: {missing}"
-        raise TypeError(msg)
-    return client  # type: ignore[return-value]
-
-
 _REQUISITE_REDIS_METHODS = (
     "ping",
     "aclose",
@@ -92,6 +78,75 @@ _REQUISITE_REDIS_METHODS = (
     "get",
     "pipeline",
 )
+_ASYNC_REDIS_CALLS: dict[str, tuple[object, ...]] = {
+    "ping": (),
+    "aclose": (),
+    "hgetall": ("",),
+    "smembers": ("",),
+    "hincrby": ("", "", 1),
+    "hset": ("", "key", "value"),
+    "exists": ("",),
+    "get": ("",),
+}
+_PIPELINE_METHODS = ("__aenter__", "__aexit__", "execute", "hset", "sadd", "srem", "delete", "set", "get")
+_ASYNC_PIPELINE_CALLS: dict[str, tuple[object, ...]] = {
+    "__aenter__": (),
+    "__aexit__": (None, None, None),
+    "execute": (),
+}
+
+
+def _returns_awaitable(method: object, args: tuple[object, ...]) -> bool:
+    if not callable(method):
+        return False
+    try:
+        result = method(*args)
+    except TypeError, ValueError, RedisError:
+        return False
+    try:
+        return inspect.isawaitable(result)
+    finally:
+        close = getattr(result, "close", None)
+        if callable(close):
+            close()
+
+
+def _has_pipeline_surface(client: object) -> bool:
+    pipeline = getattr(client, "pipeline", None)
+    if not callable(pipeline):
+        return False
+    try:
+        instance = pipeline(transaction=True)
+    except TypeError, ValueError, RedisError:
+        return False
+    return all(callable(getattr(instance, name, None)) for name in _PIPELINE_METHODS) and all(
+        _returns_awaitable(getattr(instance, name, None), args) for name, args in _ASYNC_PIPELINE_CALLS.items()
+    )
+
+
+def _is_redis_awaitable(client: object) -> TypeGuard[_RedisAwaitable]:
+    """Check that every store-used Redis member has the expected async surface."""
+    return all(_returns_awaitable(getattr(client, name, None), args) for name, args in _ASYNC_REDIS_CALLS.items()) and (
+        _has_pipeline_surface(client)
+    )
+
+
+def _checked_redis_client(redis_url: str) -> _RedisAwaitable:
+    """Build a redis.asyncio.Redis client and verify it satisfies the ``_RedisAwaitable`` surface.
+
+    Raises:
+        TypeError: If the client is missing any declared method (e.g. after a
+            redis-py rename). Lists the missing attribute names.
+    """
+    client: object = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
+    missing = [name for name in _REQUISITE_REDIS_METHODS if not callable(getattr(client, name, None))]
+    if missing:
+        msg = f"redis.asyncio.Redis no longer satisfies the _RedisAwaitable surface; missing: {missing}"
+        raise TypeError(msg)
+    if not _is_redis_awaitable(client):
+        msg = "redis.asyncio.Redis no longer exposes awaitable commands and an async pipeline"
+        raise TypeError(msg)
+    return client
 
 
 def _serialize_capabilities(cap: WorkerCapabilities) -> str:

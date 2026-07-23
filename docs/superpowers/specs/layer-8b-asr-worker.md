@@ -1081,9 +1081,10 @@ builds the worker image** — CI publishes to GHCR.
      ports:
        - "8008:8001"
      environment:
-       WORKER_NAME: granite_speech
-       ACHERON_ORCHESTRATOR_URL: http://orchestrator:8000
-       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
+        WORKER_NAME: granite_speech
+        ACHERON_WORKER__ORCHESTRATOR_URL: http://orchestrator:8000
+        ACHERON_WORKER__WORKER_HOST: granite-speech-edge
+        ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN}
        ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY}
        ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID}
        ACHERON_WORKER__LISTEN_PORT: "8001"

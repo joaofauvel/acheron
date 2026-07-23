@@ -31,7 +31,7 @@ template to `:<sha>` for reproducibility.
 4. **Configure the orchestrator-side edge service** (`docker-compose.yml`'s `qwen3tts-edge`):
 
    ```env
-   ACHERON_REGISTRATION_TOKEN=<orchestrator's token>
+   ACHERON_WORKER__REGISTRATION_TOKEN=<orchestrator's token>
    ACHERON_WORKER__RUNPOD_API_KEY=<your RunPod API key>
    ACHERON_WORKER__RUNPOD_ENDPOINT_ID=<endpoint id from step 3>
    ```
@@ -46,6 +46,7 @@ template to `:<sha>` for reproducibility.
 |----------|-----------|-------------|
 | `ACHERON_WORKER__WORKER_ID` | yes (or via worker.yaml) | Worker ID used at registration. Default in worker.yaml: `qwen3tts-1`. |
 | `ACHERON_WORKER__ORCHESTRATOR_URL` | yes | Orchestrator base URL. |
+| `ACHERON_WORKER__WORKER_HOST` | Compose deployments | Hostname the orchestrator uses to reach this edge container. |
 | `ACHERON_WORKER__REGISTRATION_TOKEN` | env-only | Bearer token used for `POST /workers`. |
 | `ACHERON_WORKER__RUNPOD_API_KEY` | env-only | RunPod API key (used by the edge forwarder and by the RunPod price source). |
 | `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | env-only | The RunPod serverless endpoint ID created in step 3 above. |

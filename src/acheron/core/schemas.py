@@ -1,6 +1,6 @@
 """Wire-format response schemas shared between the Acheron client and server."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from acheron.core.models import (
     CostBasis,
@@ -20,7 +20,7 @@ class JobResponse(BaseModel):
     total_cost: float = 0.0
     total_duration_seconds: float = 0.0
     total_cost_basis: CostBasis | None = None
-    errors: list[str] = []
+    errors: list[str] = Field(default_factory=list)
 
 
 class JobListResponse(BaseModel):
