@@ -1,7 +1,7 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
   commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
@@ -319,8 +319,8 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
@@ -1202,3 +1202,41 @@ related: [CFG-006, CFG-009, OBS-013]
 **Recommendation.** Add `shutdown_drain_seconds: float = 5.0` to `OrchestratorSettings` (config.py:50-56). Have `Orchestrator._drain_inflight_tasks` read `self._settings.orchestrator.shutdown_drain_seconds` instead of the literal 5.0. Document the field in `acheron.yaml.example`. Optionally add a `WorkerSettings`-style `env_aliases` mapping in `_EnvAliasSettingsSource` so `ACHERON_SHUTDOWN_DRAIN_SECONDS` also works.
 
 **Verification.** `git grep -n 'asyncio.timeout(5.0)' src/` returns zero matches; `git grep -n 'shutdown_drain_seconds' src/acheron/shell/config.py` returns one definition. A test that constructs an `Orchestrator` with a Settings where `shutdown_drain_seconds=0.1` and asserts the drain returns within 0.2s even when a fake `_job_store.put` sleeps 1s. `just test`; `just type-check`; `just lint-strict`.
+
+### ARCH-025 — Orchestrator catches Redis-specific errors across the JobStore abstraction
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 16, 418-421
+related: []
+```
+
+**Issue.** `Orchestrator` imports and catches `redis.exceptions.RedisError` directly despite depending on the abstract `JobStore`.
+
+**Recommendation.** Normalize backend failures at the store boundary or catch a domain-level persistence exception in the orchestrator.
+
+### ARCH-026 — PriceSource has no lifecycle contract for resource-owning implementations
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 29-38, 121-128
+  - path: src/acheron/worker_sdk/app.py
+    lines: 126-131
+related: []
+```
+
+**Issue.** `RunPodPrice` owns an HTTP client and cleanup, but `PriceSource` has no lifecycle contract, forcing the app to special-case the concrete implementation.
+
+**Recommendation.** Add `close()` to `PriceSource` and close all sources polymorphically.

@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 ---
 
 # Operations
@@ -1239,3 +1239,45 @@ related: [OBS-001, OBS-003, OBS-005]
 **Recommendation.** Wrap the drain in try/except: log `logger.info('Draining %d in-flight _execute tasks (grace=5.0s)', len(pending))` on entry; on success log `logger.info('Drained %d tasks in %.2fs', len(pending), elapsed)`; on `TimeoutError` log `logger.warning('Drain grace timeout (5.0s) fired with %d tasks still pending; persisted state may be inconsistent', still_pending)` and either continue with the still-pending tasks (let the event loop reap them) or set their status to FAILED via `_job_store.put` before re-raising. This mirrors the convention the OBS-005 health-provider fix adopted for distinguishing failure modes. Pair with the `shutdown_drain_seconds` settings field proposed in CFG-013 so the 5.0s magic number is configurable.
 
 **Verification.** Add a test in `tests/shell/test_orchestrator.py` that registers an `_execute` task that sleeps 10s, calls `orchestrator.shutdown()`, captures `caplog.records`, and asserts (a) an INFO line naming the task count is emitted on entry, (b) a WARNING line naming the timeout is emitted on `TimeoutError`, (c) `shutdown()` raises `TimeoutError` (preserved behaviour) but the operator-visible logs are present. Also add the success-path assertion with a fast-completing task to confirm the completion log is emitted.
+
+### PERF-009 — Cache invalidation can close HTTP clients used by active jobs
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/step_handler.py
+    lines: 143-160
+  - path: src/acheron/shell/orchestrator.py
+    lines: 374-402
+related: [CORR-041, OBS-014]
+```
+
+**Issue.** `submit_job()` invalidates and closes cached `HttpWorker` clients before starting the new task, even though existing jobs may still be using those shared instances.
+
+**Recommendation.** Defer closure until active references drain, or use generation/ref-counted worker pools.
+
+### OBS-014 — Shutdown can close the store before post-timeout reconciliation completes
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 215-222, 315-327, 406-422
+  - path: src/acheron/shell/api/app.py
+    lines: 38-42
+related: [CORR-038, CFG-013]
+```
+
+**Issue.** After the drain timeout, reconciliation writes continue in the background, while the FastAPI lifespan immediately calls `close()`. The bounded grace period can expire before a slow write completes, and Redis can then close underneath it.
+
+**Why it matters.** A job can remain persisted as `RUNNING` even though shutdown attempted reconciliation, with no reliable terminal state for the next process.
+
+**Recommendation.** Keep the store alive until reconciliation completes, or persist terminal failure synchronously before closing the backend.

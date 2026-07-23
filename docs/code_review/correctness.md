@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 ---
 
 # Correctness
@@ -331,7 +331,7 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/health.py
-    lines: 133-158
+    lines: 160-181
 related: [OBS-005]
 ```
 
@@ -342,6 +342,35 @@ related: [OBS-005]
 **Recommendation.** Track BOOTING duration (e.g. via a `booting_since` timestamp on `RegisteredWorker`) and treat workers stuck in BOOTING beyond a configurable timeout (e.g. 10 minutes) as OFFLINE. Alternatively, increment `consecutive_failures` for BOOTING workers but with a separate, higher threshold than the 3-failure rule for OFFLINE workers.
 
 **Verification.** Mock a provider that always returns BOOTING for a worker. Run multiple health check cycles. Assert the worker is eventually removed (or that BOOTING duration is bounded by a timeout).
+
+### CORR-041 — Cache invalidation can close HTTP clients used by active jobs
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: c53da1d
+last_verified_at:
+  commit: c53da1d
+  date: 2026-07-23
+fixed_in: []
+files:
+  - path: src/acheron/shell/step_handler.py
+    lines: 143-160
+  - path: src/acheron/shell/orchestrator.py
+    lines: 385-386
+  - path: src/acheron/shell/transports/http.py
+    lines: 101-109
+related: [PERF-009, OBS-014]
+```
+
+**Issue.** Submitting a new job invalidates and closes cached `HttpWorker` clients before the new task starts. Earlier concurrent jobs can still hold those shared instances, so the invalidation closes an `httpx.AsyncClient` while an in-flight request is using it.
+
+**Why it matters.** A later submission can make an unrelated active job fail with a closed-client error. The failure depends on request timing and is difficult to reproduce under normal single-job tests.
+
+**Recommendation.** Defer client closure until no active job references the worker, or use generation/ref-counted worker pools so cache invalidation cannot close clients still in use.
+
+**Verification.** Start two overlapping jobs sharing a cached HTTP worker, invalidate the cache while the first request is blocked, and assert the first job completes successfully.
 
 ### CORR-013 — `_parse_multipart` discards per-part `X-Acheron-Metadata` header sent by the SDK edge
 

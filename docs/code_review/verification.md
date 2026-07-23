@@ -1,7 +1,7 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
   commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
@@ -696,8 +696,8 @@ severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 fixed_in: []
 files:
   - path: workers/translategemma/tests/test_handler.py
@@ -1008,3 +1008,125 @@ related: [DATA-005, DATA-007, CORR-035]
 **Recommendation.** Parametrise the existing test in `tests/shell/stores/test_redis_job_store.py:203-227` (or add a new test in the same class) over `metadata = {} | 'str' | None | 42 | []` — each must round-trip to `{}`. Use `pytest.mark.parametrize('bad_metadata', [...])` and assert `loaded.result.outputs[0].metadata == {}` for all cases. Verify the existing `test_result_with_metadata_round_trips` (lines 174-202) is not changed.
 
 **Verification.** Run `just test tests/shell/stores/test_redis_job_store.py::TestPlanRoundTrip::test_result_with_non_dict_metadata_falls_back_to_empty` (or the new parametrised version); all 5 inputs produce `metadata == {}`.
+
+### TEST-023 — Redis integration test claims job persistence but only verifies worker persistence
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: tests/integration/test_worker_integration.py
+    lines: 237-269
+related: [TEST-002]
+```
+
+**Recommendation.** Persist and reload a `TrackedJob` through `job_store`, or narrow the test name and documentation to worker persistence.
+
+### TEST-024 — Orchestrator progress tracking lacks sequential and cache-hit assertions
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 575-637
+  - path: tests/shell/test_orchestrator.py
+    lines: 797-855
+related: []
+```
+
+**Recommendation.** Add cancellation and progress assertions for sequential execution, including cached steps.
+
+### TEST-025 — API route mapping of `total_cost_basis` is not directly tested
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 96-108
+  - path: tests/core/test_schemas.py
+    lines: 13-51
+related: []
+```
+
+**Recommendation.** Exercise a completed measured-cost job through the API and assert the serialized `total_cost_basis` field.
+
+### TEST-026 — Worker app lifecycle cleanup is not verified
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/app.py
+    lines: 109-131
+  - path: tests/worker_sdk/test_app.py
+    lines: 222-277
+related: []
+```
+
+**Recommendation.** Spy on `RunPodPrice.close()` and assert it runs on normal shutdown and handler-shutdown failure.
+
+### TEST-027 — Multipart duplicate-input rejection branches lack coverage
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 189-219
+  - path: tests/worker_sdk/test_edge_http_multipart.py
+    lines: 220-247
+related: []
+```
+
+**Recommendation.** Add duplicate JSON and duplicate audio cases and assert structured failure without handler dispatch.
+
+### REPRO-005 — Shutdown tests depend on fixed sleeps and wall-clock thresholds
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: tests/shell/test_orchestrator.py
+    lines: 331-363, 395-460
+related: []
+```
+
+**Recommendation.** Replace fixed sleeps and strict wall-clock assertions with event/deadline polling.
+
+### REPRO-006 — Localhost-default test depends on ambient nested worker environment
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 53-56
+  - path: tests/worker_sdk/test_app.py
+    lines: 152-158
+related: []
+```
+
+**Recommendation.** Clear `ACHERON_WORKER__WORKER_HOST` in the test or construct isolated settings.

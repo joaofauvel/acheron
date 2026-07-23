@@ -1,10 +1,10 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
-  commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 ---
 
 # Code Review Summary
@@ -32,7 +32,7 @@ Themes dropped from the rubric since the 8c baseline (all stories verified): **M
 
 Grade changes vs `77aadcd` (the previous refresh's baseline): **CFG A→A** (1 high from CFG-012 now verified, 1 new low CFG-013), **ARCH A→B** (ARCH-011/012 now stale, 1 new medium ARCH-024), **CORR A→B** (4 new mediums CORR-036/037/038/039 + CORR-015 stale + 1 new low CORR-040), **DOC A→A** (DOC-007 now verified, 1 new low DOC-008), **MAINT A→A** (1 new medium MAINT-021), **PERF A→B** (no grade change but 1 new medium story changes counts), **TEST B→B** (TEST-002/007/015 verified, 2 new mediums TEST-021/022 + 1 new low DATA-010), **TYPE A→A** (TYPE-001/003/006/007/010 verified, 1 new medium TYPE-012), **OBS A→A** (OBS-001 verified, 1 new medium OBS-013). **4 themes at B** (ARCH, CORR, PERF, TEST), **13 themes at A**, 0 at C, 0 at D.
 
-## Top concerns
+## Historical Top Concerns
 
 High-severity open stories: **none**. The Round 4 work verified both prior-high stories (CORR-035 via `b34ced9`, CFG-012 via `56af1f0`); all other open stories are `medium` or `low`.
 
@@ -88,14 +88,25 @@ S-effort open stories (low-risk, short fixes):
 33. TYPE-008 — WorkerSDK has 14+ `Any`/`dict[str, Any]` annotations in 5 files [low, M] — `code-quality.md`
 34. TYPE-011 — WorkerSDK `Any`/`dict[str, Any]` count is now 25 across 8 files [low, M] — `code-quality.md`
 
+## Generated Bundles
+
+1. **Bundle A — Active-client and shutdown safety:** `CORR-041`, `PERF-009`, `OBS-014` [medium, M].
+2. **Bundle B — Redis and source lifecycle contracts:** `TYPE-013`, `ARCH-025`, `ARCH-026` [medium/low, M].
+3. **Bundle C — Integration and execution coverage:** `TEST-023`, `TEST-024`, `TEST-025`, `TEST-026`, `TEST-027`, `REPRO-005`, `REPRO-006` [medium/low, M].
+4. **Bundle D — Worker documentation and CI surface:** `DX-005`, `DOC-009`, `DOC-010`, `DOC-011`, `DX-006`, `DOC-012`, `DOC-013` [medium/low, S].
+5. **Bundle E — Worker SDK typing and orchestrator cleanup:** `TYPE-008`, `TYPE-011`, `MAINT-022`, `MAINT-023` [low, M].
+6. **Bundle F — Health-state expiry:** `CORR-012` [low, M].
+
+Bundles are ordered by operational risk, then implementation effort. Bundle A is the next tackle target; `CORR-041` and `PERF-009` describe the same underlying client-lifecycle defect and should be fixed together.
+
 ## Story counts
 
 | Status | Count |
 |---|---|
-| open | 33 |
+| open | 25 |
 | in-progress | 0 |
 | fixed | 61 |
-| verified | 109 |
+| verified | 139 |
 | stale | 8 |
 | wontfix | 0 |
 | broken-yaml | 0 |

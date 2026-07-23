@@ -1,7 +1,7 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
   commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
@@ -298,8 +298,8 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 fixed_in: []
 files:
   - path: README.md
@@ -508,6 +508,140 @@ related: [DOC-005]
 **Recommendation.** For each of the 24 modules, reduce the module docstring to a single line that names the module's purpose. Examples of the trimmed form: `tls.py` -> `'''TLS helpers — env-var to SSL credentials conversion for HTTP and gRPC.'''`; `worker_sdk/__init__.py` -> `'''Acheron worker SDK — the blueprint for Layer 8 real GPU workers.'''`. The architectural rationale (why a module lives at the top level, why an import is lazy, etc.) belongs in the relevant import-linter contract definition or a top-level design doc, not in a module docstring that has to track every refactor. The fix is `ruff format` + manual trim per file; total effort is ~30 min of mechanical editing.
 
 **Verification.** Run the scan: `for f in $(rg -l '^\"\"\"' src/ dashboard/ workers/ --type py | rg -v '/tests/' | rg -v 'pyproject\.toml'); do head -1 "$f" | python3 -c "import sys; doc=sys.stdin.read(); m=__import__('re').match(r'^\"\"\"(.+?)\"\"\"$', doc); import sys; sys.exit(0 if m and '\n' not in m.group(1) and len(m.group(1)) < 200 else 1)" || echo "$f: multi-line docstring"; done` — output should be empty. `just lint-strict` passes. `grep -c '^\"\"\"$' <file>` continues to find one match per file (the closing triple-quote).
+
+### DX-005 — Quick Start copies an empty registration token that Compose rejects
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: README.md
+    lines: 24-26
+  - path: .env.example
+    lines: 4-9
+  - path: docker-compose.yml
+    lines: 33-36
+related: []
+```
+
+**Recommendation.** Generate a token in the Quick Start or provide a working generated-token path before `docker compose up`.
+
+### DOC-009 — README documents removed worker settings
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: README.md
+    lines: 221-232, 311-312
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 60-63
+related: [CFG-007]
+```
+
+**Recommendation.** Remove the obsolete `output_mode` and `output_volume_dir` settings from the README.
+
+### DOC-010 — Worker environment override names in `.env.example` do not match the SDK
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: .env.example
+    lines: 30-35
+  - path: docker-compose.yml
+    lines: 176-187
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 60-63
+related: []
+```
+
+**Recommendation.** Use the nested `ACHERON_WORKER__...` names and ensure Compose forwards the documented variables.
+
+### DOC-011 — README omits the required `ACHERON_WORKER__WORKER_HOST` setting
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: README.md
+    lines: 288-326
+  - path: docker-compose.yml
+    lines: 94-99, 176-187
+  - path: src/acheron/worker_sdk/settings.py
+    lines: 53-63
+related: []
+```
+
+**Recommendation.** Document the worker host override and use it in custom edge deployments.
+
+### DX-006 — Worker image CI does not rebuild for core runtime changes
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: .github/workflows/build-workers.yml
+    lines: 8-15
+related: []
+```
+
+**Recommendation.** Expand the workflow path filter to core runtime modules and packaging lockfiles used by workers.
+
+### DOC-012 — CI branch documentation still says `main`
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: .github/workflows/build-workers.yml
+    lines: 3-6
+  - path: README.md
+    lines: 82
+  - path: workers/qwen3tts/README.md
+    lines: 8
+related: []
+```
+
+**Recommendation.** Align the documented publish branch with CI.
+
+### DOC-013 — Worker README deployment tables contain stale values
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: workers/qwen3tts/README.md
+    lines: 54
+  - path: workers/granite_speech/README.md
+    lines: 60
+  - path: workers/translategemma/README.md
+    lines: 65-67
+related: []
+```
+
+**Recommendation.** Fix malformed `price_source` table rows and update TranslateGemma's documented port to `8001`.
 
 ### DOC-008 — `src/acheron/worker_sdk/_io.py` (new) re-introduces the multi-line docstring shape that DOC-007 eliminated
 

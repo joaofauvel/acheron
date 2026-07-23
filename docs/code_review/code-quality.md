@@ -1,7 +1,7 @@
 ---
 branch: code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
+last_updated_commit: c53da1db44b8f3323191eafd2db6bea5db3b68fc
 last_staleness_scan:
   commit: 59458ba5b1c364bb86ea8390cd30f268b98a6acf
   date: 2026-06-26
@@ -844,20 +844,18 @@ severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: c53da1d
+  date: 2026-07-23
 fixed_in: []
 files:
 - path: src/acheron/worker_sdk/cloud.py
   lines: 25, 28, 60, 64, 70, 80, 86
 - path: src/acheron/worker_sdk/_edge_http.py
-  lines: 52, 217, 224, 310
+  lines: 52, 229, 236, 322
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 185, 186, 194
+  lines: 194, 195, 203
 - path: src/acheron/worker_sdk/cli.py
   lines: 19, 27, 51
-- path: src/acheron/worker_sdk/app.py
-  lines: 32-52
 related: []
 ```
 
@@ -1199,3 +1197,57 @@ related: [TYPE-003]
 **Recommendation.** Add `@runtime_checkable` to the `_RedisAwaitable` Protocol declaration. Replace the `cast("_RedisAwaitable", ...)` at lines 312-316 and 424-428 with an `isinstance` check: `client = redis.asyncio.Redis.from_url(...)` then `if not isinstance(client, _RedisAwaitable): raise RuntimeError(...)`. The error message can introspect `dir(client)` to list the missing attributes. This is a 1-line pattern per constructor and converts the typing-debt cast into a runtime-enforced contract. The check runs once per process at startup, so the cost is negligible.
 
 **Verification.** `grep -n 'cast(' src/acheron/shell/stores/redis.py` returns 0 hits; the Protocol declaration has `@runtime_checkable`; new test that constructs `RedisWorkerStore(redis_url)` with a stub that does not implement one of the 9 methods and asserts the typed RuntimeError is raised. `just type-check` (the Protocol is now structural + runtime-checkable); `just test`; existing redis tests still pass.
+
+### MAINT-022 — Cancellation and failure paths duplicate terminal PlanResult construction
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 639-668
+related: [MAINT-005, CORR-040]
+```
+
+**Issue.** `_record_cancellation()` manually reconstructs the same zero-state failure `PlanResult` fields already assembled by `_record_failure()`.
+
+**Recommendation.** Extract a shared failure-result factory while preserving partial-result handling.
+
+### MAINT-023 — `_run_execution` duplicates identical exception recovery branches
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 565-570
+related: [MAINT-005, MAINT-021]
+```
+
+**Issue.** The `AcheronError` and generic `Exception` handlers differ only in log text; both call `_log_unexpected()` and `_record_failure()`.
+
+**Recommendation.** Consolidate the recovery logic into one helper or one handler with a derived label.
+
+### TYPE-013 — Redis runtime validation duplicates the Protocol across manual method tables
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: c53da1d
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 70-148
+related: [TYPE-012]
+```
+
+**Issue.** `_RedisAwaitable` is duplicated by several requisite-method tables, and constructors execute synthetic Redis calls to infer awaitability. Adding or changing a store method requires synchronized edits across independent contracts.
+
+**Recommendation.** Centralize the runtime contract behind a typed Redis adapter or a single non-invasive surface check.
