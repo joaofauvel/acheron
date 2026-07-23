@@ -56,6 +56,21 @@ class _SlowPutJobStore(InMemoryJobStore):
         await super().put(copy.deepcopy(job))
 
 
+class _FailingSecondPutJobStore(InMemoryJobStore):
+    """Fails the second put; snapshots all other jobs like a remote store."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._puts = 0
+
+    async def put(self, job: TrackedJob) -> None:
+        self._puts += 1
+        if self._puts == 2:
+            msg = "store temporarily unavailable"
+            raise RuntimeError(msg)
+        await super().put(copy.deepcopy(job))
+
+
 def _single_step_plan(job_id: str) -> Plan:
     return Plan(
         plan_id=f"{job_id}-plan",
@@ -420,6 +435,26 @@ class TestOrchestrator:
         with pytest.raises(TimeoutError):
             await orch.shutdown()
         await asyncio.sleep(1.2)  # outlast the shielded 1s put
+        persisted = await job_store.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status == PlanStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_execute_persists_failed_when_completion_put_raises(self, tmp_path: Path) -> None:
+        """CORR-039: a failing completion put must not leave the job persisted as RUNNING."""
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        job_store = _FailingSecondPutJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=job_store)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        # put#1 (submit) succeeds; put#2 (post-execution) raises; the
+        # _execute recovery put must reconcile the job to FAILED.
+        await asyncio.gather(*orch._tasks, return_exceptions=True)  # noqa: SLF001
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
         assert persisted.status == PlanStatus.FAILED

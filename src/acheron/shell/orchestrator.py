@@ -374,6 +374,11 @@ class Orchestrator:
             raise
         except Exception:
             logger.exception("Job %s failed in _execute", tracked.job_id)
+            tracked.status = PlanStatus.FAILED
+            try:
+                await asyncio.shield(self._job_store.put(tracked))
+            except Exception:
+                logger.exception("Failed to persist job %s after execution failure", tracked.job_id)
             raise
 
     def _invalidate_handler_cache(self) -> None:

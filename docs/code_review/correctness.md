@@ -1013,7 +1013,7 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: b492de0
+  commit: 7c950a7
   date: 2026-07-22
 fixed_in: []
 files:
@@ -1058,14 +1058,14 @@ related: [OBS-001, CORR-037, CFG-013]
 ### CORR-039 — `Orchestrator._execute`'s `except Exception` branch logs and re-raises without persisting FAILED — non-cancel exception paths can leave jobs in RUNNING
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: b492de0
+  commit: 7c950a7
   date: 2026-07-22
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 356-377
@@ -1088,7 +1088,7 @@ severity: low
 effort: M
 reviewed_at: 59458ba
 last_verified_at:
-  commit: b492de0
+  commit: 7c950a7
   date: 2026-07-22
 fixed_in: []
 files:
