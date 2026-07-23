@@ -1231,11 +1231,14 @@ related: []
 ### ARCH-026 — PriceSource has no lifecycle contract for resource-owning implementations
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 29-38, 121-128

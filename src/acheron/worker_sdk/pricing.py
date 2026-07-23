@@ -37,6 +37,10 @@ class PriceSource(Protocol):
         """Force-refresh cached rates; return False on any failure (non-fatal)."""
         ...
 
+    async def close(self) -> None:
+        """Release resources owned by the price source."""
+        ...
+
 
 @dataclass(frozen=True)
 class ZeroPrice:
@@ -49,6 +53,10 @@ class ZeroPrice:
     async def refresh(self) -> bool:
         """No-op; returns True so callers can treat this as always-warm."""
         return True
+
+    async def close(self) -> None:
+        """Release no resources."""
+        return
 
 
 @dataclass(frozen=True)
@@ -65,6 +73,10 @@ class StaticPrice:
     async def refresh(self) -> bool:
         """No-op; static rates don't need refreshing."""
         return True
+
+    async def close(self) -> None:
+        """Release no resources."""
+        return
 
 
 _KNOWN_REASONS: frozenset[str] = frozenset(

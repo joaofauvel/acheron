@@ -127,8 +127,7 @@ def create_worker_app(
             try:
                 await handler.shutdown()
             finally:
-                if isinstance(price_source, RunPodPrice):
-                    await price_source.close()
+                await price_source.close()
 
     app = FastAPI(title="acheron-worker-edge", lifespan=lifespan)
     # Include the inner router — adding a new route to EdgeApp picks it up here
