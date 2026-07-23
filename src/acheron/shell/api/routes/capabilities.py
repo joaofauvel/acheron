@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from acheron.core.schemas import CapabilitiesResponse, LanguagePair
 from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
-from acheron.shell.api.schemas import CapabilitiesResponse, LanguagePair
 
 router = APIRouter()
 

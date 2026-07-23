@@ -8,8 +8,9 @@ from fastapi import APIRouter, HTTPException
 
 from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
 from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy
+from acheron.core.schemas import JobListResponse, JobResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.schemas import JobListResponse, JobResponse, SubmitJobRequest
+from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
 
 if TYPE_CHECKING:
     from acheron.shell.job_store import TrackedJob

@@ -5,11 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
+from acheron.core.schemas import WorkerListResponse, WorkerResponse
 from acheron.shell.api.deps import AuthorizedDep, OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import (
-    WorkerListResponse,
-    WorkerRegistrationRequest,
-    WorkerResponse,
+    WorkerRegistrationRequest,  # noqa: TC001
 )
 
 router = APIRouter()

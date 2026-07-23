@@ -5,7 +5,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from acheron.core.models import CostBasis, PlanStatus, WorkerStatus
-from acheron.shell.api.schemas import JobResponse, WorkerResponse
+from acheron.core.schemas import JobResponse, WorkerResponse
 
 _adapter = TypeAdapter(JobResponse)
 

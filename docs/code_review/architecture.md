@@ -1152,14 +1152,14 @@ related: [ARCH-005]
 ### ARCH-024 — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` at module top — client depends on server-internal HTTP module
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: 0eab5cf
+  date: 2026-07-22
+fixed_in: ["pending"]
 files:
   - path: src/acheron/api_client.py
     lines: 10-17

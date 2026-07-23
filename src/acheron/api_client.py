@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import httpx
 
-from acheron.shell.api.schemas import (
+from acheron.core.schemas import (
     CapabilitiesResponse,
     JobListResponse,
     JobResponse,
