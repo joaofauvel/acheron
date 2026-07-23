@@ -119,16 +119,24 @@ class HealthMonitor:
             *(self._health_check(w.endpoint, w.transport) for w in workers),
             return_exceptions=True,
         )
-        for worker, result in zip(workers, results, strict=True):
-            if isinstance(result, BaseException):
-                logger.warning("Health check for %s raised: %s", worker.worker_id, result)
-                outcome = HealthProbeResult(healthy=False, error=f"{type(result).__name__}: {result}")
-            else:
-                outcome = result
-            if outcome.healthy:
-                await self._registry.record_health_success(worker.worker_id)
-            else:
-                await self._handle_failure(worker, outcome.error or "health check failed")
+        await asyncio.gather(
+            *(self._process_result(worker, result) for worker, result in zip(workers, results, strict=True))
+        )
+
+    async def _process_result(
+        self,
+        worker: RegisteredWorker,
+        result: HealthProbeResult | BaseException,
+    ) -> None:
+        if isinstance(result, BaseException):
+            logger.warning("Health check for %s raised: %s", worker.worker_id, result)
+            outcome = HealthProbeResult(healthy=False, error=f"{type(result).__name__}: {result}")
+        else:
+            outcome = result
+        if outcome.healthy:
+            await self._registry.record_health_success(worker.worker_id)
+        else:
+            await self._handle_failure(worker, outcome.error or "health check failed")
 
     async def _handle_failure(self, worker: RegisteredWorker, error: str) -> None:
         """On probe failure, consult the platform provider then update status."""

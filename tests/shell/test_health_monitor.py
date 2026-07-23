@@ -333,6 +333,27 @@ class TestHealthMonitorProviderIntegration:
         await monitor.stop()
 
     @pytest.mark.asyncio
+    async def test_health_result_bookkeeping_runs_concurrently(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://up-1", "http", _tts_caps())
+        await reg.register("w2", "http://up-2", "http", _tts_caps())
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=True))
+        monitor = HealthMonitor(reg, health_check=health_check)
+        entered: list[str] = []
+        all_entered = asyncio.Event()
+
+        async def record_success(worker_id: str) -> None:
+            entered.append(worker_id)
+            if len(entered) == 2:
+                all_entered.set()
+            await asyncio.wait_for(all_entered.wait(), timeout=1.0)
+
+        monkeypatch.setattr(reg, "record_health_success", record_success)
+        await monitor._check_all()  # noqa: SLF001
+
+        assert entered == ["w1", "w2"]
+
+    @pytest.mark.asyncio
     async def test_booting_transitions_to_offline_when_provider_says_offline(self) -> None:
         """TEST-007: a worker stuck in BOOTING must transition to OFFLINE when
         the platform provider reports the endpoint is offline on a subsequent check.

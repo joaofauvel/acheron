@@ -102,17 +102,17 @@ related: []
 ### PERF-004 — HealthMonitor._check_all processes worker results sequentially with W Redis round-trips
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/health.py
-    lines: 113-131
+    lines: 113-145
 related: [PERF-001]
 ```
 
