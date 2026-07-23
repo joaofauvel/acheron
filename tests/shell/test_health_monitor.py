@@ -220,6 +220,22 @@ class _RaisingProvider(HealthProvider):
         raise self._exc
 
 
+class _BarrierProvider(HealthProvider):
+    """Provider that waits until every expected check has started."""
+
+    def __init__(self, expected_calls: int) -> None:
+        self._expected_calls = expected_calls
+        self._calls = 0
+        self._all_called = asyncio.Event()
+
+    async def check_status(self, endpoint_id: str) -> WorkerStatus:
+        self._calls += 1
+        if self._calls == self._expected_calls:
+            self._all_called.set()
+        await asyncio.wait_for(self._all_called.wait(), timeout=1.0)
+        return WorkerStatus.OFFLINE
+
+
 class TestHealthMonitorProviderIntegration:
     @pytest.mark.asyncio
     async def test_booting_worker_not_removed(self) -> None:
@@ -331,6 +347,19 @@ class TestHealthMonitorProviderIntegration:
         with pytest.raises(RuntimeError, match="provider bug"):
             await monitor._check_all()  # noqa: SLF001
         await monitor.stop()
+
+    @pytest.mark.asyncio
+    async def test_provider_checks_run_concurrently(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down-1", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        await reg.register("w2", "http://down-2", "http", _tts_caps_with_provider("runpod", "ep-2"))
+        provider = _BarrierProvider(expected_calls=2)
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="down"))
+        monitor = HealthMonitor(reg, health_check=health_check, providers={"runpod": provider})
+
+        await monitor._check_all()  # noqa: SLF001
+
+        assert provider._calls == 2  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_health_result_bookkeeping_runs_concurrently(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -127,17 +127,17 @@ related: [PERF-001]
 ### PERF-005 — Provider status checks in _handle_failure run sequentially and can starve the health interval
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 63faed4
 last_verified_at:
-  commit: dbec2be
-  date: 2026-06-23
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/health.py
-    lines: 133-149
+    lines: 122-145
 related: [PERF-004]
 ```
 
