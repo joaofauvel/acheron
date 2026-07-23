@@ -390,7 +390,9 @@ class TestOrchestrator:
         await orch.close()
 
     @pytest.mark.asyncio
-    async def test_close_bounds_and_cancels_background_persist(self, tmp_path: Path) -> None:
+    async def test_close_bounds_and_cancels_background_persist(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """CORR-042: close() must not wait indefinitely for reconciliation writes."""
         handler_started = asyncio.Event()
 
@@ -408,7 +410,7 @@ class TestOrchestrator:
         job_store = _ControlledPutJobStore()
         orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=job_store, settings=settings)
         await orch.start()
-        await orch.submit_job(
+        tracked = await orch.submit_job(
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
         )
@@ -419,8 +421,10 @@ class TestOrchestrator:
         with pytest.raises(TimeoutError):
             await shutdown_task
 
-        await asyncio.wait_for(orch.close(), timeout=0.5)
+        with caplog.at_level("WARNING", logger="acheron.shell.orchestrator"):
+            await asyncio.wait_for(orch.close(), timeout=0.5)
         assert job_store.persist_cancelled.is_set()
+        assert any(tracked.job_id in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_shutdown_drain_logs_entry_and_completion(

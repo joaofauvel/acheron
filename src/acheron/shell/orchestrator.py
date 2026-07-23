@@ -514,10 +514,17 @@ class Orchestrator:
             return set()
         done, pending = await asyncio.wait(tasks, timeout=max_wait)
         if pending:
+            pending_job_ids = sorted(
+                job_id
+                for job_id, job_tasks in self._background_persists_by_job.items()
+                if job_tasks.intersection(pending)
+            )
+            job_suffix = f" for jobs {', '.join(pending_job_ids)}" if pending_job_ids else ""
             logger.warning(
-                "Timed out waiting for %d background reconciliation writes%s",
+                "Timed out waiting for %d background reconciliation writes%s%s",
                 len(pending),
                 f" for job {job_id}" if job_id else "",
+                job_suffix,
             )
             if raise_on_timeout:
                 msg = "Background reconciliation did not finish before the timeout"

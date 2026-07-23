@@ -1345,14 +1345,14 @@ related: [CORR-012, CORR-044]
 ### OBS-015 — Shutdown waits indefinitely for background persistence tasks
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 4991e4f
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 206-215
