@@ -1,9 +1,9 @@
 ---
-branch: code-review-refresh
+branch: tackle/round-6
 initial_review_commit: 23c29e1
-last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
+last_updated_commit: a749f8f
 last_staleness_scan:
-  commit: e0246e0
+  commit: a749f8f
   date: 2026-07-23
 ---
 
@@ -1296,9 +1296,9 @@ severity: medium
 effort: M
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 52feb77
+  commit: a749f8f
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [a749f8f]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 161-179
@@ -1318,14 +1318,14 @@ related: [PERF-009]
 ### PERF-011 — Health monitor retains BOOTING timestamps for removed workers
 
 ```yaml
-status: fixed
+status: verified
 severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 72b1668
+  commit: 04219ce
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [04219ce]
 files:
   - path: src/acheron/shell/health.py
     lines: 98-99
@@ -1352,7 +1352,7 @@ reviewed_at: e0246e0
 last_verified_at:
   commit: 4991e4f
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [52feb77]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 206-215

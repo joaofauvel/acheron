@@ -1,9 +1,9 @@
 ---
-branch: code-review-refresh
+branch: tackle/round-6
 initial_review_commit: 23c29e1
-last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
+last_updated_commit: a749f8f
 last_staleness_scan:
-  commit: e0246e0
+  commit: a749f8f
   date: 2026-07-23
 ---
 
@@ -1160,9 +1160,9 @@ severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: d548bdb
+  commit: 0e66e90
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [0e66e90]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 83-126
@@ -1187,9 +1187,9 @@ severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 8a2b341
+  commit: de100bd
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [de100bd]
 files:
   - path: src/acheron/shell/health.py
     lines: 103-104, 165-198
@@ -1214,9 +1214,9 @@ severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 0e66e90
+  commit: 893e2a3
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [893e2a3]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 498-507

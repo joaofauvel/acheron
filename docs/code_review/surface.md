@@ -1,9 +1,9 @@
 ---
-branch: code-review-refresh
+branch: tackle/round-6
 initial_review_commit: 23c29e1
-last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
+last_updated_commit: a749f8f
 last_staleness_scan:
-  commit: e0246e0
+  commit: a749f8f
   date: 2026-07-23
 ---
 
@@ -110,9 +110,9 @@ severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 43f64d5
+  commit: 72b1668
   date: 2026-07-23
-fixed_in: [pending]
+  fixed_in: [72b1668]
 files:
   - path: .github/workflows/build-workers.yml
     lines: 7-18

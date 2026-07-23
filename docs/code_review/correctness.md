@@ -1,9 +1,9 @@
 ---
-branch: code-review-refresh
+branch: tackle/round-6
 initial_review_commit: 23c29e1
-last_updated_commit: e0246e0019c0f3a6596c8ddef3dcf5af3405f5b8
+last_updated_commit: a749f8f
 last_staleness_scan:
-  commit: e0246e0
+  commit: a749f8f
   date: 2026-07-23
 ---
 
@@ -1144,9 +1144,9 @@ severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 893e2a3
+  commit: 4991e4f
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [4991e4f]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 206-214
@@ -1173,9 +1173,9 @@ severity: low
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: aecd1aa
+  commit: d548bdb
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [d548bdb]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 83-126
@@ -1198,9 +1198,9 @@ severity: low
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: 04219ce
+  commit: 8a2b341
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [8a2b341]
 files:
   - path: src/acheron/shell/health.py
     lines: 98-99
