@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import time
 from pathlib import Path
 
@@ -44,11 +45,15 @@ async def _success_handler(_step: PlanStep, _plan: Plan) -> JobResult:
 
 
 class _SlowPutJobStore(InMemoryJobStore):
-    """Job store whose put is slower than a test-scale drain grace."""
+    """Job store whose put is slower than a test-scale drain grace.
+
+    Snapshots each job like a remote store would, so only puts that run to
+    completion become visible to readers.
+    """
 
     async def put(self, job: TrackedJob) -> None:
         await asyncio.sleep(1.0)
-        await super().put(job)
+        await super().put(copy.deepcopy(job))
 
 
 def _single_step_plan(job_id: str) -> Plan:
@@ -386,6 +391,38 @@ class TestOrchestrator:
         with caplog.at_level("WARNING", logger="acheron.shell.orchestrator"), pytest.raises(TimeoutError):
             await orch.shutdown()
         assert any("Drain grace timeout" in r.message and "still pending" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_persists_failed_despite_drain_timeout(self, tmp_path: Path) -> None:
+        """CORR-038: the post-cancel FAILED persist is shielded — a firing drain grace cannot cancel it."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        job_store = _SlowPutJobStore()
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        settings.orchestrator.shutdown_drain_seconds = 0.1
+        orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=job_store, settings=settings)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        with pytest.raises(TimeoutError):
+            await orch.shutdown()
+        await asyncio.sleep(1.2)  # outlast the shielded 1s put
+        persisted = await job_store.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status == PlanStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

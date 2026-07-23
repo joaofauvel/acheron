@@ -1148,18 +1148,18 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 0635bfb
+  commit: b492de0
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 196-200
   - path: src/acheron/shell/orchestrator.py
-    lines: 368-372
+    lines: 368-374
   - path: src/acheron/shell/orchestrator.py
-    lines: 373-375
+    lines: 375-377
   - path: src/acheron/shell/orchestrator.py
-    lines: 451-453
+    lines: 453-455
 related: [OBS-013]
 ```
 

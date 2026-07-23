@@ -1013,12 +1013,12 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 0635bfb
+  commit: b492de0
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 265-272
+    lines: 264-272
 related: [OBS-001, CORR-038, CORR-039, CORR-040]
 ```
 
@@ -1033,14 +1033,14 @@ related: [OBS-001, CORR-038, CORR-039, CORR-040]
 ### CORR-038 — `_drain_inflight_tasks`'s 5s timeout can abort the drain mid-shutdown — cancelled task's FAILED-status put is itself cancelled, job stays in RUNNING
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 0635bfb
+  commit: b492de0
   date: 2026-07-22
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 278-292
@@ -1063,12 +1063,12 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 0635bfb
+  commit: b492de0
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 356-375
+    lines: 356-377
 related: [OBS-001, CORR-037, CORR-038]
 ```
 
@@ -1088,12 +1088,12 @@ severity: low
 effort: M
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 0635bfb
+  commit: b492de0
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 366-372
+    lines: 366-374
 related: [OBS-001, CORR-008]
 ```
 

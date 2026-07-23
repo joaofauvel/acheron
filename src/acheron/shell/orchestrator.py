@@ -366,7 +366,9 @@ class Orchestrator:
         except asyncio.CancelledError:
             tracked.status = PlanStatus.FAILED
             try:
-                await self._job_store.put(tracked)
+                # Shielded so a drain-grace timeout cannot abort the persist;
+                # the put completes in the background after shutdown returns.
+                await asyncio.shield(self._job_store.put(tracked))
             except Exception:
                 logger.exception("Failed to persist job %s after cancellation", tracked.job_id)
             raise
