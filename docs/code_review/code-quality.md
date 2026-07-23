@@ -1174,14 +1174,14 @@ related: [OBS-013]
 ### TYPE-012 — `cast("_RedisAwaitable", ...)` at both redis store constructors is an unverified Protocol claim — runtime drift would surface as opaque `AttributeError`
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: 76c2ea4
+  date: 2026-07-22
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 29-49

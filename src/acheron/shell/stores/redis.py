@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import redis.asyncio
 from pydantic import TypeAdapter
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
 
 
+@runtime_checkable
 class _RedisAwaitable(Protocol):
     """Subset of redis.asyncio.Redis that the stores actually use.
 
@@ -34,6 +35,9 @@ class _RedisAwaitable(Protocol):
     though the ``T`` branch is unreachable. Typing ``self._redis`` as this
     Protocol lets mypy trust the Protocol's signatures at the call sites
     and removes the per-call markers.
+
+    Marked ``@runtime_checkable`` so stores can verify the surface they
+    rely on is present on the concrete client at construction time.
     """
 
     async def ping(self) -> bool: ...
@@ -60,6 +64,34 @@ _JOBS_SET = "jobs"
 
 _capabilities_adapter: TypeAdapter[WorkerCapabilities] = TypeAdapter(WorkerCapabilities)
 _metadata_adapter: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
+
+
+def _checked_redis_client(redis_url: str) -> _RedisAwaitable:
+    """Build a redis.asyncio.Redis client and verify it satisfies the ``_RedisAwaitable`` surface.
+
+    Raises:
+        TypeError: If the client is missing any declared method (e.g. after a
+            redis-py rename). Lists the missing attribute names.
+    """
+    client = redis.asyncio.Redis.from_url(redis_url, decode_responses=True)
+    missing = [name for name in _REQUISITE_REDIS_METHODS if not hasattr(client, name)]
+    if missing:
+        msg = f"redis.asyncio.Redis no longer satisfies the _RedisAwaitable surface; missing: {missing}"
+        raise TypeError(msg)
+    return client  # type: ignore[return-value]
+
+
+_REQUISITE_REDIS_METHODS = (
+    "ping",
+    "aclose",
+    "hgetall",
+    "smembers",
+    "hincrby",
+    "hset",
+    "exists",
+    "get",
+    "pipeline",
+)
 
 
 def _serialize_capabilities(cap: WorkerCapabilities) -> str:
@@ -309,10 +341,7 @@ class RedisWorkerStore(WorkerStore):
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis: _RedisAwaitable = cast(
-            "_RedisAwaitable",
-            redis.asyncio.Redis.from_url(redis_url, decode_responses=True),
-        )
+        self._redis: _RedisAwaitable = _checked_redis_client(redis_url)
 
     async def connect(self) -> None:
         """Verify the Redis server is reachable. Idempotent."""
@@ -421,10 +450,7 @@ class RedisJobStore(JobStore):
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis: _RedisAwaitable = cast(
-            "_RedisAwaitable",
-            redis.asyncio.Redis.from_url(redis_url, decode_responses=True),
-        )
+        self._redis: _RedisAwaitable = _checked_redis_client(redis_url)
 
     async def connect(self) -> None:
         """Verify the Redis server is reachable. Idempotent."""

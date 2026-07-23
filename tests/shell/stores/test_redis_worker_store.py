@@ -278,3 +278,16 @@ class TestStatusAndErrorRoundTrip:
         assert w is not None
         assert w.status == WorkerStatus.HEALTHY
         assert w.last_error is None
+
+
+class TestProtocolEnforcement:
+    """TYPE-012: the _RedisAwaitable protocol claim is enforced at construction."""
+
+    def test_init_raises_when_client_misses_protocol_methods(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _StubClient:
+            async def ping(self) -> bool:
+                return True
+
+        monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: _StubClient())
+        with pytest.raises(TypeError, match="smembers"):
+            RedisWorkerStore("redis://localhost:6379")

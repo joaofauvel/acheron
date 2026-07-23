@@ -986,12 +986,12 @@ severity: low
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: 76c2ea4
+  date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 282-293
+    lines: 310-320
   - path: tests/shell/stores/test_redis_job_store.py
     lines: 203-227
 related: [DATA-005, DATA-007, CORR-035]
