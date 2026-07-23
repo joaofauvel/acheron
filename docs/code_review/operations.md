@@ -1229,8 +1229,8 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: 129db9d
+  date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py

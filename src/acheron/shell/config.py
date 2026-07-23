@@ -54,6 +54,7 @@ class OrchestratorSettings(BaseModel):
     registration_token: str | None = Field(default=None)
     open_registration: bool = False
     health_check_interval_seconds: int = Field(default=30)
+    shutdown_drain_seconds: float = Field(default=5.0)
 
 
 class ChunkingSettings(BaseModel):

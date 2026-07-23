@@ -274,7 +274,7 @@ class Orchestrator:
             return
         for task in pending:
             task.cancel()
-        async with asyncio.timeout(5.0):
+        async with asyncio.timeout(self._settings.orchestrator.shutdown_drain_seconds):
             await asyncio.gather(*pending, return_exceptions=True)
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:

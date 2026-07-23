@@ -270,7 +270,7 @@ The orchestrator reads `acheron.yaml` for non-secret settings. The config search
 
 **Top-level blocks.**
 
-- `orchestrator:` — `data_dir`, `registration_token`, `health_check_interval_seconds`.
+- `orchestrator:` — `data_dir`, `registration_token`, `health_check_interval_seconds`, `shutdown_drain_seconds`.
 - `workers:` — `chunking` (`max_chunk_length`) and `packaging` (`bitrate`, `codec`, `max_fmt_chunk_length`).
 - `providers:` — RunPod and Hugging Face API keys for decoupled health checks when a worker's HTTP probe fails.
 - `chars_per_token` — top-level CJK worst-case estimate for chunk-fit validation; default `1`.

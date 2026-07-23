@@ -1179,14 +1179,14 @@ related: []
 ### CFG-013 — Magic 5.0-second drain timeout in `Orchestrator._drain_inflight_tasks` is hard-coded; `OrchestratorSettings` has no equivalent field
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: 129db9d
+  date: 2026-07-22
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 263-278

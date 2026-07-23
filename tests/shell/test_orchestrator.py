@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -277,6 +278,46 @@ class TestOrchestrator:
         assert persisted.status == PlanStatus.FAILED
         # Wake the handler so the test event loop can exit cleanly.
         release_handler.set()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_drain_timeout_is_configurable(self, tmp_path: Path) -> None:
+        """CFG-013: orchestrator.shutdown_drain_seconds bounds the drain grace."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        class _SlowPutJobStore(InMemoryJobStore):
+            async def put(self, job: TrackedJob) -> None:
+                await asyncio.sleep(1.0)
+                await super().put(job)
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        settings.orchestrator.shutdown_drain_seconds = 0.1
+        orch = Orchestrator(
+            reg,
+            PlanCache(tmp_path),
+            _blocking_handler,
+            job_store=_SlowPutJobStore(),
+            settings=settings,
+        )
+        await orch.start()
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        start = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await orch.shutdown()
+        assert time.monotonic() - start < 0.5
 
     @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
