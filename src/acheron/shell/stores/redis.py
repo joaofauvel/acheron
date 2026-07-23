@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast, runtime_checkable
@@ -96,6 +97,49 @@ def _missing_protocol_members(value: object, protocol: type[object], *, include_
     ]
 
 
+def _missing_awaitable_members(
+    value: object,
+    probes: tuple[_AwaitableProbe, ...],
+) -> list[str]:
+    missing: list[str] = []
+    for name, args, kwargs in probes:
+        method = getattr(value, name, None)
+        if not callable(method):
+            missing.append(name)
+            continue
+        try:
+            result = method(*args, **kwargs)
+        except AttributeError, TypeError:
+            missing.append(name)
+            continue
+        if not inspect.isawaitable(result):
+            missing.append(name)
+        elif inspect.iscoroutine(result):
+            result.close()
+    return missing
+
+
+type _AwaitableProbe = tuple[str, tuple[object, ...], dict[str, object]]
+
+
+_REDIS_AWAITABLE_PROBES: tuple[_AwaitableProbe, ...] = (
+    ("ping", (), {}),
+    ("aclose", (), {}),
+    ("hgetall", ("name",), {}),
+    ("smembers", ("name",), {}),
+    ("hincrby", ("name", "key", 1), {}),
+    ("hset", ("name",), {"key": "key", "value": "value"}),
+    ("exists", ("name",), {}),
+    ("get", ("name",), {}),
+)
+
+_PIPELINE_AWAITABLE_PROBES: tuple[_AwaitableProbe, ...] = (
+    ("__aenter__", (), {}),
+    ("__aexit__", (None, None, None), {}),
+    ("execute", (), {}),
+)
+
+
 _WORKER_KEY = "worker:{worker_id}"
 _WORKERS_SET = "workers"
 _JOB_KEY = "job:{job_id}"
@@ -117,11 +161,19 @@ def _checked_redis_client(redis_url: str) -> _RedisAwaitable:
     if missing:
         msg = f"redis.asyncio.Redis no longer satisfies the _RedisAwaitable surface; missing: {missing}"
         raise TypeError(msg)
+    missing_awaitable = _missing_awaitable_members(client, _REDIS_AWAITABLE_PROBES)
+    if missing_awaitable:
+        msg = f"redis.asyncio.Redis no longer provides awaitable methods; invalid: {missing_awaitable}"
+        raise TypeError(msg)
     typed_client = cast("_RedisAwaitable", client)
     pipeline = typed_client.pipeline(transaction=True)
     missing_pipeline = _missing_protocol_members(pipeline, _RedisPipelineAwaitable, include_private=True)
     if missing_pipeline:
         msg = f"redis.asyncio.Redis no longer satisfies the pipeline Protocol surface; missing: {missing_pipeline}"
+        raise TypeError(msg)
+    missing_pipeline_awaitable = _missing_awaitable_members(pipeline, _PIPELINE_AWAITABLE_PROBES)
+    if missing_pipeline_awaitable:
+        msg = f"redis pipeline no longer provides awaitable methods; invalid: {missing_pipeline_awaitable}"
         raise TypeError(msg)
     return typed_client
 

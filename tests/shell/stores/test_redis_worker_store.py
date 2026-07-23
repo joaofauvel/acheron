@@ -1,6 +1,7 @@
 """Integration tests for the Redis worker store."""
 
 from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -300,6 +301,36 @@ class TestProtocolEnforcement:
         with pytest.raises(TypeError, match="ping"):
             RedisWorkerStore("redis://localhost:6379")
 
-    def test_init_does_not_execute_commands_during_surface_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(aioredis.Redis, "ping", lambda _self: True)
+    @staticmethod
+    def _client() -> MagicMock:
+        client = MagicMock()
+        for name in ("ping", "aclose", "hgetall", "smembers", "hincrby", "hset", "exists", "get"):
+            setattr(client, name, AsyncMock())
+        pipeline = MagicMock()
+        pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+        pipeline.__aexit__ = AsyncMock(return_value=None)
+        pipeline.execute = AsyncMock(return_value=[])
+        client.pipeline.return_value = pipeline
+        return client
+
+    def test_init_rejects_synchronous_redis_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client()
+        client.ping = lambda: True
+        monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: client)
+
+        with pytest.raises(TypeError, match="ping"):
+            RedisWorkerStore("redis://localhost:6379")
+
+    def test_init_rejects_synchronous_pipeline_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client()
+        client.pipeline.return_value.execute = list
+        monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: client)
+
+        with pytest.raises(TypeError, match="execute"):
+            RedisWorkerStore("redis://localhost:6379")
+
+    def test_init_accepts_async_redis_surface(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client()
+        monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: client)
+
         RedisWorkerStore("redis://localhost:6379")
