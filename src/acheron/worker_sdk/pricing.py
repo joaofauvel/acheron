@@ -140,11 +140,13 @@ class RunPodPrice:
         try:
             gpu_id = await self._fetch_gpu_id(client)
             if gpu_id is None:
+                logger.warning("RunPod price refresh found no GPU for endpoint %s", self.endpoint_id)
                 return False
             rate = await self._fetch_uninterruptable_price(client, gpu_id)
             if rate is None:
+                logger.warning("RunPod price refresh found no rate for endpoint %s", self.endpoint_id)
                 return False
-        except (httpx.HTTPError, OSError, KeyError, ValueError, TypeError) as exc:
+        except (httpx.HTTPError, OSError, AttributeError, KeyError, ValueError, TypeError) as exc:
             logger.exception(
                 "RunPod price refresh failed for endpoint %s: %s",
                 self.endpoint_id,

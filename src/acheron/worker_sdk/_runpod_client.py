@@ -99,8 +99,20 @@ class RunPodClient:
                 timeout=self._execution_timeout_s,
             )
         except TimeoutError as exc:
+            logger.warning(
+                "RunPod request.output timed out for endpoint %s after %.1fs",
+                self._endpoint_id,
+                self._execution_timeout_s,
+            )
             msg = f"RunPod job timed out after {self._execution_timeout_s}s (endpoint={self._endpoint_id})"
             raise TimeoutError(msg) from exc
+        except Exception as exc:
+            logger.exception(
+                "RunPod request.output failed for endpoint %s: %s",
+                self._endpoint_id,
+                type(exc).__name__,
+            )
+            raise
 
         gpu_seconds = time.monotonic() - start
         output_dict = output if isinstance(output, dict) else {"artifacts": output}

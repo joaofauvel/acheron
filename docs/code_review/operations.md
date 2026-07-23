@@ -373,24 +373,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 1fbedbc
-  date: '2026-06-24'
-fixed_in:
-- 1fbedbc
-```yaml
-status: open
-severity: medium
-effort: S
-reviewed_at: dbec2be
-last_verified_at:
-  commit: a5e8556
-  date: 2026-06-24
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 75-93
+    lines: 74-127
   - path: src/acheron/worker_sdk/pricing.py
-    lines: 131-147
+    lines: 130-156
 related: [CORR-014]
 ```
 
