@@ -98,19 +98,21 @@ class HttpWorker(Worker):
         step_cache: StepCache | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._client = client
+        self._client = client or httpx.AsyncClient()
+        self._owns_client = client is None
         self._data_dir = Path(data_dir)
         self._step_cache = step_cache if step_cache is not None else StepCache(self._data_dir)
+
+    async def close(self) -> None:
+        """Close the HTTP client owned by this worker, if any."""
+        if self._owns_client:
+            await self._client.aclose()
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:  # noqa: ANN401
         """Make an HTTP request, raising WorkerError on failure."""
         url = f"{self._base_url}{path}"
         try:
-            if self._client is not None:
-                resp = await self._client.request(method, url, **kwargs)
-            else:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.request(method, url, **kwargs)
+            resp = await self._client.request(method, url, **kwargs)
             resp.raise_for_status()
         except httpx.ConnectError as exc:
             msg = f"Worker unreachable: {self._base_url}"

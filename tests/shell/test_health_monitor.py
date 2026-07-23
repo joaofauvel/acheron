@@ -72,6 +72,22 @@ class TestHealthMonitor:
         await monitor.stop()
 
     @pytest.mark.asyncio
+    async def test_default_http_health_reuses_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://worker-1", "http", _tts_caps())
+        await reg.register("w2", "http://worker-2", "http", _tts_caps())
+        client = AsyncMock()
+        client.get.return_value = type("Response", (), {"status_code": httpx.codes.OK})()
+        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
+        monitor = HealthMonitor(reg)
+
+        await monitor._check_all()  # noqa: SLF001
+        await monitor.stop()
+
+        assert client.get.await_count == 2
+        client.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_records_success_for_healthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://worker", "http", _tts_caps())

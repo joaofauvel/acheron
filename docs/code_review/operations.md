@@ -179,23 +179,27 @@ related:
 ### PERF-007 — Per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse)
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 59458ba
-  date: '2026-06-26'
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
 - path: src/acheron/shell/health.py
-  lines: 44-52
+  lines: 44-54, 82-123
 - path: src/acheron/worker_sdk/pricing.py
-  lines: 114-121, 185-192
-- path: src/acheron/worker_sdk/pricing.py
-  lines: 173-187
+  lines: 121-136, 204-210
 - path: src/acheron/shell/transports/http.py
-  lines: 105-123
+  lines: 92-123
+- path: src/acheron/worker_sdk/app.py
+  lines: 109-131
+- path: src/acheron/shell/step_handler.py
+  lines: 143-164
+- path: src/acheron/shell/orchestrator.py
+  lines: 207-221, 522-533
 related: []
 ```
 

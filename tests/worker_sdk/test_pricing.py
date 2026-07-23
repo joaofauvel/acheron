@@ -1,8 +1,9 @@
 """Tests for the PriceSource variants (ZeroPrice, StaticPrice)."""
 
+import httpx
 import pytest
 
-from acheron.worker_sdk.pricing import PriceEstimate, StaticPrice, ZeroPrice, to_cost_basis
+from acheron.worker_sdk.pricing import PriceEstimate, RunPodPrice, StaticPrice, ZeroPrice, to_cost_basis
 
 
 class TestZeroPrice:
@@ -24,6 +25,34 @@ class TestStaticPrice:
     async def test_zero_gpu_seconds_yields_zero(self) -> None:
         est = await StaticPrice(dollars_per_hour=0.69).estimate(gpu_seconds=0.0)
         assert est.cost == 0.0
+
+
+class TestRunPodPrice:
+    @pytest.mark.asyncio
+    async def test_reuses_http_client_for_refresh_and_estimate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FailingClient()
+        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
+        price = RunPodPrice(api_key="key", endpoint_id="endpoint")
+
+        assert await price.refresh() is False
+        assert (await price.estimate(gpu_seconds=1.0)).cost is None
+        await price.close()
+
+        assert client.post_calls == 2
+        assert client.close_calls == 1
+
+
+class _FailingClient:
+    def __init__(self) -> None:
+        self.post_calls = 0
+        self.close_calls = 0
+
+    async def post(self, *args: object, **kwargs: object) -> None:
+        self.post_calls += 1
+        raise httpx.ConnectError("unavailable")
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
 
 
 class TestToCostBasis:

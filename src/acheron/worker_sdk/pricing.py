@@ -118,6 +118,14 @@ class RunPodPrice:
 
     _rate: float | None = field(default=None, init=False)
     _rate_fetched_at: float = field(default=0.0, init=False)
+    _client: httpx.AsyncClient = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._client = httpx.AsyncClient()
+
+    async def close(self) -> None:
+        """Close the shared HTTP client."""
+        await self._client.aclose()
 
     async def refresh(self) -> bool:
         """Force-refresh the rate from RunPod GraphQL.
@@ -125,8 +133,7 @@ class RunPodPrice:
         ``True`` on success, ``False`` on any failure (caller should treat
         as non-fatal — the cache will be served under CACHED basis).
         """
-        async with httpx.AsyncClient() as client:
-            return await self._refresh_rate(client)
+        return await self._refresh_rate(self._client)
 
     async def _refresh_rate(self, client: httpx.AsyncClient) -> bool:
         """Hit the GraphQL endpoint; populate ``_rate``. Return False on any failure."""
@@ -200,8 +207,7 @@ class RunPodPrice:
         stale = self._rate is None or (now - self._rate_fetched_at) > self.cache_ttl_s
         refreshed: bool | None = None
         if stale:
-            async with httpx.AsyncClient() as client:
-                refreshed = await self._refresh_rate(client)
+            refreshed = await self._refresh_rate(self._client)
         if self._rate is None:
             return PriceEstimate(
                 cost=None,

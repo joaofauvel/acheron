@@ -213,9 +213,11 @@ class Orchestrator:
         one bounded grace period before the stores are closed.
         """
         await self._wait_for_background_persists(max_wait=self._settings.orchestrator.shutdown_drain_seconds)
-        for close_attr in ("_registry", "_job_store"):
+        for close_attr in ("_handler", "_registry", "_job_store"):
             try:
-                await getattr(self, close_attr).close()
+                close = getattr(getattr(self, close_attr), "close", None)
+                if close is not None:
+                    await close()
             except Exception as exc:  # noqa: BLE001
                 _log_unexpected(f"Failed to close {close_attr}", exc)
 
@@ -381,7 +383,7 @@ class Orchestrator:
             ),
         )
         self._cache.save_plan(plan)
-        self._invalidate_handler_cache()
+        await self._invalidate_handler_cache()
         logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
         tracked = TrackedJob(
@@ -519,7 +521,7 @@ class Orchestrator:
                     exc_info=(type(result), result, result.__traceback__),
                 )
 
-    def _invalidate_handler_cache(self) -> None:
+    async def _invalidate_handler_cache(self) -> None:
         """Invalidate the step handler's worker-instance cache, if it exposes one.
 
         The default :class:`CachingStepHandler` pools worker instances across
@@ -529,7 +531,7 @@ class Orchestrator:
         """
         invalidate = getattr(self._handler, "_invalidate_worker_cache", None)
         if invalidate is not None:
-            invalidate()
+            await invalidate()
 
     async def _run_execution(self, tracked: TrackedJob) -> None:
         db_job = await self._job_store.get(tracked.job_id)

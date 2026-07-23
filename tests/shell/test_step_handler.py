@@ -295,7 +295,7 @@ class TestStepHandler:
 
         # CORR-009 behavior: after invalidation, the next call must re-fetch
         # the worker list (factory invoked again, fresh instance pool built).
-        handler._invalidate_worker_cache()  # noqa: SLF001
+        await handler._invalidate_worker_cache()  # noqa: SLF001
         await handler(step, plan)
         assert len(factory_calls) == 2
         assert "tts-1" in handler._worker_instances  # noqa: SLF001

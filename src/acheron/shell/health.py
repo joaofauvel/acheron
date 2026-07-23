@@ -41,13 +41,15 @@ def _metadata_str(worker: RegisteredWorker, key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-async def _check_http_health(endpoint: str) -> HealthProbeResult:
+async def _check_http_health(endpoint: str, client: httpx.AsyncClient | None = None) -> HealthProbeResult:
+    if client is None:
+        async with httpx.AsyncClient() as owned_client:
+            return await _check_http_health(endpoint, owned_client)
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{endpoint}/health", timeout=5.0)
-            if resp.status_code == httpx.codes.OK:
-                return HealthProbeResult(healthy=True)
-            return HealthProbeResult(healthy=False, error=f"HTTP {resp.status_code}")
+        resp = await client.get(f"{endpoint}/health", timeout=5.0)
+        if resp.status_code == httpx.codes.OK:
+            return HealthProbeResult(healthy=True)
+        return HealthProbeResult(healthy=False, error=f"HTTP {resp.status_code}")
     except (httpx.HTTPError, OSError) as exc:
         return HealthProbeResult(healthy=False, error=f"{type(exc).__name__}: {exc}")
 
@@ -83,11 +85,14 @@ class HealthMonitor:
         interval: float = 30.0,
         health_check: HealthCheckFn | None = None,
         providers: Mapping[str, HealthProvider] | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._registry = registry
         self._interval = interval
-        self._health_check = health_check or _default_health_check
+        self._health_check = health_check or self._default_health_check
         self._providers = providers
+        self._http_client = http_client
+        self._owns_http_client = http_client is None
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -102,6 +107,20 @@ class HealthMonitor:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
+        if self._http_client is not None and self._owns_http_client:
+            await self._http_client.aclose()
+            self._http_client = None
+
+    async def _default_health_check(self, endpoint: str, transport: str) -> HealthProbeResult:
+        match transport:
+            case "grpc":
+                return await _check_grpc_health(endpoint)
+            case "local":
+                return HealthProbeResult(healthy=True)
+            case _:
+                if self._http_client is None:
+                    self._http_client = httpx.AsyncClient()
+                return await _check_http_health(endpoint, self._http_client)
 
     async def _run(self) -> None:
         """Run health checks in a loop."""

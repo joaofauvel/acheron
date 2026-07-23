@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -20,6 +21,20 @@ _BASE_URL = "http://worker:8000"
 
 
 class TestHttpWorkerHealth:
+    @pytest.mark.asyncio
+    async def test_default_client_is_reused_and_closed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        client = AsyncMock()
+        client.request.return_value = httpx.Response(200, request=httpx.Request("GET", _BASE_URL))
+        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
+
+        assert await worker.health() is True
+        assert await worker.health() is True
+        await worker.close()
+
+        assert client.request.await_count == 2
+        client.aclose.assert_awaited_once()
+
     @respx.mock
     @pytest.mark.asyncio
     async def test_health_returns_true_on_200(self, tmp_path: Path) -> None:

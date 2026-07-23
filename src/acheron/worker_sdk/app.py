@@ -108,23 +108,27 @@ def create_worker_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
-        # 1. startup hook (model load, etc.)
-        await handler.startup()
-        # 2. eager price refresh — fault-tolerant, never blocks
         try:
-            await price_source.refresh()
-        except httpx.HTTPError, OSError, KeyError, ValueError, TypeError:
-            logger.exception(
-                "%s price refresh failed at startup; worker will register anyway",
-                type(price_source).__name__,
-            )
-        # 3. register with orchestrator (skipped in tests / when explicitly disabled)
-        if not disable_registration:
-            await _register()
-        try:
+            # 1. startup hook (model load, etc.)
+            await handler.startup()
+            # 2. eager price refresh — fault-tolerant, never blocks
+            try:
+                await price_source.refresh()
+            except httpx.HTTPError, OSError, KeyError, ValueError, TypeError:
+                logger.exception(
+                    "%s price refresh failed at startup; worker will register anyway",
+                    type(price_source).__name__,
+                )
+            # 3. register with orchestrator (skipped in tests / when explicitly disabled)
+            if not disable_registration:
+                await _register()
             yield
         finally:
-            await handler.shutdown()
+            try:
+                await handler.shutdown()
+            finally:
+                if isinstance(price_source, RunPodPrice):
+                    await price_source.close()
 
     app = FastAPI(title="acheron-worker-edge", lifespan=lifespan)
     # Include the inner router — adding a new route to EdgeApp picks it up here

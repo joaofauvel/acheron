@@ -140,16 +140,28 @@ class CachingStepHandler:
             self._worker_instances[selected.worker_id] = worker_instance
         return await worker_instance.execute(job)
 
-    def _invalidate_worker_cache(self) -> None:
+    async def _invalidate_worker_cache(self) -> None:
         """Drop both the worker-list snapshot and the worker-instance pool.
 
         The orchestrator calls this on ``submit_job`` and on task cancellation
         so a worker re-registration, removal, or endpoint change is reflected
         on the next dispatch.
         """
+        workers = tuple(self._worker_instances.values())
         self._cached_workers = None
         self._cached_plan_id = None
         self._worker_instances.clear()
+        for worker in workers:
+            close = getattr(worker, "close", None)
+            if close is not None:
+                try:
+                    await close()
+                except Exception:
+                    logger.exception("Failed to close cached worker")
+
+    async def close(self) -> None:
+        """Close resources held by cached worker instances."""
+        await self._invalidate_worker_cache()
 
 
 def create_step_handler(
