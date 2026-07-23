@@ -1237,14 +1237,17 @@ related: [MAINT-005, MAINT-021]
 ### TYPE-013 — Redis runtime validation duplicates the Protocol across manual method tables
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 70-148
+    lines: 29-143
 related: [TYPE-012]
 ```
 

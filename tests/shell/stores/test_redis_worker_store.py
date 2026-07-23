@@ -281,7 +281,7 @@ class TestStatusAndErrorRoundTrip:
 
 
 class TestProtocolEnforcement:
-    """TYPE-012: the _RedisAwaitable protocol claim is enforced at construction."""
+    """TYPE-013: Redis Protocol surfaces are checked at construction."""
 
     def test_init_raises_when_client_misses_protocol_methods(self, monkeypatch: pytest.MonkeyPatch) -> None:
         class _StubClient:
@@ -300,7 +300,6 @@ class TestProtocolEnforcement:
         with pytest.raises(TypeError, match="ping"):
             RedisWorkerStore("redis://localhost:6379")
 
-    def test_init_raises_when_command_is_synchronous(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_init_does_not_execute_commands_during_surface_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(aioredis.Redis, "ping", lambda _self: True)
-        with pytest.raises(TypeError, match="awaitable"):
-            RedisWorkerStore("redis://localhost:6379")
+        RedisWorkerStore("redis://localhost:6379")
