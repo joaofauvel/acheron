@@ -10,6 +10,7 @@ import shutil
 import time
 import uuid
 import weakref
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import (
@@ -22,9 +23,14 @@ from acheron.core.models import (
     AudioRequest,
     EpubRequest,
     ExecutorStrategy,
+    JobMetrics,
+    JobResult,
+    JobStatus,
     JsonValue,
+    Plan,
     PlanResult,
     PlanStatus,
+    PlanStep,
     WorkerCapabilities,
     WorkerType,
 )
@@ -371,6 +377,8 @@ class Orchestrator:
                 await self._run_execution(tracked)
         except asyncio.CancelledError:
             tracked.status = PlanStatus.FAILED
+            if tracked.result is not None:
+                tracked.result = replace(tracked.result, status=PlanStatus.FAILED)
             try:
                 # Shielded so a drain-grace timeout cannot abort the persist;
                 # the put completes in the background after shutdown returns.
@@ -419,13 +427,6 @@ class Orchestrator:
                 else:
                     handler = self._handler
                     if tracked.strategy != ExecutorStrategy.STREAMING:
-                        from acheron.core.models import (  # noqa: PLC0415
-                            JobMetrics,
-                            JobResult,
-                            JobStatus,
-                            Plan,
-                            PlanStep,
-                        )
 
                         async def caching_handler(step: PlanStep, plan: Plan) -> JobResult:
                             if await self._step_cache.step_has_valid_cache(plan.job_id, step.step_id):
@@ -443,9 +444,14 @@ class Orchestrator:
 
                         handler = caching_handler
 
+                    async def progress_handler(step: PlanStep, plan: Plan) -> JobResult:
+                        res = await handler(step, plan)
+                        self._record_step_progress(tracked, plan, res)
+                        return res
+
                     executor = create_executor(
                         tracked.strategy,
-                        handler,
+                        progress_handler,
                         step_cache=self._step_cache,
                     )
                     result = await executor.run(tracked.plan)
@@ -467,6 +473,26 @@ class Orchestrator:
             await self._job_store.put(tracked)
         finally:
             self._active_jobs.discard(tracked.job_id)
+
+    def _record_step_progress(self, tracked: TrackedJob, plan: Plan, result: JobResult) -> None:
+        """Accumulate a successful step into ``tracked.result`` so a mid-plan cancel keeps partial cost."""
+        if result.status is not JobStatus.SUCCESS:
+            return
+        partial = tracked.result or PlanResult(
+            plan_id=plan.plan_id,
+            status=PlanStatus.RUNNING,
+            completed_steps=0,
+            total_steps=len(plan.steps),
+            outputs=(),
+            total_cost=0.0,
+            total_duration_seconds=0.0,
+        )
+        tracked.result = replace(
+            partial,
+            completed_steps=partial.completed_steps + 1,
+            outputs=(*partial.outputs, *result.outputs),
+            total_cost=partial.total_cost + (result.metrics.cost_estimate or 0.0),
+        )
 
     def _record_failure(self, tracked: TrackedJob, exc: BaseException) -> None:
         """Mark ``tracked`` as failed and build the resulting :class:`PlanResult`."""

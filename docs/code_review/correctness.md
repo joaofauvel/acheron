@@ -1083,14 +1083,14 @@ related: [OBS-001, CORR-037, CORR-038]
 ### CORR-040 — `Orchestrator._execute` on CancelledError sets status=FAILED but does not capture partial PlanResult — completed-step cost is silently zeroed for cancelled jobs
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 5f8f0d8
+  commit: 463e6f4
   date: 2026-07-22
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 372-380

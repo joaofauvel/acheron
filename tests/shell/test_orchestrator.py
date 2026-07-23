@@ -460,6 +460,51 @@ class TestOrchestrator:
         assert persisted.status == PlanStatus.FAILED
 
     @pytest.mark.asyncio
+    async def test_shutdown_persists_partial_result_cost(self, tmp_path: Path) -> None:
+        """CORR-040: a cancelled job persists the cost of completed steps, not zero."""
+        third_step_done = asyncio.Event()
+        steps_done = 0
+
+        async def _partial_handler(_step: PlanStep, plan: Plan) -> JobResult:
+            nonlocal steps_done
+            if steps_done >= 3:
+                await asyncio.Event().wait()  # block at step 4 until cancelled
+                raise AssertionError("unreachable")
+            result = JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.5),
+            )
+            steps_done += 1
+            if steps_done == 3:
+                third_step_done.set()
+            return result
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        job_store = InMemoryJobStore()
+        orch = Orchestrator(reg, PlanCache(tmp_path), _partial_handler, job_store=job_store)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await third_step_done.wait()
+        for _ in range(100):  # let the step-3 progress record land
+            if tracked.result is not None and tracked.result.completed_steps == 3:
+                break
+            await asyncio.sleep(0.01)
+        await orch.shutdown()
+        persisted = await job_store.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status == PlanStatus.FAILED
+        assert persisted.result is not None
+        assert persisted.result.completed_steps == 3
+        assert persisted.result.total_cost == 1.5
+
+    @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         """Orchestrator.start() must await connect() on both stores before returning."""
         connect_calls: list[str] = []
