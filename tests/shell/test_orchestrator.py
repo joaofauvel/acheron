@@ -43,6 +43,14 @@ async def _success_handler(_step: PlanStep, _plan: Plan) -> JobResult:
     )
 
 
+class _SlowPutJobStore(InMemoryJobStore):
+    """Job store whose put is slower than a test-scale drain grace."""
+
+    async def put(self, job: TrackedJob) -> None:
+        await asyncio.sleep(1.0)
+        await super().put(job)
+
+
 def _single_step_plan(job_id: str) -> Plan:
     return Plan(
         plan_id=f"{job_id}-plan",
@@ -289,11 +297,6 @@ class TestOrchestrator:
             await asyncio.Event().wait()
             raise AssertionError("unreachable")
 
-        class _SlowPutJobStore(InMemoryJobStore):
-            async def put(self, job: TrackedJob) -> None:
-                await asyncio.sleep(1.0)
-                await super().put(job)
-
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
@@ -318,6 +321,71 @@ class TestOrchestrator:
         with pytest.raises(TimeoutError):
             await orch.shutdown()
         assert time.monotonic() - start < 0.5
+
+    @pytest.mark.asyncio
+    async def test_shutdown_drain_logs_entry_and_completion(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """OBS-013: drain logs the task count on entry and elapsed time on completion."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler)
+        await orch.start()
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        with caplog.at_level("INFO", logger="acheron.shell.orchestrator"):
+            await orch.shutdown()
+        messages = [r.message for r in caplog.records]
+        assert any("Draining 1 in-flight _execute tasks" in m for m in messages)
+        assert any(m.startswith("Drained 1 tasks in ") for m in messages)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_drain_logs_timeout_and_reraises(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """OBS-013: a firing drain grace logs a warning naming the timeout and re-raises TimeoutError."""
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        settings.orchestrator.shutdown_drain_seconds = 0.1
+        orch = Orchestrator(
+            reg,
+            PlanCache(tmp_path),
+            _blocking_handler,
+            job_store=_SlowPutJobStore(),
+            settings=settings,
+        )
+        await orch.start()
+        await orch.submit_job(
+            EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        with caplog.at_level("WARNING", logger="acheron.shell.orchestrator"), pytest.raises(TimeoutError):
+            await orch.shutdown()
+        assert any("Drain grace timeout" in r.message and "still pending" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_start_awaits_store_connect(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

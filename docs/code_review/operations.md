@@ -1224,14 +1224,14 @@ related: [OBS-006, OBS-005]
 ### OBS-013 — `Orchestrator._drain_inflight_tasks` is silent — no log on entry, completion, or 5s timeout firing
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 129db9d
+  commit: 0635bfb
   date: 2026-07-22
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 263-278

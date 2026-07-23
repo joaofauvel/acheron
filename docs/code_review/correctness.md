@@ -1013,12 +1013,12 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 129db9d
+  commit: 0635bfb
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 264-271
+    lines: 265-272
 related: [OBS-001, CORR-038, CORR-039, CORR-040]
 ```
 
@@ -1038,12 +1038,12 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 129db9d
+  commit: 0635bfb
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 272-278
+    lines: 278-292
 related: [OBS-001, CORR-037, CFG-013]
 ```
 
@@ -1063,12 +1063,12 @@ severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 129db9d
+  commit: 0635bfb
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 341-360
+    lines: 356-375
 related: [OBS-001, CORR-037, CORR-038]
 ```
 
@@ -1088,12 +1088,12 @@ severity: low
 effort: M
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 129db9d
+  commit: 0635bfb
   date: 2026-07-22
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 351-357
+    lines: 366-372
 related: [OBS-001, CORR-008]
 ```
 

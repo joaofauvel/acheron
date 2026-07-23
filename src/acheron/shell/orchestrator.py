@@ -7,6 +7,7 @@ import contextlib
 import logging
 import secrets
 import shutil
+import time
 import uuid
 import weakref
 from typing import TYPE_CHECKING
@@ -272,10 +273,24 @@ class Orchestrator:
         pending = list(self._tasks)
         if not pending:
             return
+        grace = self._settings.orchestrator.shutdown_drain_seconds
+        logger.info("Draining %d in-flight _execute tasks (grace=%.1fs)", len(pending), grace)
         for task in pending:
             task.cancel()
-        async with asyncio.timeout(self._settings.orchestrator.shutdown_drain_seconds):
-            await asyncio.gather(*pending, return_exceptions=True)
+        start = time.monotonic()
+        try:
+            async with asyncio.timeout(grace):
+                await asyncio.gather(*pending, return_exceptions=True)
+        except TimeoutError:
+            still_pending = sum(1 for task in pending if not task.done())
+            logger.warning(
+                "Drain grace timeout (%.1fs) fired with %d/%d tasks still pending; persisted state may be inconsistent",
+                grace,
+                still_pending,
+                len(pending),
+            )
+            raise
+        logger.info("Drained %d tasks in %.2fs", len(pending), time.monotonic() - start)
 
     async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
