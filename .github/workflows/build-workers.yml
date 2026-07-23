@@ -9,6 +9,7 @@ on:
       - 'workers/**'
       - 'src/acheron/worker_sdk/**'
       - 'src/acheron/core/**'
+      - 'src/acheron/__init__.py'
       - 'src/acheron/tls.py'
       - 'proto/**'
       - 'pyproject.toml'

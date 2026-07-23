@@ -105,14 +105,14 @@ related: []
 ### DX-007 — Worker CI pull-request filter omits the root acheron package initializer
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 43f64d5
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: .github/workflows/build-workers.yml
     lines: 7-18
