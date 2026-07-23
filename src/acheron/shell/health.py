@@ -136,6 +136,10 @@ class HealthMonitor:
     async def _check_all(self) -> None:
         """Check health of all registered workers concurrently."""
         workers = list(await self._registry.list_all())
+        registered_ids = {worker.worker_id for worker in workers}
+        for worker_id in tuple(self._booting_since):
+            if worker_id not in registered_ids:
+                self._booting_since.pop(worker_id)
         if not workers:
             return
         results = await asyncio.gather(
@@ -195,4 +199,5 @@ class HealthMonitor:
         await self._registry.set_worker_status(worker.worker_id, WorkerStatus.OFFLINE, message)
         removed = await self._registry.record_health_failure(worker.worker_id)
         if removed:
+            self._booting_since.pop(worker.worker_id, None)
             logger.warning("Removed unhealthy worker %s after 3 failures", worker.worker_id)

@@ -1318,14 +1318,14 @@ related: [PERF-009]
 ### PERF-011 — Health monitor retains BOOTING timestamps for removed workers
 
 ```yaml
-status: open
+status: fixed
 severity: medium
 effort: S
 reviewed_at: e0246e0
 last_verified_at:
-  commit: e0246e0
+  commit: 72b1668
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/health.py
     lines: 98-99

@@ -329,6 +329,36 @@ class TestHealthMonitorProviderIntegration:
         assert await reg.get("w1") is None
 
     @pytest.mark.asyncio
+    async def test_removing_booting_worker_clears_timeout_state(self) -> None:
+        reg = InMemoryWorkerStore()
+        reg.max_failures = 1
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = {"runpod": _FakeProvider(WorkerStatus.BOOTING)}
+        monitor = HealthMonitor(
+            reg,
+            health_check=AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused")),
+            providers=providers,
+        )
+        monitor._booting_timeout = 0.0  # noqa: SLF001
+        worker = await reg.get("w1")
+        assert worker is not None
+
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
+
+        assert await reg.get("w1") is None
+        assert "w1" not in monitor._booting_since  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_check_all_clears_state_for_unregistered_workers(self) -> None:
+        reg = InMemoryWorkerStore()
+        monitor = HealthMonitor(reg)
+        monitor._booting_since["w1"] = 1.0  # noqa: SLF001
+
+        await monitor._check_all()  # noqa: SLF001
+
+        assert monitor._booting_since == {}  # noqa: SLF001
+
+    @pytest.mark.asyncio
     async def test_booting_timeout_keeps_worker_offline(self) -> None:
         reg = InMemoryWorkerStore()
         reg.max_failures = 100
