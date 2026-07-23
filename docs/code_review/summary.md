@@ -91,7 +91,7 @@ S-effort open stories (low-risk, short fixes):
 ## Generated Bundles
 
 1. **Bundle A — Active-client and shutdown safety:** `CORR-041`, `PERF-009`, `OBS-014` [verified in `7ff0832`, `671c6ad`, `d4ce578`].
-2. **Bundle B — Redis and source lifecycle contracts:** `TYPE-013`, `ARCH-025`, `ARCH-026` [medium/low, M].
+2. **Bundle B — Redis and source lifecycle contracts:** `TYPE-013`, `ARCH-025`, `ARCH-026` [verified in `61574e5`, `a50de1a`, `e8732b0`].
 3. **Bundle C — Integration and execution coverage:** `TEST-023`, `TEST-024`, `TEST-025`, `TEST-026`, `TEST-027`, `REPRO-005`, `REPRO-006` [medium/low, M].
 4. **Bundle D — Worker documentation and CI surface:** `DX-005`, `DOC-009`, `DOC-010`, `DOC-011`, `DX-006`, `DOC-012`, `DOC-013` [medium/low, S].
 5. **Bundle E — Worker SDK typing and orchestrator cleanup:** `TYPE-008`, `TYPE-011`, `MAINT-022`, `MAINT-023` [low, M].
@@ -103,10 +103,10 @@ Bundles are ordered by operational risk, then implementation effort. Bundle B is
 
 | Status | Count |
 |---|---|
-| open | 22 |
+| open | 19 |
 | in-progress | 0 |
 | fixed | 61 |
-| verified | 142 |
+| verified | 145 |
 | stale | 8 |
 | wontfix | 0 |
 | broken-yaml | 0 |
