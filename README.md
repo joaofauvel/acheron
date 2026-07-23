@@ -23,6 +23,7 @@ Acheron is a distributed asynchronous audio-transformation pipeline that convert
 
 ```bash
 cp .env.example .env
+export ACHERON_REGISTRATION_TOKEN="$(openssl rand -hex 32)"
 docker compose up --build
 ```
 
@@ -79,7 +80,7 @@ The `Justfile` defines the development workflow. Run `just` to list all targets.
 - `just test` — pytest.
 - `just proto` — regenerate protobuf code after editing `proto/synthesis.proto`.
 - `just certs` — regenerate the dev TLS CA and per-service certs in `./certs/`. Not needed for `docker compose up`; the `certs-init` service does this automatically.
-- `just build-worker <name>` — build a RunPod worker image locally for dev iteration. CI publishes images to `ghcr.io` on pushes to `main` and version tags.
+- `just build-worker <name>` — build a RunPod worker image locally for dev iteration. CI publishes images to `ghcr.io` on pushes to `master` and version tags.
 - `just build-edge` — build the generic edge image (`acheron-worker-edge`).
 
 ## Architecture
@@ -222,14 +223,13 @@ The profile names (`runpod-tts`, `runpod-asr`, `runpod-translation`) and the cor
 
 - `worker_id` — stable identifier for this worker instance (also overridable as `ACHERON_WORKER__WORKER_ID`).
 - `orchestrator_url` — orchestrator URL the worker registers with and sends `/execute` to.
+- `worker_host` — hostname the orchestrator uses to reach this worker; set it to the container or host name for Compose and custom edge deployments.
 - `listen_host` / `listen_port` — bind interface and port for the edge's HTTP/gRPC server (defaults `0.0.0.0` / `8001`).
 - `execution_timeout_s` — per-step execution timeout, default `1800` seconds.
 - `price_source` — `runpod` (auto-discover via RunPod GraphQL), `static` (fixed `dollars_per_hour`), or `zero` (stubs/local).
 - `secure_cloud` — when `price_source == "runpod"`, quote Secure Cloud (`true`) or Community Cloud (`false`) rates.
 - `default_speaker` — TTS only: the default Qwen3-TTS speaker. `Ryan` is the english-language default in the shipped `qwen3tts/worker.yaml`.
 - `per_language_defaults` — TTS only: a `language → speaker` map. Set in `worker.yaml`, not as an env var (pydantic-settings `dict` fields don't bind cleanly to env strings).
-- `output_mode` — `multipart` (stream bytes over HTTP) or `volume` (write to a shared volume).
-- `output_volume_dir` — required when `output_mode == "volume"`. Ignored otherwise.
 - `model_id` — override the model id the handler loads (e.g., `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`).
 - `handler` — Python import path to the worker handler class, used by `acheron-worker-edge` to import the handler when the cloud-side module is bundled.
 - `phantom_handler` — edge-only: cloud-side handler class used solely to read static `capabilities()` (no model load).
@@ -305,11 +305,10 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Dashboard | `ACHERON_TRUST_REVERSE_PROXY` | `0` | Set to `1` to trust the `X-Forwarded-User` header from a reverse proxy that authenticates and strips the header. Default `0` (unauthenticated). |
 | Worker / Transport | `ACHERON_WORKER__WORKER_ID` | (required) | Stable identifier for this worker instance. |
 | Worker / Transport | `ACHERON_WORKER__ORCHESTRATOR_URL` | (required) | Orchestrator URL the worker registers with and sends `/execute` to. |
+| Worker / Transport | `ACHERON_WORKER__WORKER_HOST` | (unset) | Hostname the orchestrator uses to reach the worker. Set it to a network-reachable container or host name for Compose and custom edge deployments; defaults to `localhost`. |
 | Worker / Transport | `ACHERON_WORKER__LISTEN_HOST` | `0.0.0.0` | Bind host for the worker's HTTP/gRPC server. |
 | Worker / Transport | `ACHERON_WORKER__LISTEN_PORT` | `8001` | Bind port for the worker's HTTP/gRPC server. |
 | Worker / Transport | `ACHERON_WORKER__EXECUTION_TIMEOUT_S` | `1800` | Per-step execution timeout. |
-| Worker / Transport | `ACHERON_WORKER__OUTPUT_MODE` | `multipart` | `multipart` (stream bytes over HTTP) or `volume` (write to shared volume). |
-| Worker / Transport | `ACHERON_WORKER__OUTPUT_VOLUME_DIR` | (unset) | Required when `output_mode == "volume"`. |
 | Worker / Dispatch | `ACHERON_WORKER__HANDLER` | (unset) | Python import path to the worker handler class (used by `acheron-worker-edge` generic CLI). |
 | Worker / Dispatch | `ACHERON_WORKER__MODEL_ID` | (unset) | Override the model id the handler loads (e.g., `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`). |
 | Worker / Dispatch | `ACHERON_WORKER__PHANTOM_HANDLER` | (unset) | Edge-only: cloud-side handler class used solely to read static `capabilities()` (no model load). |

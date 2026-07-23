@@ -2,14 +2,17 @@ name: Build and publish worker images
 
 on:
   push:
-    branches: [main, master]
+    branches: [master]
     tags: ['v*']
   pull_request:
     paths:
       - 'workers/**'
       - 'src/acheron/worker_sdk/**'
-      - 'src/acheron/core/models.py'
+      - 'src/acheron/core/**'
+      - 'src/acheron/tls.py'
       - 'proto/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'Dockerfile.edge'
       - 'Dockerfile'
       - '.github/workflows/build-workers.yml'

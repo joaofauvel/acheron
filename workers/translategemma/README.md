@@ -5,7 +5,7 @@ RunPod Serverless worker package for `google/translategemma-12b-it`.
 ## Image
 
 CI publishes `ghcr.io/<owner>/acheron-translategemma-runpod:latest` and
-`:<sha>` on every push to `main` and on every `v*` tag. Pin your RunPod
+`:<sha>` on every push to `master` and on every `v*` tag. Pin your RunPod
 template to `:<sha>` for reproducibility.
 
 ## RunPod Serverless setup (one-time)
@@ -62,9 +62,9 @@ template to `:<sha>` for reproducibility.
 | `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | env-only | The RunPod serverless endpoint ID. |
 | `ACHERON_WORKER__MODEL_ID` | optional | HuggingFace model id (default `google/translategemma-12b-it`; switch to `google/translategemma-4b-it` for a smaller variant). |
 | `ACHERON_WORKER__EXECUTION_TIMEOUT_S` | optional | Per-job timeout (default 1800s). |
-| `ACHERON_WORKER__PRICE_SOURCE` | optional | `runpod` (default) | `static` | `zero`. |
+| `ACHERON_WORKER__PRICE_SOURCE` | optional | `runpod` (default), `static`, or `zero`. |
 | `ACHERON_WORKER__SECURE_CLOUD` | optional | Quote secure-cloud vs community-cloud RunPod rate (default `false`). |
-| `ACHERON_WORKER__LISTEN_PORT` | optional | Edge container listen port (default 8009). |
+| `ACHERON_WORKER__LISTEN_PORT` | optional | Edge container listen port (default 8001). |
 
 ## Switching GPU types
 

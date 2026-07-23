@@ -512,14 +512,17 @@ related: [DOC-005]
 ### DX-005 — Quick Start copies an empty registration token that Compose rejects
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: README.md
-    lines: 24-26
+    lines: 24-27
   - path: .env.example
     lines: 4-9
   - path: docker-compose.yml
@@ -532,14 +535,17 @@ related: []
 ### DOC-009 — README documents removed worker settings
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: README.md
-    lines: 221-232, 311-312
+    lines: 222-236, 306-326
   - path: src/acheron/worker_sdk/settings.py
     lines: 60-63
 related: [CFG-007]
@@ -550,16 +556,19 @@ related: [CFG-007]
 ### DOC-010 — Worker environment override names in `.env.example` do not match the SDK
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: .env.example
     lines: 30-35
   - path: docker-compose.yml
-    lines: 176-187
+    lines: 176-189
   - path: src/acheron/worker_sdk/settings.py
     lines: 60-63
 related: []
@@ -570,16 +579,19 @@ related: []
 ### DOC-011 — README omits the required `ACHERON_WORKER__WORKER_HOST` setting
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: README.md
     lines: 288-326
   - path: docker-compose.yml
-    lines: 94-99, 176-187
+    lines: 94-99, 176-189
   - path: src/acheron/worker_sdk/settings.py
     lines: 53-63
 related: []
@@ -590,14 +602,17 @@ related: []
 ### DX-006 — Worker image CI does not rebuild for core runtime changes
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: .github/workflows/build-workers.yml
-    lines: 8-15
+    lines: 8-18
 related: []
 ```
 
@@ -606,16 +621,19 @@ related: []
 ### DOC-012 — CI branch documentation still says `main`
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: .github/workflows/build-workers.yml
     lines: 3-6
   - path: README.md
-    lines: 82
+    lines: 83
   - path: workers/qwen3tts/README.md
     lines: 8
 related: []
@@ -626,11 +644,14 @@ related: []
 ### DOC-013 — Worker README deployment tables contain stale values
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: workers/qwen3tts/README.md
     lines: 54
