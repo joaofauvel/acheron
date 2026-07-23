@@ -90,23 +90,23 @@ S-effort open stories (low-risk, short fixes):
 
 ## Generated Bundles
 
-1. **Bundle A — Active-client and shutdown safety:** `CORR-041`, `PERF-009`, `OBS-014` [medium, M].
+1. **Bundle A — Active-client and shutdown safety:** `CORR-041`, `PERF-009`, `OBS-014` [verified in `7ff0832`, `671c6ad`, `d4ce578`].
 2. **Bundle B — Redis and source lifecycle contracts:** `TYPE-013`, `ARCH-025`, `ARCH-026` [medium/low, M].
 3. **Bundle C — Integration and execution coverage:** `TEST-023`, `TEST-024`, `TEST-025`, `TEST-026`, `TEST-027`, `REPRO-005`, `REPRO-006` [medium/low, M].
 4. **Bundle D — Worker documentation and CI surface:** `DX-005`, `DOC-009`, `DOC-010`, `DOC-011`, `DX-006`, `DOC-012`, `DOC-013` [medium/low, S].
 5. **Bundle E — Worker SDK typing and orchestrator cleanup:** `TYPE-008`, `TYPE-011`, `MAINT-022`, `MAINT-023` [low, M].
 6. **Bundle F — Health-state expiry:** `CORR-012` [low, M].
 
-Bundles are ordered by operational risk, then implementation effort. Bundle A is the next tackle target; `CORR-041` and `PERF-009` describe the same underlying client-lifecycle defect and should be fixed together.
+Bundles are ordered by operational risk, then implementation effort. Bundle B is the next tackle target.
 
 ## Story counts
 
 | Status | Count |
 |---|---|
-| open | 25 |
+| open | 22 |
 | in-progress | 0 |
 | fixed | 61 |
-| verified | 139 |
+| verified | 142 |
 | stale | 8 |
 | wontfix | 0 |
 | broken-yaml | 0 |
