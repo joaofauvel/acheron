@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import uvicorn
 
@@ -31,14 +31,22 @@ def run_worker_server(
     pair is read through :func:`acheron.tls.uvicorn_ssl_kwargs` and passed as
     ``ssl_certfile`` / ``ssl_keyfile`` (or omitted entirely when neither is set).
     """
-    config_kwargs: dict[str, Any] = {"host": host, "port": port}
     if ssl_ctx is not None:
-        config_kwargs["ssl_context_factory"] = lambda _config, _default: ssl_ctx
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            ssl_context_factory=lambda _config, _default: ssl_ctx,
+        )
     else:
         ssl_kwargs = uvicorn_ssl_kwargs()
-        config_kwargs["ssl_certfile"] = ssl_kwargs.get("ssl_certfile")
-        config_kwargs["ssl_keyfile"] = ssl_kwargs.get("ssl_keyfile")
-    config = uvicorn.Config(app, **config_kwargs)
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            ssl_certfile=ssl_kwargs.get("ssl_certfile"),
+            ssl_keyfile=ssl_kwargs.get("ssl_keyfile"),
+        )
     uvicorn.Server(config).run()
 
 

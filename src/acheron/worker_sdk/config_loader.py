@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from pydantic import ValidationError
@@ -28,7 +28,7 @@ def _candidate_paths() -> list[Path]:
     return candidates
 
 
-def _load_yaml(path: Path) -> dict[str, Any]:
+def _load_yaml(path: Path) -> dict[str, object]:
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if data is None:
@@ -41,7 +41,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def load_settings() -> WorkerSettings:
     """Discover the worker config and build :class:`WorkerSettings`."""
-    yaml_data: dict[str, Any] = {}
+    yaml_data: dict[str, object] = {}
     for path in _candidate_paths():
         if path.is_file():
             yaml_data = _load_yaml(path)
@@ -56,7 +56,8 @@ def load_settings() -> WorkerSettings:
         raise ValueError(msg)
 
     try:
-        return WorkerSettings(**yaml_data)
+        # The constructor preserves BaseSettings environment-source precedence.
+        return WorkerSettings(**cast("dict[str, Any]", yaml_data))
     except ValidationError as exc:
         for err in exc.errors():
             if err.get("type") == "value_error":

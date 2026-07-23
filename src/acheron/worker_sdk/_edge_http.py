@@ -9,7 +9,7 @@ import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -49,7 +49,7 @@ def _job_from_request(body: ExecuteRequest) -> Job:
     )
 
 
-def _encode_metadata(metadata: dict[str, Any]) -> str:
+def _encode_metadata(metadata: dict[str, JsonValue]) -> str:
     return json.dumps(metadata, separators=(",", ":"))
 
 
@@ -226,14 +226,14 @@ def _build_job_and_input(parts: list[_ParsedMultipartPart]) -> tuple[Job, BytesI
     return _job_from_request(body_req), input_obj
 
 
-def _jobresult_to_json(result: JobResult) -> dict[str, Any]:
+def _jobresult_to_json(result: JobResult) -> dict[str, JsonValue]:
     """Serialise a :class:`JobResult` for the error-response body.
 
     Returns a plain ``dict`` so :class:`JSONResponse` can dump it as
     ``application/json``.  ``Tuple[OutputFile, ...]`` round-trips as a list
     in JSON — the orchestrator's parser expects a list.
     """
-    decoded: dict[str, Any] = json.loads(result.model_dump_json().decode("utf-8"))
+    decoded: dict[str, JsonValue] = json.loads(result.model_dump_json().decode("utf-8"))
     return decoded
 
 
@@ -319,7 +319,7 @@ class EdgeApp:
             return {"status": "ok"}
 
         @router.get("/capabilities")
-        async def get_capabilities() -> dict[str, Any]:
+        async def get_capabilities() -> dict[str, JsonValue]:
             return caps_to_dict(self.capabilities)
 
         @router.post("/execute", dependencies=[Depends(_verify_bearer)])

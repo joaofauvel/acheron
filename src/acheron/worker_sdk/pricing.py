@@ -5,11 +5,15 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
+from pydantic import BaseModel, Field
 
 from acheron.core.models import CostBasis
+
+if TYPE_CHECKING:
+    from acheron.core.models import JsonValue
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,32 @@ class PriceSource(Protocol):
     async def close(self) -> None:
         """Release resources owned by the price source."""
         ...
+
+
+class _GraphQLEndpoint(BaseModel):
+    id: str
+    gpu_ids: str = Field(alias="gpuIds")
+
+
+class _GraphQLMyself(BaseModel):
+    endpoints: list[_GraphQLEndpoint] | None = None
+
+
+class _GraphQLLowestPrice(BaseModel):
+    uninterruptable_price: float = Field(alias="uninterruptablePrice")
+
+
+class _GraphQLGpuType(BaseModel):
+    lowest_price: _GraphQLLowestPrice = Field(alias="lowestPrice")
+
+
+class _GraphQLData(BaseModel):
+    myself: _GraphQLMyself | None = None
+    gpu_types: list[_GraphQLGpuType] | None = Field(default=None, alias="gpuTypes")
+
+
+class _GraphQLResponse(BaseModel):
+    data: _GraphQLData
 
 
 @dataclass(frozen=True)
@@ -172,12 +202,13 @@ class RunPodPrice:
     async def _fetch_gpu_id(self, client: httpx.AsyncClient) -> str | None:
         query = "query { myself { endpoints { id gpuIds } } }"
         resp = await self._post_graphql(client, query)
-        endpoints = resp["data"]["myself"].get("endpoints")
+        myself = resp.data.myself
+        endpoints = myself.endpoints if myself is not None else None
         if not endpoints:
             return None
         for ep in endpoints:
-            if ep["id"] == self.endpoint_id:
-                return str(ep["gpuIds"])
+            if ep.id == self.endpoint_id:
+                return ep.gpu_ids
         return None
 
     async def _fetch_uninterruptable_price(self, client: httpx.AsyncClient, gpu_id: str) -> float | None:
@@ -194,17 +225,17 @@ class RunPodPrice:
             query,
             variables={"id": gpu_id, "secure": self.secure_cloud},
         )
-        gpu_types = resp["data"].get("gpuTypes") or []
+        gpu_types = resp.data.gpu_types or []
         if not gpu_types:
             return None
-        return float(gpu_types[0]["lowestPrice"]["uninterruptablePrice"])
+        return gpu_types[0].lowest_price.uninterruptable_price
 
     async def _post_graphql(
         self,
         client: httpx.AsyncClient,
         query: str,
-        variables: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        variables: dict[str, JsonValue] | None = None,
+    ) -> _GraphQLResponse:
         resp = await client.post(
             "https://api.runpod.io/graphql",
             headers={"Authorization": f"Bearer {self.api_key}"},
@@ -212,8 +243,7 @@ class RunPodPrice:
             timeout=10.0,
         )
         resp.raise_for_status()
-        body: dict[str, Any] = resp.json()
-        return body
+        return _GraphQLResponse.model_validate(resp.json())
 
     async def estimate(self, gpu_seconds: float) -> PriceEstimate:
         """Compute cost; refresh the cached rate if stale or unset."""

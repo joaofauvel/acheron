@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import base64
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 from acheron.core.errors import WorkerError
-from acheron.core.models import Job, WorkerCapabilities, WorkerType
+from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._runpod_client import RunPodClient, RunPodJobResult
 from acheron.worker_sdk.artifacts import BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
@@ -20,11 +20,31 @@ if TYPE_CHECKING:
     from acheron.worker_sdk.settings import WorkerSettings
 
 
+class _RunPodAudioPayload(TypedDict):
+    content_type: str
+    data: str
+    metadata: dict[str, JsonValue]
+
+
+class _RunPodInput(TypedDict):
+    job_id: str
+    job_type: str
+    payload: dict[str, JsonValue]
+    chapter_id: str
+    sequence_ids: list[int]
+    input_audio: NotRequired[_RunPodAudioPayload]
+
+
+class _RunPodRequest(TypedDict):
+    input: _RunPodInput
+
+
 def make_runpod_handler(
     handler: WorkerHandler,
 ) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
     """Return a RunPod-compatible async callable wrapping ``handler``."""
 
+    # RunPod's callback contract is an untyped raw-dictionary SDK boundary.
     async def _rp_handler(runpod_job: dict[str, Any]) -> dict[str, Any]:
         job = _deserialise_job(runpod_job["input"])
         audio_payload = runpod_job["input"].get("input_audio")
@@ -57,17 +77,20 @@ def make_runpod_handler(
     return _rp_handler
 
 
-def _deserialise_job(input_payload: dict[str, Any]) -> Job:
+def _deserialise_job(input_payload: dict[str, JsonValue]) -> Job:
+    payload = input_payload.get("payload", {})
     return Job(
-        job_id=input_payload["job_id"],
-        job_type=WorkerType(input_payload["job_type"]),
-        payload=cast("dict[str, Any]", input_payload.get("payload", {})),
-        chapter_id=input_payload.get("chapter_id", ""),
-        sequence_ids=(tuple(input_payload["sequence_ids"]) if input_payload.get("sequence_ids") else None),
+        job_id=cast("str", input_payload["job_id"]),
+        job_type=WorkerType(cast("str", input_payload["job_type"])),
+        payload=cast("dict[str, JsonValue]", payload),
+        chapter_id=cast("str", input_payload.get("chapter_id", "")),
+        sequence_ids=(
+            tuple(cast("list[int]", input_payload["sequence_ids"])) if input_payload.get("sequence_ids") else None
+        ),
     )
 
 
-async def _serialise(artifact: Artifact) -> dict[str, Any]:
+async def _serialise(artifact: Artifact) -> dict[str, JsonValue]:
     body = b"".join([chunk async for chunk in artifact.stream()])
     return {
         "filename": artifact.filename,
@@ -77,24 +100,23 @@ async def _serialise(artifact: Artifact) -> dict[str, Any]:
     }
 
 
-async def _serialise_job_for_runpod(job: Job, input: Input | None = None) -> dict[str, Any]:  # noqa: A002
+async def _serialise_job_for_runpod(job: Job, input: Input | None = None) -> _RunPodRequest:  # noqa: A002
     """Serialise a Job + optional Input into the RunPod /run input shape.
 
     The ``input_audio`` field is the base64-encoded body of an ``Input`` (8b);
     RunPod's /run wire is JSON, so binary inputs round-trip via base64.
     """
-    out: dict[str, Any] = {
-        "input": {
-            "job_id": job.job_id,
-            "job_type": job.job_type.value,
-            "payload": dict(job.payload),
-            "chapter_id": job.chapter_id,
-            "sequence_ids": list(job.sequence_ids) if job.sequence_ids else [],
-        }
+    input_payload: _RunPodInput = {
+        "job_id": job.job_id,
+        "job_type": job.job_type.value,
+        "payload": dict(job.payload),
+        "chapter_id": job.chapter_id,
+        "sequence_ids": list(job.sequence_ids) if job.sequence_ids else [],
     }
+    out: _RunPodRequest = {"input": input_payload}
     if input is not None:
         body = b"".join([chunk async for chunk in input.stream()])
-        out["input"]["input_audio"] = {
+        input_payload["input_audio"] = {
             "content_type": input.content_type,
             "data": base64.b64encode(body).decode("ascii"),
             "metadata": dict(input.metadata),
@@ -199,7 +221,7 @@ class RunPodForwarderHandler(WorkerHandler):
             msg = "RunPodClient not initialised (startup() not run)"
             raise WorkerError(msg)
         payload = await _serialise_job_for_runpod(job, input)
-        result = await self._client.run(payload)
+        result = await self._client.run(cast("dict[str, object]", payload))
         return _deserialise_runpod_artifacts(result)
 
 

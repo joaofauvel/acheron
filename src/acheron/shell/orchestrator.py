@@ -564,11 +564,13 @@ class Orchestrator:
                         result.completed_steps,
                         result.total_steps,
                     )
-            except AcheronError as exc:
-                _log_unexpected(f"Plan execution failed for {tracked.job_id}", exc)
-                self._record_failure(tracked, exc)
             except Exception as exc:  # noqa: BLE001
-                _log_unexpected(f"Unexpected error executing {tracked.job_id}", exc)
+                label = (
+                    f"Plan execution failed for {tracked.job_id}"
+                    if isinstance(exc, AcheronError)
+                    else f"Unexpected error executing {tracked.job_id}"
+                )
+                _log_unexpected(label, exc)
                 self._record_failure(tracked, exc)
             await self._job_store.put(tracked)
         finally:
@@ -641,16 +643,7 @@ class Orchestrator:
     def _record_cancellation(self, tracked: TrackedJob) -> None:
         message = "execution cancelled during shutdown"
         if tracked.result is None:
-            tracked.result = PlanResult(
-                plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
-                status=PlanStatus.FAILED,
-                completed_steps=0,
-                total_steps=len(tracked.plan.steps) if tracked.plan else 0,
-                outputs=(),
-                total_cost=0.0,
-                total_duration_seconds=0.0,
-                errors=(message,),
-            )
+            tracked.result = self._new_failure_result(tracked, message)
             return
         errors = tracked.result.errors if message in tracked.result.errors else (*tracked.result.errors, message)
         tracked.result = replace(tracked.result, status=PlanStatus.FAILED, errors=errors)
@@ -658,7 +651,10 @@ class Orchestrator:
     def _record_failure(self, tracked: TrackedJob, exc: BaseException) -> None:
         """Mark ``tracked`` as failed and build the resulting :class:`PlanResult`."""
         tracked.status = PlanStatus.FAILED
-        tracked.result = PlanResult(
+        tracked.result = self._new_failure_result(tracked, sanitise_exc_message(exc))
+
+    def _new_failure_result(self, tracked: TrackedJob, error: str) -> PlanResult:
+        return PlanResult(
             plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
             status=PlanStatus.FAILED,
             completed_steps=0,
@@ -666,7 +662,7 @@ class Orchestrator:
             outputs=(),
             total_cost=0.0,
             total_duration_seconds=0.0,
-            errors=(sanitise_exc_message(exc),),
+            errors=(error,),
         )
 
     async def get_job(self, job_id: str) -> TrackedJob | None:

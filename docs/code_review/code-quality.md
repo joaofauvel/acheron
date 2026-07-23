@@ -839,21 +839,17 @@ related: []
 ### TYPE-008 — WorkerSDK has 14+ `Any`/`dict[str, Any]` annotations in 5 files
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: dbec2be
 last_verified_at:
-  commit: c53da1d
+  commit: pending
   date: 2026-07-23
-fixed_in: []
+fixed_in: [pending]
 files:
 - path: src/acheron/worker_sdk/cloud.py
-  lines: 25, 28, 60, 64, 70, 80, 86
-- path: src/acheron/worker_sdk/_edge_http.py
-  lines: 52, 229, 236, 322
-- path: src/acheron/worker_sdk/pricing.py
-  lines: 194, 195, 203
+  lines: 44-48
 - path: src/acheron/worker_sdk/cli.py
   lines: 19, 27, 51
 related: []
@@ -1102,29 +1098,21 @@ Add a pre-commit / CI check: `rg 'except [A-Z][A-Za-z0-9_.]*, [A-Z]' src/ worker
 ### TYPE-011 — WorkerSDK `Any`/`dict[str, Any]` count is now 25 across 8 files — 2× larger than the 14+ figure in TYPE-008
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
-  - path: src/acheron/worker_sdk/_caps.py
-    lines: 5, 11
-  - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 52, 217, 224, 310
-  - path: src/acheron/worker_sdk/_server.py
-    lines: 34
+  - path: src/acheron/worker_sdk/cloud.py
+    lines: 44-48
+  - path: src/acheron/worker_sdk/config_loader.py
+    lines: 60
   - path: src/acheron/worker_sdk/cli.py
     lines: 19, 27, 51
-  - path: src/acheron/worker_sdk/cloud.py
-    lines: 25, 28, 60, 64, 70, 80, 86
-  - path: src/acheron/worker_sdk/config_loader.py
-    lines: 31, 44
-  - path: src/acheron/worker_sdk/pricing.py
-    lines: 185, 186, 194
   - path: src/acheron/worker_sdk/settings.py
     lines: 86
 related: [TYPE-008]
@@ -1201,14 +1189,17 @@ related: [TYPE-003]
 ### MAINT-022 — Cancellation and failure paths duplicate terminal PlanResult construction
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 639-668
+    lines: 643-666
 related: [MAINT-005, CORR-040]
 ```
 
@@ -1219,14 +1210,17 @@ related: [MAINT-005, CORR-040]
 ### MAINT-023 — `_run_execution` duplicates identical exception recovery branches
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 565-570
+    lines: 567-574
 related: [MAINT-005, MAINT-021]
 ```
 
