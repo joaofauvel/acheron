@@ -1012,11 +1012,14 @@ related: [DATA-005, DATA-007, CORR-035]
 ### TEST-023 — Redis integration test claims job persistence but only verifies worker persistence
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: c53da1d
-fixed_in: []
+last_verified_at:
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: tests/integration/test_worker_integration.py
     lines: 237-269
@@ -1037,7 +1040,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 575-637
   - path: tests/shell/test_orchestrator.py
-    lines: 797-855
+    lines: 809-875
 related: []
 ```
 
@@ -1054,8 +1057,8 @@ fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 96-108
-  - path: tests/core/test_schemas.py
-    lines: 13-51
+  - path: tests/shell/api/test_jobs.py
+    lines: 11-56
 related: []
 ```
 
@@ -1073,7 +1076,7 @@ files:
   - path: src/acheron/worker_sdk/app.py
     lines: 109-131
   - path: tests/worker_sdk/test_app.py
-    lines: 222-277
+    lines: 281-343
 related: []
 ```
 
@@ -1091,7 +1094,7 @@ files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 189-219
   - path: tests/worker_sdk/test_edge_http_multipart.py
-    lines: 220-247
+    lines: 248-303
 related: []
 ```
 
@@ -1107,7 +1110,7 @@ reviewed_at: c53da1d
 fixed_in: []
 files:
   - path: tests/shell/test_orchestrator.py
-    lines: 331-363, 395-460
+    lines: 43-67, 335-370, 402-477
 related: []
 ```
 

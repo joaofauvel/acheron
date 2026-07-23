@@ -24,6 +24,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
+from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores.memory import InMemoryWorkerStore
@@ -264,6 +265,19 @@ class TestWorkerIntegrationErrorPath:
             re_loaded = await worker_store.get("extraction-local")
             assert re_loaded is not None
             assert re_loaded.endpoint == next(w.endpoint for w in workers if w.worker_id == "extraction-local")
+
+            tracked = TrackedJob(
+                job_id="job-redis",
+                request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                status=PlanStatus.PENDING,
+            )
+            await job_store.put(tracked)
+            reloaded_job = await job_store.get(tracked.job_id)
+            assert reloaded_job is not None
+            assert reloaded_job.request == tracked.request
+            assert reloaded_job.strategy == tracked.strategy
+            assert reloaded_job.status == tracked.status
         finally:
             await orch.shutdown()
 
