@@ -927,14 +927,14 @@ related: [TEST-009, TEST-019, MAINT-015]
 ### TEST-022 — `redis_container`/`redis_url` fixtures duplicated verbatim between `tests/shell/stores/conftest.py` and `tests/integration/conftest.py` — fixture-hygiene violation
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: c832a73
+  date: 2026-07-22
+fixed_in: ["pending"]
 files:
   - path: tests/integration/conftest.py
     lines: 376-405
@@ -959,12 +959,12 @@ severity: low
 effort: S
 reviewed_at: 59458ba
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
+  commit: c832a73
+  date: 2026-07-22
 fixed_in: []
 files:
   - path: tests/integration/test_worker_integration.py
-    lines: 236-282
+    lines: 236-275
   - path: tests/integration/conftest.py
     lines: 389-405
 related: [REPRO-001, TEST-002]
