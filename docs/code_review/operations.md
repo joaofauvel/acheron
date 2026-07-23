@@ -1193,17 +1193,17 @@ related:
 ### OBS-012 — Multipart parse-failure path in `_run_execute_multipart` returns 500 with no `logger.exception` — operator has no log evidence of parse failures
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: ["pending"]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 328-351
+    lines: 338-364
 related: [OBS-006, OBS-005]
 ```
 

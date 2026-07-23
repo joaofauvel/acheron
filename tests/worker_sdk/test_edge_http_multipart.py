@@ -165,21 +165,27 @@ class TestMultipartRequest:
         assert "missing boundary" in body["error"]
 
     @pytest.mark.asyncio
-    async def test_multipart_request_malformed_json_envelope_raises(self, app_and_handler: Any) -> None:
+    async def test_multipart_request_malformed_json_envelope_raises(
+        self,
+        app_and_handler: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """CORR-023: an ``application/json`` part whose body is not valid JSON
         must surface as a 500 JobResult failure (sanitised), not a raw stack trace.
         """
         app, _ = app_and_handler
         transport = ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/execute",
-                files={"request": ("", b"not-json", "application/json")},
-            )
+        with caplog.at_level("ERROR", logger="acheron.worker_sdk._edge_http"):
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/execute",
+                    files={"request": ("", b"not-json", "application/json")},
+                )
         assert resp.status_code == 500
         body = resp.json()
         assert body["status"] == "failed"
         assert "Traceback" not in body["error"]
+        assert any("Multipart request parsing failed" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_multipart_request_with_non_audio_part_raises(self, app_and_handler: Any) -> None:

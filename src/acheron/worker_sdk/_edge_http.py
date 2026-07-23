@@ -340,6 +340,7 @@ class EdgeApp:
         try:
             job, input_obj = await self._parse_multipart_request(request)
         except (WorkerError, ValueError, KeyError, TypeError) as exc:
+            logger.exception("Multipart request parsing failed")
             parser_error: WorkerError
             if isinstance(exc, WorkerError):
                 parser_error = exc
