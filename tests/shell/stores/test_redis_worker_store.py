@@ -321,13 +321,27 @@ class TestProtocolEnforcement:
         with pytest.raises(TypeError, match="ping"):
             RedisWorkerStore("redis://localhost:6379")
 
+    def test_init_rejects_sync_command_without_invoking_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client()
+        ping = MagicMock(side_effect=AssertionError("sync command was invoked"))
+        client.ping = ping
+        monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: client)
+
+        with pytest.raises(TypeError, match="ping"):
+            RedisWorkerStore("redis://localhost:6379")
+
+        ping.assert_not_called()
+
     def test_init_rejects_synchronous_pipeline_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
         client = self._client()
-        client.pipeline.return_value.execute = list
+        execute = MagicMock(side_effect=AssertionError("sync command was invoked"))
+        client.pipeline.return_value.execute = execute
         monkeypatch.setattr(aioredis.Redis, "from_url", lambda _url, **_kw: client)
 
         with pytest.raises(TypeError, match="execute"):
             RedisWorkerStore("redis://localhost:6379")
+
+        execute.assert_not_called()
 
     def test_init_accepts_async_redis_surface(self, monkeypatch: pytest.MonkeyPatch) -> None:
         client = self._client()
