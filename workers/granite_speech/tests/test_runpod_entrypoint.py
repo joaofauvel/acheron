@@ -29,29 +29,23 @@ def test_entrypoint_module_is_importable() -> None:
 def test_main_loads_handler_and_starts_runpod(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from workers.granite_speech import runpod_entrypoint
+
     fake_settings = WorkerSettings(
         worker_id="g-1",
         orchestrator_url="http://o:8000",
         listen_port=8001,
         price_source="zero",
     )
-    monkeypatch.setattr(
-        "acheron.worker_sdk.config_loader.load_settings",
-        lambda: fake_settings,
-    )
+    monkeypatch.setattr(runpod_entrypoint, "load_settings", lambda: fake_settings)
 
     fake_handler = MagicMock()
     fake_handler.startup = AsyncMock()
     fake_handler_class = MagicMock(return_value=fake_handler)
-    monkeypatch.setattr(
-        "workers.granite_speech.runpod_entrypoint.GraniteSpeechRunpodHandler",
-        fake_handler_class,
-    )
+    monkeypatch.setattr(runpod_entrypoint, "GraniteSpeechRunpodHandler", fake_handler_class)
 
     fake_runpod = MagicMock()
-    monkeypatch.setattr("workers.granite_speech.runpod_entrypoint.runpod", fake_runpod)
-
-    from workers.granite_speech import runpod_entrypoint
+    monkeypatch.setattr(runpod_entrypoint, "runpod", fake_runpod)
 
     runpod_entrypoint.main()
 
