@@ -307,6 +307,49 @@ class TestHealthMonitorProviderIntegration:
         assert fake.called_with == "ep-1"
 
     @pytest.mark.asyncio
+    async def test_booting_worker_is_removed_after_timeout(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = {"runpod": _FakeProvider(WorkerStatus.BOOTING)}
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
+        monitor = HealthMonitor(
+            reg,
+            interval=0.01,
+            health_check=health_check,
+            providers=providers,
+        )
+        monitor._booting_timeout = 0.0  # noqa: SLF001
+        await monitor.start()
+
+        async def _removed() -> bool:
+            return await reg.get("w1") is None
+
+        await _poll_for(_removed)
+        await monitor.stop()
+        assert await reg.get("w1") is None
+
+    @pytest.mark.asyncio
+    async def test_booting_timeout_keeps_worker_offline(self) -> None:
+        reg = InMemoryWorkerStore()
+        reg.max_failures = 100
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = {"runpod": _FakeProvider(WorkerStatus.BOOTING)}
+        health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
+        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
+        monitor._booting_timeout = 0.0  # noqa: SLF001
+        await monitor.start()
+
+        async def _failed_twice() -> bool:
+            worker = await reg.get("w1")
+            return worker is not None and worker.consecutive_failures >= 2
+
+        await _poll_for(_failed_twice)
+        await monitor.stop()
+        worker = await reg.get("w1")
+        assert worker is not None
+        assert worker.status == WorkerStatus.OFFLINE
+
+    @pytest.mark.asyncio
     async def test_offline_provider_increments_failures(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))

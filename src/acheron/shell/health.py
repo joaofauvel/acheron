@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from acheron.shell.stores.base import WorkerStore
 
 logger = logging.getLogger(__name__)
+_BOOTING_TIMEOUT_SECONDS = 600.0
 
 type HealthCheckFn = Callable[[str, str], Awaitable[HealthProbeResult]]
 
@@ -93,6 +95,8 @@ class HealthMonitor:
         self._providers = providers
         self._http_client = http_client
         self._owns_http_client = http_client is None
+        self._booting_timeout = _BOOTING_TIMEOUT_SECONDS
+        self._booting_since: dict[str, float] = {}
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -153,6 +157,7 @@ class HealthMonitor:
         else:
             outcome = result
         if outcome.healthy:
+            self._booting_since.pop(worker.worker_id, None)
             await self._registry.record_health_success(worker.worker_id)
         else:
             await self._handle_failure(worker, outcome.error or "health check failed")
@@ -176,9 +181,17 @@ class HealthMonitor:
                 platform_status = WorkerStatus.OFFLINE
                 message = f"{error}; provider {provider_name} error: {exc}"
             if platform_status == WorkerStatus.BOOTING:
-                await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
-                logger.info("Worker %s marked BOOTING via %s", worker.worker_id, provider_name)
-                return
+                since = self._booting_since.setdefault(worker.worker_id, time.monotonic())
+                if time.monotonic() - since < self._booting_timeout:
+                    await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
+                    logger.info("Worker %s marked BOOTING via %s", worker.worker_id, provider_name)
+                    return
+                message = f"{message}; provider BOOTING timeout exceeded"
+                logger.warning("Worker %s exceeded BOOTING timeout of %.1fs", worker.worker_id, self._booting_timeout)
+            else:
+                self._booting_since.pop(worker.worker_id, None)
+        else:
+            self._booting_since.pop(worker.worker_id, None)
         await self._registry.set_worker_status(worker.worker_id, WorkerStatus.OFFLINE, message)
         removed = await self._registry.record_health_failure(worker.worker_id)
         if removed:

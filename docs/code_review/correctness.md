@@ -321,17 +321,19 @@ related:
 ### CORR-012 — Health monitor trusts provider BOOTING status without bounding duration
 
 ```yaml
-status: open
+status: verified
 severity: low
 effort: M
 reviewed_at: 63faed4
 last_verified_at:
-  commit: 59458ba
-  date: 2026-06-26
-fixed_in: []
+  commit: pending
+  date: 2026-07-23
+fixed_in: [pending]
 files:
   - path: src/acheron/shell/health.py
-    lines: 160-181
+    lines: 27, 98-99, 183-195
+  - path: tests/shell/test_health_monitor.py
+    lines: 310-350
 related: [OBS-005]
 ```
 
