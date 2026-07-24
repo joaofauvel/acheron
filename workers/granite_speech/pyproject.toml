@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 license = "GPL-3.0-only"
 dependencies = [
     "acheron",
-    # transformers + torch + flash-attn are installed by Dockerfile.runpod
+    # transformers + torch are installed by Dockerfile.runpod
     # against the cu121 index. The workspace dev install skips them.
 ]
 

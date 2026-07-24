@@ -614,7 +614,7 @@ tested directly with the in-process mock via the `RunPodClient`).
       "ibm-granite/granite-speech-4.1-2b",
       device_map="cuda:0",
       torch_dtype=torch.bfloat16,
-      attn_implementation="flash_attention_2",
+                attn_implementation="sdpa",
   )
   ```
 - Trained on 8x H100 for 30 days; inference at batch=1 fits in ~10-12GB
@@ -705,7 +705,7 @@ class GraniteSpeechRunpodHandler(WorkerHandler):
                 _MODEL_ID,
                 device_map="cuda:0",
                 torch_dtype=torch.bfloat16,
-                attn_implementation="flash_attention_2",
+      attn_implementation="sdpa",
             )
 
         await asyncio.to_thread(_load)
@@ -894,17 +894,14 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 
-# OS deps for soundfile (libsndfile) + ffmpeg fallback (mp3/ogg) +
-# flash-attn build (git + build-essential).
+# OS deps for soundfile (libsndfile) + ffmpeg fallback (mp3/ogg).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsndfile1 \
         ffmpeg \
-        git \
-        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # PyTorch first — matches the CUDA version the host passes via --gpus.
-# Pin to 2.5.1 + cu121; flash-attn must match the torch ABI.
+# Pin to 2.5.1 + cu121.
 RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
         --index-url https://download.pytorch.org/whl/cu121
 
@@ -912,7 +909,7 @@ RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
 COPY dist/acheron-*.whl /tmp/
 RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
 
-# Worker deps — transformers + accelerate + soundfile + flash-attn.
+# Worker deps — transformers + accelerate + soundfile.
 # transformers >= 4.52.1 is required for native Granite-Speech support.
 # hf-transfer is intentionally NOT installed: the runtime image is offline
 # (HF_HUB_OFFLINE=1) and never re-downloads; hf-transfer is a pre-warm-only
@@ -921,7 +918,6 @@ RUN pip install --no-cache-dir \
         "transformers>=4.52.1" \
         accelerate \
         soundfile
-RUN pip install --no-cache-dir flash-attn==2.5.9.post1 --no-build-isolation
 
 # RunPod SDK so runpod.serverless.start() is importable.
 RUN pip install --no-cache-dir runpod
@@ -1058,7 +1054,7 @@ builds the worker image** — CI publishes to GHCR.
    - `ghcr.io/<repo>/acheron-granite-speech-runpod:<sha>` (immutable per commit)
    The workflow uses `docker/build-push-action` with
    `cache-from: type=gha` to cache the slow `pip install torch /
-   transformers / flash-attn` layers.
+   transformers` layers.
 3. **Create the RunPod serverless template** referencing the pushed image.
    Set:
    - GPU type list: `[L4]` (24GB, the cheapest 24GB tier per the

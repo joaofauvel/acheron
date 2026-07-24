@@ -5,7 +5,7 @@
 #
 # CI publishes this image to ghcr.io via .github/workflows/build-workers.yml.
 
-# PyTorch 2.5.1 and flash-attn 2.5.9 provide cp312 wheels, not cp314 wheels.
+# PyTorch 2.5.1 provides cp312 wheels, not cp314 wheels.
 FROM python:3.12-slim AS runpod-runtime
 
 ENV PYTHONUNBUFFERED=1 \
@@ -13,17 +13,14 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 
-# OS deps for soundfile (libsndfile) + ffmpeg fallback (mp3/ogg) +
-# flash-attn build (git + build-essential).
+# OS deps for soundfile (libsndfile) + ffmpeg fallback (mp3/ogg).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsndfile1 \
         ffmpeg \
-        git \
-        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # PyTorch first — matches the CUDA version the host passes via --gpus.
-# Pin to 2.5.1 + cu121; flash-attn must match the torch ABI.
+# Pin to 2.5.1 + cu121.
 RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
         --index-url https://download.pytorch.org/whl/cu121
 
@@ -34,7 +31,7 @@ COPY dist/acheron-*.whl /tmp/
 RUN pip install --no-cache-dir --ignore-requires-python /tmp/acheron-*.whl \
     && rm /tmp/acheron-*.whl
 
-# Worker deps — transformers + accelerate + soundfile + flash-attn.
+# Worker deps — transformers + accelerate + soundfile.
 # transformers >= 4.52.1 is required for native Granite-Speech support.
 # hf-transfer is intentionally NOT installed: the runtime image is offline
 # (HF_HUB_OFFLINE=1) and never re-downloads; hf-transfer is a pre-warm-only
@@ -43,7 +40,6 @@ RUN pip install --no-cache-dir \
         "transformers>=4.52.1" \
         accelerate \
         soundfile
-RUN pip install --no-cache-dir flash-attn==2.5.9.post1 --no-build-isolation
 
 # RunPod SDK so runpod.serverless.start() is importable.
 RUN pip install --no-cache-dir runpod

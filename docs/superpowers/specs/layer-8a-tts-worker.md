@@ -568,7 +568,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
                 _MODEL_ID,
                 device_map="cuda:0",
                 dtype=torch.bfloat16,
-                attn_implementation="flash_attention_2",
+                attn_implementation="sdpa",
             )
         await asyncio.to_thread(_load)
 
@@ -702,7 +702,7 @@ FROM python:3.12-slim AS runpod-runtime
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 git build-essential \
+    libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
@@ -711,7 +711,7 @@ RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
 COPY dist/acheron-*.whl /tmp/
 RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
 
-RUN pip install --no-cache-dir qwen-tts soundfile flash-attn==2.5.9.post1 --no-build-isolation
+RUN pip install --no-cache-dir qwen-tts soundfile
 RUN pip install --no-cache-dir runpod
 
 WORKDIR /app
@@ -803,7 +803,7 @@ Documented in `workers/qwen3tts/README.md`. The deployer **never builds the work
 1. **Tag a release** (`git tag v1.0.0 && git push origin v1.0.0`). The `build-workers.yml` workflow builds `workers/qwen3tts/Dockerfile.runpod` and publishes:
    - `ghcr.io/<repo>/acheron-qwen3tts-runpod:latest` (movable)
    - `ghcr.io/<repo>/acheron-qwen3tts-runpod:<sha>` (immutable per commit)
-   The workflow uses `docker/build-push-action` with `cache-from: type=gha` to cache the slow `pip install torch / qwen-tts / flash-attn` layers.
+   The workflow uses `docker/build-push-action` with `cache-from: type=gha` to cache the slow `pip install torch / qwen-tts` layers.
 2. **Create the RunPod serverless template** referencing the pushed image, the GPU type list (`[L4, A5000, RTX 3090]` — 24GB minimum per the GPU choice), the network volume for the HF cache, and env vars:
    - `ACHERON_WORKER__ORCHESTRATOR_URL=http://orchestrator-host:8000` (reachable from inside RunPod)
    - `ACHERON_WORKER__REGISTRATION_TOKEN=<token>` (env-only)
@@ -975,7 +975,7 @@ jobs:
 - **`workers.qwen3tts.handler.handle()` rejects non-list or empty `chunks` with an empty artifact list (not an error).** The orchestrator passes `chunks: []` for "no audio" jobs (e.g., empty book); the worker's `handle()` returns `[]` (matches the orchestrator's streaming-executor contract). The SDK stub `stubs._sdk_base.StubTTSHandler` DOES return a single default silent WAV for empty chunks — that's a deliberate divergence so the stub stays useful for the integration-test fixture, but the production worker is strict.
 - **New SDK class: `RunPodForwarderHandler` (`acheron.worker_sdk.cloud`).** The GPU-less edge container cannot import `Qwen3TTSRunpodHandler` (which needs torch). The forwarder implements `WorkerHandler` by accepting `/execute` from the orchestrator and forwarding the serialised job to a RunPod serverless endpoint via `RunPodClient`. Its `capabilities()` delegates to a *phantom* handler class (the cloud-side handler module is bundled in the edge image — it imports lazily, so no GPU deps are needed at import time). Settings get a new `phantom_handler: str | None` field. Tests in `tests/worker_sdk/test_cloud.py::TestRunPodForwarderHandler`.
 - **`Dockerfile.edge` bundles `workers/qwen3tts/worker.edge.yaml`** (renamed from `worker.yaml` to avoid confusion with the cloud-side config). The edge image's `WORKER_NAME=qwen3tts` env causes the config loader to pick this file. `handler: acheron.worker_sdk.cloud:RunPodForwarderHandler` + `phantom_handler: workers.qwen3tts.handler:Qwen3TTSRunpodHandler`.
-- **Cloud-side `Dockerfile.runpod` uses Python 3.12** (not 3.14). qwen-tts + flash-attn-2 wheels are pre-built for cp312; the 3.14-slim build would need to compile from source.
+- **Cloud-side `Dockerfile.runpod` uses Python 3.12** (not 3.14) because the pinned PyTorch wheels target cp312. Attention uses PyTorch SDPA, so the image does not need to compile a native flash-attn extension.
 - **`Dockerfile.edge` uses Python 3.14-slim** to match the orchestrator + dashboard images.
 - **`workers/qwen3tts/tests/__init__.py` uses a workspace-local `pythonpath = ["../.."]`.** Pytest picks the workers' `pyproject.toml` as `rootdir` because of the local config; the relative `pythonpath` lets `from workers.qwen3tts...` resolve.
 - **`workers/qwen3tts/pyproject.toml` does NOT declare `qwen-tts` / `soundfile` as workspace deps.** They would pull `librosa` → `numba` → `llvmlite==0.36` which doesn't build on Python 3.14. The Docker image installs them directly. The workspace `pyproject.toml` is purely a packaging skeleton; the dev `uv sync` works because `qwen-tts` is never resolved.

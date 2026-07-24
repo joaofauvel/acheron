@@ -104,7 +104,7 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
                 model_id,
                 device_map="cuda:0",
                 dtype=torch.bfloat16,
-                attn_implementation="flash_attention_2",
+                attn_implementation="sdpa",
             )
 
         await asyncio.to_thread(_load)
