@@ -1,5 +1,5 @@
 ---
-branch: tackle/round-6
+branch: master
 initial_review_commit: 23c29e1
 last_updated_commit: a749f8f
 last_staleness_scan:
