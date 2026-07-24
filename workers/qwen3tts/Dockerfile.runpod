@@ -5,7 +5,8 @@
 #
 # CI publishes this image to ghcr.io via .github/workflows/build-workers.yml.
 
-FROM python:3.14-slim AS runpod-runtime
+# PyTorch 2.5.1 and flash-attn 2.5.9 provide cp312 wheels, not cp314 wheels.
+FROM python:3.12-slim AS runpod-runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -26,7 +27,10 @@ RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 \
 
 # Install the acheron wheel (built from the monorepo) — provides acheron.worker_sdk.
 COPY dist/acheron-*.whl /tmp/
-RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
+# The shared wheel contains the Python 3.14 orchestrator package as well as the
+# Python 3.12-compatible worker SDK; this image imports only the latter.
+RUN pip install --no-cache-dir --ignore-requires-python /tmp/acheron-*.whl \
+    && rm /tmp/acheron-*.whl
 
 # Worker deps — qwen-tts (model + transformers) + soundfile + flash-attn.
 RUN pip install --no-cache-dir qwen-tts soundfile
