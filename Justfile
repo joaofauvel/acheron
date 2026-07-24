@@ -50,6 +50,7 @@ build-worker name:
 
 # Build the generic edge image (acheron-worker-edge).
 build-edge:
+    uv build --package acheron --out-dir dist
     docker build -f Dockerfile.edge -t acheron-worker-edge:dev .
 
 # Validate the docs/ux_review/ rubric against the schema and HEAD.
