@@ -68,3 +68,12 @@ ux-validate:
 # verification gate. Returns PASS / PARTIAL / FAIL with reason.
 ux-verify story-id:
     uv run python -m acheron.ux_review.verify --root docs/ux_review --id {{story-id}} --head "$(git rev-parse HEAD)"
+
+# Boot the RunPod mock simulator (mock_runpod on 127.0.0.1:8999).
+# Profile-gated; uses compose/sim.yml overlay.
+runpod-sim:
+    docker compose -f docker-compose.yml -f compose/sim.yml up -d runpod-sim
+
+# Run all Phase 3a scenarios end-to-end. Requires 'just runpod-sim' first.
+runpod-bootstrap:
+    uv run python -m sim.run --all

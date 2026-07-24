@@ -1,0 +1,19 @@
+services:
+  # Phase 3a sim overlay: boot only the mock RunPod server on :8999.
+  # The sim scenarios run on the host (via `just runpod-bootstrap`) and
+  # reach the mock at 127.0.0.1:8999. The overlay intentionally does not
+  # bring up the orchestrator / dashboard / edge — those aren't needed
+  # for the 3 control-plane scenarios.
+  runpod-sim:
+    build:
+      context: .
+      target: worker-stub-base
+    ports:
+      - "8999:8999"
+    command: ["python", "-m", "stubs._sdk_base"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8999/status/probe').read()\""]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 3s

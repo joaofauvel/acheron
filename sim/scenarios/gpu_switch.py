@@ -1,0 +1,137 @@
+"""GPU switch scenario — price updates after PATCH /endpoints/{id}.
+
+STORY_REF: MAINT-002
+MAINT-014 — `uninterruptablePrice` is the lowest available rate, not what was paid.
+
+user_journey: "On-call changes the GPU on the RunPod endpoint, sees the dashboard
+reflect the new price within `cache_ttl_s`."
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+from typing import Any
+
+import httpx
+from stubs._sdk_base.mock_runpod import start_mock_runpod_in_thread
+
+from acheron.core.models import Job, WorkerCapabilities, WorkerType
+from acheron.worker_sdk import WorkerSettings
+from acheron.worker_sdk.app import create_worker_app
+from acheron.worker_sdk.artifacts import BytesArtifact
+from acheron.worker_sdk.handler import WorkerHandler
+from sim import (
+    DEFAULT_ARTIFACTS,
+    parse_multipart_metrics,
+    patch_pricing_transport,
+    patch_runpod_endpoint,
+    restore_pricing_transport,
+    restore_runpod_endpoint,
+)
+
+MOCK_PORT = 8998
+MOCK_URL = f"http://127.0.0.1:{MOCK_PORT}"
+
+
+class SlowTTSHandler(WorkerHandler):
+    """TTS handler that sleeps 0.5s so the cost is large enough to assert on."""
+
+    def capabilities(self) -> WorkerCapabilities:
+        return WorkerCapabilities(
+            worker_type=WorkerType.TTS,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"en"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+        )
+
+    async def handle(self, job: Job, input: Any = None) -> list[BytesArtifact]:  # noqa: A002
+        time.sleep(0.5)
+        return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"\x00" * 100, metadata={})]
+
+
+def _set_env() -> None:
+    os.environ["ACHERON_WORKER__RUNPOD_API_KEY"] = "rk_test"
+    os.environ["ACHERON_WORKER__RUNPOD_ENDPOINT_ID"] = "qwen-edge"
+
+
+def _build_app() -> Any:
+    _set_env()
+    settings = WorkerSettings(
+        worker_id="tts-runpod-stub",
+        orchestrator_url="http://orch:8000",
+        price_source="runpod",
+        price_cache_ttl_s=1.0,
+        secure_cloud=True,
+    )
+    return create_worker_app(handler=SlowTTSHandler(), settings=settings, disable_registration=True)
+
+
+async def _submit(client: httpx.AsyncClient, job_id: str) -> dict[str, Any]:
+    r = await client.post(
+        "/execute",
+        json={
+            "job_id": job_id,
+            "job_type": "tts",
+            "payload": {"chunks": [{"text": "hi", "chapter_id": "ch1", "sequence_id": 0}]},
+            "chapter_id": "ch1",
+        },
+    )
+    if r.status_code != 200:
+        msg = f"job {job_id} returned status {r.status_code}: {r.text!r}"
+        raise AssertionError(msg)
+    return parse_multipart_metrics(r.headers["content-type"], r.content)
+
+
+def _implied_rate(metrics: dict[str, Any]) -> float:
+    cost = metrics.get("cost_estimate")
+    gpu_s = metrics.get("gpu_seconds") or 0.0
+    if not cost or not gpu_s:
+        msg = f"cannot compute implied rate from metrics: {metrics}"
+        raise AssertionError(msg)
+    return float(cost) * 3600.0 / float(gpu_s)
+
+
+async def _admin(toggle: str, value: Any, **extra: Any) -> None:
+    async with httpx.AsyncClient() as admin:
+        r = await admin.post(f"{MOCK_URL}/_admin/control", json={"toggle": toggle, "value": value, **extra})
+        if not r.json().get("ok"):
+            msg = f"admin toggle {toggle} failed: {r.json()}"
+            raise AssertionError(msg)
+
+
+async def _run() -> int:
+    original_open = patch_runpod_endpoint(MOCK_URL)
+    original_init = patch_pricing_transport(MOCK_URL)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_build_app()), base_url="http://test") as client:
+            m1 = await _submit(client, "j1")
+            rate1 = _implied_rate(m1)
+            if abs(rate1 - 1.39) > 0.01:
+                msg = f"job 1 (L4 secure): expected rate ~1.39, got {rate1:.4f}"
+                raise AssertionError(msg)
+
+            await _admin("endpoint_gpu", "NVIDIA A40", endpoint_id="qwen-edge")
+            time.sleep(1.5)
+
+            m2 = await _submit(client, "j2")
+            rate2 = _implied_rate(m2)
+            if abs(rate2 - 2.49) > 0.01:
+                msg = f"job 2 (A40 secure): expected rate ~2.49, got {rate2:.4f}"
+                raise AssertionError(msg)
+    finally:
+        restore_runpod_endpoint(original_open)
+        restore_pricing_transport(original_init)
+
+    print("STORY_REF: MAINT-002 ... OK")
+    return 0
+
+
+def main() -> int:
+    start_mock_runpod_in_thread(port=MOCK_PORT, artifacts_response=DEFAULT_ARTIFACTS)
+    return asyncio.run(_run())

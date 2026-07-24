@@ -98,6 +98,25 @@ combine-as-imports = true
     "ASYNC240",
     "ASYNC251",
 ]
+"sim/**" = [
+    "D",
+    "S",
+    "PLC0415",
+    "PLR2004",
+    "TC001",
+    "TC002",
+    "TC003",
+    "ANN",
+    "ARG001",
+    "ARG002",
+    "FBT",
+    "C901",
+    "PLR0915",
+    "ASYNC240",
+    "ASYNC251",
+    "T201",
+    "SLF001",
+]
 "workers/qwen3tts/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
 "workers/_shared/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
 "workers/granite_speech/tests/**" = ["D", "S", "PLC0415", "PLR2004", "TC001", "TC002", "TC003", "ANN", "ARG001", "ARG002", "FBT", "SLF001", "RUF043", "E501", "ASYNC240"]
