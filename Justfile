@@ -51,3 +51,19 @@ build-worker name:
 # Build the generic edge image (acheron-worker-edge).
 build-edge:
     docker build -f Dockerfile.edge -t acheron-worker-edge:dev .
+
+# Validate the docs/ux_review/ rubric against the schema and HEAD.
+# Asserts: (1) YAML frontmatter in deploy/ops/maint.md parses and matches the spec §3.1 schema,
+# (2) all `files[].path` exist at HEAD, (3) all `files[].lines` ranges are within file length,
+# (4) `discovered_via: simulation` stories have a `sim/scenarios/*.py` that references the story ID,
+# (5) `discovered_via: first-run` stories have a `tests/first_run/test_*.py` that references the story ID,
+# (6) `on-call` / `user-feedback` channels have their `incident_ref` / `feedback_ref` populated,
+# (7) `status: wontfix` stories have `wontfix_reason` populated.
+# Exits non-zero on any failure when run with --strict (default for CI).
+ux-validate:
+    uv run python -m acheron.ux_review.validate --root docs/ux_review --head "$(git rev-parse HEAD)" --strict
+
+# Verify a single story is mechanically verified. Used by ux-review-tackle's post-merge
+# verification gate. Returns PASS / PARTIAL / FAIL with reason.
+ux-verify story-id:
+    uv run python -m acheron.ux_review.verify --root docs/ux_review --id {{story-id}} --head "$(git rev-parse HEAD)"
