@@ -78,6 +78,7 @@ The `Justfile` defines the development workflow. Run `just` to list all targets.
 - `just type-check` — mypy on `src/`, `tests/`, and worker packages.
 - `just type-check-pyright` — basedpyright (matches editor LSP).
 - `just test` — pytest.
+- `just first-run [--step N]` — run the fresh-checkout README deployment journey in Docker.
 - `just proto` — regenerate protobuf code after editing `proto/synthesis.proto`.
 - `just certs` — regenerate the dev TLS CA and per-service certs in `./certs/`. Not needed for `docker compose up`; the `certs-init` service does this automatically.
 - `just build-worker <name>` — build a RunPod worker image locally for dev iteration. CI publishes images to `ghcr.io` on pushes to `master` and version tags.
