@@ -159,7 +159,12 @@ def make_mock_runpod_app(artifacts_response: dict[str, Any]) -> FastAPI:
             return JSONResponse({"error": "not found"}, status_code=404)
         if endpoint_id not in state["endpoints"]:
             return JSONResponse({"error": "not found"}, status_code=404)
-        body = await request.json()
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "PATCH body must be a JSON object"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "PATCH body must be a JSON object"}, status_code=400)
         gpu_id = body.get("gpu_id")
         if not isinstance(gpu_id, str):
             return JSONResponse({"error": "gpu_id must be a string"}, status_code=400)

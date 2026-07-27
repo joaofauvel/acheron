@@ -169,6 +169,61 @@ async def test_mock_runpod_endpoint_patch_and_reset() -> None:
         assert restored.json()["gpu_id"] == "NVIDIA L4"
 
 
+@pytest.mark.parametrize("body", [b"not-json", b"[]"])
+@pytest.mark.asyncio
+async def test_mock_runpod_endpoint_patch_rejects_invalid_json_or_non_object(body: bytes) -> None:
+    from stubs._sdk_base.mock_runpod import make_mock_runpod_app
+
+    app = make_mock_runpod_app({"artifacts": []})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch("/endpoints/qwen-edge", content=body)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "PATCH body must be a JSON object"}
+
+
+@pytest.mark.asyncio
+async def test_mock_runpod_endpoint_patch_rejects_missing_or_non_string_gpu_id() -> None:
+    from stubs._sdk_base.mock_runpod import make_mock_runpod_app
+
+    app = make_mock_runpod_app({"artifacts": []})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for body in [{}, {"gpu_id": 42}]:
+            response = await client.patch("/endpoints/qwen-edge", json=body)
+            assert response.status_code == 400
+            assert response.json() == {"error": "gpu_id must be a string"}
+
+
+@pytest.mark.asyncio
+async def test_mock_runpod_endpoint_patch_checks_not_found_before_body() -> None:
+    from stubs._sdk_base.mock_runpod import make_mock_runpod_app
+
+    app = make_mock_runpod_app({"artifacts": []})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch("/endpoints/missing", content=b"not-json")
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not found"}
+
+
+@pytest.mark.asyncio
+async def test_mock_runpod_endpoint_patch_checks_disabled_before_body() -> None:
+    from stubs._sdk_base.mock_runpod import make_mock_runpod_app
+
+    app = make_mock_runpod_app({"artifacts": []})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        control = await client.post(
+            "/_admin/control",
+            json={"toggle": "endpoint_disabled", "value": ["qwen-edge"]},
+        )
+        assert control.status_code == 200
+
+        response = await client.patch("/endpoints/qwen-edge", content=b"not-json")
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not found"}
+
+
 @pytest.mark.asyncio
 async def test_runpod_stub_health() -> None:
     """The tts_runpod_stub and translation_runpod_stub use the same SDK + mock; smoke /health."""

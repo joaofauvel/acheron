@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import ExitStack, contextmanager
 from typing import Any, cast
 
 import httpx
@@ -19,6 +20,30 @@ DEFAULT_ARTIFACTS: dict[str, list[dict[str, str]]] = {"artifacts": [{"filename":
 async def reset_mock(client: httpx.AsyncClient) -> None:
     response = await client.post(f"{MOCK_URL}/_admin/reset")
     response.raise_for_status()
+
+
+async def run_async_best_effort(action: Callable[[], Awaitable[object]]) -> None:
+    try:
+        await action()
+    except Exception:  # noqa: BLE001 - cleanup must not mask scenario failures
+        return
+
+
+async def reset_mock_best_effort() -> None:
+    """Reset simulator state without turning cleanup failures into scenario failures."""
+
+    async def _reset() -> None:
+        async with httpx.AsyncClient() as client:
+            await reset_mock(client)
+
+    await run_async_best_effort(_reset)
+
+
+def restore_best_effort(action: Callable[[], object]) -> None:
+    try:
+        action()
+    except Exception:  # noqa: BLE001 - cleanup must not mask scenario failures
+        return
 
 
 class GraphQLForwardingTransport(httpx.AsyncBaseTransport):
@@ -118,6 +143,21 @@ def restore_runpod_endpoint(original: Callable[..., object]) -> None:
     from acheron.worker_sdk import _runpod_client as rpd
 
     setattr(rpd, OPEN_ENDPOINT_ATTR, original)
+
+
+@contextmanager
+def patched_runpod_transports(mock_url: str) -> Iterator[None]:
+    from acheron.worker_sdk import _runpod_client as rpd
+
+    with ExitStack() as patches:
+        original_open = rpd._open_endpoint
+        patches.callback(restore_best_effort, lambda: restore_runpod_endpoint(original_open))
+        patch_runpod_endpoint(mock_url)
+
+        original_init = pricing_mod.RunPodPrice.__post_init__
+        patches.callback(restore_best_effort, lambda: restore_pricing_transport(original_init))
+        patch_pricing_transport(mock_url)
+        yield
 
 
 def parse_multipart_metrics(content_type: str, body: bytes) -> dict[str, Any]:

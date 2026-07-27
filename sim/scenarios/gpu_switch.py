@@ -21,15 +21,7 @@ from acheron.worker_sdk import WorkerSettings
 from acheron.worker_sdk.app import create_worker_app
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from sim import (
-    MOCK_URL,
-    parse_multipart_metrics,
-    patch_pricing_transport,
-    patch_runpod_endpoint,
-    reset_mock,
-    restore_pricing_transport,
-    restore_runpod_endpoint,
-)
+from sim import MOCK_URL, parse_multipart_metrics, patched_runpod_transports, reset_mock, reset_mock_best_effort
 
 
 class SlowTTSHandler(WorkerHandler):
@@ -95,35 +87,35 @@ def _implied_rate(metrics: dict[str, Any]) -> float:
 
 
 async def _run() -> int:
-    async with httpx.AsyncClient() as admin:
-        await reset_mock(admin)
-
-    original_open = patch_runpod_endpoint(MOCK_URL)
-    original_init = patch_pricing_transport(MOCK_URL)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_build_app()), base_url="http://test") as client:
-            m1 = await _submit(client, "j1")
-            rate1 = _implied_rate(m1)
-            if abs(rate1 - 1.39) > 0.01:
-                msg = f"job 1 (L4 secure): expected rate ~1.39, got {rate1:.4f}"
-                raise AssertionError(msg)
+        async with httpx.AsyncClient() as admin:
+            await reset_mock(admin)
 
-            async with httpx.AsyncClient() as admin:
-                response = await admin.patch(
-                    f"{MOCK_URL}/endpoints/qwen-edge",
-                    json={"gpu_id": "NVIDIA A40"},
-                )
-                response.raise_for_status()
-            time.sleep(1.5)
+        with patched_runpod_transports(MOCK_URL):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=_build_app()), base_url="http://test"
+            ) as client:
+                m1 = await _submit(client, "j1")
+                rate1 = _implied_rate(m1)
+                if abs(rate1 - 1.39) > 0.01:
+                    msg = f"job 1 (L4 secure): expected rate ~1.39, got {rate1:.4f}"
+                    raise AssertionError(msg)
 
-            m2 = await _submit(client, "j2")
-            rate2 = _implied_rate(m2)
-            if abs(rate2 - 2.49) > 0.01:
-                msg = f"job 2 (A40 secure): expected rate ~2.49, got {rate2:.4f}"
-                raise AssertionError(msg)
+                async with httpx.AsyncClient() as admin:
+                    response = await admin.patch(
+                        f"{MOCK_URL}/endpoints/qwen-edge",
+                        json={"gpu_id": "NVIDIA A40"},
+                    )
+                    response.raise_for_status()
+                time.sleep(1.5)
+
+                m2 = await _submit(client, "j2")
+                rate2 = _implied_rate(m2)
+                if abs(rate2 - 2.49) > 0.01:
+                    msg = f"job 2 (A40 secure): expected rate ~2.49, got {rate2:.4f}"
+                    raise AssertionError(msg)
     finally:
-        restore_runpod_endpoint(original_open)
-        restore_pricing_transport(original_init)
+        await reset_mock_best_effort()
 
     print("STORY_REF: MAINT-002 ... OK")
     return 0

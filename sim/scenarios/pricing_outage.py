@@ -19,15 +19,7 @@ from stubs._sdk_base import StubTTSHandler
 
 from acheron.worker_sdk import WorkerSettings
 from acheron.worker_sdk.app import create_worker_app
-from sim import (
-    MOCK_URL,
-    parse_multipart_metrics,
-    patch_pricing_transport,
-    patch_runpod_endpoint,
-    reset_mock,
-    restore_pricing_transport,
-    restore_runpod_endpoint,
-)
+from sim import MOCK_URL, parse_multipart_metrics, patched_runpod_transports, reset_mock, reset_mock_best_effort
 
 
 def _set_env() -> None:
@@ -71,33 +63,33 @@ async def _admin(toggle: str, value: Any) -> None:
 
 
 async def _run() -> int:
-    async with httpx.AsyncClient() as admin:
-        await reset_mock(admin)
-
-    original_open = patch_runpod_endpoint(MOCK_URL)
-    original_init = patch_pricing_transport(MOCK_URL)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_build_app()), base_url="http://test") as client:
-            await _admin("pricing_api_down", value=False)
-            m1 = await _submit(client, "j1")
-            if m1.get("cost_basis") != "measured":
-                msg = f"job 1: expected cost_basis=measured, got {m1.get('cost_basis')!r}"
-                raise AssertionError(msg)
+        async with httpx.AsyncClient() as admin:
+            await reset_mock(admin)
 
-            await _admin("pricing_api_down", value=True)
-            m2 = await _submit(client, "j2")
-            if m2.get("cost_basis") != "cached":
-                msg = f"job 2 (pricing down): expected cost_basis=cached, got {m2.get('cost_basis')!r}"
-                raise AssertionError(msg)
+        with patched_runpod_transports(MOCK_URL):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=_build_app()), base_url="http://test"
+            ) as client:
+                await _admin("pricing_api_down", value=False)
+                m1 = await _submit(client, "j1")
+                if m1.get("cost_basis") != "measured":
+                    msg = f"job 1: expected cost_basis=measured, got {m1.get('cost_basis')!r}"
+                    raise AssertionError(msg)
 
-            await _admin("pricing_api_down", value=False)
-            m3 = await _submit(client, "j3")
-            if m3.get("cost_basis") != "measured":
-                msg = f"job 3 (pricing up): expected cost_basis=measured, got {m3.get('cost_basis')!r}"
-                raise AssertionError(msg)
+                await _admin("pricing_api_down", value=True)
+                m2 = await _submit(client, "j2")
+                if m2.get("cost_basis") != "cached":
+                    msg = f"job 2 (pricing down): expected cost_basis=cached, got {m2.get('cost_basis')!r}"
+                    raise AssertionError(msg)
+
+                await _admin("pricing_api_down", value=False)
+                m3 = await _submit(client, "j3")
+                if m3.get("cost_basis") != "measured":
+                    msg = f"job 3 (pricing up): expected cost_basis=measured, got {m3.get('cost_basis')!r}"
+                    raise AssertionError(msg)
     finally:
-        restore_runpod_endpoint(original_open)
-        restore_pricing_transport(original_init)
+        await reset_mock_best_effort()
 
     print("STORY_REF: MAINT-002 ... OK")
     return 0

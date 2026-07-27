@@ -20,7 +20,7 @@ from acheron.core.interfaces import HealthProvider
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.health import HealthMonitor, HealthProbeResult
 from acheron.shell.stores.memory import InMemoryWorkerStore
-from sim import MOCK_URL, reset_mock
+from sim import MOCK_URL, reset_mock, reset_mock_best_effort, run_async_best_effort
 
 
 class _MockRunPodHealthProvider(HealthProvider):
@@ -55,35 +55,36 @@ def _make_cold_health_check(healthy_after_s: float):
 
 
 async def _run() -> int:
-    async with httpx.AsyncClient() as admin:
-        await reset_mock(admin)
-        r = await admin.post(f"{MOCK_URL}/_admin/control", json={"toggle": "cold_start_ms", "value": 2000})
-        if not r.json().get("ok"):
-            msg = f"failed to set cold_start_ms: {r.json()}"
-            raise AssertionError(msg)
-
-    registry = InMemoryWorkerStore()
-    caps = WorkerCapabilities(
-        worker_type=WorkerType.TTS,
-        supported_languages_in=frozenset({"en"}),
-        supported_languages_out=frozenset({"en"}),
-        supported_formats_in=frozenset({"text"}),
-        supported_formats_out=frozenset({"wav"}),
-        max_payload_bytes=None,
-        batch_capable=True,
-        model_source=None,
-        metadata={"health_provider": "runpod", "health_endpoint_id": "qwen-edge"},
-    )
-    await registry.register("cold-worker", "http://127.0.0.1:1", "http", caps)
-
-    monitor = HealthMonitor(
-        registry=registry,
-        interval=0.2,
-        health_check=_make_cold_health_check(healthy_after_s=1.0),
-        providers={"runpod": _MockRunPodHealthProvider(MOCK_URL)},
-    )
-    await monitor.start()
+    monitor: HealthMonitor | None = None
     try:
+        async with httpx.AsyncClient() as admin:
+            await reset_mock(admin)
+            r = await admin.post(f"{MOCK_URL}/_admin/control", json={"toggle": "cold_start_ms", "value": 2000})
+            if not r.json().get("ok"):
+                msg = f"failed to set cold_start_ms: {r.json()}"
+                raise AssertionError(msg)
+
+        registry = InMemoryWorkerStore()
+        caps = WorkerCapabilities(
+            worker_type=WorkerType.TTS,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"en"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+            metadata={"health_provider": "runpod", "health_endpoint_id": "qwen-edge"},
+        )
+        await registry.register("cold-worker", "http://127.0.0.1:1", "http", caps)
+
+        monitor = HealthMonitor(
+            registry=registry,
+            interval=0.2,
+            health_check=_make_cold_health_check(healthy_after_s=1.0),
+            providers={"runpod": _MockRunPodHealthProvider(MOCK_URL)},
+        )
+        await monitor.start()
         await asyncio.sleep(0.5)
         workers = await registry.list_all()
         status_during_cold_start = workers[0].status
@@ -105,7 +106,9 @@ async def _run() -> int:
         assert oracle == {"during_cold_start": "BOOTING", "after_cold_start": "HEALTHY"}
         print(json.dumps({"scenario": "cold_start", "oracle": oracle}, sort_keys=True))
     finally:
-        await monitor.stop()
+        if monitor is not None:
+            await run_async_best_effort(monitor.stop)
+        await reset_mock_best_effort()
 
     print("STORY_REF: MAINT-009 ... OK")
     return 0
