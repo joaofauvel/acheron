@@ -6,7 +6,7 @@ services:
   # for the 3 control-plane scenarios.
   runpod-sim:
     build:
-      context: .
+      context: ..
       target: worker-stub-base
     ports:
       - "8999:8999"
