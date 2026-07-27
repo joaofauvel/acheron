@@ -16,21 +16,18 @@ from typing import Any
 
 import httpx
 from stubs._sdk_base import StubTTSHandler
-from stubs._sdk_base.mock_runpod import start_mock_runpod_in_thread
 
 from acheron.worker_sdk import WorkerSettings
 from acheron.worker_sdk.app import create_worker_app
 from sim import (
-    DEFAULT_ARTIFACTS,
+    MOCK_URL,
     parse_multipart_metrics,
     patch_pricing_transport,
     patch_runpod_endpoint,
+    reset_mock,
     restore_pricing_transport,
     restore_runpod_endpoint,
 )
-
-MOCK_PORT = 8999
-MOCK_URL = f"http://127.0.0.1:{MOCK_PORT}"
 
 
 def _set_env() -> None:
@@ -74,6 +71,9 @@ async def _admin(toggle: str, value: Any) -> None:
 
 
 async def _run() -> int:
+    async with httpx.AsyncClient() as admin:
+        await reset_mock(admin)
+
     original_open = patch_runpod_endpoint(MOCK_URL)
     original_init = patch_pricing_transport(MOCK_URL)
     try:
@@ -104,5 +104,4 @@ async def _run() -> int:
 
 
 def main() -> int:
-    start_mock_runpod_in_thread(port=MOCK_PORT, artifacts_response=DEFAULT_ARTIFACTS)
     return asyncio.run(_run())

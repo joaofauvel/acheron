@@ -15,24 +15,21 @@ import time
 from typing import Any
 
 import httpx
-from stubs._sdk_base.mock_runpod import start_mock_runpod_in_thread
 
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk import WorkerSettings
 from acheron.worker_sdk.app import create_worker_app
-from acheron.worker_sdk.artifacts import BytesArtifact
+from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 from sim import (
-    DEFAULT_ARTIFACTS,
+    MOCK_URL,
     parse_multipart_metrics,
     patch_pricing_transport,
     patch_runpod_endpoint,
+    reset_mock,
     restore_pricing_transport,
     restore_runpod_endpoint,
 )
-
-MOCK_PORT = 8998
-MOCK_URL = f"http://127.0.0.1:{MOCK_PORT}"
 
 
 class SlowTTSHandler(WorkerHandler):
@@ -50,7 +47,7 @@ class SlowTTSHandler(WorkerHandler):
             model_source=None,
         )
 
-    async def handle(self, job: Job, input: Any = None) -> list[BytesArtifact]:  # noqa: A002
+    async def handle(self, job: Job, input: Any = None) -> list[Artifact]:  # noqa: A002
         time.sleep(0.5)
         return [BytesArtifact(filename="out.wav", content_type="audio/wav", data=b"\x00" * 100, metadata={})]
 
@@ -97,15 +94,10 @@ def _implied_rate(metrics: dict[str, Any]) -> float:
     return float(cost) * 3600.0 / float(gpu_s)
 
 
-async def _admin(toggle: str, value: Any, **extra: Any) -> None:
-    async with httpx.AsyncClient() as admin:
-        r = await admin.post(f"{MOCK_URL}/_admin/control", json={"toggle": toggle, "value": value, **extra})
-        if not r.json().get("ok"):
-            msg = f"admin toggle {toggle} failed: {r.json()}"
-            raise AssertionError(msg)
-
-
 async def _run() -> int:
+    async with httpx.AsyncClient() as admin:
+        await reset_mock(admin)
+
     original_open = patch_runpod_endpoint(MOCK_URL)
     original_init = patch_pricing_transport(MOCK_URL)
     try:
@@ -116,7 +108,12 @@ async def _run() -> int:
                 msg = f"job 1 (L4 secure): expected rate ~1.39, got {rate1:.4f}"
                 raise AssertionError(msg)
 
-            await _admin("endpoint_gpu", "NVIDIA A40", endpoint_id="qwen-edge")
+            async with httpx.AsyncClient() as admin:
+                response = await admin.patch(
+                    f"{MOCK_URL}/endpoints/qwen-edge",
+                    json={"gpu_id": "NVIDIA A40"},
+                )
+                response.raise_for_status()
             time.sleep(1.5)
 
             m2 = await _submit(client, "j2")
@@ -133,5 +130,4 @@ async def _run() -> int:
 
 
 def main() -> int:
-    start_mock_runpod_in_thread(port=MOCK_PORT, artifacts_response=DEFAULT_ARTIFACTS)
     return asyncio.run(_run())
