@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable, cast
 
 import httpx
 
@@ -48,20 +48,20 @@ class GraphQLForwardingTransport(httpx.AsyncBaseTransport):
         return await self._default.handle_async_request(request)
 
 
-def patch_pricing_transport(mock_url: str) -> Any:
+def patch_pricing_transport(mock_url: str) -> Callable[[pricing_mod.RunPodPrice], None]:
     """Route :class:`RunPodPrice` GraphQL through the mock. Return original init."""
-    original = pricing_mod.RunPodPrice.__post_init__
+    original: Callable[[pricing_mod.RunPodPrice], None] = pricing_mod.RunPodPrice.__post_init__
 
-    def _patched(self: Any) -> None:
+    def _patched(self: pricing_mod.RunPodPrice) -> None:
         self._client = httpx.AsyncClient(transport=GraphQLForwardingTransport(mock_url))
 
-    pricing_mod.RunPodPrice.__post_init__ = _patched
+    setattr(pricing_mod.RunPodPrice, "__post_init__", _patched)
     return original
 
 
-def restore_pricing_transport(original: Any) -> None:
+def restore_pricing_transport(original: Callable[[pricing_mod.RunPodPrice], None]) -> None:
     """Restore the original :class:`RunPodPrice.__post_init__`."""
-    pricing_mod.RunPodPrice.__post_init__ = original
+    setattr(pricing_mod.RunPodPrice, "__post_init__", original)
 
 
 class FakeRun:
@@ -97,20 +97,26 @@ class FakeEndpoint:
         )
 
 
-def patch_runpod_endpoint(mock_url: str) -> Any:
+def patch_runpod_endpoint(mock_url: str) -> Callable[..., object]:
     """Monkey-patch :func:`_open_endpoint` to return a :class:`FakeEndpoint`. Return original."""
     from acheron.worker_sdk import _runpod_client as rpd
 
-    original = rpd._open_endpoint
-    rpd._open_endpoint = lambda endpoint_id, *, _api_key, _base_url=None: FakeEndpoint(mock_url, endpoint_id)
+    original: Callable[..., object] = rpd._open_endpoint
+
+    def _patched_open_endpoint(
+        endpoint_id: str, *, api_key: str, base_url: str | None = None
+    ) -> FakeEndpoint:
+        return FakeEndpoint(mock_url, endpoint_id)
+
+    setattr(rpd, "_open_endpoint", _patched_open_endpoint)
     return original
 
 
-def restore_runpod_endpoint(original: Any) -> None:
+def restore_runpod_endpoint(original: Callable[..., object]) -> None:
     """Restore the original :func:`_open_endpoint`."""
     from acheron.worker_sdk import _runpod_client as rpd
 
-    rpd._open_endpoint = original
+    setattr(rpd, "_open_endpoint", original)
 
 
 def parse_multipart_metrics(content_type: str, body: bytes) -> dict[str, Any]:
@@ -127,7 +133,7 @@ def parse_multipart_metrics(content_type: str, body: bytes) -> dict[str, Any]:
             header_end = part.find(b"\r\n\r\n")
             if header_end < 0:
                 continue
-            return json.loads(part[header_end + 4 :].rstrip(b"\r\n"))
+            return cast("dict[str, Any]", json.loads(part[header_end + 4 :].rstrip(b"\r\n")))
     msg = "no application/json metrics part found in multipart body"
     raise ValueError(msg)
 

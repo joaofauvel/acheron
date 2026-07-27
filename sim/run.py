@@ -14,6 +14,7 @@ import importlib
 import sys
 import traceback
 from pathlib import Path
+from typing import Callable, cast
 
 
 def discover_scenarios() -> list[str]:
@@ -25,7 +26,7 @@ def discover_scenarios() -> list[str]:
 def run_scenario(name: str) -> int:
     """Run a single scenario by name. Returns the scenario's exit code."""
     mod = importlib.import_module(f"sim.scenarios.{name}")
-    return mod.main()
+    return cast("Callable[[], int]", mod.main)()
 
 
 def main() -> int:
