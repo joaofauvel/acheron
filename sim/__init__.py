@@ -9,7 +9,13 @@ import httpx
 
 from acheron.worker_sdk import pricing as pricing_mod
 
+MOCK_URL: str = "http://127.0.0.1:8999"
 DEFAULT_ARTIFACTS: dict[str, list[dict[str, str]]] = {"artifacts": [{"filename": "out.wav", "data": "AAEC"}]}
+
+
+async def reset_mock(client: httpx.AsyncClient) -> None:
+    response = await client.post(f"{MOCK_URL}/_admin/reset")
+    response.raise_for_status()
 
 
 class GraphQLForwardingTransport(httpx.AsyncBaseTransport):
