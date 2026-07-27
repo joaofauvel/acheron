@@ -126,3 +126,53 @@ def test_patched_transports_restore_mutation_when_patch_setup_raises(monkeypatch
         setattr(pricing_mod.RunPodPrice, sim.POST_INIT_ATTR, original_init)
 
     assert not leaked
+
+
+def test_patched_transports_restore_endpoint_mutation_when_patch_setup_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    from acheron.worker_sdk import _runpod_client as rpd
+
+    original_open = getattr(rpd, sim.OPEN_ENDPOINT_ATTR)
+    real_patch_endpoint = sim.patch_runpod_endpoint
+
+    def partially_failing_patch(mock_url: str) -> object:
+        real_patch_endpoint(mock_url)
+        raise RuntimeError("endpoint setup failed after mutation")
+
+    monkeypatch.setattr(sim, "patch_runpod_endpoint", partially_failing_patch)
+    try:
+        with (
+            pytest.raises(RuntimeError, match="endpoint setup failed after mutation"),
+            sim.patched_runpod_transports(MOCK_URL),
+        ):
+            raise AssertionError("context should not be entered")
+        leaked = getattr(rpd, sim.OPEN_ENDPOINT_ATTR) is not original_open
+    finally:
+        setattr(rpd, sim.OPEN_ENDPOINT_ATTR, original_open)
+
+    assert not leaked
+
+
+def test_patched_transports_preserve_setup_error_when_restore_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_init = pricing_mod.RunPodPrice.__post_init__
+    real_patch_pricing = sim.patch_pricing_transport
+    restore_calls: list[object] = []
+    setup_error = RuntimeError("pricing setup failed")
+
+    def partially_failing_patch(mock_url: str) -> object:
+        real_patch_pricing(mock_url)
+        raise setup_error
+
+    def fail_restore(original: object) -> None:
+        restore_calls.append(original)
+        raise RuntimeError("pricing restore failed")
+
+    monkeypatch.setattr(sim, "patch_pricing_transport", partially_failing_patch)
+    monkeypatch.setattr(sim, "restore_pricing_transport", fail_restore)
+    try:
+        with pytest.raises(RuntimeError) as raised, sim.patched_runpod_transports(MOCK_URL):
+            raise AssertionError("context should not be entered")
+    finally:
+        setattr(pricing_mod.RunPodPrice, sim.POST_INIT_ATTR, original_init)
+
+    assert raised.value is setup_error
+    assert len(restore_calls) == 1
