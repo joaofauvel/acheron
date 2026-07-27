@@ -22,6 +22,7 @@ services:
       target: certs-init
     volumes:
       - ./certs:/certs
+    command: ["sh", "-c", "python scripts/generate_dev_certs.py --out-dir /certs && chmod 640 /certs/*.key"]
     restart: "no"
 
   orchestrator:
@@ -30,6 +31,8 @@ services:
       target: orchestrator
     ports:
       - "8000:8000"
+    group_add:
+      - "0"
     environment:
       REDIS_URL: redis://redis:6379
       ACHERON_STORE_BACKEND: redis
