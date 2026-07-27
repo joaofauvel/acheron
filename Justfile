@@ -69,11 +69,14 @@ ux-validate:
 ux-verify story-id:
     uv run python -m acheron.ux_review.verify --root docs/ux_review --id {{story-id}} --head "$(git rev-parse HEAD)"
 
-# Boot the RunPod mock simulator (mock_runpod on 127.0.0.1:8999).
-# Profile-gated; uses compose/sim.yml overlay.
+# Boot the standalone RunPod mock used by Phase 3a.
 runpod-sim:
-    docker compose -f docker-compose.yml -f compose/sim.yml up -d runpod-sim
+    docker compose -f compose/sim.yml up -d --build --wait runpod-sim
 
-# Run all Phase 3a scenarios end-to-end. Requires 'just runpod-sim' first.
-runpod-bootstrap:
+# Run one Phase 3a scenario. Requires Docker and the runpod-sim service.
+sim-run scenario: runpod-sim
+    uv run python -m sim.run {{scenario}}
+
+# Run all Phase 3a scenarios. Requires Docker and the runpod-sim service.
+runpod-bootstrap: runpod-sim
     uv run python -m sim.run --all
