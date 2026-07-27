@@ -99,8 +99,8 @@ async def _run() -> int:
             raise AssertionError(msg)
 
         oracle = {
-            "during_cold_start": status_during_cold_start.value,
-            "after_cold_start": status_after_cold_start.value,
+            "during_cold_start": status_during_cold_start.name,
+            "after_cold_start": status_after_cold_start.name,
         }
         assert oracle == {"during_cold_start": "BOOTING", "after_cold_start": "HEALTHY"}
         print(json.dumps({"scenario": "cold_start", "oracle": oracle}, sort_keys=True))
