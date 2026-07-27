@@ -34,6 +34,6 @@ def test_step_3_first_run_success_criteria(compose_stack: ComposeStack) -> None:
     accepted = compose_stack.request("https://localhost:8000/workers", method="POST", body=probe, headers=auth)
     assert accepted.status == 201, f"step 3: generated registration token was rejected: {accepted.body.decode()}"
 
-    log = compose_stack.log_tail()
+    log = compose_stack.log_text()
     assert "ACHERON_REGISTRATION_TOKEN is unset" not in log, "step 3: startup reported an unset registration token"
     assert "ACHERON_OPEN_REGISTRATION=1" not in log, "step 3: startup reported open registration"

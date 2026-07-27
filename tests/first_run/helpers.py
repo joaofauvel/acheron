@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 import signal
 import ssl
 import string
@@ -96,13 +97,16 @@ class ComposeStack:
         """Fetch and decode a successful JSON endpoint."""
         return json.loads(self.get_text(url, headers))
 
-    def log_tail(self, lines: int = 80) -> str:
-        """Return the most recent Compose log lines."""
+    def log_text(self) -> str:
+        """Return the complete flushed Compose log."""
         self.log_file.flush()
         if not self.project.log_path.exists():
             return "<Compose log is unavailable>"
-        content = self.project.log_path.read_text()
-        return "".join(content.splitlines(keepends=True)[-lines:])
+        return self.project.log_path.read_text()
+
+    def log_tail(self, lines: int = 80) -> str:
+        """Return the most recent Compose log lines."""
+        return "".join(self.log_text().splitlines(keepends=True)[-lines:])
 
     def wait_until_ready(self, timeout_seconds: float) -> None:
         """Wait for orchestrator HTTPS and dashboard HTTP readiness."""
@@ -220,14 +224,37 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
                 stack.process.wait(timeout=10)
         with contextlib.suppress(OSError, ValueError):
             stack.log_file.close()
-        subprocess.run(
-            ["docker", "compose", "down", "--volumes", "--remove-orphans"],
-            cwd=stack.project.checkout,
-            env=stack.project.env,
-            check=False,
-            timeout=60,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                ["docker", "compose", "down", "--volumes", "--remove-orphans"],
+                cwd=stack.project.checkout,
+                env=stack.project.env,
+                check=False,
+                timeout=60,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "run",
+                    "--rm",
+                    "--no-deps",
+                    "--entrypoint",
+                    "sh",
+                    "certs-init",
+                    "-c",
+                    "rm -rf /certs/*",
+                ],
+                cwd=stack.project.checkout,
+                env=stack.project.env,
+                check=False,
+                timeout=60,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        shutil.rmtree(stack.project.checkout / "certs", ignore_errors=True)
     except OSError, subprocess.SubprocessError:
         pass
