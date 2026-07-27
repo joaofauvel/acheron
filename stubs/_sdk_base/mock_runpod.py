@@ -124,10 +124,6 @@ def make_mock_runpod_app(artifacts_response: dict[str, Any]) -> FastAPI:
             toggles["endpoint_disabled"] = {str(v) for v in (value or [])}
         elif toggle == "fail_next_n":
             toggles["fail_next_n"] = int(value)
-        elif toggle == "endpoint_gpu":
-            endpoint_id = body.get("endpoint_id")
-            if endpoint_id in state["endpoints"] and isinstance(value, str):
-                state["endpoints"][endpoint_id]["gpu_id"] = value
         else:
             return {"ok": False, "error": f"unknown toggle: {toggle}"}
         return {"ok": True, "toggle": toggle, "value": value}
@@ -154,7 +150,21 @@ def make_mock_runpod_app(artifacts_response: dict[str, Any]) -> FastAPI:
             return JSONResponse({"error": "not found"}, status_code=404)
         if endpoint_id not in state["endpoints"]:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return {"id": endpoint_id, "status": "ready"}
+        cfg = state["endpoints"][endpoint_id]
+        return {"id": endpoint_id, "status": "ready", "gpu_id": cfg["gpu_id"]}
+
+    @app.patch("/endpoints/{endpoint_id}", response_model=None)
+    async def endpoint_patch(endpoint_id: str, request: Request) -> JSONResponse | dict[str, str]:
+        if endpoint_id in state["toggles"]["endpoint_disabled"]:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        if endpoint_id not in state["endpoints"]:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        body = await request.json()
+        gpu_id = body.get("gpu_id")
+        if not isinstance(gpu_id, str):
+            return JSONResponse({"error": "gpu_id must be a string"}, status_code=400)
+        state["endpoints"][endpoint_id]["gpu_id"] = gpu_id
+        return {"id": endpoint_id, "gpu_id": gpu_id}
 
     return app
 

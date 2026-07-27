@@ -150,6 +150,26 @@ async def test_mock_runpod_app_starts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mock_runpod_endpoint_patch_and_reset() -> None:
+    from stubs._sdk_base.mock_runpod import make_mock_runpod_app
+
+    app = make_mock_runpod_app({"artifacts": []})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        patched = await client.patch("/endpoints/qwen-edge", json={"gpu_id": "NVIDIA A40"})
+        assert patched.status_code == 200
+        assert patched.json()["gpu_id"] == "NVIDIA A40"
+
+        current = await client.get("/endpoints/qwen-edge")
+        assert current.json()["gpu_id"] == "NVIDIA A40"
+
+        reset = await client.post("/_admin/reset")
+        assert reset.status_code == 200
+
+        restored = await client.get("/endpoints/qwen-edge")
+        assert restored.json()["gpu_id"] == "NVIDIA L4"
+
+
+@pytest.mark.asyncio
 async def test_runpod_stub_health() -> None:
     """The tts_runpod_stub and translation_runpod_stub use the same SDK + mock; smoke /health."""
     settings = _settings("tts-runpod-stub", price_source="static", dollars_per_hour=0.69)
