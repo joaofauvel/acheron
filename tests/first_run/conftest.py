@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+from tests.first_run.helpers import FirstRunProject, prepare_project
+
+
+@pytest.fixture(scope="session")
+def prepared_project(tmp_path_factory: pytest.TempPathFactory) -> FirstRunProject:
+    """Prepare one temporary checkout for the selected first-run steps."""
+    repo_root = Path(__file__).parents[2]
+    destination = tmp_path_factory.mktemp("first-run")
+    return prepare_project(repo_root, destination)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
