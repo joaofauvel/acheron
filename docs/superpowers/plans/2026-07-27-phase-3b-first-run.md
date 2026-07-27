@@ -32,6 +32,8 @@
 - Create: `tests/first_run/test_1_quick_start.py` — README command-sequence and environment-preparation assertions.
 - Create: `tests/first_run/test_2_compose_start.py` — Compose startup and readiness assertions.
 - Create: `tests/first_run/test_3_success_criteria.py` — dashboard, worker, registration-token, and security-warning assertions.
+- Modify: `Dockerfile` — install the dashboard wheel extras without shell glob ambiguity.
+- Modify: `docker-compose.yml` — keep generated private keys non-world-readable while allowing the non-root orchestrator to read its key.
 - Modify: `Justfile` — add the variadic `first-run` target.
 - Modify: `README.md` — document the first-run journey target in the development commands.
 - Create: `.github/workflows/first-run.yml` — CI execution of the first-run journey.
@@ -282,6 +284,8 @@ git commit -m "test(first-run): execute quick-start preparation in fresh checkou
 ## Task 3: Add the real Compose lifecycle and startup assertions
 
 **Files:**
+- Modify: `Dockerfile`
+- Modify: `docker-compose.yml`
 - Modify: `tests/first_run/conftest.py`
 - Modify: `tests/first_run/helpers.py`
 - Create: `tests/first_run/test_2_compose_start.py`
@@ -315,7 +319,9 @@ uv run pytest --no-cov tests/first_run/test_2_compose_start.py --first-run --ste
 
 Expected: FAIL because the Compose lifecycle fixture and HTTP probe methods do not exist.
 
-- [ ] **Step 3: Implement Compose startup, polling, and cleanup**
+- [ ] **Step 3: Implement packaging prerequisites, Compose startup, polling, and cleanup**
+
+The first real Compose run must pass two packaging prerequisites before the harness can reach readiness: quote the dashboard wheel extra through a positional shell parameter (`RUN set -- ./*.whl && pip install --no-cache-dir \"$1[dashboard]\" && rm \"$1\"`), and keep generated key files at mode `0640` with the orchestrator in supplementary group `0`. These changes preserve non-root containers and prevent world-readable private keys.
 
 In `helpers.py`, use a foreground process and capture its log. Launching and readiness are separate so the fixture owns the process even when readiness fails:
 
@@ -340,12 +346,13 @@ In `conftest.py`, own readiness and teardown in a session fixture:
 def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
     stack = launch_compose(prepared_project)
     try:
-        stack.wait_until_ready(timeout_seconds=240)
+        try:
+            stack.wait_until_ready(timeout_seconds=240)
+        except Exception as exc:
+            raise AssertionError(
+                f"step 2: Compose startup failed; see {prepared_project.log_path}\\n{stack.log_tail()}"
+            ) from exc
         yield stack
-    except Exception as exc:
-        raise AssertionError(
-            f"step 2: Compose startup failed; see {prepared_project.log_path}\\n{stack.log_tail()}"
-        ) from exc
     finally:
         stop_compose_best_effort(stack)
 ```
