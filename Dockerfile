@@ -22,7 +22,7 @@ FROM python:3.14-slim AS dashboard
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
 COPY dashboard/ ./dashboard/
-RUN pip install --no-cache-dir ./*.whl[dashboard] && rm ./*.whl
+RUN set -- ./*.whl && pip install --no-cache-dir "$1[dashboard]" && rm "$1"
 RUN useradd --create-home --shell /bin/bash acheron
 ENV PYTHONPATH=/app
 USER acheron
