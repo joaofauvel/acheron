@@ -224,16 +224,9 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
                 stack.process.wait(timeout=10)
         with contextlib.suppress(OSError, ValueError):
             stack.log_file.close()
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.run(
-                ["docker", "compose", "down", "--volumes", "--remove-orphans"],
-                cwd=stack.project.checkout,
-                env=stack.project.env,
-                check=False,
-                timeout=60,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+        # Remove root-owned bind-mounted certificate files before tearing down
+        # the Compose project. Running `compose run` after `down` recreates the
+        # project network and leaves it behind.
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
                 [
@@ -248,6 +241,16 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
                     "-c",
                     "rm -rf /certs/*",
                 ],
+                cwd=stack.project.checkout,
+                env=stack.project.env,
+                check=False,
+                timeout=60,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                ["docker", "compose", "down", "--volumes", "--remove-orphans"],
                 cwd=stack.project.checkout,
                 env=stack.project.env,
                 check=False,
