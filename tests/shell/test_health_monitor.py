@@ -165,8 +165,10 @@ class TestHealthMonitor:
 
 
 @pytest_asyncio.fixture
-async def grpc_health_server() -> AsyncIterator[str]:
+async def grpc_health_server(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[str]:
     """Start an in-process gRPC server with a HealthServicer that reports healthy."""
+    monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
     server = grpc.aio.server()
     servicer = health.HealthServicer()
     servicer.set("", health_pb2.HealthCheckResponse.SERVING)
