@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import os
+import signal
+import ssl
 import string
 import subprocess
 import tarfile
+import time
+import urllib.error
+import urllib.request
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 EXPECTED_QUICK_START_COMMANDS = (
     "cp .env.example .env",
@@ -26,6 +34,58 @@ class FirstRunProject:
     env: dict[str, str]
     compose_project: str
     log_path: Path
+
+
+@dataclass
+class ComposeStack:
+    """A running Compose stack and its first-run diagnostics."""
+
+    project: FirstRunProject
+    process: subprocess.Popen[bytes]
+    log_file: TextIO
+
+    @property
+    def ca_file(self) -> Path:
+        return self.project.checkout / "certs" / "acheron-ca.crt"
+
+    def _ssl_context(self, url: str) -> ssl.SSLContext | None:
+        if not url.startswith("https://"):
+            return None
+        return ssl.create_default_context(cafile=self.ca_file)
+
+    def get_text(self, url: str) -> str:
+        """Fetch a text endpoint using the stack's generated CA when needed."""
+        with urllib.request.urlopen(url, context=self._ssl_context(url), timeout=5) as response:
+            return response.read().decode()
+
+    def get_json(self, url: str) -> object:
+        """Fetch and decode a JSON endpoint."""
+        return json.loads(self.get_text(url))
+
+    def log_tail(self, lines: int = 80) -> str:
+        """Return the most recent Compose log lines."""
+        self.log_file.flush()
+        if not self.project.log_path.exists():
+            return "<Compose log is unavailable>"
+        content = self.project.log_path.read_text()
+        return "".join(content.splitlines(keepends=True)[-lines:])
+
+    def wait_until_ready(self, timeout_seconds: float) -> None:
+        """Wait for orchestrator HTTPS and dashboard HTTP readiness."""
+        deadline = time.monotonic() + timeout_seconds
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            if self.process.poll() is not None:
+                raise RuntimeError(f"Compose exited with status {self.process.returncode}\n{self.log_tail()}")
+            try:
+                if self.get_json("https://localhost:8000/health") != {"status": "ok"}:
+                    raise ValueError("orchestrator health response was not ready")
+                self.get_text("http://localhost:8080/")
+                return
+            except (OSError, TimeoutError, ValueError, ssl.SSLError, urllib.error.URLError) as exc:
+                last_error = exc
+            time.sleep(1)
+        raise TimeoutError(f"services did not become ready: {last_error}\n{self.log_tail()}")
 
 
 def extract_quick_start_commands(readme_text: str) -> tuple[str, ...]:
@@ -86,3 +146,53 @@ def prepare_project(repo_root: Path, destination: Path) -> FirstRunProject:
         }
     )
     return FirstRunProject(checkout, token, env, compose_project, destination / "compose.log")
+
+
+def launch_compose(project: FirstRunProject) -> ComposeStack:
+    """Launch the README Compose command and capture its output."""
+    log_file = project.log_path.open("w")
+    try:
+        process = subprocess.Popen(
+            ["docker", "compose", "up", "--build"],
+            cwd=project.checkout,
+            env=project.env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except OSError:
+        log_file.close()
+        raise
+    return ComposeStack(project, process, log_file)
+
+
+def stop_compose_best_effort(stack: ComposeStack) -> None:
+    """Stop Compose and remove its resources without masking test failures."""
+    try:
+        try:
+            os.killpg(stack.process.pid, signal.SIGINT)
+            stack.process.wait(timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                stack.process.kill()
+            except OSError:
+                pass
+            try:
+                stack.process.wait(timeout=10)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        try:
+            stack.log_file.close()
+        except (OSError, ValueError):
+            pass
+        subprocess.run(
+            ["docker", "compose", "down", "--volumes", "--remove-orphans"],
+            cwd=stack.project.checkout,
+            env=stack.project.env,
+            check=False,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass

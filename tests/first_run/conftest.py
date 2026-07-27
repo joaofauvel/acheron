@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from tests.first_run.helpers import FirstRunProject, prepare_project
+from tests.first_run.helpers import (
+    ComposeStack,
+    FirstRunProject,
+    launch_compose,
+    prepare_project,
+    stop_compose_best_effort,
+)
 
 
 @pytest.fixture(scope="session")
@@ -15,6 +22,22 @@ def prepared_project(tmp_path_factory: pytest.TempPathFactory) -> FirstRunProjec
     repo_root = Path(__file__).parents[2]
     destination = tmp_path_factory.mktemp("first-run")
     return prepare_project(repo_root, destination)
+
+
+@pytest.fixture(scope="session")
+def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
+    """Start one Compose stack for the selected journey steps."""
+    stack = launch_compose(prepared_project)
+    try:
+        try:
+            stack.wait_until_ready(timeout_seconds=240)
+        except Exception as exc:
+            raise AssertionError(
+                f"step 2: Compose startup failed; see {prepared_project.log_path}\n{stack.log_tail()}"
+            ) from exc
+        yield stack
+    finally:
+        stop_compose_best_effort(stack)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
