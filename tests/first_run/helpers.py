@@ -26,6 +26,15 @@ EXPECTED_QUICK_START_COMMANDS = (
 
 
 @dataclass(frozen=True)
+class HttpResponse:
+    """HTTP response with status preserved for journey assertions."""
+
+    status: int
+    headers: Mapping[str, str]
+    body: bytes
+
+
+@dataclass(frozen=True)
 class FirstRunProject:
     """Temporary checkout and environment for one first-run journey."""
 
@@ -53,14 +62,37 @@ class ComposeStack:
             return None
         return ssl.create_default_context(cafile=self.ca_file)
 
-    def get_text(self, url: str) -> str:
-        """Fetch a text endpoint using the stack's generated CA when needed."""
-        with urllib.request.urlopen(url, context=self._ssl_context(url), timeout=5) as response:
-            return response.read().decode()
+    def request(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        body: object | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> HttpResponse:
+        """Send an HTTP request while preserving non-success statuses."""
+        data = None if body is None else json.dumps(body).encode()
+        request_headers = dict(headers or {})
+        if body is not None:
+            request_headers.setdefault("Content-Type", "application/json")
+        request = urllib.request.Request(url, data=data, headers=request_headers, method=method)
+        try:
+            response = urllib.request.urlopen(request, context=self._ssl_context(url), timeout=5)
+        except urllib.error.HTTPError as error:
+            return HttpResponse(error.code, dict(error.headers.items()), error.read())
+        with response:
+            return HttpResponse(response.status, dict(response.headers.items()), response.read())
 
-    def get_json(self, url: str) -> object:
-        """Fetch and decode a JSON endpoint."""
-        return json.loads(self.get_text(url))
+    def get_text(self, url: str, headers: Mapping[str, str] | None = None) -> str:
+        """Fetch a successful text endpoint using the stack's generated CA when needed."""
+        response = self.request(url, headers=headers)
+        if not 200 <= response.status < 300:
+            raise OSError(f"HTTP {response.status} from {url}")
+        return response.body.decode()
+
+    def get_json(self, url: str, headers: Mapping[str, str] | None = None) -> object:
+        """Fetch and decode a successful JSON endpoint."""
+        return json.loads(self.get_text(url, headers))
 
     def log_tail(self, lines: int = 80) -> str:
         """Return the most recent Compose log lines."""
