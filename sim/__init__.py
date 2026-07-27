@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 import httpx
 
 from acheron.worker_sdk import pricing as pricing_mod
 
 MOCK_URL = "http://127.0.0.1:8999"
+POST_INIT_ATTR = "__post_init__"
+OPEN_ENDPOINT_ATTR = "_open_endpoint"
 DEFAULT_ARTIFACTS: dict[str, list[dict[str, str]]] = {"artifacts": [{"filename": "out.wav", "data": "AAEC"}]}
 
 
@@ -55,13 +58,13 @@ def patch_pricing_transport(mock_url: str) -> Callable[[pricing_mod.RunPodPrice]
     def _patched(self: pricing_mod.RunPodPrice) -> None:
         self._client = httpx.AsyncClient(transport=GraphQLForwardingTransport(mock_url))
 
-    setattr(pricing_mod.RunPodPrice, "__post_init__", _patched)
+    setattr(pricing_mod.RunPodPrice, POST_INIT_ATTR, _patched)
     return original
 
 
 def restore_pricing_transport(original: Callable[[pricing_mod.RunPodPrice], None]) -> None:
     """Restore the original :class:`RunPodPrice.__post_init__`."""
-    setattr(pricing_mod.RunPodPrice, "__post_init__", original)
+    setattr(pricing_mod.RunPodPrice, POST_INIT_ATTR, original)
 
 
 class FakeRun:
@@ -103,12 +106,10 @@ def patch_runpod_endpoint(mock_url: str) -> Callable[..., object]:
 
     original: Callable[..., object] = rpd._open_endpoint
 
-    def _patched_open_endpoint(
-        endpoint_id: str, *, api_key: str, base_url: str | None = None
-    ) -> FakeEndpoint:
+    def _patched_open_endpoint(endpoint_id: str, *, api_key: str, base_url: str | None = None) -> FakeEndpoint:
         return FakeEndpoint(mock_url, endpoint_id)
 
-    setattr(rpd, "_open_endpoint", _patched_open_endpoint)
+    setattr(rpd, OPEN_ENDPOINT_ATTR, _patched_open_endpoint)
     return original
 
 
@@ -116,7 +117,7 @@ def restore_runpod_endpoint(original: Callable[..., object]) -> None:
     """Restore the original :func:`_open_endpoint`."""
     from acheron.worker_sdk import _runpod_client as rpd
 
-    setattr(rpd, "_open_endpoint", original)
+    setattr(rpd, OPEN_ENDPOINT_ATTR, original)
 
 
 def parse_multipart_metrics(content_type: str, body: bytes) -> dict[str, Any]:
