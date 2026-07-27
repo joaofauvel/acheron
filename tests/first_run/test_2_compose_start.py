@@ -1,5 +1,7 @@
+from tests.first_run.helpers import ComposeStack
 
-def test_step_2_compose_start(compose_stack) -> None:
+
+def test_step_2_compose_start(compose_stack: ComposeStack) -> None:
     orchestrator = compose_stack.get_json("https://localhost:8000/health")
     assert orchestrator == {"status": "ok"}, "step 2: orchestrator did not become healthy"
     dashboard = compose_stack.get_text("http://localhost:8080/")

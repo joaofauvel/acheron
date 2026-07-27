@@ -34,7 +34,7 @@ proto:
 
 # Run the Phase 3b README-verbatim first-run journey. Requires Docker.
 first-run *args:
-    uv run pytest tests/first_run --first-run -n 0 -q {{args}}
+    uv run pytest tests/first_run --first-run --no-cov -n 0 -q {{args}}
 
 # Full validation pipeline: lint, type-check, then test
 validate: lint-strict lint-imports type-check type-check-pyright test

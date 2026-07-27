@@ -1,3 +1,5 @@
+import pytest
+
 from tests.first_run.helpers import extract_quick_start_commands
 
 
@@ -27,9 +29,5 @@ acheron status
 
 
 def test_extract_quick_start_commands_rejects_a_missing_section() -> None:
-    try:
+    with pytest.raises(ValueError, match="README Quick Start section not found"):
         extract_quick_start_commands("# No quick start")
-    except ValueError as exc:
-        assert str(exc) == "README Quick Start section not found"
-    else:
-        raise AssertionError("expected a missing Quick Start section to fail")

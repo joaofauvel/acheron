@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -87,7 +88,8 @@ class ComposeStack:
         """Fetch a successful text endpoint using the stack's generated CA when needed."""
         response = self.request(url, headers=headers)
         if not 200 <= response.status < 300:
-            raise OSError(f"HTTP {response.status} from {url}")
+            message = f"HTTP {response.status} from {url}"
+            raise OSError(message)
         return response.body.decode()
 
     def get_json(self, url: str, headers: Mapping[str, str] | None = None) -> object:
@@ -108,16 +110,23 @@ class ComposeStack:
         last_error: Exception | None = None
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
-                raise RuntimeError(f"Compose exited with status {self.process.returncode}\n{self.log_tail()}")
+                status = self.process.returncode
+                log = self.log_tail()
+                message = f"Compose exited with status {status}\n{log}"
+                raise RuntimeError(message)
             try:
-                if self.get_json("https://localhost:8000/health") != {"status": "ok"}:
-                    raise ValueError("orchestrator health response was not ready")
+                health = self.get_json("https://localhost:8000/health")
                 self.get_text("http://localhost:8080/")
-                return
             except (OSError, TimeoutError, ValueError, ssl.SSLError, urllib.error.URLError) as exc:
                 last_error = exc
+            else:
+                if health == {"status": "ok"}:
+                    return
+                last_error = ValueError("orchestrator health response was not ready")
             time.sleep(1)
-        raise TimeoutError(f"services did not become ready: {last_error}\n{self.log_tail()}")
+        log = self.log_tail()
+        message = f"services did not become ready: {last_error}\n{log}"
+        raise TimeoutError(message)
 
 
 def extract_quick_start_commands(readme_text: str) -> tuple[str, ...]:
@@ -204,19 +213,13 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
         try:
             os.killpg(stack.process.pid, signal.SIGINT)
             stack.process.wait(timeout=30)
-        except (OSError, subprocess.TimeoutExpired):
-            try:
+        except OSError, subprocess.TimeoutExpired:
+            with contextlib.suppress(OSError):
                 stack.process.kill()
-            except OSError:
-                pass
-            try:
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                 stack.process.wait(timeout=10)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-        try:
+        with contextlib.suppress(OSError, ValueError):
             stack.log_file.close()
-        except (OSError, ValueError):
-            pass
         subprocess.run(
             ["docker", "compose", "down", "--volumes", "--remove-orphans"],
             cwd=stack.project.checkout,
@@ -226,5 +229,5 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         pass

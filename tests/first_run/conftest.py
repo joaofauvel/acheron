@@ -32,9 +32,8 @@ def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
         try:
             stack.wait_until_ready(timeout_seconds=240)
         except Exception as exc:
-            raise AssertionError(
-                f"step 2: Compose startup failed; see {prepared_project.log_path}\n{stack.log_tail()}"
-            ) from exc
+            message = f"step 2: Compose startup failed; see {prepared_project.log_path}\n{stack.log_tail()}"
+            raise AssertionError(message) from exc
         yield stack
     finally:
         stop_compose_best_effort(stack)
