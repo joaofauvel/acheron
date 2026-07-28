@@ -99,7 +99,7 @@ journey_stage: t0
 user_journey: "Deployer follows the README's 'Edge Worker Proxy Setup' section and runs `docker compose --profile runpod-tts up --build`. The qwen3tts-edge build step fails with `ERROR: failed to solve: failed to compute cache key: failed to calculate checksum of ref ...: could not process file '/dist/acheron-*.whl': stat dist/acheron-*.whl: no such file or directory`. Deployer reads the error, greps for `dist`, and discovers they need to run `just build-worker` (or `uv build --package acheron --out-dir dist`) before the edge build can succeed."
 files:
   - path: Dockerfile.edge
-    lines: 10-21
+    lines: 10-26
   - path: README.md
     lines: 231-243
   - path: docker-compose.yml
@@ -146,7 +146,7 @@ files:
   - path: workers/translategemma/README.md
     lines: 11-65
 related: []
-fixed_in: [f4a2811, 0cb3bc7, 7e35be6]
+fixed_in: [f4a2811, 0cb3bc7, 7e35be6, 804086e]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
