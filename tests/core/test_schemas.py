@@ -52,6 +52,17 @@ class TestJobResponseTotalCostBasis:
 
 
 class TestWorkerResponseStatus:
+    def test_timing_defaults(self) -> None:
+        r = WorkerResponse(
+            worker_id="w",
+            endpoint="http://x",
+            transport="http",
+            worker_type="tts",
+            consecutive_failures=0,
+        )
+        assert r.booting_elapsed_seconds is None
+        assert r.booting_timeout_seconds == 600.0
+
     def test_accepts_enum_member(self) -> None:
         r = WorkerResponse(
             worker_id="w",

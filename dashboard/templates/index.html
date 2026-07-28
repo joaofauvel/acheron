@@ -30,6 +30,8 @@
     .dot-green { background: #3fb950; }
     .dot-red { background: #f85149; }
     .section { margin-bottom: 2rem; }
+    .booting-progress { display: grid; gap: 0.25rem; margin-top: 0.35rem; min-width: 10rem; }
+    .booting-progress progress { width: 10rem; accent-color: #d29922; }
   </style>
 </head>
 <body>
@@ -56,5 +58,32 @@
       <p style="color:#8b949e">Loading cost data...</p>
     </div>
   </div>
+
+  <script>
+    function formatBootingElapsed(elapsed, timeout) {
+      const safeTimeout = Math.max(0, Math.floor(timeout));
+      const safeElapsed = Math.min(safeTimeout, Math.max(0, Math.floor(elapsed)));
+      return `${safeElapsed}s / ${safeTimeout}s`;
+    }
+
+    function updateBootingProgress() {
+      document.querySelectorAll('[data-booting-progress="true"]').forEach((progress) => {
+        const timeout = Math.max(0, Math.floor(Number(progress.dataset.timeoutSeconds)));
+        const elapsed = Math.min(
+          timeout,
+          Math.max(0, Math.floor(Number(progress.dataset.elapsedSeconds)) + 1),
+        );
+        const percentage = timeout === 0 ? 0 : Math.floor((elapsed * 100) / timeout);
+        progress.dataset.elapsedSeconds = String(elapsed);
+        progress.dataset.percentage = String(percentage);
+        const label = progress.querySelector('.booting-elapsed');
+        if (label) label.textContent = formatBootingElapsed(elapsed, timeout);
+        const bar = progress.querySelector('progress');
+        if (bar) bar.value = elapsed;
+      });
+    }
+
+    setInterval(updateBootingProgress, 1000);
+  </script>
 </body>
 </html>

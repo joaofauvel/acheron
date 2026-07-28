@@ -81,6 +81,13 @@ class TestIndexPage:
         assert 'id="status"' in resp.text
         assert "/partials/status" in resp.text
 
+    @pytest.mark.asyncio
+    async def test_index_wires_one_second_booting_timer(self, client):
+        resp = await client.get("/")
+        assert "updateBootingProgress" in resp.text
+        assert "setInterval(updateBootingProgress, 1000)" in resp.text
+        assert resp.text.count("setInterval(") == 1
+
 
 class TestJobsPartial:
     @respx.mock
@@ -282,6 +289,7 @@ class TestWorkersPartialStatus:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "badge-healthy" in resp.text
+        assert "data-booting-progress" not in resp.text
 
     @respx.mock
     @pytest.mark.asyncio
@@ -298,6 +306,8 @@ class TestWorkersPartialStatus:
                             "transport": "http",
                             "consecutive_failures": 0,
                             "status": "booting",
+                            "booting_elapsed_seconds": 182.0,
+                            "booting_timeout_seconds": 600.0,
                             "last_error": "cold start: connection refused",
                         },
                     ]
@@ -307,6 +317,11 @@ class TestWorkersPartialStatus:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "badge-booting" in resp.text
+        assert "182s / 600s" in resp.text
+        assert '<progress value="182" max="600"' in resp.text
+        assert 'data-booting-progress="true"' in resp.text
+        assert 'data-elapsed-seconds="182"' in resp.text
+        assert 'data-timeout-seconds="600"' in resp.text
         assert "View Error" in resp.text
         assert "cold start: connection refused" in resp.text
 
@@ -334,4 +349,5 @@ class TestWorkersPartialStatus:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "badge-offline" in resp.text
+        assert "data-booting-progress" not in resp.text
         assert "View Error" in resp.text

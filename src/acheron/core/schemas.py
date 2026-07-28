@@ -38,6 +38,8 @@ class WorkerResponse(BaseModel):
     worker_type: str
     consecutive_failures: int
     status: WorkerStatus = WorkerStatus.HEALTHY
+    booting_elapsed_seconds: float | None = None
+    booting_timeout_seconds: float = 600.0
     last_error: str | None = None
     max_input_tokens: int | None = None
 

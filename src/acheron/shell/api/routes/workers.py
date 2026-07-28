@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException
 
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
@@ -11,7 +14,19 @@ from acheron.shell.api.schemas import (
     WorkerRegistrationRequest,  # noqa: TC001
 )
 
+if TYPE_CHECKING:
+    from acheron.shell.registry import RegisteredWorker
+
+
 router = APIRouter()
+_BOOTING_TIMEOUT_SECONDS = 600.0
+
+
+def _booting_elapsed_seconds(worker: RegisteredWorker, now: float) -> float | None:
+    """Return elapsed BOOTING time, or ``None`` for other worker states."""
+    if worker.status is not WorkerStatus.BOOTING or worker.booting_since is None:
+        return None
+    return max(0.0, now - worker.booting_since)
 
 
 @router.post("", status_code=201, response_model=WorkerResponse)
@@ -51,6 +66,8 @@ async def register_worker(
         status=WorkerStatus.HEALTHY,
         last_error=None,
         max_input_tokens=body.capabilities.max_input_tokens,
+        booting_elapsed_seconds=None,
+        booting_timeout_seconds=_BOOTING_TIMEOUT_SECONDS,
     )
 
 
@@ -64,6 +81,7 @@ async def list_workers(orch: OrchestratorDep, authorized: AuthorizedDep) -> Work
     callers see ``last_error=None``.
     """
     workers = await orch.list_workers()
+    now = time.time()
     return WorkerListResponse(
         workers=[
             WorkerResponse(
@@ -75,6 +93,8 @@ async def list_workers(orch: OrchestratorDep, authorized: AuthorizedDep) -> Work
                 status=w.status,
                 last_error=w.last_error if authorized else None,
                 max_input_tokens=w.capabilities.max_input_tokens,
+                booting_elapsed_seconds=_booting_elapsed_seconds(w, now),
+                booting_timeout_seconds=_BOOTING_TIMEOUT_SECONDS,
             )
             for w in workers
         ]
