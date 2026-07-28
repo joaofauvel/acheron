@@ -45,7 +45,7 @@ class TestTypedCapabilitiesRoute:
         assert response.status_code == 200
         data = response.json()
         assert data["language_pairs"] == []
-        assert [worker["worker_id"] for worker in data["workers"]] == ["asr-1"]
+        assert [worker["worker_id"] for worker in data["workers"]] == ["asr-capability-1"]
         assert data["workers"][0]["worker_type"] == "asr"
         assert data["workers"][0]["model_source"] == "ibm-granite/granite-speech-3.3-2b"
 

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 def tts_caps(
     lang: str = "es",
     *,
-    model_source: str | None = "Qwen/Qwen3-TTS",
+    model_source: str | None = None,
     metadata: dict[str, JsonValue] | None = None,
 ) -> WorkerCapabilities:
     """Create TTS worker capabilities for testing."""
@@ -44,7 +44,7 @@ def translation_caps(
     src: str = "en",
     dst: str = "es",
     *,
-    model_source: str | None = "google/translategemma-4b",
+    model_source: str | None = None,
 ) -> WorkerCapabilities:
     """Create translation worker capabilities for testing."""
     return WorkerCapabilities(
@@ -62,7 +62,7 @@ def translation_caps(
 def asr_caps(
     lang: str = "en",
     *,
-    model_source: str | None = "ibm-granite/granite-speech-3.3-2b",
+    model_source: str | None = None,
 ) -> WorkerCapabilities:
     """Create ASR worker capabilities for testing."""
     return WorkerCapabilities(
@@ -89,11 +89,36 @@ async def make_app(tmp_path: Path) -> FastAPI:
     source path that the route's preflight can resolve.
     """
     reg = InMemoryWorkerStore()
-    await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps("es", metadata={"voice": "vivian"}))
-    await reg.register("tts-2", "http://127.0.0.1:5", "http", tts_caps("fr", metadata={"voice": "aria"}))
-    await reg.register("asr-1", "http://127.0.0.1:3", "http", asr_caps("en"))
-    await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps("en", "es"))
-    await reg.register("trans-2", "http://127.0.0.1:4", "http", translation_caps("fr", "de"))
+    await reg.register(
+        "tts-1",
+        "http://127.0.0.1:1",
+        "http",
+        tts_caps("es", model_source="Qwen/Qwen3-TTS", metadata={"voice": "vivian"}),
+    )
+    await reg.register(
+        "tts-2",
+        "http://127.0.0.1:5",
+        "http",
+        tts_caps("fr", model_source="Qwen/Qwen3-TTS", metadata={"voice": "aria"}),
+    )
+    await reg.register(
+        "asr-capability-1",
+        "http://127.0.0.1:3",
+        "http",
+        asr_caps("en", model_source="ibm-granite/granite-speech-3.3-2b"),
+    )
+    await reg.register(
+        "trans-1",
+        "http://127.0.0.1:2",
+        "http",
+        translation_caps("en", "es", model_source="google/translategemma-4b"),
+    )
+    await reg.register(
+        "trans-2",
+        "http://127.0.0.1:4",
+        "http",
+        translation_caps("fr", "de", model_source="google/translategemma-4b"),
+    )
     input_dir = tmp_path / "input"
     input_dir.mkdir(parents=True, exist_ok=True)
     (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
