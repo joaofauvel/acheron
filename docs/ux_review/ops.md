@@ -6,7 +6,7 @@ version: 2
 
 # OPS
 
-**Grade**: D (8 high + 17 medium-severity open stories)
+**Grade**: D (7 high + 17 medium-severity open stories)
 **Calibration target**: an operator should be able to submit, monitor, debug, and recover a job without `docker logs`.
 
 ## OPS-001 — Dashboard renders only three read-only tables
@@ -253,27 +253,37 @@ feedback_ref: "TBD-pagerduty"
 
 **Verification.** Focused store, health-monitor, worker-route, dashboard-helper, and dashboard-template tests cover timestamp persistence, backward-clock clamping, lifecycle transitions, 600-second timeout behavior, and one-second progress wiring. The implementation keeps job submission non-gating and leaves the status partial contract unchanged.
 
-## OPS-007 — "Connected" badge means HTTP 200, not "ready to take jobs"
+## OPS-007 — Dashboard status badge reflects worker-fleet readiness
 
 ```yaml
 ---
 id: OPS-007
-title: "`/partials/status` returns \"Connected\" on HTTP 200; a system with 0 healthy TTS workers shows green and accepts submissions"
-status: open
+title: "Dashboard status badge reflects worker-fleet readiness"
+status: fixed
 severity: high
 effort: S
 discovered_via: [code-review, on-call]
 user_facing_surface: dashboard
 silent: true
 journey_stage: t1
-user_journey: "Operator opens the dashboard, sees the top status badge. With 3 TTS workers registered and 0 healthy (all BOOTING), the badge is yellow and reads '1/3 TTS healthy'. With all 3 healthy, the badge is green and reads 'Ready'. A submission while the badge is yellow is permitted but the operator sees a warning in the response."
+user_journey: "Operator opens the dashboard and sees a status badge reflecting the registered ASR, TRANSLATION, and TTS service-worker fleet. An empty or unhealthy fleet is yellow and reads 'Waiting'; green 'Ready' requires at least one healthy service worker and every registered service worker to be healthy. The badge shows deterministic per-type counts, and a dashboard fetch failure is red and reads 'Disconnected'. Submission gating is not part of OPS-007."
 files:
   - path: src/acheron/shell/api/routes/partials.py
-    lines: 11-19
+    lines: 1-46
   - path: dashboard/app.py
-    lines: 79-82
+    lines: 37-46
+  - path: dashboard/templates/index.html
+    lines: 29-32
+  - path: tests/shell/api/test_partials.py
+    lines: 86-192
+  - path: dashboard/tests/test_dashboard.py
+    lines: 78-88
+  - path: dashboard/tests/test_dashboard.py
+    lines: 242-268
+  - path: tests/first_run/test_3_success_criteria.py
+    lines: 6-15
 related: []
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -281,13 +291,13 @@ incident_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/shell/api/routes/partials.py:11-19` returns "Connected" on any HTTP 200. The endpoint doesn't check worker-fleet health. A system with 0 healthy TTS workers shows a green dot and accepts a `POST /jobs` that will then route to a `BOOTING` worker.
+**Issue.** The dashboard status badge previously represented an HTTP 200 from `/partials/status` as "Connected" without checking worker-fleet readiness. The implementation now keeps the endpoint as an HTML fragment, counts only registered ASR, TRANSLATION, and TTS workers, and renders deterministic per-type healthy/total counts. An empty or unhealthy service fleet is yellow, while dashboard fetch failure remains red `Disconnected`.
 
-**Why it matters.** The "Connected" badge is the operator's pre-flight check. A green badge means "ready"; a yellow or red badge means "wait."
+**Why it matters.** The status badge is the operator's pre-flight signal: green means every registered service worker is healthy and at least one service worker is available, yellow means the fleet is empty or not fully healthy, and red means the dashboard cannot fetch its HTML fragment.
 
-**Recommendation.** Extend `/partials/status` to return a JSON object with per-type breakdown. Render the badge as green/yellow/red based on fleet readiness.
+**Recommendation.** Keep `/partials/status` as an `HTMLResponse` and derive readiness from registered service workers. Render green `Ready` only when at least one ASR, TRANSLATION, or TTS worker is healthy and every registered service worker is healthy; otherwise render yellow `Waiting`, including the exact empty output `Waiting for workers (0/0 service workers healthy)`. Preserve deterministic per-type counts, the dashboard proxy's unchanged fragment forwarding, and its red `Disconnected` fallback. Do not gate job submission on this badge; submission gating is outside OPS-007.
 
-**Verification.** With 0 healthy TTS workers, the badge is yellow. With 1/3 healthy, the badge is yellow. With 3/3 healthy, the badge is green.
+**Verification.** Focused partial-route tests cover empty, ASR-only, TRANSLATION-only, TTS-only, mixed, partially healthy, and built-in-worker fleets, including the exact empty text and deterministic per-type counts. Dashboard tests cover unchanged HTML-fragment forwarding, red `Disconnected` on fetch failure, and the yellow status style; first-run coverage accepts the empty or per-type readiness fragments. No submission-gating behavior is changed or verified as part of OPS-007.
 
 ## OPS-008 — No `acheron job cancel` — operator can submit but cannot abort
 
