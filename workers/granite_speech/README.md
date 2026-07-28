@@ -21,7 +21,13 @@ export RUNPOD_API_KEY="<runpod-api-key>"
 runpodctl config --apiKey "$RUNPOD_API_KEY"
 ```
 
-Create a shared network volume of at least 50 GB for the worker caches and mount it at `/runpod-volume`.
+Create a shared network volume of at least 50 GB for the worker caches:
+
+```bash
+runpodctl network-volume create --name "acheron-hf-cache" --size 50 --data-center-id "<data-center-id>"
+```
+
+Mount the returned volume at `/runpod-volume`.
 
 1. **Create the network volume** for the HuggingFace cache to avoid re-downloading the ~4GB weights on every cold start. Mount it at `/runpod-volume/huggingface-cache`. Pre-warm it once:
 
