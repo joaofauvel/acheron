@@ -187,6 +187,7 @@ def prepare_project(repo_root: Path, destination: Path) -> FirstRunProject:
     env.update(
         {
             "ACHERON_REGISTRATION_TOKEN": token,
+            "COMPOSE_PROFILES": "sim",
             "COMPOSE_PROJECT_NAME": compose_project,
         }
     )
