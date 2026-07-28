@@ -5,7 +5,13 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from acheron.core.models import CostBasis, PlanStatus, WorkerStatus
-from acheron.core.schemas import JobResponse, WorkerResponse
+from acheron.core.schemas import (
+    CapabilitiesResponse,
+    InputResponse,
+    JobResponse,
+    WorkerCapability,
+    WorkerResponse,
+)
 
 _adapter = TypeAdapter(JobResponse)
 
@@ -117,3 +123,28 @@ class TestWorkerResponseStatus:
             status=WorkerStatus.HEALTHY,
         )
         assert r.model_dump(mode="json")["status"] == "healthy"
+
+
+def test_input_response_preserves_upload_metadata() -> None:
+    response = InputResponse(
+        source_path="inputs/id/book.epub",
+        filename="book.epub",
+        size_bytes=12,
+        content_type="application/epub+zip",
+    )
+    assert InputResponse.model_validate(response.model_dump()) == response
+
+
+def test_capabilities_response_defaults_worker_inventory_to_empty() -> None:
+    response = CapabilitiesResponse(language_pairs=[])
+    assert response.workers == []
+
+
+def test_worker_capability_preserves_model_and_metadata() -> None:
+    response = WorkerCapability(
+        worker_id="tts-1",
+        worker_type="tts",
+        model_source="Qwen/Qwen3-TTS",
+        metadata={"voice": "vivian"},
+    )
+    assert response.model_dump()["metadata"] == {"voice": "vivian"}
