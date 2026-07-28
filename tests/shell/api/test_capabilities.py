@@ -24,3 +24,103 @@ class TestCapabilitiesRoute:
         assert response.status_code == 200
         for pair in response.json()["language_pairs"]:
             assert pair["src"] == "en"
+
+
+class TestTypedCapabilitiesRoute:
+    @pytest.mark.asyncio
+    async def test_type_tts_returns_sorted_inventory_with_metadata(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"type": "tts"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["language_pairs"] == []
+        assert [worker["worker_id"] for worker in data["workers"]] == ["tts-1", "tts-2"]
+        assert data["workers"][0]["worker_type"] == "tts"
+        assert data["workers"][0]["model_source"] == "Qwen/Qwen3-TTS"
+        assert data["workers"][0]["metadata"] == {"voice": "vivian"}
+        assert data["workers"][1]["metadata"] == {"voice": "aria"}
+
+    @pytest.mark.asyncio
+    async def test_type_asr_returns_inventory(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"type": "asr"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["language_pairs"] == []
+        assert [worker["worker_id"] for worker in data["workers"]] == ["asr-capability-1"]
+        assert data["workers"][0]["worker_type"] == "asr"
+        assert data["workers"][0]["model_source"] == "ibm-granite/granite-speech-3.3-2b"
+
+    @pytest.mark.asyncio
+    async def test_type_translation_returns_sorted_inventory(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"type": "translation"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["language_pairs"] == []
+        assert [worker["worker_id"] for worker in data["workers"]] == ["trans-1", "trans-2"]
+        for worker in data["workers"]:
+            assert worker["worker_type"] == "translation"
+            assert worker["model_source"] == "google/translategemma-4b"
+
+    @pytest.mark.asyncio
+    async def test_invalid_type_returns_422(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"type": "bogus"})
+        assert response.status_code == 422
+        body = response.json()
+        assert "detail" in body
+        assert "bogus" in body["detail"]
+
+    @pytest.mark.asyncio
+    async def test_type_with_src_returns_422(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"type": "tts", "src": "en"})
+        assert response.status_code == 422
+        body = response.json()
+        assert "detail" in body
+        assert "type" in body["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_type_with_dest_returns_422(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"type": "tts", "dest": "es"})
+        assert response.status_code == 422
+        body = response.json()
+        assert "detail" in body
+        assert "type" in body["detail"].lower()
+
+
+class TestLanguagePairCapabilitiesRoute:
+    @pytest.mark.asyncio
+    async def test_unknown_src_returns_422_with_sorted_supported_list(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"src": "xx"})
+        assert response.status_code == 422
+        body = response.json()
+        assert "detail" in body
+        detail = body["detail"]
+        assert "xx" in detail
+        # Extract the sorted list after 'supported sources: '.
+        prefix = "supported sources: "
+        assert prefix in detail
+        listed = detail.split(prefix, 1)[1].strip()
+        assert listed == "de, en, es, fr"
+
+    @pytest.mark.asyncio
+    async def test_unknown_dest_returns_422_with_sorted_supported_list(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.get("/capabilities", params={"dest": "xx"})
+        assert response.status_code == 422
+        body = response.json()
+        assert "detail" in body
+        detail = body["detail"]
+        assert "xx" in detail
+        # Extract the sorted list after 'supported targets: '.
+        prefix = "supported targets: "
+        assert prefix in detail
+        listed = detail.split(prefix, 1)[1].strip()
+        assert listed == "de, en, es, fr"
+
+    @pytest.mark.asyncio
+    async def test_known_but_empty_pair_returns_200_with_empty_pairs(self, client) -> None:  # type: ignore[no-untyped-def]
+        # en→de is a valid filter (both languages are supported) but no
+        # registered worker bridges that pair, so the result is 200 with
+        # language_pairs=[] rather than 422.
+        response = await client.get("/capabilities", params={"src": "en", "dest": "de"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["language_pairs"] == []
+        assert data["workers"] == []

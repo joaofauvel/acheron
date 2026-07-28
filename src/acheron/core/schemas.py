@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from acheron.core.models import (
     CostBasis,
+    JsonValue,
     PlanStatus,
     WorkerStatus,
 )
@@ -63,3 +64,22 @@ class CapabilitiesResponse(BaseModel):
     """Response for capability discovery."""
 
     language_pairs: list[LanguagePair]
+    workers: list[WorkerCapability] = Field(default_factory=list)
+
+
+class InputResponse(BaseModel):
+    """Response for a successful upload."""
+
+    source_path: str
+    filename: str
+    size_bytes: int
+    content_type: str | None = None
+
+
+class WorkerCapability(BaseModel):
+    """Capability descriptor for a registered worker."""
+
+    worker_id: str
+    worker_type: str
+    model_source: str | None = None
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)

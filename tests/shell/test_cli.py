@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -15,6 +16,23 @@ from acheron.cli import main
 
 _BASE_URL = "http://test.local:8000"
 
+_UPLOAD_PATH = "inputs/abc/book.epub"
+
+
+def _mock_upload_success(filename: str = "book.epub", size: int = 10) -> respx.Route:
+    """Mock a successful ``POST /inputs`` returning a server-relative ``source_path``."""
+    return respx.post(f"{_BASE_URL}/inputs").mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "source_path": f"inputs/abc/{filename}",
+                "filename": filename,
+                "size_bytes": size,
+                "content_type": "application/epub+zip",
+            },
+        )
+    )
+
 
 @pytest.fixture(autouse=True)
 def _stable_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -27,7 +45,8 @@ def test_submit_epub(tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
     warning = "BOOTING TTS workers: tts-1 (3s elapsed); cold start typically takes 30\u201390 seconds."
-    respx.post(f"{_BASE_URL}/jobs").mock(
+    _mock_upload_success(filename="book.epub")
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             201,
             json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1", "warnings": [warning]},
@@ -35,7 +54,7 @@ def test_submit_epub(tmp_path: Path) -> None:
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "job-abc" in result.output
     assert "running" in result.output
     assert "Warning:" in result.output
@@ -43,32 +62,47 @@ def test_submit_epub(tmp_path: Path) -> None:
     assert "3s elapsed" in result.output
     assert "30\u201390 seconds" in result.output
     assert result.output.index("Plan: plan-1") < result.output.index("Warning:")
+    # Job request must reference the server-relative path from the upload response,
+    # not the local filesystem path the user provided.
+    job_body = json.loads(jobs_route.calls.last.request.content)
+    assert job_body["source_path"] == _UPLOAD_PATH
 
 
 @respx.mock
 def test_submit_audio(tmp_path: Path) -> None:
+    """Submitting an audio file uploads it and forwards ``--asr`` to ``/jobs``."""
     mp3 = tmp_path / "podcast.mp3"
     mp3.touch()
-    respx.post(f"{_BASE_URL}/jobs").mock(
+    _mock_upload_success(filename="podcast.mp3")
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(201, json={"job_id": "job-def", "status": "running"})
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", str(mp3), "--src", "en", "--dest", "es", "--asr", "whisper-v3"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "job-def" in result.output
+    job_body = json.loads(jobs_route.calls.last.request.content)
+    assert job_body["asr_model"] == "whisper-v3"
+    assert job_body["source_type"] == "audio"
+    assert job_body["source_path"] == "inputs/abc/podcast.mp3"
 
 
 @respx.mock
 def test_submit_with_type_override(tmp_path: Path) -> None:
+    """``--type`` override is preserved end-to-end and not inferred from the filename suffix."""
     unknown = tmp_path / "input.dat"
     unknown.touch()
-    respx.post(f"{_BASE_URL}/jobs").mock(
+    _mock_upload_success(filename="input.dat")
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(201, json={"job_id": "job-xyz", "status": "running"})
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", str(unknown), "--src", "en", "--dest", "es", "--type", "epub"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "job-xyz" in result.output
+    job_body = json.loads(jobs_route.calls.last.request.content)
+    assert job_body["source_type"] == "epub"
+    assert job_body["source_path"] == "inputs/abc/input.dat"
 
 
 def test_submit_unknown_type(tmp_path: Path) -> None:
@@ -84,6 +118,44 @@ def test_submit_missing_file() -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", "/nonexistent.epub", "--src", "en", "--dest", "es"])
     assert result.exit_code != 0
+
+
+@respx.mock
+def test_submit_upload_http_error_skips_jobs_request(tmp_path: Path) -> None:
+    """When the upload fails, the CLI must exit before calling ``/jobs``.
+
+    Only ``/inputs`` is mocked; if the CLI tries to call ``/jobs``,
+    respx raises ``RequestNotConfigured`` and the test fails. The exit
+    code must be non-zero and the output must surface the upload error.
+    """
+    respx.post(f"{_BASE_URL}/inputs").mock(return_value=httpx.Response(500, json={"detail": "Upload failed"}))
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
+    assert result.exit_code != 0
+    assert "500" in result.output
+    assert "Upload failed" in result.output
+
+
+@respx.mock
+def test_submit_sends_bearer_token_on_upload_and_jobs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The registration token is forwarded as a bearer header on both the
+    upload and the job submission.
+    """
+    token = "test-registration-token-must-be-32-chars-or-more"
+    monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", token)
+    upload_route = _mock_upload_success(filename="book.epub")
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(201, json={"job_id": "job-abc", "status": "running"})
+    )
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
+    assert result.exit_code == 0, result.output
+    assert upload_route.calls.last.request.headers["authorization"] == f"Bearer {token}"
+    assert jobs_route.calls.last.request.headers["authorization"] == f"Bearer {token}"
 
 
 @respx.mock
@@ -346,7 +418,88 @@ def test_capabilities_filter_dest() -> None:
 
 
 @respx.mock
+def test_capabilities_typed_tts_renders_voice_table() -> None:
+    """``--type tts`` calls the typed capabilities endpoint and renders a
+    Worker ID / Model / Voice table that includes the worker id, model name,
+    and the metadata voice.
+    """
+    respx.get(f"{_BASE_URL}/capabilities", params={"type": "tts"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "language_pairs": [],
+                "workers": [
+                    {
+                        "worker_id": "tts-1",
+                        "worker_type": "tts",
+                        "model_source": "Qwen/Qwen3-TTS",
+                        "metadata": {"voice": "vivian"},
+                    }
+                ],
+            },
+        )
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["capabilities", "--type", "tts"])
+    assert result.exit_code == 0, result.output
+    assert "Worker ID" in result.output
+    assert "Model" in result.output
+    assert "Voice" in result.output
+    assert "tts-1" in result.output
+    assert "Qwen/Qwen3-TTS" in result.output
+    assert "vivian" in result.output
+
+
+@respx.mock
+def test_capabilities_typed_absent_voice_renders_dash() -> None:
+    """A worker with no ``metadata.voice`` (or a non-string one) renders ``-``.
+
+    The model source is also rendered as ``-`` when absent, so a worker
+    with neither is still printable without crashing the table.
+    """
+    respx.get(f"{_BASE_URL}/capabilities", params={"type": "tts"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "language_pairs": [],
+                "workers": [{"worker_id": "tts-2", "worker_type": "tts", "metadata": {}}],
+            },
+        )
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["capabilities", "--type", "tts"])
+    assert result.exit_code == 0, result.output
+    assert "tts-2" in result.output
+    # The dash must appear at least once; the absent-voice column is the
+    # one this regression test is asserting.
+    assert "-" in result.output
+
+
+@respx.mock
+def test_capabilities_typed_with_src_filter_is_rejected() -> None:
+    """``--type`` and ``--src`` are mutually exclusive: typed output is
+    workers, not language pairs.
+    """
+    runner = CliRunner()
+    result = runner.invoke(main, ["capabilities", "--type", "tts", "--src", "en"])
+    assert result.exit_code != 0
+    assert "type" in result.output.lower()
+    assert "src" in result.output.lower()
+
+
+@respx.mock
+def test_capabilities_typed_with_dest_filter_is_rejected() -> None:
+    """``--type`` and ``--dest`` are mutually exclusive."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["capabilities", "--type", "tts", "--dest", "es"])
+    assert result.exit_code != 0
+    assert "type" in result.output.lower()
+    assert "dest" in result.output.lower()
+
+
+@respx.mock
 def test_submit_server_error_shows_friendly_message(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(500, json={"detail": "Internal server error"}))
     epub = tmp_path / "book.epub"
     epub.touch()
@@ -379,6 +532,7 @@ def test_workers_server_error_shows_friendly_message() -> None:
 
 @respx.mock
 def test_submit_validation_error_shows_detail(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(422, json={"detail": "Invalid language path: en→xx"})
     )
@@ -393,6 +547,7 @@ def test_submit_validation_error_shows_detail(tmp_path: Path) -> None:
 
 @respx.mock
 def test_submit_invalid_language_shows_supported_targets(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             422,
@@ -424,6 +579,7 @@ def test_submit_invalid_language_shows_supported_targets(tmp_path: Path) -> None
 
 @respx.mock
 def test_submit_invalid_language_capability_lookup_failure_preserves_remediation(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             422,
@@ -444,6 +600,7 @@ def test_submit_invalid_language_capability_lookup_failure_preserves_remediation
 
 @respx.mock
 def test_submit_invalid_language_capability_malformed_response_preserves_remediation(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             422,
@@ -463,6 +620,7 @@ def test_submit_invalid_language_capability_malformed_response_preserves_remedia
 
 @respx.mock
 def test_submit_invalid_language_capability_timeout_preserves_remediation(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             422,
@@ -484,6 +642,7 @@ def test_submit_invalid_language_capability_timeout_preserves_remediation(tmp_pa
 
 @respx.mock
 def test_submit_unknown_domain_error_shows_generic_remediation(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             422,
@@ -502,6 +661,7 @@ def test_submit_unknown_domain_error_shows_generic_remediation(tmp_path: Path) -
 
 @respx.mock
 def test_submit_class_only_domain_error_does_not_leak_class_name(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(422, json={"detail": "WorkerUnavailableError"}))
     epub = tmp_path / "book.epub"
     epub.touch()
@@ -514,6 +674,7 @@ def test_submit_class_only_domain_error_does_not_leak_class_name(tmp_path: Path)
 
 @respx.mock
 def test_submit_chunking_error_shows_remediation(tmp_path: Path) -> None:
+    _mock_upload_success(filename="book.epub")
     respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             422,

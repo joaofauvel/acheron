@@ -3,12 +3,25 @@
 import asyncio
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
+from httpx import AsyncClient
 
-from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
+from acheron.core.models import (
+    AudioRequest,
+    EpubRequest,
+    ExecutorStrategy,
+    WorkerCapabilities,
+    WorkerStatus,
+    WorkerType,
+)
 from acheron.shell.api.routes.jobs import _booting_tts_warnings
 from acheron.shell.registry import RegisteredWorker
+
+if TYPE_CHECKING:
+    from acheron.shell.config import Settings
+    from acheron.shell.job_store import TrackedJob
 
 
 def _worker(
@@ -125,7 +138,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
             },
@@ -151,7 +164,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
             },
@@ -176,7 +189,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
                 "executor_strategy": "invalid",
@@ -190,7 +203,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "pdf",
-                "source_path": "/input/doc.pdf",
+                "source_path": "input/doc.pdf",
                 "source_language": "en",
                 "target_language": "es",
             },
@@ -203,7 +216,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
             },
@@ -225,7 +238,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
             },
@@ -240,7 +253,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
             },
@@ -270,6 +283,9 @@ class TestJobRoutes:
 
         monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
         monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
         app = create_app(
             registry=InMemoryWorkerStore(),
             job_store=InMemoryJobStore(),
@@ -283,7 +299,7 @@ class TestJobRoutes:
                 "/jobs",
                 json={
                     "source_type": "epub",
-                    "source_path": "/input/book.epub",
+                    "source_path": "input/book.epub",
                     "source_language": "en",
                     "target_language": "xx",
                 },
@@ -298,7 +314,7 @@ class TestJobRoutes:
             "/jobs",
             json={
                 "source_type": "epub",
-                "source_path": "/input/book.epub",
+                "source_path": "input/book.epub",
                 "source_language": "en",
                 "target_language": "es",
                 "executor_strategi": "streaming",  # typo: missing 'y'
@@ -352,6 +368,9 @@ class TestJobRoutes:
         assert worker is not None
         worker.status = WorkerStatus.BOOTING
         worker.booting_since = 995.0
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
         app = create_app(
             registry=registry,
             job_store=InMemoryJobStore(),
@@ -367,7 +386,7 @@ class TestJobRoutes:
                     "/jobs",
                     json={
                         "source_type": "epub",
-                        "source_path": "/input/book.epub",
+                        "source_path": "input/book.epub",
                         "source_language": "en",
                         "target_language": "es",
                     },
@@ -384,16 +403,26 @@ class TestJobRoutes:
         ]
 
     @pytest.mark.asyncio
-    async def test_submit_job_warning_inspection_failure_is_non_gating(self) -> None:
+    async def test_submit_job_warning_inspection_failure_is_non_gating(self, tmp_path: Path) -> None:
         from typing import cast
 
-        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+        from acheron.core.models import PlanStatus
         from acheron.shell.api.routes import jobs as jobs_route
         from acheron.shell.api.schemas import SubmitJobRequest
+        from acheron.shell.config import Settings
         from acheron.shell.job_store import TrackedJob
         from acheron.shell.orchestrator import Orchestrator
 
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+
         class FailingInspectionOrchestrator:
+            def __init__(self) -> None:
+                self.settings = settings
+
             async def submit_job(self, request: EpubRequest, strategy: ExecutorStrategy) -> TrackedJob:
                 return TrackedJob(
                     job_id="job-accepted",
@@ -408,7 +437,7 @@ class TestJobRoutes:
         result = await jobs_route.submit_job(
             SubmitJobRequest(
                 source_type="epub",
-                source_path="/input/book.epub",
+                source_path="input/book.epub",
                 source_language="en",
                 target_language="es",
             ),
@@ -485,3 +514,517 @@ class TestJobRouteAuth:
             response = await c.post("/jobs/j-1/resume")
         await app.state.orchestrator.shutdown()
         assert response.status_code == 401
+
+
+class _RecordingOrchestrator:
+    """Spy orchestrator that records ``submit_job`` calls without running a plan.
+
+    Uses an injected ``settings`` so the route's source-path preflight
+    can resolve a real fixture file below ``tmp_path``. ``submit_job``
+    is replaced with a no-op that returns a fresh :class:`TrackedJob`
+    so the route exercises the "acceptance" path.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.submit_calls: list[tuple[EpubRequest | AudioRequest, ExecutorStrategy]] = []
+        self.list_workers_calls = 0
+
+    async def submit_job(
+        self,
+        request: EpubRequest | AudioRequest,
+        strategy: ExecutorStrategy,
+    ) -> TrackedJob:
+        from acheron.core.models import PlanStatus
+        from acheron.shell.job_store import TrackedJob
+
+        self.submit_calls.append((request, strategy))
+        return TrackedJob(
+            job_id="job-accepted",
+            request=request,
+            strategy=strategy,
+            status=PlanStatus.RUNNING,
+        )
+
+    async def list_workers(self) -> tuple[RegisteredWorker, ...]:
+        self.list_workers_calls += 1
+        return ()
+
+
+class TestJobRoutePreflight:
+    """Submission preflight: source-path resolution + ASR model checks before orchestrator.submit_job()."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("asr_model", ["", "   ", "\t\n"])
+    async def test_audio_blank_asr_model_returns_422_without_submission(self, client, monkeypatch, asr_model) -> None:  # type: ignore[no-untyped-def]
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        submit_job = AsyncMock()
+        monkeypatch.setattr(app.state.orchestrator, "submit_job", submit_job)
+
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "audio",
+                "source_path": "input/book.mp3",
+                "source_language": "en",
+                "target_language": "es",
+                "asr_model": asr_model,
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "asr_model is required for source_type='audio'"
+        submit_job.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("asr_model", ["", "   "])
+    async def test_epub_blank_asr_model_preserves_non_audio_rejection(self, client, monkeypatch, asr_model) -> None:  # type: ignore[no-untyped-def]
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        submit_job = AsyncMock()
+        monkeypatch.setattr(app.state.orchestrator, "submit_job", submit_job)
+
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+                "asr_model": asr_model,
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "asr_model is only valid for source_type='audio'"
+        submit_job.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_missing_source_path_returns_422_and_never_calls_submit(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        # Replace the orchestrator with our spy after create_app so create_app's
+        # construction does not run plan compilation on the spy.
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "missing.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert "source_path" in detail
+        assert "expected at" in detail
+        assert "missing.epub" in detail
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_traversal_source_path_returns_422(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "../outside.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        # relative-path error mentions the source path and the data dir
+        assert "../outside.epub" in detail
+        assert str(tmp_path) in detail
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_absolute_source_path_returns_422(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "/tmp/book.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert "/tmp/book.epub" in detail
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_directory_source_path_returns_422(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        (tmp_path / "inputs").mkdir()
+        (tmp_path / "inputs" / "a-dir").mkdir()
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "inputs/a-dir",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert "source_path" in detail
+        assert "expected at" in detail
+        assert "inputs/a-dir" in detail
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_symlink_escape_returns_422(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        outside = tmp_path.parent / f"outside-{tmp_path.name}.epub"
+        outside.write_bytes(b"outside")
+        try:
+            inputs_subdir = tmp_path / "inputs" / "abc"
+            inputs_subdir.mkdir(parents=True)
+            (inputs_subdir / "link.epub").symlink_to(outside)
+            settings = Settings()
+            settings.orchestrator.data_dir = tmp_path
+            spy = _RecordingOrchestrator(settings)
+            app = create_app(
+                registry=InMemoryWorkerStore(),
+                job_store=InMemoryJobStore(),
+                cache=PlanCache(tmp_path),
+                data_dir=tmp_path,
+                settings=settings,
+            )
+            await app.state.orchestrator.shutdown()
+            await app.state.orchestrator.close()
+            app.state.orchestrator = spy
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.post(
+                    "/jobs",
+                    json={
+                        "source_type": "epub",
+                        "source_path": "inputs/abc/link.epub",
+                        "source_language": "en",
+                        "target_language": "es",
+                    },
+                )
+        finally:
+            outside.unlink(missing_ok=True)
+        assert response.status_code == 422
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_audio_without_asr_model_returns_422(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.mp3").write_bytes(b"mp3")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "audio",
+                    "source_path": "input/book.mp3",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        assert response.status_code == 422
+        assert response.json()["detail"] == "asr_model is required for source_type='audio'"
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_epub_with_asr_model_returns_422(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "input/book.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                    "asr_model": "whisper-v3",
+                },
+            )
+        assert response.status_code == 422
+        assert response.json()["detail"] == "asr_model is only valid for source_type='audio'"
+        assert spy.submit_calls == []
+
+    @pytest.mark.asyncio
+    async def test_valid_relative_path_passes_resolved_absolute_to_submit(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.config import Settings
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        spy = _RecordingOrchestrator(settings)
+        app = create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+            settings=settings,
+        )
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+        app.state.orchestrator = spy
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "input/book.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                },
+            )
+        assert response.status_code == 201
+        assert len(spy.submit_calls) == 1
+        submitted, _ = spy.submit_calls[0]
+        resolved = Path(submitted.source_path).resolve()
+        assert resolved == (tmp_path / "input" / "book.epub").resolve()
+        assert str(resolved).startswith(str(tmp_path.resolve()))
+
+
+class TestUploadToSubmitIntegration:
+    """Round-trip: POST /inputs then POST /jobs using the returned source_path."""
+
+    @pytest.mark.asyncio
+    async def test_upload_response_source_path_is_accepted_by_submit(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+
+        upload = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"uploaded-epub-bytes", "application/epub+zip")},
+        )
+        assert upload.status_code == 201
+        source_path = upload.json()["source_path"]
+        assert source_path.startswith("inputs/")
+        assert source_path.endswith("/book.epub")
+
+        # Stored at the server-relative path under data_dir
+        stored = app.state.orchestrator.settings.orchestrator.data_dir / source_path
+        assert stored.is_file()
+        assert stored.read_bytes() == b"uploaded-epub-bytes"
+
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": source_path,
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["job_id"].startswith("job-")

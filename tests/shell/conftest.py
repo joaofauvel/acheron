@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
@@ -20,7 +20,12 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 
-def tts_caps(lang: str = "es") -> WorkerCapabilities:
+def tts_caps(
+    lang: str = "es",
+    *,
+    model_source: str | None = None,
+    metadata: dict[str, JsonValue] | None = None,
+) -> WorkerCapabilities:
     """Create TTS worker capabilities for testing."""
     return WorkerCapabilities(
         worker_type=WorkerType.TTS,
@@ -30,11 +35,17 @@ def tts_caps(lang: str = "es") -> WorkerCapabilities:
         supported_formats_out=frozenset({"wav"}),
         max_payload_bytes=None,
         batch_capable=True,
-        model_source=None,
+        model_source=model_source,
+        metadata=dict(metadata or {}),
     )
 
 
-def translation_caps(src: str = "en", dst: str = "es") -> WorkerCapabilities:
+def translation_caps(
+    src: str = "en",
+    dst: str = "es",
+    *,
+    model_source: str | None = None,
+) -> WorkerCapabilities:
     """Create translation worker capabilities for testing."""
     return WorkerCapabilities(
         worker_type=WorkerType.TRANSLATION,
@@ -44,11 +55,15 @@ def translation_caps(src: str = "en", dst: str = "es") -> WorkerCapabilities:
         supported_formats_out=frozenset({"text"}),
         max_payload_bytes=None,
         batch_capable=False,
-        model_source=None,
+        model_source=model_source,
     )
 
 
-def asr_caps(lang: str = "en") -> WorkerCapabilities:
+def asr_caps(
+    lang: str = "en",
+    *,
+    model_source: str | None = None,
+) -> WorkerCapabilities:
     """Create ASR worker capabilities for testing."""
     return WorkerCapabilities(
         worker_type=WorkerType.ASR,
@@ -58,15 +73,55 @@ def asr_caps(lang: str = "en") -> WorkerCapabilities:
         supported_formats_out=frozenset({"text"}),
         max_payload_bytes=None,
         batch_capable=False,
-        model_source=None,
+        model_source=model_source,
     )
 
 
 async def make_app(tmp_path: Path) -> FastAPI:
-    """Create a test app with TTS and translation workers registered."""
+    """Create a test app with a deterministic, multilingual worker registry.
+
+    Registers one TTS worker per language (es, fr), one ASR worker (en),
+    and two translation workers (en→es, fr→de) so capability route tests
+    can exercise typed inventories, language-pair filters, and unknown
+    language rejection against a stable, four-language code set.
+    Seeds ``tmp_path / "input" / "book.epub"`` with deterministic bytes
+    so API tests can submit ``"input/book.epub"`` as a valid relative
+    source path that the route's preflight can resolve.
+    """
     reg = InMemoryWorkerStore()
-    await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
-    await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+    await reg.register(
+        "tts-1",
+        "http://127.0.0.1:1",
+        "http",
+        tts_caps("es", model_source="Qwen/Qwen3-TTS", metadata={"voice": "vivian"}),
+    )
+    await reg.register(
+        "tts-2",
+        "http://127.0.0.1:5",
+        "http",
+        tts_caps("fr", model_source="Qwen/Qwen3-TTS", metadata={"voice": "aria"}),
+    )
+    await reg.register(
+        "asr-capability-1",
+        "http://127.0.0.1:3",
+        "http",
+        asr_caps("en", model_source="ibm-granite/granite-speech-3.3-2b"),
+    )
+    await reg.register(
+        "trans-1",
+        "http://127.0.0.1:2",
+        "http",
+        translation_caps("en", "es", model_source="google/translategemma-4b"),
+    )
+    await reg.register(
+        "trans-2",
+        "http://127.0.0.1:4",
+        "http",
+        translation_caps("fr", "de", model_source="google/translategemma-4b"),
+    )
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
     return create_app(
         registry=reg,
         job_store=InMemoryJobStore(),

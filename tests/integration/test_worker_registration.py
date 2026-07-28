@@ -53,8 +53,10 @@ async def test_capabilities_filter_by_dest(runner: CliRunner, wired_app: FastAPI
 @pytest.mark.asyncio
 async def test_capabilities_filter_no_match(runner: CliRunner, wired_app: FastAPI) -> None:
     result = runner.invoke(main, ["capabilities", "--src", "xx"])
-    assert result.exit_code == 0
-    assert "No language pairs" in result.output
+    assert result.exit_code != 0
+    assert "Error 422" in result.output
+    assert "source language 'xx' is not supported" in result.output
+    assert "supported sources: de, en, es, fr" in result.output
 
 
 def _wire_app(

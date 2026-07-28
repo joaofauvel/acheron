@@ -5,9 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from acheron.core.models import JsonValue  # noqa: TC001
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    InputResponse,
     JobListResponse,
     JobResponse,
     LanguagePair,
+    WorkerCapability,
     WorkerListResponse,
     WorkerResponse,
 )
@@ -47,11 +49,13 @@ class WorkerCapabilitiesRequest(_StrictRequest):
 
 __all__ = [
     "CapabilitiesResponse",
+    "InputResponse",
     "JobListResponse",
     "JobResponse",
     "LanguagePair",
     "SubmitJobRequest",
     "WorkerCapabilitiesRequest",
+    "WorkerCapability",
     "WorkerListResponse",
     "WorkerRegistrationRequest",
     "WorkerResponse",
