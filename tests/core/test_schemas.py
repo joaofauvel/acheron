@@ -15,6 +15,17 @@ class TestJobResponseTotalCostBasis:
         r = JobResponse(job_id="j", status=PlanStatus.COMPLETED)
         assert r.total_cost_basis is None
 
+    def test_warnings_default_to_empty(self) -> None:
+        r = JobResponse(job_id="j", status=PlanStatus.COMPLETED)
+        assert r.warnings == []
+
+    def test_warnings_serialize_and_validate(self) -> None:
+        warning = "BOOTING TTS workers: tts-1 (3s elapsed); cold start typically takes 30\u201390 seconds."
+        r = JobResponse(job_id="j", status=PlanStatus.RUNNING, warnings=[warning])
+        dumped = _adapter.dump_python(r, mode="json")
+        assert dumped["warnings"] == [warning]
+        assert _adapter.validate_python(dumped).warnings == [warning]
+
     def test_explicit_total_cost_basis_round_trip(self) -> None:
         r = JobResponse(
             job_id="j",

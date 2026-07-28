@@ -21,6 +21,7 @@ class JobResponse(BaseModel):
     total_duration_seconds: float = 0.0
     total_cost_basis: CostBasis | None = None
     errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class JobListResponse(BaseModel):
