@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _BOOTING_TIMEOUT_SECONDS = 600.0
+_BOOTING_WARNING_SECONDS = 540.0
 
 type HealthCheckFn = Callable[[str, str], Awaitable[HealthProbeResult]]
 
@@ -96,13 +97,12 @@ class HealthMonitor:
         self._http_client = http_client
         self._owns_http_client = http_client is None
         self._booting_timeout = _BOOTING_TIMEOUT_SECONDS
-        self._booting_since: dict[str, float] = {}
-        self._booting_fingerprints: dict[str, tuple[str, str]] = {}
+        self._booting_warning_threshold = _BOOTING_WARNING_SECONDS
+        self._booting_warning_keys: set[tuple[str, float]] = set()
         self._task: asyncio.Task[None] | None = None
 
     def _clear_booting_state(self, worker_id: str) -> None:
-        self._booting_since.pop(worker_id, None)
-        self._booting_fingerprints.pop(worker_id, None)
+        self._booting_warning_keys = {key for key in self._booting_warning_keys if key[0] != worker_id}
 
     async def start(self) -> None:
         """Start the health check background task. Idempotent."""
@@ -142,7 +142,7 @@ class HealthMonitor:
         """Check health of all registered workers concurrently."""
         workers = list(await self._registry.list_all())
         registered_ids = {worker.worker_id for worker in workers}
-        for worker_id in tuple(self._booting_since):
+        for worker_id in {key[0] for key in self._booting_warning_keys}:
             if worker_id not in registered_ids:
                 self._clear_booting_state(worker_id)
         if not workers:
@@ -190,15 +190,29 @@ class HealthMonitor:
                 platform_status = WorkerStatus.OFFLINE
                 message = f"{error}; provider {provider_name} error: {exc}"
             if platform_status == WorkerStatus.BOOTING:
-                fingerprint = (worker.endpoint, worker.transport)
-                if self._booting_fingerprints.get(worker.worker_id) != fingerprint:
-                    self._booting_fingerprints[worker.worker_id] = fingerprint
-                    self._booting_since.pop(worker.worker_id, None)
-                since = self._booting_since.setdefault(worker.worker_id, time.monotonic())
-                if time.monotonic() - since < self._booting_timeout:
-                    await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
+                await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
+                persisted = await self._registry.get(worker.worker_id)
+                since = persisted.booting_since if persisted is not None else None
+                if since is not None:
+                    elapsed = max(0.0, time.time() - since)
+                    lifecycle_key = (worker.worker_id, since)
+                    if elapsed >= self._booting_warning_threshold and lifecycle_key not in self._booting_warning_keys:
+                        self._clear_booting_state(worker.worker_id)
+                        self._booting_warning_keys.add(lifecycle_key)
+                        logger.warning(
+                            "Worker %s has been BOOTING for %.1fs; warning threshold %.1fs of timeout %.1fs",
+                            worker.worker_id,
+                            elapsed,
+                            self._booting_warning_threshold,
+                            self._booting_timeout,
+                        )
+                    if elapsed < self._booting_timeout:
+                        logger.info("Worker %s marked BOOTING via %s", worker.worker_id, provider_name)
+                        return
+                elif self._booting_timeout > 0.0:
                     logger.info("Worker %s marked BOOTING via %s", worker.worker_id, provider_name)
                     return
+                self._clear_booting_state(worker.worker_id)
                 message = f"{message}; provider BOOTING timeout exceeded"
                 logger.warning("Worker %s exceeded BOOTING timeout of %.1fs", worker.worker_id, self._booting_timeout)
             else:

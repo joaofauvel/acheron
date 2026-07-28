@@ -309,6 +309,77 @@ class TestHealthMonitorProviderIntegration:
         assert fake.called_with == "ep-1"
 
     @pytest.mark.asyncio
+    async def test_booting_timeout_uses_persisted_wall_clock_and_warns_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        reg = InMemoryWorkerStore()
+        reg.max_failures = 100
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        providers = {"runpod": _FakeProvider(WorkerStatus.BOOTING)}
+        monitor = HealthMonitor(reg, health_check=AsyncMock(), providers=providers)
+        now = 0.0
+        monkeypatch.setattr("acheron.shell.health.time.time", lambda: now)
+        worker = await reg.get("w1")
+        assert worker is not None
+
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
+        worker = await reg.get("w1")
+        assert worker is not None
+        assert worker.booting_since == 0.0
+
+        now = 539.9
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
+        worker = await reg.get("w1")
+        assert worker is not None
+        assert worker.status == WorkerStatus.BOOTING
+
+        caplog.set_level("WARNING")
+        now = 540.0
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
+        warnings = [record.message for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "w1" in warnings[0]
+        assert "540.0s" in warnings[0]
+        assert "600.0s" in warnings[0]
+
+        now = 600.0
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
+        worker = await reg.get("w1")
+        assert worker is not None
+        assert worker.status == WorkerStatus.OFFLINE
+        assert worker.consecutive_failures == 1
+        assert worker.last_error == "conn refused; provider BOOTING timeout exceeded"
+
+    @pytest.mark.asyncio
+    async def test_reregistration_gets_one_fresh_booting_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        reg = InMemoryWorkerStore()
+        reg.max_failures = 100
+        await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
+        monitor = HealthMonitor(
+            reg, health_check=AsyncMock(), providers={"runpod": _FakeProvider(WorkerStatus.BOOTING)}
+        )
+        now = 0.0
+        monkeypatch.setattr("acheron.shell.health.time.time", lambda: now)
+        worker = await reg.get("w1")
+        assert worker is not None
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+        await reg.register("w1", "http://new", "http", _tts_caps_with_provider("runpod", "ep-2"))
+        now = 100.0
+        worker = await reg.get("w1")
+        assert worker is not None
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+        now = 640.0
+        caplog.set_level("WARNING")
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+        await monitor._process_result(worker, HealthProbeResult(healthy=False, error="starting"))  # noqa: SLF001
+        warnings = [record.message for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "w1" in warnings[0]
+
+    @pytest.mark.asyncio
     async def test_booting_worker_is_removed_after_timeout(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
@@ -348,17 +419,17 @@ class TestHealthMonitorProviderIntegration:
         await monitor._process_result(worker, HealthProbeResult(healthy=False, error="conn refused"))  # noqa: SLF001
 
         assert await reg.get("w1") is None
-        assert "w1" not in monitor._booting_since  # noqa: SLF001
+        assert not monitor._booting_warning_keys  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_check_all_clears_state_for_unregistered_workers(self) -> None:
         reg = InMemoryWorkerStore()
         monitor = HealthMonitor(reg)
-        monitor._booting_since["w1"] = 1.0  # noqa: SLF001
+        monitor._booting_warning_keys.add(("w1", 1.0))  # noqa: SLF001
 
         await monitor._check_all()  # noqa: SLF001
 
-        assert monitor._booting_since == {}  # noqa: SLF001
+        assert monitor._booting_warning_keys == set()  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_booting_timeout_keeps_worker_offline(self) -> None:
@@ -390,7 +461,7 @@ class TestHealthMonitorProviderIntegration:
         monitor = HealthMonitor(reg, health_check=AsyncMock(), providers=providers)
         monitor._booting_timeout = 10.0  # noqa: SLF001
         now = 0.0
-        monkeypatch.setattr("acheron.shell.health.time.monotonic", lambda: now)
+        monkeypatch.setattr("acheron.shell.health.time.time", lambda: now)
 
         worker = await reg.get("w1")
         assert worker is not None
@@ -413,7 +484,7 @@ class TestHealthMonitorProviderIntegration:
         monitor = HealthMonitor(reg, providers={"runpod": _FakeProvider(WorkerStatus.BOOTING)})
         monitor._booting_timeout = 10.0  # noqa: SLF001
         now = 0.0
-        monkeypatch.setattr("acheron.shell.health.time.monotonic", lambda: now)
+        monkeypatch.setattr("acheron.shell.health.time.time", lambda: now)
 
         worker = await reg.get("w1")
         assert worker is not None

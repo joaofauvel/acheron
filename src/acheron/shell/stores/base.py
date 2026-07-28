@@ -82,7 +82,11 @@ class WorkerStore(ABC):
         status: WorkerStatus,
         last_error: str | None,
     ) -> None:
-        """Update the worker's status and last_error without touching the failure counter."""
+        """Update status and error without touching failures.
+
+        Entering BOOTING starts or preserves its persisted timestamp. Every
+        non-BOOTING transition and health success clears that timestamp.
+        """
         ...
 
     @abstractmethod

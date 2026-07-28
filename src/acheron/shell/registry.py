@@ -29,3 +29,4 @@ class RegisteredWorker:
     metadata: dict[str, JsonValue] = field(default_factory=dict)
     last_error: str | None = None
     status: WorkerStatus = WorkerStatus.HEALTHY
+    booting_since: float | None = None

@@ -1,6 +1,8 @@
 """Integration tests for the Redis worker store."""
 
+import asyncio
 from collections.abc import AsyncIterator
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -48,6 +50,7 @@ class TestRegister:
         assert w.capabilities.worker_type == WorkerType.TTS
         assert w.capabilities.supported_languages_in == frozenset({"en"})
         assert w.capabilities.supported_languages_out == frozenset({"es"})
+        assert w.booting_since is None
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self, store: RedisWorkerStore) -> None:
@@ -64,10 +67,16 @@ class TestRegister:
     @pytest.mark.asyncio
     async def test_reregistration_overwrites(self, store: RedisWorkerStore) -> None:
         await store.register("w-1", "http://old", "http", _tts_caps())
+        await store.set_worker_status("w-1", WorkerStatus.BOOTING, "starting")
+        await store.record_health_failure("w-1")
         await store.register("w-1", "http://new", "http", _tts_caps())
         w = await store.get("w-1")
         assert w is not None
         assert w.endpoint == "http://new"
+        assert w.status == WorkerStatus.HEALTHY
+        assert w.last_error is None
+        assert w.consecutive_failures == 0
+        assert w.booting_since is None
 
 
 class TestListing:
@@ -138,6 +147,29 @@ class TestCorruption:
         await r.aclose()
         with pytest.raises(CacheCorruptedError, match="invalid status: garbage"):
             await store.get("w-bad-status")
+
+    @pytest.mark.asyncio
+    async def test_booting_without_timestamp_raises_chained_cache_corrupted(
+        self, store: RedisWorkerStore, redis_url: str
+    ) -> None:
+        from acheron.core.errors import CacheCorruptedError
+        from acheron.shell.stores.redis import _WORKER_KEY, _RedisAwaitable, _serialize_capabilities
+
+        r = cast("_RedisAwaitable", aioredis.Redis.from_url(redis_url, decode_responses=True))
+        await r.hset(
+            _WORKER_KEY.format(worker_id="w-missing-booting-since"),
+            mapping={
+                "metadata_json": "{}",
+                "capabilities_json": _serialize_capabilities(_tts_caps()),
+                "status": WorkerStatus.BOOTING.value,
+                "endpoint": "http://h",
+                "transport": "http",
+            },
+        )
+        await r.aclose()
+        with pytest.raises(CacheCorruptedError, match="missing booting_since") as exc_info:
+            await store.get("w-missing-booting-since")
+        assert exc_info.value.__cause__ is not None
 
     @pytest.mark.asyncio
     async def test_missing_worker_status_defaults_to_healthy(self, store: RedisWorkerStore, redis_url: str) -> None:
@@ -222,6 +254,29 @@ class TestHealthTracking:
         assert w.consecutive_failures == 0
 
 
+class TestConcurrentStatusTransitions:
+    @pytest.mark.asyncio
+    async def test_concurrent_transitions_preserve_timestamp_invariant(
+        self, store: RedisWorkerStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await store.register("w-concurrent", "http://a", "http", _tts_caps())
+        clock = iter(float(value) for value in range(100, 120))
+        monkeypatch.setattr("acheron.shell.stores.redis.time.time", lambda: next(clock))
+        statuses = [
+            WorkerStatus.BOOTING,
+            WorkerStatus.OFFLINE,
+            WorkerStatus.BOOTING,
+            WorkerStatus.HEALTHY,
+        ] * 5
+        await asyncio.gather(*(store.set_worker_status("w-concurrent", status, None) for status in statuses))
+        worker = await store.get("w-concurrent")
+        assert worker is not None
+        if worker.status == WorkerStatus.BOOTING:
+            assert worker.booting_since is not None
+        else:
+            assert worker.booting_since is None
+
+
 class TestFailFast:
     @pytest.mark.asyncio
     async def test_unreachable_redis_raises_on_connect(self) -> None:
@@ -250,13 +305,33 @@ class TestCloseRobustness:
 
 class TestStatusAndErrorRoundTrip:
     @pytest.mark.asyncio
-    async def test_set_worker_status_round_trips(self, store: RedisWorkerStore) -> None:
+    async def test_set_worker_status_round_trips(
+        self, store: RedisWorkerStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         await store.register("w-1", "http://a", "http", _tts_caps())
+        monkeypatch.setattr("acheron.shell.stores.redis.time.time", lambda: 100.0)
         await store.set_worker_status("w-1", WorkerStatus.BOOTING, "cold start")
         w = await store.get("w-1")
         assert w is not None
         assert w.status == WorkerStatus.BOOTING
         assert w.last_error == "cold start"
+        assert w.booting_since == 100.0
+
+        monkeypatch.setattr("acheron.shell.stores.redis.time.time", lambda: 200.0)
+        await store.set_worker_status("w-1", WorkerStatus.BOOTING, "still starting")
+        w = await store.get("w-1")
+        assert w is not None
+        assert w.booting_since == 100.0
+        assert w.last_error == "still starting"
+
+        await store.set_worker_status("w-1", WorkerStatus.HEALTHY, None)
+        w = await store.get("w-1")
+        assert w is not None
+        assert w.booting_since is None
+        await store.set_worker_status("w-1", WorkerStatus.OFFLINE, "down")
+        w = await store.get("w-1")
+        assert w is not None
+        assert w.booting_since is None
 
     @pytest.mark.asyncio
     async def test_set_worker_status_nonexistent_is_noop(self, store: RedisWorkerStore) -> None:
@@ -265,12 +340,13 @@ class TestStatusAndErrorRoundTrip:
     @pytest.mark.asyncio
     async def test_record_health_success_resets_status_and_error(self, store: RedisWorkerStore) -> None:
         await store.register("w-1", "http://a", "http", _tts_caps())
-        await store.set_worker_status("w-1", WorkerStatus.OFFLINE, "boom")
+        await store.set_worker_status("w-1", WorkerStatus.BOOTING, "cold")
         await store.record_health_success("w-1")
         w = await store.get("w-1")
         assert w is not None
         assert w.status == WorkerStatus.HEALTHY
         assert w.last_error is None
+        assert w.booting_since is None
 
     @pytest.mark.asyncio
     async def test_new_worker_defaults_to_healthy(self, store: RedisWorkerStore) -> None:
@@ -304,7 +380,7 @@ class TestProtocolEnforcement:
     @staticmethod
     def _client() -> MagicMock:
         client = MagicMock()
-        for name in ("ping", "aclose", "hgetall", "smembers", "hincrby", "hset", "exists", "get"):
+        for name in ("ping", "aclose", "hgetall", "smembers", "hincrby", "hset", "exists", "get", "eval"):
             setattr(client, name, AsyncMock())
         pipeline = MagicMock()
         pipeline.__aenter__ = AsyncMock(return_value=pipeline)

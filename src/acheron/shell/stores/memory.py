@@ -39,6 +39,7 @@ class InMemoryWorkerStore(WorkerStore):
             consecutive_failures=0,
             last_health_check=time.time(),
             metadata=metadata or {},
+            booting_since=None,
         )
 
     async def unregister(self, worker_id: str) -> None:
@@ -86,6 +87,7 @@ class InMemoryWorkerStore(WorkerStore):
             worker.last_health_check = time.time()
             worker.status = WorkerStatus.HEALTHY
             worker.last_error = None
+            worker.booting_since = None
 
     async def set_worker_status(
         self,
@@ -96,6 +98,11 @@ class InMemoryWorkerStore(WorkerStore):
         """Update the worker's status and last_error."""
         worker = self._workers.get(worker_id)
         if worker is not None:
+            if status == WorkerStatus.BOOTING:
+                if worker.status != WorkerStatus.BOOTING or worker.booting_since is None:
+                    worker.booting_since = time.time()
+            else:
+                worker.booting_since = None
             worker.status = status
             worker.last_error = last_error
 
