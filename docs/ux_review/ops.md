@@ -581,7 +581,7 @@ files:
   - path: README.md
     lines: 60-68
 related: [OPS-024, OPS-028]
-fixed_in: [pending]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -691,7 +691,7 @@ files:
   - path: tests/shell/api/test_jobs.py
     lines: 840-885
 related: [OPS-029, OPS-003]
-fixed_in: [pending]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -918,7 +918,7 @@ files:
   - path: tests/integration/test_worker_registration.py
     lines: 53-65
 related: [OPS-015, OPS-003]
-fixed_in: [pending]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -968,7 +968,7 @@ files:
   - path: README.md
     lines: "70"
 related: [OPS-016, OPS-003]
-fixed_in: [pending]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -1080,7 +1080,7 @@ files:
   - path: tests/shell/test_cli.py
     lines: 72-87
 related: [OPS-018, OPS-025, OPS-016]
-fixed_in: [pending]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
