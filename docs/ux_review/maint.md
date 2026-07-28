@@ -343,7 +343,7 @@ files:
   - path: dashboard/templates/index.html
     lines: 62-87
 related: []
-fixed_in: [pending]
+fixed_in: [143120a]
 verified_in: []
 last_verified_at: {}
 verified_by: ""

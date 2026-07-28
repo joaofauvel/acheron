@@ -237,7 +237,7 @@ files:
   - path: dashboard/templates/index.html
     lines: 62-87
 related: [CORR-012]
-fixed_in: [pending]
+fixed_in: [828dd5a]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -283,7 +283,7 @@ files:
   - path: tests/first_run/test_3_success_criteria.py
     lines: 6-15
 related: []
-fixed_in: [pending]
+fixed_in: [dab052d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -717,7 +717,7 @@ files:
   - path: src/acheron/cli.py
     lines: 272-277
 related: [OPS-007, OPS-006]
-fixed_in: [pending]
+fixed_in: [b2bad9c]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
