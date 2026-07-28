@@ -140,13 +140,13 @@ files:
   - path: .env.example
     lines: 17-37
   - path: workers/qwen3tts/README.md
-    lines: 11-55
+    lines: 11-60
   - path: workers/granite_speech/README.md
-    lines: 11-55
+    lines: 11-64
   - path: workers/translategemma/README.md
-    lines: 11-55
+    lines: 11-65
 related: []
-fixed_in: [f4a2811, 0cb3bc7]
+fixed_in: [f4a2811, 0cb3bc7, 7e35be6]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -502,13 +502,13 @@ journey_stage: t0
 user_journey: "Deployer follows README.md:177-181 'Network Volume for HF cache' and runs `huggingface-cli download google/translategemma-12b-it` to pre-warm the 26GB weights. The download takes 90+ minutes on a typical 1 Gbps connection (vs. the 20 minutes the worker README implies via `HF_HUB_ENABLE_HF_TRANSFER=1`). The deployer reads the worker README, sees the parallel `hf-transfer` instruction, and switches mid-pre-warm."
 files:
   - path: README.md
-    lines: 192-208
+    lines: 192-200
   - path: workers/qwen3tts/README.md
-    lines: 11-19
+    lines: 11-31
   - path: workers/granite_speech/README.md
-    lines: 11-20
+    lines: 11-31
   - path: workers/translategemma/README.md
-    lines: 11-22
+    lines: 11-31
 related: []
 fixed_in: [a953d4d, 0cb3bc7]
 verified_in: []
@@ -547,9 +547,9 @@ files:
   - path: docker-compose.yml
     lines: 254-265
   - path: workers/qwen3tts/README.md
-    lines: 33-49
+    lines: 46-56
   - path: workers/granite_speech/README.md
-    lines: 39-49
+    lines: 50-60
   - path: workers/translategemma/README.md
     lines: 41-52
 related: [DEPLOY-001, DEPLOY-004, DEPLOY-011]
