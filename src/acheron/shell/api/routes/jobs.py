@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 
-from acheron.core.errors import AcheronError, JobAlreadyRunningError, JobNotFoundError
+from acheron.core.errors import (
+    AcheronError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+    sanitise_exc_message,
+)
 from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy
 from acheron.core.schemas import JobListResponse, JobResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
@@ -53,7 +58,7 @@ async def submit_job(
     try:
         tracked = await orch.submit_job(job_request, strategy)
     except AcheronError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
 
     return _tracked_to_response(tracked)
 
@@ -78,11 +83,11 @@ async def resume_job(
     try:
         tracked = await orch.resume_job(job_id, force_fresh=force_fresh)
     except JobNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=sanitise_exc_message(exc)) from exc
     except JobAlreadyRunningError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitise_exc_message(exc)) from exc
     except AcheronError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
     return _tracked_to_response(tracked)
 
 

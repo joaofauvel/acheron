@@ -225,6 +225,7 @@ class TestJobRoutes:
                 },
             )
             assert response.status_code == 422
+            assert response.json()["detail"].startswith("InvalidLanguagePathError:")
 
     @pytest.mark.asyncio
     async def test_submit_job_rejects_extra_fields(self, client) -> None:  # type: ignore[no-untyped-def]

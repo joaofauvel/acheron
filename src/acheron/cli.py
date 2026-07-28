@@ -8,6 +8,7 @@ import logging
 import os
 import ssl
 import sys
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,7 +21,7 @@ from acheron.api_client import AcheronClient
 from acheron.tls import resolve_ca_path
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
 
 console = Console()
 err_console = Console(stderr=True)
@@ -35,6 +36,15 @@ _SOURCE_TYPE_MAP: dict[str, str] = {
 }
 
 _DEFAULT_BASE_URL = "https://localhost:8000"
+
+
+class _RemoteErrorType(StrEnum):
+    """Domain errors returned by the orchestrator API."""
+
+    INVALID_LANGUAGE_PATH = "InvalidLanguagePathError"
+    CHUNKING_TOO_LONG = "ChunkingTooLongForWorkerError"
+    JOB_ALREADY_RUNNING = "JobAlreadyRunningError"
+    JOB_NOT_FOUND = "JobNotFoundError"
 
 
 def _resolve_trust_store() -> bool | str:
@@ -64,7 +74,11 @@ def _get_client() -> AcheronClient:
     return AcheronClient(base_url, verify=_resolve_trust_store())
 
 
-def _run[T](coro: Coroutine[Any, Any, T]) -> T:
+def _run[T](
+    coro: Coroutine[Any, Any, T],
+    *,
+    on_http_error: Callable[[httpx.HTTPStatusError], None] | None = None,
+) -> T:
     # When called from an async test (a loop is already running), ``asyncio.run``
     # would fail because it creates a new loop. We run the coroutine in a
     # worker thread that has its own loop. Note: background tasks the
@@ -89,14 +103,92 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
             console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
             console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
         raise SystemExit(1) from None
+    except httpx.TimeoutException:
+        url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
+        console.print(f"[red]Request to Acheron timed out at {url}[/red]")
+        console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
+        raise SystemExit(1) from None
     except httpx.HTTPStatusError as exc:
-        detail = (
-            exc.response.json().get("detail", str(exc))
-            if exc.response.headers.get("content-type", "").startswith("application/json")
-            else str(exc)
-        )
-        console.print(f"[red]Error {exc.response.status_code}: {detail}[/red]")
+        if on_http_error is None:
+            _print_http_error(exc)
+        else:
+            on_http_error(exc)
         raise SystemExit(1) from exc
+
+
+def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
+    if not exc.response.headers.get("content-type", "").startswith("application/json"):
+        return str(exc)
+    try:
+        payload = exc.response.json()
+    except ValueError:
+        return str(exc)
+    if not isinstance(payload, dict):
+        return str(exc)
+    detail = payload.get("detail", str(exc))
+    return detail if isinstance(detail, str) else str(detail)
+
+
+def _parse_remote_error(detail: str) -> tuple[_RemoteErrorType | None, str]:
+    error_name, separator, message = detail.partition(": ")
+    try:
+        error_type = _RemoteErrorType(error_name) if separator else None
+    except ValueError:
+        if separator and error_name.endswith("Error"):
+            return None, message
+        if error_name.endswith("Error"):
+            return None, "The orchestrator returned an unspecified domain error."
+        return None, detail
+    if not separator and error_name.endswith("Error"):
+        return None, "The orchestrator returned an unspecified domain error."
+    return error_type, message if separator else detail
+
+
+def _print_http_error(exc: httpx.HTTPStatusError) -> None:
+    console.print(f"[red]Error {exc.response.status_code}: {_http_error_detail(exc)}[/red]")
+
+
+def _print_submit_http_error(
+    exc: httpx.HTTPStatusError,
+    *,
+    source_language: str,
+    target_language: str,
+) -> None:
+    error_type, message = _parse_remote_error(_http_error_detail(exc))
+
+    match error_type:
+        case _RemoteErrorType.INVALID_LANGUAGE_PATH:
+            console.print(f"[red]No worker can translate {source_language}→{target_language}[/red]")
+            try:
+                pairs = _run(_get_client().get_capabilities(src=source_language))
+            except SystemExit, ValueError:
+                console.print(f"Run [bold]acheron capabilities --src {source_language}[/bold] to see the full list.")
+                return
+            targets = sorted({pair.dst for pair in pairs if pair.src == source_language})
+            supported = ", ".join(targets) or "none"
+            console.print(f"Supported targets from {source_language}: {supported}")
+            console.print(f"Run [bold]acheron capabilities --src {source_language}[/bold] to see the full list.")
+        case _RemoteErrorType.CHUNKING_TOO_LONG:
+            console.print(f"[red]Job cannot be submitted: {message}[/red]")
+            console.print("Reduce the input size or configure a worker with a larger token limit.")
+        case _:
+            console.print(f"[red]Error {exc.response.status_code}: Job submission failed: {message}[/red]")
+            console.print("Check the input and worker capabilities, then retry.")
+
+
+def _print_resume_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
+    error_type, message = _parse_remote_error(_http_error_detail(exc))
+
+    match error_type:
+        case _RemoteErrorType.JOB_ALREADY_RUNNING:
+            console.print(f"[red]Job {job_id} is already running.[/red]")
+            console.print(f"Run [bold]acheron job status {job_id}[/bold] to monitor it.")
+        case _RemoteErrorType.JOB_NOT_FOUND:
+            console.print(f"[red]Job {job_id} was not found.[/red]")
+            console.print("Run [bold]acheron jobs[/bold] to list available jobs.")
+        case _:
+            console.print(f"[red]Error {exc.response.status_code}: Job resume failed: {message}[/red]")
+            console.print(f"Run [bold]acheron job status {job_id}[/bold] to inspect the job before retrying.")
 
 
 def _detect_source_type(path: str) -> str | None:
@@ -170,7 +262,12 @@ def submit(  # noqa: PLR0913
             target_language=dest,
             executor_strategy=executor,
             asr_model=asr_model,
-        )
+        ),
+        on_http_error=lambda exc: _print_submit_http_error(
+            exc,
+            source_language=src,
+            target_language=dest,
+        ),
     )
     console.print(f"Job submitted: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
@@ -221,7 +318,10 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
 @click.option("--force-fresh", is_flag=True, help="Delete cached step outputs before resuming")
 def resume(job_id: str, force_fresh: bool) -> None:  # noqa: FBT001
     """Resume a job."""
-    result = _run(_get_client().resume_job(job_id, force_fresh=force_fresh))
+    result = _run(
+        _get_client().resume_job(job_id, force_fresh=force_fresh),
+        on_http_error=lambda exc: _print_resume_http_error(exc, job_id=job_id),
+    )
     console.print(f"Job resumed: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
 

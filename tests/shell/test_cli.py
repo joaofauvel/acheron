@@ -383,6 +383,189 @@ def test_submit_validation_error_shows_detail(tmp_path: Path) -> None:
 
 
 @respx.mock
+def test_submit_invalid_language_shows_supported_targets(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "InvalidLanguagePathError: No translation worker supports: en → xx"},
+        )
+    )
+    capabilities = respx.get(f"{_BASE_URL}/capabilities", params={"src": "en"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "language_pairs": [
+                    {"src": "en", "dst": "fr", "workers": ["translation-1"]},
+                    {"src": "en", "dst": "es", "workers": ["translation-2"]},
+                    {"src": "en", "dst": "fr", "workers": ["translation-3"]},
+                ]
+            },
+        )
+    )
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "xx"])
+    assert result.exit_code != 0
+    assert capabilities.called
+    assert "No worker can translate en→xx" in result.output
+    assert "Supported targets from en: es, fr" in result.output
+    assert "acheron capabilities --src en" in result.output
+
+
+@respx.mock
+def test_submit_invalid_language_capability_lookup_failure_preserves_remediation(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "InvalidLanguagePathError: No translation worker supports: en → xx"},
+        )
+    )
+    respx.get(f"{_BASE_URL}/capabilities", params={"src": "en"}).mock(
+        return_value=httpx.Response(503, json={"detail": "Capabilities unavailable"})
+    )
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "xx"])
+    assert result.exit_code != 0
+    assert "No worker can translate en→xx" in result.output
+    assert "acheron capabilities --src en" in result.output
+
+
+@respx.mock
+def test_submit_invalid_language_capability_malformed_response_preserves_remediation(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "InvalidLanguagePathError: No translation worker supports: en → xx"},
+        )
+    )
+    respx.get(f"{_BASE_URL}/capabilities", params={"src": "en"}).mock(return_value=httpx.Response(200, json=[]))
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "xx"])
+    assert result.exit_code != 0
+    assert "No worker can translate en→xx" in result.output
+    assert "acheron capabilities --src en" in result.output
+    assert "ValidationError" not in result.output
+
+
+@respx.mock
+def test_submit_invalid_language_capability_timeout_preserves_remediation(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "InvalidLanguagePathError: No translation worker supports: en → xx"},
+        )
+    )
+    respx.get(f"{_BASE_URL}/capabilities", params={"src": "en"}).mock(
+        side_effect=httpx.ReadTimeout("capabilities timed out")
+    )
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "xx"])
+    assert result.exit_code != 0
+    assert "No worker can translate en→xx" in result.output
+    assert "Request to Acheron timed out" in result.output
+    assert "acheron capabilities --src en" in result.output
+
+
+@respx.mock
+def test_submit_unknown_domain_error_shows_generic_remediation(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "WorkerUnavailableError: no translation worker is healthy"},
+        )
+    )
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
+    assert result.exit_code != 0
+    assert "Job submission failed: no translation worker is healthy" in result.output
+    assert "WorkerUnavailableError" not in result.output
+    assert "worker capabilities" in result.output
+
+
+@respx.mock
+def test_submit_class_only_domain_error_does_not_leak_class_name(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(422, json={"detail": "WorkerUnavailableError"}))
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
+    assert result.exit_code != 0
+    assert "WorkerUnavailableError" not in result.output
+    assert "unspecified" in result.output
+
+
+@respx.mock
+def test_submit_chunking_error_shows_remediation(tmp_path: Path) -> None:
+    respx.post(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "ChunkingTooLongForWorkerError: max length exceeds worker budget"},
+        )
+    )
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
+    assert result.exit_code != 0
+    assert "Job cannot be submitted: max length exceeds worker budget" in result.output
+    assert "larger token limit" in result.output
+
+
+@pytest.mark.parametrize("body", [b"{", b"[]"])
+@respx.mock
+def test_generic_http_error_handles_non_object_json(body: bytes) -> None:
+    respx.get(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(500, content=body, headers={"content-type": "application/json"})
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["jobs"])
+    assert result.exit_code != 0
+    assert "500" in result.output
+    assert "JSONDecodeError" not in result.output
+    assert "AttributeError" not in result.output
+
+
+@respx.mock
+def test_job_resume_already_running_shows_remediation() -> None:
+    respx.post(f"{_BASE_URL}/jobs/job-abc/resume").mock(
+        return_value=httpx.Response(
+            400,
+            json={"detail": "JobAlreadyRunningError: job-abc is already running"},
+        )
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "resume", "job-abc"])
+    assert result.exit_code != 0
+    assert "Job job-abc is already running" in result.output
+    assert "acheron job status job-abc" in result.output
+
+
+@respx.mock
+def test_job_resume_unknown_domain_error_shows_generic_remediation() -> None:
+    respx.post(f"{_BASE_URL}/jobs/job-abc/resume").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": "AcheronError: resume prerequisites are incomplete"},
+        )
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["job", "resume", "job-abc"])
+    assert result.exit_code != 0
+    assert "Job resume failed: resume prerequisites are incomplete" in result.output
+    assert "AcheronError" not in result.output
+    assert "acheron job status job-abc" in result.output
+
+
+@respx.mock
 def test_connect_error_shows_friendly_message() -> None:
     respx.get(f"{_BASE_URL}/jobs").mock(side_effect=httpx.ConnectError("Connection refused"))
     runner = CliRunner()

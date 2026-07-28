@@ -87,7 +87,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-003
 title: "CLI prints `Error 422: InvalidLanguagePathError: <message>` and exits; operator has no idea what languages are supported"
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [code-review, user-feedback]
@@ -97,19 +97,21 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit book.epub --src en --dest xx` (typo), sees the error: 'no worker can translate en→xx; supported targets from en: es, fr, de; run `acheron capabilities --src en` to see the full list', exits 1."
 files:
   - path: src/acheron/cli.py
-    lines: 92-99
+    lines: 114-182
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 53-57
+    lines: 58-90
 related: [SEC-006, SEC-012, SEC-019]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
-last_verified_at: {}
+last_verified_at:
+  commit: pending
+  date: "2026-07-28"
 verified_by: ""
 feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:92-99` catches `httpx.HTTPStatusError`, formats the JSON `detail` field, and prints `Error 422: <detail>`. The `detail` is the exception's `str()` — no remediation, no "did you mean", no list of supported targets. The same pattern applies to `ChunkingTooLongForWorkerError`, `JobAlreadyRunningError`, and every other `AcheronError` subclass.
+**Issue.** The CLI's HTTP error path previously printed only the status and raw API detail, without remediation or a list of supported targets. The API also returned domain errors without their exception type, preventing the CLI from selecting a safe presentation. The same gap applied to `ChunkingTooLongForWorkerError`, `JobAlreadyRunningError`, and other `AcheronError` subclasses.
 
 **Why it matters.** Every error that lacks a remediation hint forces a `docker logs` round-trip.
 
