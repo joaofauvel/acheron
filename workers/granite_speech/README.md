@@ -10,7 +10,18 @@ template to `:<sha>` for reproducibility.
 
 ## RunPod Serverless setup (one-time)
 
-Install and configure `runpodctl` as described in the top-level README, then set `RUNPOD_API_KEY` and run `runpodctl config --apiKey "$RUNPOD_API_KEY"`. Create a shared network volume of at least 50 GB for the worker caches and mount it at `/runpod-volume`.
+Install and configure `runpodctl` before creating resources:
+
+```bash
+mkdir -p ~/.local/bin
+wget --quiet --show-progress https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd64 -O ~/.local/bin/runpodctl
+chmod +x ~/.local/bin/runpodctl
+export PATH="$HOME/.local/bin:$PATH"
+export RUNPOD_API_KEY="<runpod-api-key>"
+runpodctl config --apiKey "$RUNPOD_API_KEY"
+```
+
+Create a shared network volume of at least 50 GB for the worker caches and mount it at `/runpod-volume`.
 
 1. **Create the network volume** for the HuggingFace cache to avoid re-downloading the ~4GB weights on every cold start. Mount it at `/runpod-volume/huggingface-cache`. Pre-warm it once:
 
