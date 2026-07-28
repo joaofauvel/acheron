@@ -72,4 +72,4 @@ These bundles improve cost interpretation and operational recovery after the pri
 
 Each bundle receives its own focused design and implementation plan. A bundle may be implemented as one coordinated change only when its stories share the same contract; otherwise, its stories are tackled sequentially in the listed order. Every behavior change uses TDD and receives a fresh correctness and documentation-staleness review before completion.
 
-The first implementation target is the standalone `OPS-007` readiness contract after the UX artifact refresh. Its acceptance must include healthy/unhealthy fleet states, dashboard rendering, API tests, `just validate`, and `just ux-validate`.
+The first implementation target is the **Fresh-clone Compose contract** bundle after the UX artifact refresh. It covers `DEPLOY-001`, `DEPLOY-003`, `DEPLOY-004`, `DEPLOY-005`, `DEPLOY-007`, and `DEPLOY-011`. Its acceptance must include fresh-checkout Compose/profile checks, README and `.env.example` consistency checks, `just validate`, `just ux-validate`, and the relevant first-run journey. The standalone `OPS-007` readiness contract follows in Phase 4B.
