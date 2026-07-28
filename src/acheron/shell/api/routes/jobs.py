@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
@@ -19,13 +20,41 @@ from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy, Wor
 from acheron.core.schemas import JobListResponse, JobResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
+from acheron.shell.input_store import InputPathError, InputStore
 
 if TYPE_CHECKING:
     from acheron.shell.job_store import TrackedJob
+    from acheron.shell.orchestrator import Orchestrator
     from acheron.shell.registry import RegisteredWorker
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
+    """Resolve a user-supplied relative source path to an allowlisted regular file.
+
+    Distinguishes two failure modes for the caller to render in HTTP 422 details:
+    - ``relative-path error`` for empty, absolute, or traversal paths.
+    - ``source_path not found: <requested>; expected at <data_dir>/<requested>``
+      when the path resolves inside the data directory but is missing or
+      not a regular file.
+    """
+    data_dir = orch.settings.orchestrator.data_dir
+    if not source_path or Path(source_path).is_absolute():
+        msg = f"Invalid source path {source_path!r}: must be a non-empty relative path under {data_dir}"
+        raise HTTPException(status_code=422, detail=msg)
+    store = InputStore(data_dir)
+    try:
+        return store.resolve_source_path(source_path)
+    except InputPathError as exc:
+        try:
+            (data_dir / source_path).resolve().relative_to(data_dir.resolve())
+        except ValueError:
+            msg = f"Invalid source path {source_path!r}: must resolve to a regular file under {data_dir}"
+            raise HTTPException(status_code=422, detail=msg) from exc
+        msg = f"source_path not found: {source_path}; expected at {data_dir}/{source_path}"
+        raise HTTPException(status_code=422, detail=msg) from exc
 
 
 @router.post("", status_code=201, response_model=JobResponse)
@@ -44,14 +73,22 @@ async def submit_job(
     job_request: EpubRequest | AudioRequest
     match body.source_type:
         case "epub":
+            if body.asr_model is not None:
+                msg = "asr_model is only valid for source_type='audio'"
+                raise HTTPException(status_code=422, detail=msg)
+            resolved_source = _resolve_submission_source(orch, body.source_path)
             job_request = EpubRequest(
-                source_path=body.source_path,
+                source_path=str(resolved_source),
                 source_language=body.source_language,
                 target_language=body.target_language,
             )
         case "audio":
+            if body.asr_model is None:
+                msg = "asr_model is required for source_type='audio'"
+                raise HTTPException(status_code=422, detail=msg)
+            resolved_source = _resolve_submission_source(orch, body.source_path)
             job_request = AudioRequest(
-                source_path=body.source_path,
+                source_path=str(resolved_source),
                 source_language=body.source_language,
                 target_language=body.target_language,
                 asr_model=body.asr_model,

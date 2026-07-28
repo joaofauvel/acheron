@@ -183,3 +183,30 @@ class TestUploadAuth:
             headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
         )
         assert response.status_code == 201
+
+
+class TestUploadToSubmitRoundTrip:
+    """End-to-end: a source uploaded to ``/inputs`` must be acceptable to ``/jobs``."""
+
+    async def test_uploaded_source_path_is_resolved_and_submitted(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        upload = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"uploaded-epub-bytes", "application/epub+zip")},
+        )
+        assert upload.status_code == 201
+        source_path = upload.json()["source_path"]
+
+        submit = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": source_path,
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert submit.status_code == 201
+        assert submit.json()["job_id"].startswith("job-")

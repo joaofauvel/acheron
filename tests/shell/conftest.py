@@ -63,10 +63,18 @@ def asr_caps(lang: str = "en") -> WorkerCapabilities:
 
 
 async def make_app(tmp_path: Path) -> FastAPI:
-    """Create a test app with TTS and translation workers registered."""
+    """Create a test app with TTS and translation workers registered.
+
+    Seeds ``tmp_path / "input" / "book.epub"`` with deterministic bytes so
+    API tests can submit ``"input/book.epub"`` as a valid relative source
+    path that the route's preflight can resolve.
+    """
     reg = InMemoryWorkerStore()
     await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
     await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
     return create_app(
         registry=reg,
         job_store=InMemoryJobStore(),
