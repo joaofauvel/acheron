@@ -555,7 +555,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-015
 title: "`acheron capabilities` only filters by language pair; cannot ask \"what ASR models are registered?\" or \"what TTS voices?\""
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -564,12 +564,24 @@ silent: true
 journey_stage: t1
 user_journey: "Operator runs `acheron capabilities --tts` expecting a list of registered TTS workers with their `model_source` and `metadata.voice`."
 files:
-  - path: src/acheron/cli.py
-    lines: 277-292
   - path: src/acheron/shell/api/routes/capabilities.py
-    lines: 13-22
+    lines: 18-81
+  - path: src/acheron/core/schemas.py
+    lines: 64-85
+  - path: src/acheron/api_client.py
+    lines: 153-176
+  - path: src/acheron/cli.py
+    lines: 395-437
+  - path: tests/shell/api/test_capabilities.py
+    lines: 29-126
+  - path: tests/test_api_client.py
+    lines: 99-188
+  - path: tests/shell/test_cli.py
+    lines: 421-499
+  - path: README.md
+    lines: 60-68
 related: [OPS-024, OPS-028]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -577,13 +589,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:277-292` only has `--src` and `--dest`. `WorkerCapabilities` carries `model_source` and free-form `metadata` (TTS voices, ASR model names) but neither is exposed by the route.
+**Issue.** The capabilities surface now supports typed inventory queries in addition to language-pair queries. `GET /capabilities?type=tts|asr|translation` returns a `workers` list with each worker's ID, type, `model_source`, and metadata; the server sorts workers by ID and leaves `language_pairs` empty in typed mode. Pair mode remains unchanged and returns `workers: []`.
 
-**Why it matters.** The operator cannot discover which TTS voices or ASR model variants are deployed.
+**Why it matters.** Operators can discover the deployed ASR models and TTS voices before choosing a submission configuration.
 
-**Recommendation.** Add `GET /capabilities?type=tts` (and `asr`, `translation`) returning per-worker `model_source` and `metadata`. Add `acheron capabilities --type tts`.
+**Recommendation.** Keep `acheron capabilities --type tts|asr|translation` backed by the typed endpoint. Render the selected workers as a Worker ID / Model / Voice table, using `-` for missing or non-string voice metadata, and reject combinations with `--src` or `--dest`.
 
-**Verification.** With 2 TTS workers registered (one with `metadata.voice=vivian`), `acheron capabilities --type tts` prints a table with Worker ID / Model / Voice.
+**Verification.** Route tests cover sorted TTS, ASR, and translation inventories, model/metadata preservation, invalid type/filter combinations, and unchanged pair filters. Schema and client tests cover typed response round-tripping; CLI tests cover the typed table and voice fallback. README documents the typed command.
 
 ## OPS-016 — `acheron job submit` has no `--dry-run`
 
@@ -663,7 +675,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-018
 title: "`submit --asr <model>` is silently dropped when source_type=epub"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [code-review, user-feedback]
@@ -673,11 +685,13 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit book.epub --src en --dest es --asr whisper-v3` (typo: used --asr for an EPUB), expects a warning 'ASR model ignored for epub input'; gets 'Job submitted: job-abc12345' with no warning, and the model is silently dropped."
 files:
   - path: src/acheron/cli.py
-    lines: 143-179
+    lines: 242-286
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 34-51
+    lines: 69-95
+  - path: tests/shell/api/test_jobs.py
+    lines: 840-885
 related: [OPS-029, OPS-003]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -685,13 +699,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/shell/api/routes/jobs.py:34-51` only assigns `asr_model` in the `case "audio":` branch.
+**Issue.** EPUB submissions now reject a non-null `asr_model` before source-path resolution or `orch.submit_job()`, returning HTTP 422 with `asr_model is only valid for source_type='audio'`. The CLI still uploads first, then forwards the server-relative upload path and the requested ASR model to `/jobs`, so the invalid EPUB request is no longer accepted as if the model applied.
 
-**Why it matters.** The operator has the false sense that `whisper-v3` was applied. The CLI's submission is the unit of operator intent; silently dropping a flag is a trust violation.
+**Why it matters.** The operator receives an explicit validation error instead of a successful submission that silently discards the requested ASR model.
 
-**Recommendation.** In `routes/jobs.py:34-51`, add a guard: if `body.asr_model is not None` and `source_type != "audio"`, return 422 with `"asr_model is only valid for source_type='audio'"`.
+**Recommendation.** Keep the source-type guard at the API boundary and preserve the exact reason in the 422 detail. Do not accept or silently drop `asr_model` for EPUB requests.
 
-**Verification.** `acheron job submit book.epub --src en --dest es --asr whisper-v3` exits 1 with `Error 422: asr_model is only valid for source_type='audio'`.
+**Verification.** Job-route preflight tests assert the exact 422 detail and that the orchestrator submit method is never called for an EPUB carrying `asr_model`. The CLI submission path forwards `--asr` to the API after uploading the source, where the guard rejects the invalid combination.
 
 ## OPS-019 — Submitting while fleet is `BOOTING` — no "this will queue 30-90s" hint
 
@@ -884,7 +898,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-024
 title: "`acheron capabilities --src xx` (typo) returns empty list silently — operator can't tell \"no workers\" from \"typo\""
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -893,12 +907,18 @@ silent: true
 journey_stage: t1
 user_journey: "Operator runs `acheron capabilities --src xx` (typo: should be `--src en`), sees 'No language pairs available.' and exits 0, can't tell if the typo was the problem or if `xx` is genuinely unsupported."
 files:
-  - path: src/acheron/cli.py
-    lines: 277-292
   - path: src/acheron/shell/api/routes/capabilities.py
-    lines: 13-22
+    lines: 52-75
+  - path: src/acheron/cli.py
+    lines: 426-437
+  - path: tests/shell/api/test_capabilities.py
+    lines: 90-117
+  - path: tests/test_api_client.py
+    lines: 168-190
+  - path: tests/integration/test_worker_registration.py
+    lines: 53-65
 related: [OPS-015, OPS-003]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -906,13 +926,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `capabilities.py:13-22` returns `language_pairs: []` for any `src`/`dest` that no worker supports, with no distinction between "unknown language" and "known language with no workers."
+**Issue.** The capabilities route builds a sorted union of all registered workers' input and output languages. An unknown `src` or `dest` now returns HTTP 422 with the requested language and the supported source/target list; a known language pair with no bridging worker remains a successful empty `language_pairs` result.
 
-**Why it matters.** The empty result is ambiguous.
+**Why it matters.** The CLI no longer conflates a language typo with a valid filter that currently has no workers.
 
-**Recommendation.** The route returns 422 with a structured error if `src` or `dest` is not in the union of all `supported_languages_in` / `supported_languages_out`.
+**Recommendation.** Keep the route's deterministic language validation and preserve the distinction between unknown-language errors and known-but-empty pair results. The CLI should surface the 422 detail and return a non-zero exit status.
 
-**Verification.** `acheron capabilities --src xx` exits 1 with `Error 422: source language 'xx' is not supported by any registered worker; supported sources: en, es, fr, de`.
+**Verification.** Route tests assert sorted supported-language lists for unknown source and destination values and a 200 empty response for a known-but-empty pair. API-client and integration tests cover the 422 response and CLI error output, including the supported sources.
 
 ## OPS-025 — `source_path` is not validated at submit
 
@@ -920,7 +940,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-025
 title: "`source_path` is not validated at submit — typo fails 30s in on the first extraction step"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -930,11 +950,25 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit bk.epub --src en --dest es` (typo: `bk.epub` doesn't exist), gets 'Job submitted: job-abc12345' and a `RUNNING` badge; the plan compiles, the first extraction step fails 30s later with `FileNotFoundError`."
 files:
   - path: src/acheron/cli.py
-    lines: 143-179
+    lines: 242-286
+  - path: src/acheron/shell/api/routes/inputs.py
+    lines: 15-52
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 21-58
+    lines: 25-93
+  - path: src/acheron/shell/input_store.py
+    lines: 49-150
+  - path: src/acheron/shell/local_handlers.py
+    lines: 245-275
+  - path: tests/shell/api/test_inputs.py
+    lines: 41-212
+  - path: tests/shell/api/test_jobs.py
+    lines: 554-974
+  - path: tests/shell/test_input_store.py
+    lines: 20-303
+  - path: README.md
+    lines: 60-68
 related: [OPS-016, OPS-003]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -942,13 +976,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `routes/jobs.py:21-58` accepts `body.source_path` and forwards it to `orch.submit_job` without any existence check. The CLI's `click.Path(exists=True)` (line 144) is meaningless when the CLI runs on a different host than the orchestrator.
+**Issue.** The CLI uploads the local file to `/inputs` and submits the returned server-relative path. The job route resolves that path under the orchestrator data directory and rejects empty, absolute, traversal, missing, directory, and symlink-escape paths with HTTP 422 before calling `orch.submit_job()`. Valid paths are passed downstream as absolute paths, while the existing local extraction handler continues to resolve and enforce its allowlist.
 
-**Why it matters.** A 30s+ delay on a typo is the operator's most common paper cut.
+**Why it matters.** A typo or unsafe path is rejected before plan compilation and execution, with a location-specific error instead of a delayed extraction failure.
 
-**Recommendation.** In `routes/jobs.py:21-58`, do an existence check on `data_dir / body.source_path`. Return 422 with `"source_path not found: <path>; expected at <orchestrator_data_dir>/<path>"`.
+**Recommendation.** Keep upload storage atomic and bounded, return only POSIX server-relative references, and resolve them against the orchestrator data directory before submission. Preserve basename sanitisation, storage-root symlink rejection, regular-file checks, and the local-handler allowlist.
 
-**Verification.** `acheron job submit does-not-exist.epub --src en --dest es` exits 1 with `Error 422: source_path not found`.
+**Verification.** Input-store tests cover the fixed 2 GiB limit, temporary-file cleanup, basename/path traversal handling, atomic replacement, and storage-root symlink rejection. Upload-route tests cover metadata, cleanup, authentication, and relative response paths. Job-route tests cover missing, absolute, traversal, directory, and symlink-escape rejection, prove rejected requests never call `submit_job()`, and prove valid upload references become absolute internal paths. README documents the upload-before-submit flow.
 
 ## OPS-027 — `resume --force-fresh` nukes the entire step cache
 
@@ -1028,7 +1062,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-029
 title: "`--asr` is optional for audio input — operator can submit an `.mp3` with no ASR model and the plan compiles"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -1038,11 +1072,15 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit recording.mp3 --src en --dest es` (forgot `--asr`), sees 'Job submitted: job-abc12345'; the AudioRequest has `asr_model=None` (routes/jobs.py:42-48), the plan compiles anyway, and the first ASR step fails at runtime."
 files:
   - path: src/acheron/cli.py
-    lines: "148"
+    lines: 72-87
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 42-48
+    lines: 84-95
+  - path: tests/shell/api/test_jobs.py
+    lines: 794-839
+  - path: tests/shell/test_cli.py
+    lines: 72-87
 related: [OPS-018, OPS-025, OPS-016]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -1050,13 +1088,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `--asr` is optional; `asr_model=None` is accepted for audio input. The planner compiles and the failure surfaces at step execution, minutes later.
+**Issue.** Audio submissions now require a non-null `asr_model` in the job route before source-path resolution or `orch.submit_job()`. Missing models return HTTP 422 with `asr_model is required for source_type='audio'`; valid `--asr` values continue through the CLI upload and `/jobs` request.
 
-**Why it matters.** This is the audio-input analog of OPS-025 (typo'd source path).
+**Why it matters.** Forgetting the ASR model fails immediately instead of creating a job that cannot execute its first ASR step.
 
-**Recommendation.** In `routes/jobs.py:42-48`, return 422 if `source_type == "audio"` and `asr_model is None`.
+**Recommendation.** Keep the audio guard at the submission boundary and preserve the exact 422 detail. Ensure valid audio submissions continue forwarding the selected ASR model without changing the upload or execution flow.
 
-**Verification.** `acheron job submit recording.mp3 --src en --dest es` exits 1 with `Error 422: asr_model is required for source_type='audio'`.
+**Verification.** Job-route tests assert the exact missing-model response and that the orchestrator submit method is not called. CLI tests assert that a valid audio submission uploads first and forwards `source_type: audio` plus `asr_model: whisper-v3` to `/jobs`.
 
 ## OPS-031 — Dashboard `cost.html` has no time window, no "this week" aggregate
 
