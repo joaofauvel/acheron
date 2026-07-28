@@ -128,6 +128,69 @@ async def test_get_worker_capabilities_returns_typed_list() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_get_worker_capabilities_round_trips_preserves_server_order() -> None:
+    """get_worker_capabilities must preserve the server's order so the
+    client sees the same sorted-by-worker_id inventory the server emits.
+    The server is the source of truth for ordering; the client just
+    parses the typed response.
+    """
+    respx.get("http://test/capabilities", params={"type": "tts"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "language_pairs": [],
+                "workers": [
+                    {
+                        "worker_id": "tts-1",
+                        "worker_type": "tts",
+                        "model_source": "Qwen/Qwen3-TTS",
+                        "metadata": {"voice": "vivian"},
+                    },
+                    {
+                        "worker_id": "tts-2",
+                        "worker_type": "tts",
+                        "model_source": "Qwen/Qwen3-TTS",
+                        "metadata": {"voice": "aria"},
+                    },
+                ],
+            },
+        )
+    )
+
+    result = await AcheronClient("http://test").get_worker_capabilities("tts")
+
+    assert [item.worker_id for item in result] == ["tts-1", "tts-2"]
+    assert result[0].metadata == {"voice": "vivian"}
+    assert result[1].metadata == {"voice": "aria"}
+    assert result[0].model_source == "Qwen/Qwen3-TTS"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_capabilities_raises_on_unknown_source_language() -> None:
+    """get_capabilities must raise ``HTTPStatusError`` when the server
+    rejects an unknown source language with HTTP 422.
+    """
+    respx.get("http://test/capabilities", params={"src": "xx"}).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "detail": (
+                    "source language 'xx' is not supported by any registered worker; supported sources: de, en, es, fr"
+                )
+            },
+        )
+    )
+
+    client = AcheronClient("http://test")
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await client.get_capabilities(src="xx")
+    assert exc_info.value.response.status_code == 422
+    assert "xx" in exc_info.value.response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_upload_input_reads_file_in_chunks_not_one_shot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """upload_input must read the file in bounded chunks, not in a one-shot full read.
 
