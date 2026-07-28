@@ -201,6 +201,17 @@ class _ChunkStream(AsyncByteStream):
             yield chunk
 
 
+def _multipart_file_body(payload: bytes) -> tuple[bytes, int]:
+    """Build a one-file multipart body and return its fixed framing size."""
+    prefix = (
+        b'--test\r\n'
+        b'Content-Disposition: form-data; name="file"; filename="a.bin"\r\n'
+        b"Content-Type: application/octet-stream\r\n\r\n"
+    )
+    suffix = b"\r\n--test--\r\n"
+    return prefix + payload + suffix, len(prefix) + len(suffix)
+
+
 class TestUploadAuth:
     async def test_post_without_token_does_not_enter_multipart_parser(
         self,
@@ -272,6 +283,102 @@ class TestUploadAuth:
 
         assert response.status_code == 413
         assert stream.consumed == 2
+
+    async def test_post_exact_limit_content_length_uploads_successfully(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A Content-Length request with exactly the file limit reaches the route."""
+        payload = b"data"
+        body, overhead = _multipart_file_body(payload)
+        monkeypatch.setattr("acheron.shell.input_store.MAX_INPUT_BYTES", len(payload))
+        monkeypatch.setattr("acheron.shell.api.input_boundary._MULTIPART_OVERHEAD_BYTES", overhead)
+        response = await client.post(
+            "/inputs",
+            content=body,
+            headers={
+                "content-type": "multipart/form-data; boundary=test",
+                "content-length": str(len(body)),
+            },
+        )
+
+        assert response.status_code == 201
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+        stored_path = data_dir / response.json()["source_path"]
+        assert stored_path.read_bytes() == payload
+
+    async def test_post_exact_limit_chunked_uploads_successfully(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A chunked request with exactly the file limit reaches the route."""
+        payload = b"data"
+        body, overhead = _multipart_file_body(payload)
+        monkeypatch.setattr("acheron.shell.input_store.MAX_INPUT_BYTES", len(payload))
+        monkeypatch.setattr("acheron.shell.api.input_boundary._MULTIPART_OVERHEAD_BYTES", overhead)
+        split = len(body) // 2
+        stream = _ChunkStream((body[:split], body[split:]))
+        response = await client.post(
+            "/inputs",
+            content=stream,
+            headers={"content-type": "multipart/form-data; boundary=test"},
+        )
+
+        assert response.status_code == 201
+        assert stream.consumed == 2
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+        stored_path = data_dir / response.json()["source_path"]
+        assert stored_path.read_bytes() == payload
+
+    async def test_post_one_byte_over_content_length_limit_returns_413(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A Content-Length request one byte over the file limit is rejected early."""
+        payload = b"data!"
+        body, overhead = _multipart_file_body(payload)
+        monkeypatch.setattr("acheron.shell.input_store.MAX_INPUT_BYTES", len(payload) - 1)
+        monkeypatch.setattr("acheron.shell.api.input_boundary._MULTIPART_OVERHEAD_BYTES", overhead)
+        response = await client.post(
+            "/inputs",
+            content=body,
+            headers={
+                "content-type": "multipart/form-data; boundary=test",
+                "content-length": str(len(body)),
+            },
+        )
+
+        assert response.status_code == 413
+        assert response.json() == {"detail": "input exceeds the 2 GiB upload limit"}
+
+    async def test_post_one_byte_over_chunked_limit_returns_413(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A chunked request one byte over the file limit is rejected while reading."""
+        payload = b"data!"
+        body, overhead = _multipart_file_body(payload)
+        monkeypatch.setattr("acheron.shell.input_store.MAX_INPUT_BYTES", len(payload) - 1)
+        monkeypatch.setattr("acheron.shell.api.input_boundary._MULTIPART_OVERHEAD_BYTES", overhead)
+        split = len(body) // 2
+        stream = _ChunkStream((body[:split], body[split:]))
+        response = await client.post(
+            "/inputs",
+            content=stream,
+            headers={"content-type": "multipart/form-data; boundary=test"},
+        )
+
+        assert response.status_code == 413
+        assert stream.consumed == 2
+        assert response.json() == {"detail": "input exceeds the 2 GiB upload limit"}
 
     async def test_post_without_token_returns_401(self, client_with_token: AsyncClient) -> None:
         response = await client_with_token.post(
