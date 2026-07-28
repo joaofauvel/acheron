@@ -17,7 +17,7 @@
 - Keep the README Quick Start commands unchanged; `DEPLOY-012` is a later bundle.
 - Do not modify TLS generation, model-image dependencies, or worker runtime behavior in this bundle.
 - Use `git archive HEAD` fresh-checkout coverage for README and Compose contract assertions.
-- Final metadata must mark `DEPLOY-001`, `DEPLOY-003`, `DEPLOY-004`, `DEPLOY-005`, `DEPLOY-007`, and `DEPLOY-011` fixed, with verification recorded only after merge.
+- Final metadata must mark `DEPLOY-001`, `DEPLOY-003`, `DEPLOY-004`, `DEPLOY-005`, `DEPLOY-007`, `DEPLOY-011`, `DEPLOY-014`, and `DEPLOY-015` fixed, with verification recorded only after merge.
 
 ## File map
 
@@ -136,7 +136,7 @@ Use `translategemma-edge` for both TranslateGemma defaults. Do not change endpoi
 
 - [ ] **Step 3: Gate all mock services**
 
-Add `profiles: ["sim"]` to the local TTS, ASR, translation, and gRPC stubs as well as the RunPod TTS and translation stubs. Add `COMPOSE_PROFILES=sim` to `.env.example` so the unchanged default `docker compose up --build` Quick Start still starts the mock fleet. The documented RunPod commands clear `COMPOSE_PROFILES` before selecting a real edge profile, preventing mock workers from registering alongside the edge.
+Add `profiles: ["sim"]` to the local TTS, ASR, translation, and gRPC stubs as well as the RunPod TTS and translation stubs. Add `COMPOSE_PROFILES=sim` to `.env.example` so the unchanged default `docker compose up --build` Quick Start still starts the mock fleet. The documented RunPod commands clear `COMPOSE_PROFILES` before selecting a real edge profile, preventing mock workers from registering alongside the edge. Verify the edge command includes `--handler acheron.worker_sdk.cloud:RunPodForwarderHandler` because the SDK CLI requires it.
 
 - [ ] **Step 4: Run configuration checks**
 
@@ -198,7 +198,7 @@ Change top-level and worker README image examples to `ghcr.io/<owner>/<repo>/...
 
 - [ ] **Step 4: Add the Compose-to-SDK mapping and quoted endpoint command to each worker README**
 
-In each worker README, standardize the image as `ghcr.io/<owner>/<repo>/...`, quote `<template-id>` and `<gpu-id>` in the `runpodctl serverless create` command, prefix the Compose command with `COMPOSE_PROFILES=`, and add a short table stating that Compose maps `ACHERON_REGISTRATION_TOKEN` to `ACHERON_WORKER__REGISTRATION_TOKEN`, `RUNPOD_API_KEY` to `ACHERON_WORKER__RUNPOD_API_KEY`, and that the profile-specific endpoint ID maps to `ACHERON_WORKER__RUNPOD_ENDPOINT_ID`. Keep the existing SDK environment-variable reference for non-Compose deployments.
+In each worker README, standardize the image as `ghcr.io/<owner>/<repo>/...`, document the 50 GB shared volume and `runpodctl` API-key setup, use `HF_HOME=/runpod-volume/huggingface-cache` for prewarming, quote `<template-id>` and `<gpu-id>` in the endpoint commands, prefix the Compose command with `COMPOSE_PROFILES=`, and add a short table stating that Compose maps `ACHERON_REGISTRATION_TOKEN` to `ACHERON_WORKER__REGISTRATION_TOKEN`, `RUNPOD_API_KEY` to `ACHERON_WORKER__RUNPOD_API_KEY`, and that the profile-specific endpoint ID maps to `ACHERON_WORKER__RUNPOD_ENDPOINT_ID`. Keep the existing SDK environment-variable reference for non-Compose deployments.
 
 - [ ] **Step 5: Run documentation contract tests**
 
@@ -217,7 +217,7 @@ Expected: all fresh-checkout contract tests pass.
 
 **Interfaces:**
 - Consumes: the final Compose/docs behavior and implementation commit hash.
-- Produces: fixed metadata for `DEPLOY-001`, `003`, `004`, `005`, `007`, and `011`.
+- Produces: fixed metadata for `DEPLOY-001`, `003`, `004`, `005`, `007`, `011`, `014`, and `015`.
 
 - [ ] **Step 1: Validate the direct edge build**
 

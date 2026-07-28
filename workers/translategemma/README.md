@@ -10,6 +10,8 @@ template to `:<sha>` for reproducibility.
 
 ## RunPod Serverless setup (one-time)
 
+Install and configure `runpodctl` as described in the top-level README, then set `RUNPOD_API_KEY` and run `runpodctl config --apiKey "$RUNPOD_API_KEY"`. Create a shared network volume of at least 50 GB for the worker caches and mount it at `/runpod-volume`.
+
 1. **Create a network volume** for the HuggingFace cache to avoid re-downloading
    the ~26GB weights on every cold start. Mount it at
    `/runpod-volume/huggingface-cache`. Pre-warm it once:
@@ -74,7 +76,7 @@ template to `:<sha>` for reproducibility.
 
 RunPod is the single source of truth for the GPU type. To change:
 
-1. `runpodctl serverless update <endpoint-id> --gpu-id <new>` (or via the RunPod dashboard).
+1. `runpodctl serverless update "<endpoint-id>" --gpu-id "<new>" (or via the RunPod dashboard).
 2. Restart the edge container (or wait `price_cache_ttl_s`, default 3600s).
 
 The worker re-queries the endpoint's `gpuIds` via the RunPod GraphQL API and
