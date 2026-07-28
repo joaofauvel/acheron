@@ -14,9 +14,8 @@ template to `:<sha>` for reproducibility.
 
    ```bash
    pip install "huggingface_hub[cli]" hf-transfer
-   HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
-       ibm-granite/granite-speech-4.1-2b \
-       --local-dir /runpod-volume/huggingface-cache/hub/models--ibm-granite--granite-speech-4.1-2b
+   export HF_HOME=/runpod-volume/huggingface-cache
+   HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download ibm-granite/granite-speech-4.1-2b
    ```
 
    `HF_HUB_ENABLE_HF_TRANSFER=1` is a pre-warm-only concern; it is not set in

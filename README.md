@@ -187,22 +187,17 @@ runpodctl config --apiKey "$RUNPOD_API_KEY"
 **Create the network volume.** Choose a data-center ID available to the intended GPU endpoint, then create the shared Hugging Face cache volume:
 
 ```bash
-runpodctl network-volume create --name "acheron-hf-cache" --size 30 --data-center-id "<data-center-id>"
+runpodctl network-volume create --name "acheron-hf-cache" --size 50 --data-center-id "<data-center-id>"
 ```
 
 Record the returned volume ID and attach it to each worker template. GPU workers re-download the model on every cold start unless the weights are already on disk. Mount a RunPod Network Volume into the worker template, SSH into a pod that has the volume attached, and pre-warm the Hugging Face cache once:
 
 ```bash
 pip install "huggingface_hub[cli]" hf-transfer
-HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
-    Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
-    --local-dir /runpod-volume/huggingface-cache/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-CustomVoice
-HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
-    ibm-granite/granite-speech-4.1-2b \
-    --local-dir /runpod-volume/huggingface-cache/hub/models--ibm-granite--granite-speech-4.1-2b
-HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
-    google/translategemma-12b-it \
-    --local-dir /runpod-volume/huggingface-cache/hub/models--google--translategemma-12b-it
+export HF_HOME=/runpod-volume/huggingface-cache
+HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download ibm-granite/granite-speech-4.1-2b
+HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download google/translategemma-12b-it
 ```
 
 Subsequent cold starts that mount the same Network Volume find the weights in the cache and skip the multi-GB download.

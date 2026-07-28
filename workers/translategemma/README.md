@@ -16,9 +16,8 @@ template to `:<sha>` for reproducibility.
 
    ```bash
    pip install "huggingface_hub[cli]" hf-transfer
-   HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
-       google/translategemma-12b-it \
-       --local-dir /runpod-volume/huggingface-cache/hub/models--google--translategemma-12b-it
+   export HF_HOME=/runpod-volume/huggingface-cache
+   HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download google/translategemma-12b-it
    ```
 
    `HF_HUB_ENABLE_HF_TRANSFER=1` is a pre-warm-only concern; it is not set in

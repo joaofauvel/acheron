@@ -34,5 +34,5 @@ def test_step_1_deployment_documentation_contract(prepared_project: FirstRunProj
         text = (checkout / worker_readme).read_text()
         assert "runpodctl serverless create" in text, f"step 1: {worker_readme} omits endpoint creation"
         assert "ghcr.io/<owner>/<repo>/" in text, f"step 1: {worker_readme} uses an incomplete GHCR path"
-        assert "ACHERON_REGISTRATION_TOKEN" in text, f"step 1: {worker_readme} omits Compose token mapping"
+        assert "ACHERON_REGISTRATION_TOKEN" in text, f"DEPLOY-015: step 1: {worker_readme} omits Compose token mapping"
         assert "ACHERON_WORKER__REGISTRATION_TOKEN" in text, f"step 1: {worker_readme} omits SDK token mapping"

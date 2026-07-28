@@ -13,8 +13,9 @@ template to `:<sha>` for reproducibility.
 1. **Create a network volume** for the HuggingFace cache to avoid re-downloading the ~3.4GB weights on every cold start. Mount it at `/runpod-volume/huggingface-cache`. Pre-warm it once:
 
    ```bash
-   huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
-       --local-dir /runpod-volume/huggingface-cache/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-CustomVoice
+   pip install "huggingface_hub[cli]" hf-transfer
+   export HF_HOME=/runpod-volume/huggingface-cache
+   HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
    ```
 
 2. **Create a RunPod serverless template** pointing at the published image. Set:

@@ -6,7 +6,7 @@ version: 2
 
 # DEPLOY
 
-**Grade**: C (1 high + 8 medium + 2 low-severity open stories)
+**Grade**: C (1 high + 4 medium + 2 low-severity open stories)
 **Calibration target**: a developer who has used Docker but never used RunPod, given 1 day, should succeed without help.
 
 ## DEPLOY-001 — Asymmetric edge env-var defaults across the three worker profiles
@@ -38,7 +38,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `docker-compose.yml:179-180` (qwen3tts-edge service) wires the operator override as `${ACHERON_WORKER__WORKER_ID:-qwen3tts-1}` and `${ACHERON_WORKER__WORKER_HOST:-qwen3tts-edge}`. The same pattern is **not** used for `granite-speech-edge` (`:213-223`) or `translategemma-edge` (`:247-258`): both hardcode `WORKER_HOST` and do not surface an `ACHERON_WORKER__WORKER_HOST` override. The `${...:-...}` fallback pattern is the deployer's contract for "override this without rebuilding the image"; the asymmetry means a deployer retargeting the ASR or translation edge via `.env` silently gets the default.
+**Issue (historical).** `docker-compose.yml:179-180` (qwen3tts-edge service) wires the operator override as `${ACHERON_WORKER__WORKER_ID:-qwen3tts-1}` and `${ACHERON_WORKER__WORKER_HOST:-qwen3tts-edge}`. The same pattern is **not** used for `granite-speech-edge` (`:213-223`) or `translategemma-edge` (`:247-258`): both hardcode `WORKER_HOST` and do not surface an `ACHERON_WORKER__WORKER_HOST` override. The `${...:-...}` fallback pattern is the deployer's contract for "override this without rebuilding the image"; the asymmetry means a deployer retargeting the ASR or translation edge via `.env` silently gets the default.
 
 **Why it matters.** This is the deployer's #1 lever: a deployer who runs the full RunPod pipeline on a custom host (k8s, a different orchestrator topology, a multi-host compose) needs every edge service to honor the same env-var contract. The current shape means the qwen3tts deploy is portable and the other two are not, with no signal.
 
@@ -112,7 +112,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `Dockerfile.edge:18` does `COPY dist/acheron-*.whl /tmp/`, and the three `workers/*/Dockerfile.runpod` files do the same. A fresh clone has no `dist/` directory. The `Justfile` `build-worker` recipe (lines 47-49) correctly runs `uv build --package acheron --out-dir dist` first, but the `build-edge` recipe (lines 52-53) does NOT.
+**Issue (historical).** `Dockerfile.edge:18` does `COPY dist/acheron-*.whl /tmp/`, and the three `workers/*/Dockerfile.runpod` files do the same. A fresh clone has no `dist/` directory. The `Justfile` `build-worker` recipe (lines 47-49) correctly runs `uv build --package acheron --out-dir dist` first, but the `build-edge` recipe (lines 52-53) does NOT.
 
 **Why it matters.** Both the documented `just build-edge` (README:84) and `docker compose --profile runpod-tts up --build` (README:215-218) fail on a fresh clone with a build error that does not point at the missing `dist/` step. Cost: 5-15 min to discover that `uv build` must run first.
 
@@ -154,7 +154,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** The README's "RunPod Serverless Deployment" section (lines 171-199) and the per-worker READMEs all describe *what* the deployer must do but never the *how*. There is no `runpodctl` command in any README, no link to the RunPod UI's network-volume creation path, and no example of what a network-volume ID or endpoint ID looks like. The Prerequisites at line 20 mention `runpodctl` exists but don't tell the deployer to install it.
+**Issue (historical).** The README's "RunPod Serverless Deployment" section (lines 171-199) and the per-worker READMEs all describe *what* the deployer must do but never the *how*. There is no `runpodctl` command in any README, no link to the RunPod UI's network-volume creation path, and no example of what a network-volume ID or endpoint ID looks like. The Prerequisites at line 20 mention `runpodctl` exists but don't tell the deployer to install it.
 
 **Why it matters.** A first-time deployer who has used Docker but never used RunPod is the calibration target. The "1 day, succeed without help" bar is broken at t0 by this gap.
 
@@ -193,7 +193,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** README.md:189-191 documents images as `ghcr.io/<repo>/acheron-{...}-runpod:<tag>`. The per-worker READMEs document them as `ghcr.io/<owner>/...`. CI uses `${{ github.repository }}` which is `<owner>/<repo>`, so the actual image path is `ghcr.io/<owner>/<repo>/...` — meaning the top-level README's `<repo>` placeholder is the one that is wrong, not the per-worker READMEs.
+**Issue (historical).** README.md:189-191 documents images as `ghcr.io/<repo>/acheron-{...}-runpod:<tag>`. The per-worker READMEs document them as `ghcr.io/<owner>/...`. CI uses `${{ github.repository }}` which is `<owner>/<repo>`, so the actual image path is `ghcr.io/<owner>/<repo>/...` — meaning the top-level README's `<repo>` placeholder is the one that is wrong, not the per-worker READMEs.
 
 **Why it matters.** An org deployer pastes the wrong path into the RunPod template, gets a 404 on first cold start. Cost: 5-15 min of confusion.
 
@@ -263,7 +263,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `tts-runpod-stub` (docker-compose.yml:276-302) and `translation-runpod-stub` (docker-compose.yml:304-330) have no `profiles:` key, so they start on every `docker compose up`. The orchestrator's worker-selection logic is undefined between the real RunPod edge and the dev stub.
+**Issue (historical).** `tts-runpod-stub` (docker-compose.yml:276-302) and `translation-runpod-stub` (docker-compose.yml:304-330) have no `profiles:` key, so they start on every `docker compose up`. The orchestrator's worker-selection logic is undefined between the real RunPod edge and the dev stub.
 
 **Why it matters.** The deployer testing the RunPod path ends up with both `qwen3tts-1` and `tts-runpod-stub` registered, and the first job picks one at random.
 
@@ -407,7 +407,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `.env.example:17-36` documents `QWEN3TTS_RUNPOD_ENDPOINT_ID` (line 28) but not `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` or `TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID`. The compose fallback is `${VAR:-}` (empty string), so the edge container starts with an empty `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` and registers successfully but the first `/execute` call to RunPod fails because the endpoint id is empty.
+**Issue (historical).** `.env.example:17-36` documents `QWEN3TTS_RUNPOD_ENDPOINT_ID` (line 28) but not `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` or `TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID`. The compose fallback is `${VAR:-}` (empty string), so the edge container starts with an empty `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` and registers successfully but the first `/execute` call to RunPod fails because the endpoint id is empty.
 
 **Why it matters.** DOC-010 and DOC-011 (both verified) fixed related env-var name drift, but the `.env.example` itself was not extended to cover the other two worker profiles.
 
@@ -517,10 +517,51 @@ verified_by: ""
 ---
 ```
 
-**Issue.** README.md:175-183 ("Network Volume for HF cache") gives the deployer three `huggingface-cli download` commands for the qwen3tts, granite-speech, and translategemma weights. None of them set `HF_HUB_ENABLE_HF_TRANSFER=1` or mention `pip install hf-transfer`. The worker READMEs DO mention the speedup flag. The top-level README's pre-warm step is the canonical first reference, and it's missing the speedup.
+**Issue (historical).** README.md:175-183 ("Network Volume for HF cache") gives the deployer three `huggingface-cli download` commands for the qwen3tts, granite-speech, and translategemma weights. None of them set `HF_HUB_ENABLE_HF_TRANSFER=1` or mention `pip install hf-transfer`. The worker READMEs DO mention the speedup flag. The top-level README's pre-warm step is the canonical first reference, and it's missing the speedup.
 
 **Why it matters.** The translategemma 26GB download is the worst case: 4x slower without hf-transfer, which is 70+ extra minutes for a deployer on a 1 Gbps connection.
 
 **Recommendation.** Update README.md:175-183 to mirror the worker READMEs' pre-warm pattern: add `pip install "huggingface_hub[cli]" hf-transfer` and prefix each `huggingface-cli download` with `HF_HUB_ENABLE_HF_TRANSFER=1`.
 
 **Verification.** A deployer who follows the updated top-level README's pre-warm step completes the 26GB TranslateGemma download in ~20 minutes. `grep -n 'HF_HUB_ENABLE_HF_TRANSFER' README.md workers/*/README.md` returns at least one hit in each.
+
+## DEPLOY-015 — Worker README environment names do not match Compose host variables
+
+```yaml
+---
+id: DEPLOY-015
+title: "Worker READMEs show SDK environment names but Compose requires different host-side variables"
+status: fixed
+severity: high
+effort: S
+discovered_via: [code-review, first-run]
+user_facing_surface: quickstart
+silent: true
+journey_stage: t0
+user_journey: "Deployer follows a worker README, sets ACHERON_WORKER__REGISTRATION_TOKEN and ACHERON_WORKER__RUNPOD_ENDPOINT_ID in .env, and starts the matching Compose profile. Compose actually requires ACHERON_REGISTRATION_TOKEN and a profile-specific endpoint variable, so registration fails or the endpoint remains empty."
+files:
+  - path: .env.example
+    lines: 17-37
+  - path: docker-compose.yml
+    lines: 216-223
+  - path: workers/qwen3tts/README.md
+    lines: 37-55
+  - path: workers/granite_speech/README.md
+    lines: 42-55
+  - path: workers/translategemma/README.md
+    lines: 42-55
+related: [DEPLOY-001, DEPLOY-004, DEPLOY-011]
+fixed_in: [pending]
+verified_in: []
+last_verified_at: {}
+verified_by: ""
+---
+```
+
+**Issue.** The worker READMEs describe SDK-facing `ACHERON_WORKER__*` names, while the repository Compose services consume host-side `ACHERON_*` and profile-specific endpoint variables before mapping them into SDK settings. The mismatch causes a copy-paste deployment to fail authentication or silently use an empty endpoint.
+
+**Why it matters.** The worker README is a first-time deployer's most specific setup guide. A correct SDK configuration can still fail when copied into the repository's `.env`.
+
+**Recommendation.** Show the Compose-to-SDK mapping beside the SDK environment reference in every worker README.
+
+**Verification.** Each worker README names both sides of the mapping, and a fresh-checkout Compose config resolves the profile-specific endpoint and registration token into the SDK environment.
