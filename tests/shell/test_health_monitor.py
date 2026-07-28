@@ -539,8 +539,13 @@ class TestHealthMonitorProviderIntegration:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://up", "http", _tts_caps_with_provider("runpod", "ep-1"))
         await reg.set_worker_status("w1", WorkerStatus.BOOTING, "cold")
-        health_check = AsyncMock(return_value=HealthProbeResult(healthy=True))
-        monitor = HealthMonitor(reg, interval=0.01, health_check=health_check)
+        worker = await reg.get("w1")
+        assert worker is not None
+        assert worker.booting_since is not None
+        monitor = HealthMonitor(
+            reg, interval=0.01, health_check=AsyncMock(return_value=HealthProbeResult(healthy=True))
+        )
+        monitor._booting_warning_keys.add(("w1", worker.booting_since))  # noqa: SLF001
         await monitor.start()
 
         async def _healthy() -> bool:
@@ -549,6 +554,7 @@ class TestHealthMonitorProviderIntegration:
 
         await _poll_for(_healthy)
         await monitor.stop()
+        assert monitor._booting_warning_keys == set()  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_provider_raises_treated_as_offline(self) -> None:
