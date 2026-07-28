@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 
+from acheron.shell.api.input_boundary import InputRequestBoundary
 from acheron.shell.api.routes import capabilities, inputs, jobs, partials, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
@@ -81,6 +82,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.orchestrator = orchestrator
+    app.add_middleware(InputRequestBoundary)
     logging.getLogger().addFilter(ContextFilter())
 
     @app.middleware("http")

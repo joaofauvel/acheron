@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from fastapi import FastAPI, UploadFile
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncByteStream, AsyncClient
+from starlette.requests import Request
 
 from acheron.shell.api.routes import inputs as inputs_module
 
@@ -89,6 +90,25 @@ class TestUploadRoute:
             leftover = [p for p in temp_dir.rglob("*") if p.is_file()]
             assert leftover == [], f"temp files left after 413: {leftover}"
 
+    async def test_post_rejects_dot_filename_without_leaking_destination(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Malformed dot basenames are client errors and leave no random input directory."""
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+
+        response = await client.post(
+            "/inputs",
+            files={"file": ("..", b"data", "application/octet-stream")},
+        )
+
+        assert response.status_code == 422
+        assert "Invalid input filename" in response.json()["detail"]
+        inputs_dir = data_dir / "inputs"
+        assert not inputs_dir.exists() or list(inputs_dir.iterdir()) == []
+
     async def test_post_reports_original_content_type_and_size(
         self,
         client: AsyncClient,
@@ -168,7 +188,91 @@ class TestUploadRoute:
         assert trackers[0].close_count >= 2
 
 
+class _ChunkStream(AsyncByteStream):
+    """Yield body chunks without a Content-Length header."""
+
+    def __init__(self, chunks: tuple[bytes, ...]) -> None:
+        self.chunks = chunks
+        self.consumed = 0
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for chunk in self.chunks:
+            self.consumed += 1
+            yield chunk
+
+
 class TestUploadAuth:
+    async def test_post_without_token_does_not_enter_multipart_parser(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Authentication rejects before FastAPI asks Starlette to parse the form."""
+        parser_calls = 0
+
+        async def fail_form(_request: Request, *args: object, **kwargs: object) -> None:
+            nonlocal parser_calls
+            parser_calls += 1
+            raise AssertionError("multipart parser entered before authentication")
+
+        monkeypatch.setattr(Request, "form", fail_form)
+        response = await client_with_token.post(
+            "/inputs",
+            files={"file": ("a.bin", b"data", "text/plain")},
+        )
+
+        assert response.status_code == 401
+        assert parser_calls == 0
+
+    async def test_post_content_length_limit_rejects_before_multipart_parser(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A declared oversized body is rejected before form parsing or spooling."""
+        monkeypatch.setattr("acheron.shell.input_store.MAX_INPUT_BYTES", 4)
+        monkeypatch.setattr("acheron.shell.api.input_boundary._MULTIPART_OVERHEAD_BYTES", 8)
+        parser_calls = 0
+
+        async def fail_form(_request: Request, *args: object, **kwargs: object) -> None:
+            nonlocal parser_calls
+            parser_calls += 1
+            raise AssertionError("multipart parser entered for oversized body")
+
+        monkeypatch.setattr(Request, "form", fail_form)
+        response = await client.post(
+            "/inputs",
+            content=b"x" * 13,
+            headers={"content-type": "multipart/form-data; boundary=test"},
+        )
+
+        assert response.status_code == 413
+        assert parser_calls == 0
+
+    async def test_post_chunked_limit_rejects_while_body_is_read(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A chunked body is bounded without buffering all chunks for multipart parsing."""
+        monkeypatch.setattr("acheron.shell.input_store.MAX_INPUT_BYTES", 4)
+        monkeypatch.setattr("acheron.shell.api.input_boundary._MULTIPART_OVERHEAD_BYTES", 8)
+        stream = _ChunkStream(
+            (
+                b"--test\r\n",
+                b'Content-Disposition: form-data; name="file"; filename="a"\r\n',
+                b"Content-Type: text/plain\r\n\r\nbody\r\n--test--\r\n",
+            )
+        )
+        response = await client.post(
+            "/inputs",
+            content=stream,
+            headers={"content-type": "multipart/form-data; boundary=test"},
+        )
+
+        assert response.status_code == 413
+        assert stream.consumed == 2
+
     async def test_post_without_token_returns_401(self, client_with_token: AsyncClient) -> None:
         response = await client_with_token.post(
             "/inputs",

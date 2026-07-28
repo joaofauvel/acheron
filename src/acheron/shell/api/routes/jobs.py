@@ -70,10 +70,11 @@ async def submit_job(
         msg = f"Invalid strategy: {body.executor_strategy}"
         raise HTTPException(status_code=400, detail=msg) from exc
 
+    normalized_asr_model = body.asr_model.strip() if body.asr_model is not None else None
     job_request: EpubRequest | AudioRequest
     match body.source_type:
         case "epub":
-            if body.asr_model is not None:
+            if normalized_asr_model is not None:
                 msg = "asr_model is only valid for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
             resolved_source = _resolve_submission_source(orch, body.source_path)
@@ -83,7 +84,7 @@ async def submit_job(
                 target_language=body.target_language,
             )
         case "audio":
-            if body.asr_model is None:
+            if not normalized_asr_model:
                 msg = "asr_model is required for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
             resolved_source = _resolve_submission_source(orch, body.source_path)
@@ -91,7 +92,7 @@ async def submit_job(
                 source_path=str(resolved_source),
                 source_language=body.source_language,
                 target_language=body.target_language,
-                asr_model=body.asr_model,
+                asr_model=normalized_asr_model,
             )
         case _:
             msg = f"Invalid source_type: {body.source_type}"

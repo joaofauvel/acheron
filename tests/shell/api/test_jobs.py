@@ -555,6 +555,62 @@ class TestJobRoutePreflight:
     """Submission preflight: source-path resolution + ASR model checks before orchestrator.submit_job()."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("asr_model", ["", "   ", "\t\n"])
+    async def test_audio_blank_asr_model_returns_422_without_submission(self, client, monkeypatch, asr_model) -> None:  # type: ignore[no-untyped-def]
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        submit_job = AsyncMock()
+        monkeypatch.setattr(app.state.orchestrator, "submit_job", submit_job)
+
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "audio",
+                "source_path": "input/book.mp3",
+                "source_language": "en",
+                "target_language": "es",
+                "asr_model": asr_model,
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "asr_model is required for source_type='audio'"
+        submit_job.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("asr_model", ["", "   "])
+    async def test_epub_blank_asr_model_preserves_non_audio_rejection(self, client, monkeypatch, asr_model) -> None:  # type: ignore[no-untyped-def]
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        submit_job = AsyncMock()
+        monkeypatch.setattr(app.state.orchestrator, "submit_job", submit_job)
+
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+                "asr_model": asr_model,
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "asr_model is only valid for source_type='audio'"
+        submit_job.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_missing_source_path_returns_422_and_never_calls_submit(
         self,
         tmp_path: Path,

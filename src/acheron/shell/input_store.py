@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,8 +48,14 @@ def _check_size(current_size: int, chunk: bytes, filename: str) -> None:
 
 
 def _safe_basename(filename: str) -> str:
-    """Return the last path component, stripping both POSIX and Windows client directory components."""
-    return Path(filename.replace("\\", "/")).name or _DEFAULT_BASENAME
+    """Return a valid final path component from a client-supplied filename."""
+    normalized = filename.replace("\\", "/")
+    raw_basename = normalized.rsplit("/", 1)[-1]
+    basename = Path(normalized).name or _DEFAULT_BASENAME
+    if raw_basename in {".", ".."} or basename in {".", ".."}:
+        msg = f"Invalid input filename {filename!r}: basename must name a file"
+        raise ValueError(msg)
+    return basename
 
 
 class InputStore:
@@ -100,26 +107,40 @@ class InputStore:
         basename = _safe_basename(filename)
         random_id = secrets.token_hex(16)
 
-        inputs_root = self._ensure_storage_root(_INPUTS_DIR_NAME)
-        dest_dir = inputs_root / random_id
-        dest_dir.mkdir()
-        dest_path = dest_dir / basename
-
-        temp_dir = self._ensure_storage_root(_TEMP_DIR_NAME)
-        temp_path = temp_dir / f"{random_id}{_TEMP_SUFFIX}"
-
+        dest_dir: Path | None = None
+        dest_path: Path | None = None
+        temp_path: Path | None = None
+        destination_created = False
+        committed = False
         size = 0
         try:
+            inputs_root = self._ensure_storage_root(_INPUTS_DIR_NAME)
+            dest_dir = inputs_root / random_id
+            dest_dir.mkdir()
+            destination_created = True
+            dest_path = dest_dir / basename
+
+            temp_dir = self._ensure_storage_root(_TEMP_DIR_NAME)
+            temp_path = temp_dir / f"{random_id}{_TEMP_SUFFIX}"
+
             async with aiofiles.open(temp_path, "wb") as f:
                 async for chunk in chunks:
                     _check_size(size, chunk, filename)
                     await f.write(chunk)
                     size += len(chunk)
             os.replace(temp_path, dest_path)  # noqa: PTH105  # spec: brief requires os.replace
+            committed = True
         except BaseException:
-            temp_path.unlink(missing_ok=True)
+            if temp_path is not None:
+                with suppress(OSError):
+                    temp_path.unlink(missing_ok=True)
+            if destination_created and not committed and dest_dir is not None:
+                with suppress(OSError):
+                    dest_dir.rmdir()
             raise
 
+        if dest_path is None:
+            raise RuntimeError("input destination was not created")
         return StoredInput(
             source_path=dest_path.relative_to(self._data_dir).as_posix(),
             filename=basename,

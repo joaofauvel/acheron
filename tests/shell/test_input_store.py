@@ -57,6 +57,19 @@ class TestSave:
         assert (tmp_path / result.source_path).read_bytes() == b"data"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("filename", [".", "..", "nested/..", "nested/../"])
+    async def test_save_rejects_dot_basename_without_creating_destination(self, tmp_path: Path, filename: str) -> None:
+        store = InputStore(tmp_path)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"data"
+
+        with pytest.raises(ValueError, match="Invalid input filename"):
+            await store.save(filename, "text/plain", chunks())
+
+        assert not (tmp_path / "inputs").exists()
+
+    @pytest.mark.asyncio
     async def test_save_creates_distinct_subdirs_per_call(self, tmp_path: Path) -> None:
         store = InputStore(tmp_path)
 
@@ -113,6 +126,9 @@ class TestSave:
         if tmp_dir.exists():
             for entry in tmp_dir.rglob("*"):
                 assert not entry.is_file()
+        inputs_dir = tmp_path / "inputs"
+        if inputs_dir.exists():
+            assert list(inputs_dir.iterdir()) == []
 
     @pytest.mark.asyncio
     async def test_save_accepts_exact_max_bytes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
