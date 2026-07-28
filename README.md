@@ -171,14 +171,38 @@ Env vars prefixed with `ACHERON_WORKER__` override YAML values at runtime, so th
 
 ## RunPod Serverless Deployment
 
-This section assumes you already have a RunPod account and the [runpodctl](https://github.com/runpod/runpodctl) CLI configured. See the [RunPod API reference](https://docs.runpod.io/api-reference) for the full endpoint / template / network-volume schema.
+This section assumes you have a RunPod account. Install and configure [runpodctl](https://github.com/runpod/runpodctl) before creating resources. See the [RunPod API reference](https://docs.runpod.io/api-reference) for the full endpoint / template / network-volume schema.
 
-**Network Volume for HF cache.** GPU workers re-download the model on every cold start unless the weights are already on disk. Mount a RunPod Network Volume into the worker template, SSH into a pod that has the volume attached, and pre-warm the Hugging Face cache once:
+**RunPod prerequisites.** The following installs the CLI without root on Linux and configures it with an API key from the RunPod account settings:
 
 ```bash
-huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
-huggingface-cli download ibm-granite/granite-speech-4.1-2b
-huggingface-cli download google/translategemma-12b-it
+mkdir -p ~/.local/bin
+wget --quiet --show-progress https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd64 -O ~/.local/bin/runpodctl
+chmod +x ~/.local/bin/runpodctl
+export PATH="$HOME/.local/bin:$PATH"
+export RUNPOD_API_KEY="<runpod-api-key>"
+runpodctl config --apiKey "$RUNPOD_API_KEY"
+```
+
+**Create the network volume.** Choose a data-center ID available to the intended GPU endpoint, then create the shared Hugging Face cache volume:
+
+```bash
+runpodctl network-volume create --name "acheron-hf-cache" --size 30 --data-center-id "<data-center-id>"
+```
+
+Record the returned volume ID and attach it to each worker template. GPU workers re-download the model on every cold start unless the weights are already on disk. Mount a RunPod Network Volume into the worker template, SSH into a pod that has the volume attached, and pre-warm the Hugging Face cache once:
+
+```bash
+pip install "huggingface_hub[cli]" hf-transfer
+HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
+    Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+    --local-dir /runpod-volume/huggingface-cache/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-CustomVoice
+HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
+    ibm-granite/granite-speech-4.1-2b \
+    --local-dir /runpod-volume/huggingface-cache/hub/models--ibm-granite--granite-speech-4.1-2b
+HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli download \
+    google/translategemma-12b-it \
+    --local-dir /runpod-volume/huggingface-cache/hub/models--google--translategemma-12b-it
 ```
 
 Subsequent cold starts that mount the same Network Volume find the weights in the cache and skip the multi-GB download.
@@ -187,9 +211,9 @@ Subsequent cold starts that mount the same Network Volume find the weights in th
 
 **Endpoint creation.** Create one Serverless endpoint per worker type, pointing the endpoint's `templateId` at the image published by CI:
 
-- `ghcr.io/<repo>/acheron-qwen3tts-runpod:<tag>` (TTS)
-- `ghcr.io/<repo>/acheron-granite-speech-runpod:<tag>` (ASR)
-- `ghcr.io/<repo>/acheron-translategemma-runpod:<tag>` (translation)
+- `ghcr.io/<owner>/<repo>/acheron-qwen3tts-runpod:<tag>` (TTS)
+- `ghcr.io/<owner>/<repo>/acheron-granite-speech-runpod:<tag>` (ASR)
+- `ghcr.io/<owner>/<repo>/acheron-translategemma-runpod:<tag>` (translation)
 
 The GHCR image is public; RunPod can pull it without a `containerRegistryAuthId` ([GitHub Packages docs](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)). Set the endpoint's:
 
@@ -197,7 +221,13 @@ The GHCR image is public; RunPod can pull it without a `containerRegistryAuthId`
 - `workersMax: 1` — raise if you need concurrent fan-out; each worker is a full GPU instance.
 - `idleTimeout` (or `executionTimeoutMs`, depending on the API version) — a short value (e.g., 5 minutes / 300 s) keeps shutdown aggressive; the Network Volume absorbs cold-start cost, not boot-loop cost. The exact field name on `POST /endpoints` is `executionTimeoutMs` ([RunPod API reference](https://docs.runpod.io/api-reference/endpoints/POST/endpoints)).
 
-The Edge Worker reads its endpoint id from `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` and points `/execute` calls at it.
+The Edge Worker reads its endpoint id from `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` and points `/execute` calls at it. After creating a template in the RunPod console, create its endpoint with:
+
+```bash
+runpodctl serverless create --template-id "<template-id>" --gpu-id "<gpu-id>"
+```
+
+Copy the returned endpoint ID into the matching `*_RUNPOD_ENDPOINT_ID` variable in `.env`.
 
 ## GPU & VRAM Guidance
 
@@ -208,17 +238,17 @@ The numbers below are rules of thumb, not guarantees. The Hugging Face model car
 
 ## Edge Worker Proxy Setup
 
-The edge container is the GPU-less proxy that registers with the orchestrator and forwards `/execute` to the RunPod endpoint. The image is the same for every worker type — only the handler import path and `worker.yaml` differ.
+The edge container is the GPU-less proxy that registers with the orchestrator and forwards `/execute` to the RunPod endpoint. The image is the same for every worker type — only the handler import path and `worker.yaml` differ. Direct Compose profile builds are self-contained and build the Acheron wheel internally; `just build-edge` remains available for explicitly building the generic edge image before running it outside Compose.
 
 **Profile-based opt-in.** Real GPU workers are gated behind Docker Compose profiles so a default `docker compose up` stays self-contained:
 
 ```bash
-docker compose --profile runpod-tts up --build
-docker compose --profile runpod-asr up --build
-docker compose --profile runpod-translation up --build
+COMPOSE_PROFILES= docker compose --profile runpod-tts up --build
+COMPOSE_PROFILES= docker compose --profile runpod-asr up --build
+COMPOSE_PROFILES= docker compose --profile runpod-translation up --build
 ```
 
-The profile names (`runpod-tts`, `runpod-asr`, `runpod-translation`) and the corresponding services (`qwen3tts-edge`, `granite-speech-edge`, `translategemma-edge`) are declared in `docker-compose.yml:198, 231, 265`. Services with no `profiles:` key start unconditionally; services with a profile start only when the profile is active.
+The profile names (`runpod-tts`, `runpod-asr`, `runpod-translation`) and the corresponding services (`qwen3tts-edge`, `granite-speech-edge`, `translategemma-edge`) are declared in `docker-compose.yml`. The copied `.env` enables the `sim` profile for the local Quick Start; clear `COMPOSE_PROFILES` as shown above before enabling a RunPod profile so local and RunPod workers are not registered together.
 
 **Primary config is `worker.yaml`.** Each worker ships two YAMLs: a cloud-side `worker.yaml` (used by the RunPod runtime image) and an `worker.edge.yaml` (used by the `acheron-worker-edge` generic image). The edge-side file is bundled into `Dockerfile.edge` and read by the `acheron-worker-edge` image at startup. Operator-tunable keys, all optional in YAML (env-var overrides always win):
 

@@ -7,6 +7,14 @@
 # + env. The deployer never invokes the CLI directly — this image's CMD is
 # the entrypoint.
 
+FROM python:3.14-slim AS wheel-builder
+
+WORKDIR /build
+COPY pyproject.toml uv.lock README.md ./
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY src/acheron/ ./src/acheron/
+RUN uv build --package acheron --out-dir /build/dist
+
 FROM python:3.14-slim AS edge
 
 ENV PYTHONUNBUFFERED=1 \
@@ -15,7 +23,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # The acheron wheel provides the worker_sdk + console script.
-COPY dist/acheron-*.whl /tmp/
+COPY --from=wheel-builder /build/dist/acheron-*.whl /tmp/
 RUN pip install /tmp/acheron-*.whl && rm /tmp/acheron-*.whl
 
 # The handler module is invisible here — the edge resolves it from the worker.yaml
@@ -48,4 +56,4 @@ RUN useradd --create-home --shell /bin/bash acheron
 
 EXPOSE 8001
 USER acheron
-CMD ["acheron-worker-edge"]
+CMD ["acheron-worker-edge", "--handler", "acheron.worker_sdk.cloud:RunPodForwarderHandler"]

@@ -117,6 +117,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    profiles: ["sim"]
 
   asr-local-stub:
     build:
@@ -143,6 +144,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    profiles: ["sim"]
 
   translation-local-stub:
     build:
@@ -169,6 +171,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    profiles: ["sim"]
 
   qwen3tts-edge:
     build:
@@ -216,7 +219,8 @@ services:
     environment:
       WORKER_NAME: granite_speech
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
-      ACHERON_WORKER__WORKER_HOST: granite-speech-edge
+      ACHERON_WORKER__WORKER_ID: ${ACHERON_WORKER__WORKER_ID:-granite-speech-edge}
+      ACHERON_WORKER__WORKER_HOST: ${ACHERON_WORKER__WORKER_HOST:-granite-speech-edge}
       ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID:-}
@@ -250,7 +254,8 @@ services:
     environment:
       WORKER_NAME: translategemma
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
-      ACHERON_WORKER__WORKER_HOST: translategemma-edge
+      ACHERON_WORKER__WORKER_ID: ${ACHERON_WORKER__WORKER_ID:-translategemma-edge}
+      ACHERON_WORKER__WORKER_HOST: ${ACHERON_WORKER__WORKER_HOST:-translategemma-edge}
       ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID:-}
@@ -303,6 +308,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    profiles: ["sim"]
 
   translation-runpod-stub:
     build:
@@ -331,6 +337,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    profiles: ["sim"]
 
   tts-grpc-stub:
     build:
@@ -357,6 +364,7 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    profiles: ["sim"]
 
 volumes:
   acheron-data:

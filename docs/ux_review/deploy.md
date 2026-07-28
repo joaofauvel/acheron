@@ -15,7 +15,7 @@ version: 2
 ---
 id: DEPLOY-001
 title: Edge env-var defaults are asymmetric; granite/translategemma profiles do not support a WORKER_HOST override
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [code-review, first-run]
@@ -25,13 +25,13 @@ journey_stage: t0
 user_journey: "Deployer copies `.env.example` to `.env`, sets `ACHERON_WORKER__WORKER_HOST=asr-edge-2` to retarget the ASR edge, runs `docker compose --profile runpod-asr up -d`, sees the granite-speech-edge container register with `worker_host=granite-speech-edge` (the hardcoded default), not `asr-edge-2`."
 files:
   - path: docker-compose.yml
-    lines: 170-205
+    lines: 173-208
   - path: docker-compose.yml
-    lines: 207-240
+    lines: 210-243
   - path: docker-compose.yml
-    lines: 241-274
+    lines: 245-279
 related: [DX-005, DX-006]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -89,7 +89,7 @@ verified_by: ""
 ---
 id: DEPLOY-003
 title: "`just build-edge` and `docker compose --profile runpod-* up --build` fail on a fresh clone because `dist/acheron-*.whl` is not built yet"
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [code-review, first-run]
@@ -99,15 +99,13 @@ journey_stage: t0
 user_journey: "Deployer follows the README's 'Edge Worker Proxy Setup' section and runs `docker compose --profile runpod-tts up --build`. The qwen3tts-edge build step fails with `ERROR: failed to solve: failed to compute cache key: failed to calculate checksum of ref ...: could not process file '/dist/acheron-*.whl': stat dist/acheron-*.whl: no such file or directory`. Deployer reads the error, greps for `dist`, and discovers they need to run `just build-worker` (or `uv build --package acheron --out-dir dist`) before the edge build can succeed."
 files:
   - path: Dockerfile.edge
-    lines: 18-19
-  - path: Justfile
-    lines: 47-49
-  - path: Justfile
-    lines: 52-53
-  - path: workers/qwen3tts/Dockerfile.runpod
-    lines: 27-31
+    lines: 10-21
+  - path: README.md
+    lines: 231-243
+  - path: docker-compose.yml
+    lines: 173-176
 related: [DX-006]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -128,7 +126,7 @@ verified_by: ""
 ---
 id: DEPLOY-004
 title: README documents the *values* a deployer must set (endpoint ID, network volume ID) but never the *commands* that produce them; a first-time RunPod deployer cannot get past "RunPod Serverless Deployment" without help
-status: open
+status: fixed
 severity: high
 effort: M
 discovered_via: [code-review, first-run, user-feedback]
@@ -138,13 +136,17 @@ journey_stage: t0
 user_journey: "Deployer reads README.md:171-199 ('RunPod Serverless Deployment') and the qwen3tts/README.md:11-29 'RunPod Serverless setup' steps. The deployer is told to 'create a network volume', 'create a RunPod serverless template', and 'create a serverless endpoint' with `ghcr.io/<repo>/acheron-qwen3tts-runpod:<tag>`, then 'note the endpoint ID' and set `QWEN3TTS_RUNPOD_ENDPOINT_ID=<id>` in `.env`. None of these steps link to a runpodctl command, a RunPod UI path, or a network volume ID retrieval path."
 files:
   - path: README.md
-    lines: 171-199
+    lines: 172-222
   - path: .env.example
-    lines: 21-28
+    lines: 17-37
   - path: workers/qwen3tts/README.md
-    lines: 11-37
+    lines: 11-55
+  - path: workers/granite_speech/README.md
+    lines: 11-55
+  - path: workers/translategemma/README.md
+    lines: 11-55
 related: []
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -166,7 +168,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: DEPLOY-005
 title: "Worker READMEs use `ghcr.io/<owner>/...`; top-level README uses `ghcr.io/<repo>/...`; org deployers see a non-resolvable image path"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [code-review]
@@ -176,11 +178,15 @@ journey_stage: t0
 user_journey: "Deployer in a GitHub org (e.g., `myorg/acheron-fork`) copies the top-level README's `ghcr.io/<repo>/acheron-qwen3tts-runpod:<tag>` placeholder and substitutes `<repo>` with `acheron-fork`, getting `ghcr.io/acheron-fork/acheron-qwen3tts-runpod:<tag>`. RunPod's template creation rejects the image (404 from ghcr.io) because the org's package path is `ghcr.io/myorg/...`."
 files:
   - path: README.md
-    lines: 189-191
+    lines: 204-208
   - path: workers/qwen3tts/README.md
-    lines: 7-9
+    lines: 6-9
+  - path: workers/granite_speech/README.md
+    lines: 6-9
+  - path: workers/translategemma/README.md
+    lines: 6-9
 related: [DOC-012]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -236,7 +242,7 @@ verified_by: ""
 ---
 id: DEPLOY-007
 title: "`tts-runpod-stub` and `translation-runpod-stub` services start unconditionally; they conflict with the `runpod-tts` and `runpod-translation` profiles if both are active"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [code-review, first-run]
@@ -246,11 +252,11 @@ journey_stage: t0
 user_journey: "Deployer wants to test the RunPod path against the orchestrator. They run `docker compose --profile runpod-tts up -d` to start the qwen3tts-edge service. The deployer didn't realize that `tts-runpod-stub` (port 8006) and `tts-local-stub` (port 8001) both start as well. The orchestrator now sees TWO TTS workers registered: `qwen3tts-1` (the real edge) and `tts-runpod-stub` (the dev-mode stub). The first job submission hits the stub, returns static mock data, and the deployer is confused why the RunPod path isn't being exercised."
 files:
   - path: docker-compose.yml
-    lines: 276-330
+    lines: 281-337
   - path: README.md
-    lines: 30-35
+    lines: 231-243
 related: []
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -263,7 +269,7 @@ verified_by: ""
 
 **Recommendation.** Either gate `tts-runpod-stub` and `translation-runpod-stub` behind a `profiles: ["sim"]` key, or rename them to make the local-vs-runpod distinction obvious in `docker compose ps`.
 
-**Verification.** With profile gating, `docker compose --profile runpod-tts up -d` does NOT start `tts-runpod-stub`. `GET /api/workers` after the RunPod profile is active shows exactly one TTS worker.
+**Verification.** With profile gating, `docker compose --profile runpod-tts up -d` does NOT start `tts-runpod-stub`. `GET /workers` after the RunPod profile is active shows exactly one TTS worker.
 
 ## DEPLOY-008 — `certs-init` service and `just certs` overwrite the entire CA on every run
 
@@ -378,7 +384,7 @@ verified_by: ""
 ---
 id: DEPLOY-011
 title: "`.env.example` documents the qwen3tts edge env vars but omits the granite-speech and translategemma equivalents; the deployer hits a silent default-empty endpoint id"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [code-review, first-run]
@@ -388,13 +394,13 @@ journey_stage: t0
 user_journey: "Deployer follows the qwen3tts setup in `.env.example:21-28`, then mirrors the pattern for granite-speech: sets `RUNPOD_API_KEY` and `QWEN3TTS_RUNPOD_ENDPOINT_ID`, but does not see `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` documented. They run `docker compose --profile runpod-asr up -d` and the granite-speech-edge container starts, registers with the orchestrator, but on the first `/execute` returns a RunPod `404 endpoint not found` (because `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` is the empty string per docker-compose.yml:219's `${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID:-}` fallback)."
 files:
   - path: .env.example
-    lines: 17-36
+    lines: 17-29
   - path: docker-compose.yml
-    lines: 207-222
+    lines: 216-223
   - path: docker-compose.yml
-    lines: 241-258
+    lines: 251-258
 related: [DOC-010, DOC-011]
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -486,7 +492,7 @@ verified_by: ""
 ---
 id: DEPLOY-014
 title: "Top-level README's \"Network Volume for HF cache\" pre-warm uses `huggingface-cli download` without `HF_HUB_ENABLE_HF_TRANSFER=1`; the 26GB TranslateGemma download takes 4x longer than the worker READMEs promise"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [code-review, first-run]
@@ -496,15 +502,15 @@ journey_stage: t0
 user_journey: "Deployer follows README.md:177-181 'Network Volume for HF cache' and runs `huggingface-cli download google/translategemma-12b-it` to pre-warm the 26GB weights. The download takes 90+ minutes on a typical 1 Gbps connection (vs. the 20 minutes the worker README implies via `HF_HUB_ENABLE_HF_TRANSFER=1`). The deployer reads the worker README, sees the parallel `hf-transfer` instruction, and switches mid-pre-warm."
 files:
   - path: README.md
-    lines: 175-183
+    lines: 192-208
   - path: workers/qwen3tts/README.md
-    lines: 13-19
+    lines: 11-19
   - path: workers/granite_speech/README.md
-    lines: 13-20
+    lines: 11-20
   - path: workers/translategemma/README.md
-    lines: 13-22
+    lines: 11-22
 related: []
-fixed_in: []
+fixed_in: [pending]
 verified_in: []
 last_verified_at: {}
 verified_by: ""

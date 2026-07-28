@@ -4,7 +4,7 @@ RunPod Serverless worker package for `ibm-granite/granite-speech-4.1-2b`.
 
 ## Image
 
-CI publishes `ghcr.io/<owner>/acheron-granite-speech-runpod:latest` and
+CI publishes `ghcr.io/<owner>/<repo>/acheron-granite-speech-runpod:latest` and
 `:<sha>` on every push to `master` and on every `v*` tag. Pin your RunPod
 template to `:<sha>` for reproducibility.
 
@@ -32,6 +32,7 @@ template to `:<sha>` for reproducibility.
 3. **Create a serverless endpoint** from the template. Configure:
    - `workers_min: 0`, `workers_max: 1`.
    - `idle_timeout: 300`.
+   - Or use `runpodctl serverless create --template-id "<template-id>" --gpu-id "<gpu-id>"`.
    - Note the endpoint ID.
 
 4. **Configure the orchestrator-side edge service** (`docker-compose.yml`'s `granite-speech-edge`):
@@ -42,7 +43,11 @@ template to `:<sha>` for reproducibility.
    ACHERON_WORKER__RUNPOD_ENDPOINT_ID=<endpoint id from step 3>
    ```
 
-5. `docker compose --profile runpod-asr up -d`. The edge registers with the
+   When using the repository Compose profile, set `ACHERON_REGISTRATION_TOKEN`,
+   `RUNPOD_API_KEY`, and `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` in `.env`; Compose
+   maps them to the SDK names above.
+
+5. `COMPOSE_PROFILES= docker compose --profile runpod-asr up -d`. The edge registers with the
    orchestrator; the orchestrator's `HealthMonitor` reports the worker as
    `BOOTING` until RunPod scales up the GPU pod on the first `/execute`.
 
