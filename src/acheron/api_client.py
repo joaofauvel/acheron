@@ -23,7 +23,7 @@ from acheron.core.schemas import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 
 def _ssl_context_for(verify: bool | str | Path) -> bool | ssl.SSLContext:  # noqa: FBT001
@@ -115,19 +115,26 @@ class AcheronClient:
         if content_type is None:
             content_type = "application/octet-stream"
         body, boundary = _stream_file_multipart(source=source, content_type=content_type)
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
-            resp = await client.post(
-                "/inputs",
-                content=body,
-                headers={
-                    "Content-Type": f"multipart/form-data; boundary={boundary}",
-                    **self._mutation_headers(),
-                },
-            )
-            resp.raise_for_status()
-            return InputResponse.model_validate(resp.json())
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+            ) as client:
+                resp = await client.post(
+                    "/inputs",
+                    content=body,
+                    headers={
+                        "Content-Type": f"multipart/form-data; boundary={boundary}",
+                        **self._mutation_headers(),
+                    },
+                )
+                resp.raise_for_status()
+                return InputResponse.model_validate(resp.json())
+        finally:
+            # If the transport fails mid-stream, httpx may not call aclose() on
+            # the body iterator; the aiofiles handle inside the generator stays
+            # open until the generator is garbage-collected. Force the close
+            # here so the local file is released deterministically on every path.
+            await body.aclose()
 
     async def get_health(self) -> dict[str, str]:
         """Get orchestrator health."""
@@ -184,12 +191,22 @@ class AcheronClient:
             return CapabilitiesResponse.model_validate(resp.json()).workers
 
 
+def _sanitize_multipart_filename(name: str) -> str:
+    """Replace characters that would corrupt or inject the hand-built Content-Disposition header.
+
+    CR and LF would inject header breaks; ``"`` would break the quoted-string
+    boundary. Other characters are left intact; the server-side parser already
+    handles non-ASCII filenames.
+    """
+    return name.replace("\r", "_").replace("\n", "_").replace('"', "_")
+
+
 def _stream_file_multipart(
     *,
     source: Path,
     content_type: str,
     chunk_size: int = 64 * 1024,
-) -> tuple[AsyncIterator[bytes], str]:
+) -> tuple[AsyncGenerator[bytes], str]:
     """Build a streaming ``multipart/form-data`` body for a single file part.
 
     Reads ``source`` in ``chunk_size``-byte chunks via aiofiles so the full
@@ -197,13 +214,20 @@ def _stream_file_multipart(
     as httpx drains the iterator. Returns ``(body_iterator, boundary)`` for
     use with :meth:`httpx.AsyncClient.post`'s ``content=`` and a
     ``Content-Type: multipart/form-data; boundary=<boundary>`` header.
+
+    The caller is responsible for awaiting ``body.aclose()`` in a
+    ``finally`` path. If the transport fails mid-stream, httpx may not call
+    ``aclose()`` itself, which would leave the underlying aiofiles handle
+    open until the generator is garbage-collected. The ``upload_input``
+    wrapper enforces the close so the file is released deterministically.
     """
     boundary = f"acheron-{secrets.token_hex(16)}"
+    safe_name = _sanitize_multipart_filename(source.name)
 
-    async def _gen() -> AsyncIterator[bytes]:
+    async def _gen() -> AsyncGenerator[bytes]:
         yield (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{source.name}"\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
             f"Content-Type: {content_type}\r\n\r\n"
         ).encode()
         async with aiofiles.open(source, "rb") as fp:
