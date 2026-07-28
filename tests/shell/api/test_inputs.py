@@ -204,7 +204,7 @@ class _ChunkStream(AsyncByteStream):
 def _multipart_file_body(payload: bytes) -> tuple[bytes, int]:
     """Build a one-file multipart body and return its fixed framing size."""
     prefix = (
-        b'--test\r\n'
+        b"--test\r\n"
         b'Content-Disposition: form-data; name="file"; filename="a.bin"\r\n'
         b"Content-Type: application/octet-stream\r\n\r\n"
     )
