@@ -689,7 +689,7 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 69-95
   - path: tests/shell/api/test_jobs.py
-    lines: 840-885
+    lines: 585-611
 related: [OPS-029, OPS-003]
 fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
@@ -699,7 +699,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** EPUB submissions now reject a non-null `asr_model` before source-path resolution or `orch.submit_job()`, returning HTTP 422 with `asr_model is only valid for source_type='audio'`. The CLI still uploads first, then forwards the server-relative upload path and the requested ASR model to `/jobs`, so the invalid EPUB request is no longer accepted as if the model applied.
+**Issue.** EPUB submissions now reject a supplied `asr_model`, including blank or whitespace values, before source-path resolution or `orch.submit_job()`, returning HTTP 422 with `asr_model is only valid for source_type='audio'`. The CLI still uploads first, then forwards the server-relative upload path and the requested ASR model to `/jobs`, so the invalid EPUB request is no longer accepted as if the model applied.
 
 **Why it matters.** The operator receives an explicit validation error instead of a successful submission that silently discards the requested ASR model.
 
@@ -968,7 +968,7 @@ files:
   - path: README.md
     lines: "70"
 related: [OPS-016, OPS-003]
-fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15, 8dce27f40763493b28bb6849d356db0b3e276fda]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -1076,11 +1076,11 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 84-95
   - path: tests/shell/api/test_jobs.py
-    lines: 794-839
+    lines: 557-583
   - path: tests/shell/test_cli.py
     lines: 72-87
 related: [OPS-018, OPS-025, OPS-016]
-fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
+fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15, 8dce27f40763493b28bb6849d356db0b3e276fda]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -1088,11 +1088,11 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** Audio submissions now require a non-null `asr_model` in the job route before source-path resolution or `orch.submit_job()`. Missing models return HTTP 422 with `asr_model is required for source_type='audio'`; valid `--asr` values continue through the CLI upload and `/jobs` request.
+**Issue.** Audio submissions now require a non-empty `asr_model` after trimming in the job route before source-path resolution or `orch.submit_job()`. Missing, blank, and whitespace-only models return HTTP 422 with `asr_model is required for source_type='audio'`; valid `--asr` values continue through the CLI upload and `/jobs` request.
 
 **Why it matters.** Forgetting the ASR model fails immediately instead of creating a job that cannot execute its first ASR step.
 
-**Recommendation.** Keep the audio guard at the submission boundary and preserve the exact 422 detail. Ensure valid audio submissions continue forwarding the selected ASR model without changing the upload or execution flow.
+**Recommendation.** Keep the audio guard at the submission boundary, normalize surrounding whitespace, and preserve the exact 422 detail. Ensure valid non-empty `--asr` values continue forwarding the selected ASR model without changing the upload or execution flow.
 
 **Verification.** Starting with a valid `recording.mp3` and an audio input, run `acheron job submit recording.mp3 --src en --dest es` without `--asr`; the command exits 1 with `asr_model is required for source_type='audio'` and no job ID, prompting the operator to choose an ASR model before any job starts.
 
