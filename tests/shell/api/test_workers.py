@@ -1,10 +1,14 @@
 """Tests for worker API routes."""
 
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+
+from acheron.core.models import WorkerStatus
 
 _WORKER_PAYLOAD: dict[str, Any] = {
     "worker_id": "asr-1",
@@ -71,6 +75,65 @@ class TestWorkerRoutes:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["last_error"] is None
+        assert data["booting_elapsed_seconds"] is None
+        assert data["booting_timeout_seconds"] == 600.0
+
+    @pytest.mark.asyncio
+    async def test_list_workers_reports_booting_elapsed_and_defaults_for_other_statuses(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await client.post("/workers", json=_WORKER_PAYLOAD)
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        registry = app.state.orchestrator._registry  # noqa: SLF001
+        monkeypatch.setattr(time, "time", lambda: 1000.0)
+        await registry.set_worker_status("asr-1", WorkerStatus.BOOTING, "cold start")
+        monkeypatch.setattr(time, "time", lambda: 1182.0)
+
+        response = await client.get("/workers")
+        assert response.status_code == 200
+        workers = {w["worker_id"]: w for w in response.json()["workers"]}
+        assert workers["asr-1"]["booting_elapsed_seconds"] == 182.0
+        assert workers["asr-1"]["booting_timeout_seconds"] == 600.0
+
+        await registry.set_worker_status("asr-1", WorkerStatus.HEALTHY, None)
+        healthy = await client.get("/workers")
+        worker = {w["worker_id"]: w for w in healthy.json()["workers"]}["asr-1"]
+        assert worker["booting_elapsed_seconds"] is None
+        assert worker["booting_timeout_seconds"] == 600.0
+
+        await registry.set_worker_status("asr-1", WorkerStatus.OFFLINE, "down")
+        offline = await client.get("/workers")
+        worker = {w["worker_id"]: w for w in offline.json()["workers"]}["asr-1"]
+        assert worker["booting_elapsed_seconds"] is None
+        assert worker["booting_timeout_seconds"] == 600.0
+
+    @pytest.mark.asyncio
+    async def test_timing_remains_visible_when_last_error_is_scrubbed(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        token = "Bearer test-registration-token-must-be-32-chars-or-more"
+        await client_with_token.post("/workers", json=_WORKER_PAYLOAD, headers={"Authorization": token})
+        transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        registry = app.state.orchestrator._registry  # noqa: SLF001
+        monkeypatch.setattr(time, "time", lambda: 2000.0)
+        await registry.set_worker_status("asr-1", WorkerStatus.BOOTING, "secret internal error")
+        monkeypatch.setattr(time, "time", lambda: 2100.0)
+
+        unauthenticated = await client_with_token.get("/workers")
+        worker = {w["worker_id"]: w for w in unauthenticated.json()["workers"]}["asr-1"]
+        assert worker["booting_elapsed_seconds"] == 100.0
+        assert worker["last_error"] is None
+
+        authenticated = await client_with_token.get("/workers", headers={"Authorization": token})
+        worker = {w["worker_id"]: w for w in authenticated.json()["workers"]}["asr-1"]
+        assert worker["booting_elapsed_seconds"] == 100.0
+        assert worker["last_error"] == "secret internal error"
 
     @pytest.mark.asyncio
     async def test_list_workers_unauthenticated_scrubs_last_error(self, client_with_token: AsyncClient) -> None:

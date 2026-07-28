@@ -1,10 +1,21 @@
+import re
+
 from tests.first_run.helpers import ComposeStack
 
 
 def test_step_3_first_run_success_criteria(compose_stack: ComposeStack) -> None:
     auth = {"Authorization": f"Bearer {compose_stack.project.token}"}
     status_body = compose_stack.get_text("http://localhost:8080/partials/status")
-    assert "dot-green" in status_body, "step 3: dashboard cannot reach the orchestrator"
+    assert "dot-red" not in status_body, "step 3: dashboard cannot reach the orchestrator"
+    assert "Disconnected" not in status_body, "step 3: dashboard cannot reach the orchestrator"
+    assert (
+        status_body == '<span class="dot dot-yellow"></span> Waiting for workers (0/0 service workers healthy)'
+        or re.fullmatch(
+            r'<span class="dot dot-(?:yellow"></span> Waiting|green"></span> Ready) '
+            r"\([a-z]+ \d+/\d+(?:, [a-z]+ \d+/\d+)*\)",
+            status_body,
+        )
+    ), f"step 3: dashboard returned an invalid readiness fragment: {status_body!r}"
 
     worker_payload = compose_stack.get_json("https://localhost:8000/workers", headers=auth)
     assert isinstance(worker_payload, dict), "step 3: worker listing was not a JSON object"

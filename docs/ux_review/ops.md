@@ -1,12 +1,12 @@
 ---
 theme: OPS
-last_updated_date: 2026-07-24
+last_updated_date: 2026-07-28
 version: 2
 ---
 
 # OPS
 
-**Grade**: D (6 high + 13 medium-severity open stories)
+**Grade**: D (7 high + 17 medium-severity open stories)
 **Calibration target**: an operator should be able to submit, monitor, debug, and recover a job without `docker logs`.
 
 ## OPS-001 — Dashboard renders only three read-only tables
@@ -197,21 +197,47 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-006
 title: "When a worker is in `BOOTING` (RunPod cold start), the dashboard shows a static badge with no countdown"
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [user-feedback, code-review]
 user_facing_surface: dashboard
 silent: true
 journey_stage: t1
-user_journey: "Operator submits a job to a worker in `BOOTING`, sees the worker table column show `BOOTING (3m 22s elapsed)` ticking every second, with a thin progress bar that reaches 100% at `_BOOTING_TIMEOUT_SECONDS` (10 min by default); on reaching HEALTHY, the bar fades and the column turns green."
+user_journey: "Operator submits a job to a worker in `BOOTING`, sees the worker table column show `BOOTING (202s / 600s)` ticking every second, with a thin progress bar that reaches 100% at `_BOOTING_TIMEOUT_SECONDS` (10 min by default); on reaching HEALTHY, the bar fades and the column turns green."
 files:
+  - path: src/acheron/shell/registry.py
+    lines: 14-32
+  - path: src/acheron/shell/stores/base.py
+    lines: 78-89
+  - path: src/acheron/shell/stores/memory.py
+    lines: 92-107
+  - path: src/acheron/shell/stores/redis.py
+    lines: 153-173
+  - path: src/acheron/shell/stores/redis.py
+    lines: 236-284
+  - path: src/acheron/shell/stores/redis.py
+    lines: 551-566
   - path: src/acheron/shell/health.py
-    lines: 27-99
-  - path: src/acheron/shell/health_providers.py
-    lines: 50-72
+    lines: 27-29
+  - path: src/acheron/shell/health.py
+    lines: 174-226
+  - path: src/acheron/core/schemas.py
+    lines: 33-45
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 22-29
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 74-101
+  - path: dashboard/booting_progress.py
+    lines: 1-54
+  - path: dashboard/app.py
+    lines: 15-22
+  - path: dashboard/templates/partials/workers.html
+    lines: 13-20
+  - path: dashboard/templates/index.html
+    lines: 62-87
 related: [CORR-012]
-fixed_in: []
+fixed_in: [828dd5a]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -219,35 +245,45 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `_BOOTING_TIMEOUT_SECONDS = 600.0` is hard-coded. The dashboard shows a `BOOTING` badge but provides no countdown, no elapsed time, no ETA, no signal of "wait 30s vs 5min."
+**Issue.** Worker BOOTING state previously had no persisted lifecycle timestamp or operator-facing elapsed time. The dashboard rendered only a static status badge, while the health monitor had no visible warning before the 600-second timeout.
 
-**Why it matters.** Cold-start cost is real money. The operator who submits a job and sees a static `BOOTING` badge has no signal for whether to wait.
+**Why it matters.** Cold-start cost is real money. Without elapsed and timeout progress, an operator cannot distinguish a normal cold start from a worker that is approaching timeout.
 
-**Recommendation.** Add `booting_since_seconds: float | None` to `WorkerResponse`. Render `BOOTING (3m 22s / 10m)` with a thin progress bar. When the bar reaches 100%, the badge turns red. On HEALTHY, the column fades to green.
+**Recommendation.** Persist the BOOTING timestamp across store backends, expose clamped elapsed and timeout values in `WorkerResponse`, and render a browser-independent elapsed/timeout progress label with a one-second dashboard update. Keep the timestamp stable for a BOOTING lifecycle and clear it on HEALTHY, OFFLINE, or timeout transitions.
 
-**Verification.** A worker in `BOOTING` shows a countdown that updates every second.
+**Verification.** Focused store, health-monitor, worker-route, dashboard-helper, and dashboard-template tests cover timestamp persistence, backward-clock clamping, lifecycle transitions, 600-second timeout behavior, and one-second progress wiring. The implementation keeps job submission non-gating and leaves the status partial contract unchanged.
 
-## OPS-007 — "Connected" badge means HTTP 200, not "ready to take jobs"
+## OPS-007 — Dashboard status badge reflects worker-fleet readiness
 
 ```yaml
 ---
 id: OPS-007
-title: "`/partials/status` returns \"Connected\" on HTTP 200; a system with 0 healthy TTS workers shows green and accepts submissions"
-status: open
+title: "Dashboard status badge reflects worker-fleet readiness"
+status: fixed
 severity: high
 effort: S
 discovered_via: [code-review, on-call]
 user_facing_surface: dashboard
 silent: true
 journey_stage: t1
-user_journey: "Operator opens the dashboard, sees the top status badge. With 3 TTS workers registered and 0 healthy (all BOOTING), the badge is yellow and reads '1/3 TTS healthy'. With all 3 healthy, the badge is green and reads 'Ready'. A submission while the badge is yellow is permitted but the operator sees a warning in the response."
+user_journey: "Operator opens the dashboard and sees a status badge reflecting the registered ASR, TRANSLATION, and TTS service-worker fleet. An empty or unhealthy fleet is yellow and reads 'Waiting'; green 'Ready' requires at least one healthy service worker and every registered service worker to be healthy. The badge shows deterministic per-type counts, and a dashboard fetch failure is red and reads 'Disconnected'. Submission gating is not part of OPS-007."
 files:
   - path: src/acheron/shell/api/routes/partials.py
-    lines: 11-19
+    lines: 1-46
   - path: dashboard/app.py
-    lines: 79-82
+    lines: 37-46
+  - path: dashboard/templates/index.html
+    lines: 29-32
+  - path: tests/shell/api/test_partials.py
+    lines: 86-192
+  - path: dashboard/tests/test_dashboard.py
+    lines: 78-88
+  - path: dashboard/tests/test_dashboard.py
+    lines: 242-268
+  - path: tests/first_run/test_3_success_criteria.py
+    lines: 6-15
 related: []
-fixed_in: []
+fixed_in: [dab052d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -255,13 +291,13 @@ incident_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/shell/api/routes/partials.py:11-19` returns "Connected" on any HTTP 200. The endpoint doesn't check worker-fleet health. A system with 0 healthy TTS workers shows a green dot and accepts a `POST /jobs` that will then route to a `BOOTING` worker.
+**Issue.** The dashboard status badge previously represented an HTTP 200 from `/partials/status` as "Connected" without checking worker-fleet readiness. The implementation now keeps the endpoint as an HTML fragment, counts only registered ASR, TRANSLATION, and TTS workers, and renders deterministic per-type healthy/total counts. An empty or unhealthy service fleet is yellow, while dashboard fetch failure remains red `Disconnected`.
 
-**Why it matters.** The "Connected" badge is the operator's pre-flight check. A green badge means "ready"; a yellow or red badge means "wait."
+**Why it matters.** The status badge is the operator's pre-flight signal: green means every registered service worker is healthy and at least one service worker is available, yellow means the fleet is empty or not fully healthy, and red means the dashboard cannot fetch its HTML fragment.
 
-**Recommendation.** Extend `/partials/status` to return a JSON object with per-type breakdown. Render the badge as green/yellow/red based on fleet readiness.
+**Recommendation.** Keep `/partials/status` as an `HTMLResponse` and derive readiness from registered service workers. Render green `Ready` only when at least one ASR, TRANSLATION, or TTS worker is healthy and every registered service worker is healthy; otherwise render yellow `Waiting`, including the exact empty output `Waiting for workers (0/0 service workers healthy)`. Preserve deterministic per-type counts, the dashboard proxy's unchanged fragment forwarding, and its red `Disconnected` fallback. Do not gate job submission on this badge; submission gating is outside OPS-007.
 
-**Verification.** With 0 healthy TTS workers, the badge is yellow. With 1/3 healthy, the badge is yellow. With 3/3 healthy, the badge is green.
+**Verification.** Focused partial-route tests cover empty, ASR-only, TRANSLATION-only, TTS-only, mixed, partially healthy, and built-in-worker fleets, including the exact empty text and deterministic per-type counts. Dashboard tests cover unchanged HTML-fragment forwarding, red `Disconnected` on fetch failure, and the yellow status style; first-run coverage accepts the empty or per-type readiness fragments. No submission-gating behavior is changed or verified as part of OPS-007.
 
 ## OPS-008 — No `acheron job cancel` — operator can submit but cannot abort
 
@@ -663,19 +699,25 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-019
 title: "Submitting while fleet is `BOOTING` — CLI says \"Job submitted\" with no \"this will queue 30-90s\" hint"
-status: open
+status: fixed
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator submits a job while all TTS workers are in `BOOTING`, sees `Job submitted: job-abc12345` and a `RUNNING` status badge, expects the response or the status badge to read 'queued: TTS workers BOOTING (3m 22s elapsed); cold-start typical 30-90s'."
+user_journey: "Operator submits a job while all TTS workers are in `BOOTING`, sees `Job submitted: job-abc12345` and a `RUNNING` status badge, expects the response or the status badge to read 'queued: TTS workers BOOTING (202s elapsed); cold-start typical 30-90s'."
 files:
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 68-73
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 111-133
+  - path: src/acheron/core/schemas.py
+    lines: 12-24
   - path: src/acheron/cli.py
-    lines: 165-178
+    lines: 272-277
 related: [OPS-007, OPS-006]
-fixed_in: []
+fixed_in: [b2bad9c]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -683,13 +725,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:165-178` only prints `Job submitted: <id>`, `Status: <status>`, `Plan: <plan_id>`. It does not call `_get_client().get_health()` to check fleet readiness.
+**Issue.** After `POST /jobs` accepts a job, the API now performs best-effort inspection of the registered worker snapshot and adds a deterministic warning for BOOTING TTS workers. The warning helper clamps elapsed time to zero, sorts all affected worker IDs, and does not gate the accepted job.
 
 **Why it matters.** Cold-start cost is real money. The operator who submits to a cold fleet and sees no signal for 60s panics and submits again, doubling the cost.
 
-**Recommendation.** `POST /jobs` returns a `warnings: list[str]` field. The CLI prints warnings in yellow after `Job submitted:`.
+**Recommendation.** Return informational `warnings: list[str]` values on the accepted `JobResponse` and render them in yellow in the CLI while preserving HTTP 201 and CLI success semantics when inspection fails.
 
-**Verification.** Submit while the only TTS worker is BOOTING; CLI prints `Warning: tts-1 is BOOTING (0:03); expected 30-90s before first step`.
+**Verification.** Focused API-schema, job-route, API-client, and CLI tests cover sorted multi-worker warnings, elapsed-time clamping, warning-inspection failure, wire round-trip, yellow CLI output, and non-gating accepted-job behavior. A BOOTING TTS fleet returns a warning while submission remains HTTP 201.
 
 ## OPS-020 — `resume` on a running job — error has no "use `cancel`" hint
 

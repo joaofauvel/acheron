@@ -273,6 +273,8 @@ def submit(  # noqa: PLR0913
     console.print(f"Status: {result.status.value}")
     if result.plan_id:
         console.print(f"Plan: {result.plan_id}")
+    for warning in result.warnings:
+        console.print(f"[yellow]Warning: {warning}[/yellow]")
 
 
 @main.command()

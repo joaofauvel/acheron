@@ -21,6 +21,7 @@ class JobResponse(BaseModel):
     total_duration_seconds: float = 0.0
     total_cost_basis: CostBasis | None = None
     errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class JobListResponse(BaseModel):
@@ -38,6 +39,8 @@ class WorkerResponse(BaseModel):
     worker_type: str
     consecutive_failures: int
     status: WorkerStatus = WorkerStatus.HEALTHY
+    booting_elapsed_seconds: float | None = None
+    booting_timeout_seconds: float = 600.0
     last_error: str | None = None
     max_input_tokens: int | None = None
 

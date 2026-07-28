@@ -81,6 +81,19 @@ class TestIndexPage:
         assert 'id="status"' in resp.text
         assert "/partials/status" in resp.text
 
+    @pytest.mark.asyncio
+    async def test_index_includes_yellow_status_style(self, client):
+        resp = await client.get("/")
+        assert ".dot-yellow" in resp.text
+        assert "#d29922" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_index_wires_one_second_booting_timer(self, client):
+        resp = await client.get("/")
+        assert "updateBootingProgress" in resp.text
+        assert "setInterval(updateBootingProgress, 1000)" in resp.text
+        assert resp.text.count("setInterval(") == 1
+
 
 class TestJobsPartial:
     @respx.mock
@@ -238,14 +251,12 @@ class TestErrorHandling:
 class TestStatusPartial:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_status_connected_when_orchestrator_up(self, client):
-        respx.get(f"{_ORCH_URL}/partials/status").mock(
-            return_value=httpx.Response(200, text='<span class="dot dot-green"></span> Connected')
-        )
+    async def test_status_forwards_readiness_fragment_unchanged(self, client):
+        fragment = '<span class="dot dot-yellow"></span> Waiting (1/3 TTS healthy)'
+        respx.get(f"{_ORCH_URL}/partials/status").mock(return_value=httpx.Response(200, text=fragment))
         resp = await client.get("/partials/status")
         assert resp.status_code == 200
-        assert "Connected" in resp.text
-        assert "dot-green" in resp.text
+        assert resp.text == fragment
 
     @respx.mock
     @pytest.mark.asyncio
@@ -282,6 +293,7 @@ class TestWorkersPartialStatus:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "badge-healthy" in resp.text
+        assert "data-booting-progress" not in resp.text
 
     @respx.mock
     @pytest.mark.asyncio
@@ -298,6 +310,8 @@ class TestWorkersPartialStatus:
                             "transport": "http",
                             "consecutive_failures": 0,
                             "status": "booting",
+                            "booting_elapsed_seconds": 182.0,
+                            "booting_timeout_seconds": 600.0,
                             "last_error": "cold start: connection refused",
                         },
                     ]
@@ -307,8 +321,43 @@ class TestWorkersPartialStatus:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "badge-booting" in resp.text
+        assert "182s / 600s" in resp.text
+        assert '<progress value="182" max="600"' in resp.text
+        assert 'data-booting-progress="true"' in resp.text
+        assert 'data-elapsed-seconds="182"' in resp.text
+        assert 'data-timeout-seconds="600"' in resp.text
         assert "View Error" in resp.text
         assert "cold start: connection refused" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_booting_worker_clamps_server_rendered_progress(self, client):
+        respx.get(f"{_ORCH_URL}/workers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workers": [
+                        {
+                            "worker_id": "tts-2",
+                            "worker_type": "tts",
+                            "endpoint": "http://tts:8000",
+                            "transport": "http",
+                            "consecutive_failures": 0,
+                            "status": "booting",
+                            "booting_elapsed_seconds": 900.0,
+                            "booting_timeout_seconds": 600.0,
+                            "last_error": None,
+                        },
+                    ]
+                },
+            )
+        )
+        resp = await client.get("/partials/workers")
+        assert resp.status_code == 200
+        assert "600s / 600s" in resp.text
+        assert 'data-elapsed-seconds="600"' in resp.text
+        assert 'data-percentage="100"' in resp.text
+        assert '<progress value="600" max="600"' in resp.text
 
     @respx.mock
     @pytest.mark.asyncio
@@ -334,4 +383,5 @@ class TestWorkersPartialStatus:
         resp = await client.get("/partials/workers")
         assert resp.status_code == 200
         assert "badge-offline" in resp.text
+        assert "data-booting-progress" not in resp.text
         assert "View Error" in resp.text

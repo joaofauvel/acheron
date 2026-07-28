@@ -44,6 +44,7 @@ class TestInMemoryWorkerStore:
         assert w.worker_id == "w-1"
         assert w.endpoint == "http://localhost:8001"
         assert w.transport == "http"
+        assert w.booting_since is None
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self) -> None:
@@ -76,10 +77,16 @@ class TestInMemoryWorkerStore:
     async def test_reregistration_overwrites(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w-1", "http://old", "http", _tts_caps())
+        await reg.set_worker_status("w-1", WorkerStatus.BOOTING, "starting")
+        await reg.record_health_failure("w-1")
         await reg.register("w-1", "http://new", "http", _tts_caps())
         w = await reg.get("w-1")
         assert w is not None
         assert w.endpoint == "http://new"
+        assert w.status == WorkerStatus.HEALTHY
+        assert w.last_error is None
+        assert w.consecutive_failures == 0
+        assert w.booting_since is None
 
     @pytest.mark.asyncio
     async def test_find_by_type(self) -> None:
@@ -159,14 +166,34 @@ class TestHealthTracking:
 
 class TestWorkerStatusTracking:
     @pytest.mark.asyncio
-    async def test_set_worker_status_updates_fields(self) -> None:
+    async def test_set_worker_status_persists_booting_lifecycle(self, monkeypatch: pytest.MonkeyPatch) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w-1", "http://a", "http", _tts_caps())
+        monkeypatch.setattr("acheron.shell.stores.memory.time.time", lambda: 100.0)
         await reg.set_worker_status("w-1", WorkerStatus.BOOTING, "cold start")
         w = await reg.get("w-1")
         assert w is not None
         assert w.status == WorkerStatus.BOOTING
         assert w.last_error == "cold start"
+        assert w.booting_since == 100.0
+
+        monkeypatch.setattr("acheron.shell.stores.memory.time.time", lambda: 200.0)
+        await reg.set_worker_status("w-1", WorkerStatus.BOOTING, "still starting")
+        w = await reg.get("w-1")
+        assert w is not None
+        assert w.booting_since == 100.0
+        assert w.last_error == "still starting"
+
+        await reg.set_worker_status("w-1", WorkerStatus.HEALTHY, None)
+        w = await reg.get("w-1")
+        assert w is not None
+        assert w.booting_since is None
+        await reg.set_worker_status("w-1", WorkerStatus.OFFLINE, "down")
+        w = await reg.get("w-1")
+        assert w is not None
+        assert w.booting_since is None
+        await reg.unregister("w-1")
+        assert await reg.get("w-1") is None
 
     @pytest.mark.asyncio
     async def test_set_worker_status_nonexistent_is_noop(self) -> None:

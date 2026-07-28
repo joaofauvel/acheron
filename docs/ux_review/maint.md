@@ -1,12 +1,12 @@
 ---
 theme: MAINT
-last_updated_date: 2026-07-24
+last_updated_date: 2026-07-28
 version: 2
 ---
 
 # MAINT
 
-**Grade**: C (2 high + 11 medium + 1 low-severity open stories)
+**Grade**: C (12 high + 4 medium-severity open stories)
 **Calibration target**: an on-call engineer should be able to recover from a 2am page without paging someone else.
 
 ## MAINT-001 — No admin endpoints to reap stuck `RUNNING` jobs
@@ -305,21 +305,45 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-009
 title: BOOTING timeout is hard-coded to 600s with no operator visibility — workers silently flip BOOTING → OFFLINE with no countdown, warning, or log breadcrumb
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [on-call, code-review]
 user_facing_surface: dashboard
 silent: true
 journey_stage: t2
-user_journey: "On-call sees a worker in `BOOTING` for 8 minutes; the dashboard's worker row shows `BOOTING — 7m 14s elapsed, timeout in 2m 46s` with a progress bar. At 9m 0s, the orchestrator logs WARNING. At 10m 0s, the row flips to `OFFLINE` with reason `provider BOOTING timeout exceeded`."
+user_journey: "On-call sees a worker in `BOOTING` for 8 minutes; the dashboard's worker row shows `BOOTING — 434s / 600s` with a progress bar. At 9m 0s, the orchestrator logs WARNING. At 10m 0s, the row flips to `OFFLINE` with reason `provider BOOTING timeout exceeded`."
 files:
   - path: src/acheron/shell/health.py
-    lines: 27-28
+    lines: 27-29
   - path: src/acheron/shell/health.py
-    lines: 192-208
+    lines: 174-226
+  - path: src/acheron/shell/registry.py
+    lines: 23-32
+  - path: src/acheron/shell/stores/base.py
+    lines: 78-89
+  - path: src/acheron/shell/stores/memory.py
+    lines: 92-107
+  - path: src/acheron/shell/stores/redis.py
+    lines: 153-173
+  - path: src/acheron/shell/stores/redis.py
+    lines: 236-284
+  - path: src/acheron/shell/stores/redis.py
+    lines: 551-566
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 22-29
+  - path: src/acheron/shell/api/routes/workers.py
+    lines: 74-101
+  - path: dashboard/booting_progress.py
+    lines: 22-54
+  - path: dashboard/app.py
+    lines: 15-22
+  - path: dashboard/templates/partials/workers.html
+    lines: 13-20
+  - path: dashboard/templates/index.html
+    lines: 62-87
 related: []
-fixed_in: []
+fixed_in: [143120a]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -327,13 +351,13 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** `_BOOTING_TIMEOUT_SECONDS = 600.0` is a module-level constant. There is no countdown surfaced in `RegisteredWorker`, no warning at 5m/9m30s, no operator-visible signal that the BOOTING state is *about* to flip.
+**Issue.** The 600-second BOOTING timeout remains an explicit health-monitor policy, but its lifecycle timestamp is now persisted and the warning/timeout transitions are observable. The monitor re-reads the store after entering BOOTING, emits one warning per `(worker_id, booting_since)` lifecycle at 540 seconds, and records `provider BOOTING timeout exceeded` before transitioning to OFFLINE at 600 seconds.
 
-**Why it matters.** RunPod cold starts are nominally < 2 min; 600s is generous. A worker that doesn't cold-start in 10 min is usually a misconfigured endpoint.
+**Why it matters.** RunPod cold starts are nominally < 2 min; 600s is generous. A worker that does not cold-start in 10 min is usually a misconfigured endpoint, and operators need a persisted breadcrumb and warning before recovery action.
 
-**Recommendation.** Add `booting_since: float | None` to `RegisteredWorker`; populate on first BOOTING entry. The orchestrator's worker-listing API includes the elapsed seconds; the dashboard shows `BOOTING — 7m 14s / 10m 0s`.
+**Recommendation.** Keep the BOOTING timestamp atomic across memory and Redis store transitions, expose clamped elapsed/timeout values through the worker API, and render the same whole-second contract in the dashboard helper and one-second timer. Clear the timestamp on HEALTHY, OFFLINE, and timeout transitions.
 
-**Verification.** A worker is forced into BOOTING. The dashboard shows `BOOTING — 0m 0s / 10m 0s` immediately. After 10m, the row flips to `OFFLINE`.
+**Verification.** Focused store and health-monitor tests cover persistence, concurrent transition invariants, warning keying across same-ID lifecycles, wall-clock clamping, and timeout behavior. Worker-route, dashboard-helper, and template tests cover `BOOTING` elapsed/timeout output and one-second browser wiring; full repository and first-run gates also exercise the unchanged route/auth/TLS/Compose/non-root contracts.
 
 ## MAINT-010 — Worker re-registration inherits stale state
 

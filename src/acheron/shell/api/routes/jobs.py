@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import math
+import time
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
@@ -12,14 +15,16 @@ from acheron.core.errors import (
     JobNotFoundError,
     sanitise_exc_message,
 )
-from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy
+from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy, WorkerStatus, WorkerType
 from acheron.core.schemas import JobListResponse, JobResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
 
 if TYPE_CHECKING:
     from acheron.shell.job_store import TrackedJob
+    from acheron.shell.registry import RegisteredWorker
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -60,7 +65,12 @@ async def submit_job(
     except AcheronError as exc:
         raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
 
-    return _tracked_to_response(tracked)
+    warnings: list[str] = []
+    try:
+        warnings = _booting_tts_warnings(await orch.list_workers(), now=time.time())
+    except Exception:
+        logger.exception("Failed to inspect workers for job submission warnings")
+    return _tracked_to_response(tracked, warnings=warnings)
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -98,7 +108,32 @@ async def list_jobs(orch: OrchestratorDep) -> JobListResponse:
     return JobListResponse(jobs=[_tracked_to_response(j) for j in jobs])
 
 
-def _tracked_to_response(tracked: TrackedJob) -> JobResponse:
+def _booting_tts_warnings(
+    workers: tuple[RegisteredWorker, ...],
+    *,
+    now: float,
+) -> list[str]:
+    """Build an informational warning for BOOTING TTS workers."""
+    affected = sorted(
+        (
+            worker
+            for worker in workers
+            if worker.capabilities.worker_type is WorkerType.TTS
+            and worker.status is WorkerStatus.BOOTING
+            and worker.booting_since is not None
+        ),
+        key=lambda worker: worker.worker_id,
+    )
+    if not affected:
+        return []
+    elapsed = ", ".join(
+        f"{worker.worker_id} ({math.floor(max(0.0, now - (worker.booting_since or 0.0)))}s elapsed)"
+        for worker in affected
+    )
+    return [f"BOOTING TTS workers: {elapsed}; cold start typically takes 30\u201390 seconds."]
+
+
+def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None) -> JobResponse:
     result = tracked.result
     return JobResponse(
         job_id=tracked.job_id,
@@ -110,4 +145,5 @@ def _tracked_to_response(tracked: TrackedJob) -> JobResponse:
         total_duration_seconds=result.total_duration_seconds if result else 0.0,
         total_cost_basis=(result.total_cost_basis if result and result.total_cost_basis else None),
         errors=list(result.errors) if result else [],
+        warnings=warnings if warnings is not None else [],
     )

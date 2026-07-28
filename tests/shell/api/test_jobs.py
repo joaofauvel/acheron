@@ -1,9 +1,73 @@
 """Tests for job API routes."""
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+
+from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
+from acheron.shell.api.routes.jobs import _booting_tts_warnings
+from acheron.shell.registry import RegisteredWorker
+
+
+def _worker(
+    worker_id: str,
+    worker_type: WorkerType,
+    status: WorkerStatus,
+    booting_since: float | None,
+) -> RegisteredWorker:
+    return RegisteredWorker(
+        worker_id=worker_id,
+        endpoint="http://worker",
+        transport="http",
+        capabilities=WorkerCapabilities(
+            worker_type=worker_type,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+        ),
+        status=status,
+        booting_since=booting_since,
+    )
+
+
+class TestBootingTtsWarnings:
+    def test_filters_sorts_and_formats_booting_tts_workers(self) -> None:
+        workers = (
+            _worker("tts-2", WorkerType.TTS, WorkerStatus.BOOTING, 988.5),
+            _worker("asr-1", WorkerType.ASR, WorkerStatus.BOOTING, 900.0),
+            _worker("tts-1", WorkerType.TTS, WorkerStatus.BOOTING, 996.2),
+            _worker("tts-healthy", WorkerType.TTS, WorkerStatus.HEALTHY, None),
+            _worker("tts-missing", WorkerType.TTS, WorkerStatus.BOOTING, None),
+        )
+
+        assert _booting_tts_warnings(workers, now=1000.0) == [
+            "BOOTING TTS workers: tts-1 (3s elapsed), tts-2 (11s elapsed); "
+            "cold start typically takes 30\u201390 seconds."
+        ]
+
+    @pytest.mark.parametrize(
+        ("workers", "now"),
+        [
+            ((), 1000.0),
+            ((_worker("tts-1", WorkerType.TTS, WorkerStatus.HEALTHY, None),), 1000.0),
+            ((_worker("asr-1", WorkerType.ASR, WorkerStatus.BOOTING, 900.0),), 1000.0),
+            ((_worker("tts-1", WorkerType.TTS, WorkerStatus.BOOTING, None),), 1000.0),
+        ],
+    )
+    def test_omits_non_warning_workers(self, workers: tuple[RegisteredWorker, ...], now: float) -> None:
+        assert _booting_tts_warnings(workers, now=now) == []
+
+    def test_clamps_backwards_wall_clock(self) -> None:
+        worker = _worker("tts-1", WorkerType.TTS, WorkerStatus.BOOTING, 1001.0)
+        assert _booting_tts_warnings((worker,), now=1000.0) == [
+            "BOOTING TTS workers: tts-1 (0s elapsed); cold start typically takes 30\u201390 seconds."
+        ]
 
 
 class TestJobRoutes:
@@ -243,6 +307,116 @@ class TestJobRoutes:
         assert response.status_code == 422
         body = response.json()
         assert any("executor_strategi" in str(d).lower() for d in body.get("detail", []))
+
+    @pytest.mark.asyncio
+    async def test_submit_job_returns_booting_tts_warning(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.core.models import WorkerCapabilities, WorkerType
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        registry = InMemoryWorkerStore()
+        capabilities = WorkerCapabilities(
+            worker_type=WorkerType.TTS,
+            supported_languages_in=frozenset({"es"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+        )
+        await registry.register("tts-1", "http://tts", "http", capabilities)
+        await registry.register(
+            "trans-1",
+            "http://translation",
+            "http",
+            replace(
+                capabilities,
+                worker_type=WorkerType.TRANSLATION,
+                supported_languages_in=frozenset({"en"}),
+                supported_languages_out=frozenset({"es"}),
+                supported_formats_out=frozenset({"text"}),
+                batch_capable=False,
+            ),
+        )
+        worker = await registry.get("tts-1")
+        assert worker is not None
+        worker.status = WorkerStatus.BOOTING
+        worker.booting_since = 995.0
+        app = create_app(
+            registry=registry,
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+        )
+        await app.state.orchestrator.start()
+        monkeypatch.setattr("acheron.shell.api.routes.jobs.time.time", lambda: 1000.0)
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.post(
+                    "/jobs",
+                    json={
+                        "source_type": "epub",
+                        "source_path": "/input/book.epub",
+                        "source_language": "en",
+                        "target_language": "es",
+                    },
+                )
+        finally:
+            await app.state.orchestrator.shutdown()
+            await app.state.orchestrator.close()
+
+        assert response.status_code == 201
+        assert response.json()["job_id"].startswith("job-")
+        assert response.json()["status"] in ("running", "completed")
+        assert response.json()["warnings"] == [
+            "BOOTING TTS workers: tts-1 (5s elapsed); cold start typically takes 30\u201390 seconds."
+        ]
+
+    @pytest.mark.asyncio
+    async def test_submit_job_warning_inspection_failure_is_non_gating(self) -> None:
+        from typing import cast
+
+        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+        from acheron.shell.api.routes import jobs as jobs_route
+        from acheron.shell.api.schemas import SubmitJobRequest
+        from acheron.shell.job_store import TrackedJob
+        from acheron.shell.orchestrator import Orchestrator
+
+        class FailingInspectionOrchestrator:
+            async def submit_job(self, request: EpubRequest, strategy: ExecutorStrategy) -> TrackedJob:
+                return TrackedJob(
+                    job_id="job-accepted",
+                    request=request,
+                    strategy=strategy,
+                    status=PlanStatus.RUNNING,
+                )
+
+            async def list_workers(self) -> tuple[RegisteredWorker, ...]:
+                raise RuntimeError("registry unavailable")
+
+        result = await jobs_route.submit_job(
+            SubmitJobRequest(
+                source_type="epub",
+                source_path="/input/book.epub",
+                source_language="en",
+                target_language="es",
+            ),
+            cast("Orchestrator", FailingInspectionOrchestrator()),
+            None,
+        )
+        assert result.status is PlanStatus.RUNNING
+        assert result.warnings == []
 
 
 class TestJobRouteAuth:

@@ -78,6 +78,7 @@ class _RedisAwaitable(Protocol):
     ) -> int | None: ...
     async def exists(self, name: str) -> bool: ...
     async def get(self, name: str) -> str | None: ...
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> object: ...
     def pipeline(self, transaction: bool = True) -> _RedisPipelineAwaitable: ...  # noqa: FBT001, FBT002
 
 
@@ -134,6 +135,7 @@ _REDIS_AWAITABLE_PROBES: tuple[_AwaitableProbe, ...] = (
     ("hset", ("name",), {"key": "key", "value": "value"}),
     ("exists", ("name",), {}),
     ("get", ("name",), {}),
+    ("eval", ("return 1", 0), {}),
 )
 
 _PIPELINE_AWAITABLE_PROBES: tuple[_AwaitableProbe, ...] = (
@@ -147,6 +149,28 @@ _WORKER_KEY = "worker:{worker_id}"
 _WORKERS_SET = "workers"
 _JOB_KEY = "job:{job_id}"
 _JOBS_SET = "jobs"
+
+_SET_WORKER_STATUS_SCRIPT = """
+local key = KEYS[1]
+if redis.call("EXISTS", key) == 0 then
+  return 0
+end
+local current_status = redis.call("HGET", key, "status") or "healthy"
+local current_since = redis.call("HGET", key, "booting_since") or ""
+local next_since = ""
+if ARGV[1] == "booting" then
+  if current_status == "booting" and current_since ~= "" then
+    next_since = current_since
+  else
+    next_since = ARGV[3]
+  end
+end
+redis.call("HSET", key,
+  "status", ARGV[1],
+  "last_error", ARGV[2],
+  "booting_since", next_since)
+return 1
+"""
 
 _capabilities_adapter: TypeAdapter[WorkerCapabilities] = TypeAdapter(WorkerCapabilities)
 _metadata_adapter: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
@@ -224,6 +248,7 @@ def _worker_fields(
         "metadata_json": _serialize_metadata(metadata),
         "status": WorkerStatus.HEALTHY.value,
         "last_error": "",
+        "booting_since": "",
     }
 
 
@@ -241,6 +266,10 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
         msg = f"Worker {worker_id} has invalid status: {status_str}"
         raise CacheCorruptedError(msg) from exc
     last_error = fields.get("last_error") or None
+    booting_since_blob = fields.get("booting_since") or ""
+    if status == WorkerStatus.BOOTING and not booting_since_blob:
+        msg = f"Worker {worker_id} has missing booting_since for BOOTING status"
+        raise CacheCorruptedError(msg) from ValueError("missing booting_since")
     return RegisteredWorker(
         worker_id=worker_id,
         endpoint=fields["endpoint"],
@@ -251,6 +280,7 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
         metadata=metadata,
         status=status,
         last_error=last_error,
+        booting_since=float(booting_since_blob) if booting_since_blob else None,
     )
 
 
@@ -515,6 +545,7 @@ class RedisWorkerStore(WorkerStore):
             pipe.hset(key, "last_health_check", str(time.time()))
             pipe.hset(key, "status", WorkerStatus.HEALTHY.value)
             pipe.hset(key, "last_error", "")
+            pipe.hset(key, "booting_since", "")
             await pipe.execute()
 
     async def set_worker_status(
@@ -525,11 +556,13 @@ class RedisWorkerStore(WorkerStore):
     ) -> None:
         """Update the worker's status and last_error without touching the failure counter."""
         key = _WORKER_KEY.format(worker_id=worker_id)
-        if not await self._redis.exists(key):
-            return
-        await self._redis.hset(
+        await self._redis.eval(
+            _SET_WORKER_STATUS_SCRIPT,
+            1,
             key,
-            mapping={"status": status.value, "last_error": last_error or ""},
+            status.value,
+            last_error or "",
+            str(time.time()),
         )
 
 

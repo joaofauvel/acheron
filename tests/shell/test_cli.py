@@ -26,14 +26,23 @@ def _stable_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_submit_epub(tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
+    warning = "BOOTING TTS workers: tts-1 (3s elapsed); cold start typically takes 30\u201390 seconds."
     respx.post(f"{_BASE_URL}/jobs").mock(
-        return_value=httpx.Response(201, json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1"})
+        return_value=httpx.Response(
+            201,
+            json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1", "warnings": [warning]},
+        )
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
     assert result.exit_code == 0
     assert "job-abc" in result.output
     assert "running" in result.output
+    assert "Warning:" in result.output
+    assert "tts-1" in result.output
+    assert "3s elapsed" in result.output
+    assert "30\u201390 seconds" in result.output
+    assert result.output.index("Plan: plan-1") < result.output.index("Warning:")
 
 
 @respx.mock
