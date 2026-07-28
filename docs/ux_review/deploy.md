@@ -553,7 +553,7 @@ files:
   - path: workers/translategemma/README.md
     lines: 41-52
 related: [DEPLOY-001, DEPLOY-004, DEPLOY-011]
-fixed_in: [a953d4d]
+fixed_in: [f4a2811, a953d4d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
