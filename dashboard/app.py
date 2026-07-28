@@ -12,11 +12,14 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request  # noqa: TC002
 
-from dashboard.booting_progress import format_booting_elapsed
+from dashboard.booting_progress import clamp_booting_elapsed, format_booting_elapsed
 
 _LOGGER = logging.getLogger(__name__)
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
-_TEMPLATES.env.globals["format_booting_elapsed"] = format_booting_elapsed
+_TEMPLATES.env.globals.update(
+    clamp_booting_elapsed=clamp_booting_elapsed,
+    format_booting_elapsed=format_booting_elapsed,
+)
 
 
 async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict:

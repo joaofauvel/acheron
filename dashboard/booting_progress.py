@@ -25,6 +25,12 @@ def _progress_values(elapsed_seconds: float, timeout_seconds: float) -> tuple[in
     return elapsed, timeout
 
 
+def clamp_booting_elapsed(elapsed_seconds: float, timeout_seconds: float) -> int:
+    """Return elapsed BOOTING seconds normalized to the timeout range."""
+    elapsed, _ = _progress_values(elapsed_seconds, timeout_seconds)
+    return elapsed
+
+
 def format_booting_elapsed(elapsed_seconds: float, timeout_seconds: float) -> str:
     """Format a clamped whole-second BOOTING elapsed/timeout label."""
     elapsed, timeout = _progress_values(elapsed_seconds, timeout_seconds)

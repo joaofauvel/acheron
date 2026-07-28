@@ -2,7 +2,11 @@
 
 import pytest
 
-from dashboard.booting_progress import advance_booting_progress, format_booting_elapsed
+from dashboard.booting_progress import (
+    advance_booting_progress,
+    clamp_booting_elapsed,
+    format_booting_elapsed,
+)
 
 
 @pytest.mark.parametrize(
@@ -17,6 +21,10 @@ from dashboard.booting_progress import advance_booting_progress, format_booting_
 )
 def test_format_booting_elapsed_clamps_and_floors(elapsed: float, expected: str) -> None:
     assert format_booting_elapsed(elapsed, 600.0) == expected
+
+
+def test_clamp_booting_elapsed_clamps_to_timeout() -> None:
+    assert clamp_booting_elapsed(900.0, 600.0) == 600
 
 
 @pytest.mark.parametrize(

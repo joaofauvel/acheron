@@ -13,9 +13,9 @@
       <td>
         <span class="badge badge-{{ w.status }}">{{ w.status }}</span>
         {% if w.status == "booting" %}
-        <div class="booting-progress" data-booting-progress="true" data-elapsed-seconds="{{ w.booting_elapsed_seconds | int }}" data-timeout-seconds="{{ w.booting_timeout_seconds | int }}" data-percentage="{{ ((w.booting_elapsed_seconds / w.booting_timeout_seconds) * 100) | int }}">
+        <div class="booting-progress" data-booting-progress="true" data-elapsed-seconds="{{ clamp_booting_elapsed(w.booting_elapsed_seconds, w.booting_timeout_seconds) }}" data-timeout-seconds="{{ w.booting_timeout_seconds | int }}" data-percentage="{{ ((clamp_booting_elapsed(w.booting_elapsed_seconds, w.booting_timeout_seconds) / w.booting_timeout_seconds) * 100) | int }}">
           <span class="booting-elapsed">{{ format_booting_elapsed(w.booting_elapsed_seconds, w.booting_timeout_seconds) }}</span>
-          <progress value="{{ w.booting_elapsed_seconds | int }}" max="{{ w.booting_timeout_seconds | int }}"></progress>
+          <progress value="{{ clamp_booting_elapsed(w.booting_elapsed_seconds, w.booting_timeout_seconds) }}" max="{{ w.booting_timeout_seconds | int }}"></progress>
         </div>
         {% endif %}
       </td>

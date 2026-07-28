@@ -327,6 +327,36 @@ class TestWorkersPartialStatus:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_booting_worker_clamps_server_rendered_progress(self, client):
+        respx.get(f"{_ORCH_URL}/workers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workers": [
+                        {
+                            "worker_id": "tts-2",
+                            "worker_type": "tts",
+                            "endpoint": "http://tts:8000",
+                            "transport": "http",
+                            "consecutive_failures": 0,
+                            "status": "booting",
+                            "booting_elapsed_seconds": 900.0,
+                            "booting_timeout_seconds": 600.0,
+                            "last_error": None,
+                        },
+                    ]
+                },
+            )
+        )
+        resp = await client.get("/partials/workers")
+        assert resp.status_code == 200
+        assert "600s / 600s" in resp.text
+        assert 'data-elapsed-seconds="600"' in resp.text
+        assert 'data-percentage="100"' in resp.text
+        assert '<progress value="600" max="600"' in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_offline_worker_shows_offline_badge(self, client):
         respx.get(f"{_ORCH_URL}/workers").mock(
             return_value=httpx.Response(
