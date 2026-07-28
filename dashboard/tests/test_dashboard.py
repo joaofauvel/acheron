@@ -82,6 +82,12 @@ class TestIndexPage:
         assert "/partials/status" in resp.text
 
     @pytest.mark.asyncio
+    async def test_index_includes_yellow_status_style(self, client):
+        resp = await client.get("/")
+        assert ".dot-yellow" in resp.text
+        assert "#d29922" in resp.text
+
+    @pytest.mark.asyncio
     async def test_index_wires_one_second_booting_timer(self, client):
         resp = await client.get("/")
         assert "updateBootingProgress" in resp.text
@@ -245,14 +251,12 @@ class TestErrorHandling:
 class TestStatusPartial:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_status_connected_when_orchestrator_up(self, client):
-        respx.get(f"{_ORCH_URL}/partials/status").mock(
-            return_value=httpx.Response(200, text='<span class="dot dot-green"></span> Connected')
-        )
+    async def test_status_forwards_readiness_fragment_unchanged(self, client):
+        fragment = '<span class="dot dot-yellow"></span> Waiting (1/3 TTS healthy)'
+        respx.get(f"{_ORCH_URL}/partials/status").mock(return_value=httpx.Response(200, text=fragment))
         resp = await client.get("/partials/status")
         assert resp.status_code == 200
-        assert "Connected" in resp.text
-        assert "dot-green" in resp.text
+        assert resp.text == fragment
 
     @respx.mock
     @pytest.mark.asyncio
