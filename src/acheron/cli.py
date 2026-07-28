@@ -69,9 +69,16 @@ def _get_client() -> AcheronClient:
     The default scheme is HTTPS to match the dev/HTTPS orchestrator (compose
     sets ``ACHERON_TLS_CERT_FILE``). Callers can override the URL with
     ``ACHERON_URL``. Trust store resolution lives in :func:`_resolve_trust_store`.
+    The registration token from ``ACHERON_REGISTRATION_TOKEN`` is forwarded
+    as a bearer header on mutating requests (uploads, job submission, resume).
     """
     base_url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
-    return AcheronClient(base_url, verify=_resolve_trust_store())
+    registration_token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
+    return AcheronClient(
+        base_url,
+        verify=_resolve_trust_store(),
+        registration_token=registration_token,
+    )
 
 
 def _run[T](
@@ -233,14 +240,14 @@ def job() -> None:
 
 
 @job.command()
-@click.argument("file", type=click.Path(exists=True))
+@click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path))
 @click.option("--src", required=True, help="Source language (ISO 639-1)")
 @click.option("--dest", required=True, help="Target language (ISO 639-1)")
 @click.option("--executor", default="streaming", show_default=True, help="Executor strategy")
 @click.option("--asr", "asr_model", default=None, help="ASR model (for audio input)")
 @click.option("--type", "source_type", default=None, help="Source type override (epub/audio)")
 def submit(  # noqa: PLR0913
-    file: str,
+    file: Path,
     src: str,
     dest: str,
     executor: str,
@@ -248,16 +255,25 @@ def submit(  # noqa: PLR0913
     source_type: str | None,
 ) -> None:
     """Submit a new job for processing."""
+    file_str = str(file)
     if source_type is None:
-        source_type = _detect_source_type(file)
+        source_type = _detect_source_type(file_str)
         if source_type is None:
             console.print(f"[red]Cannot detect source type from '{file}'. Use --type.[/red]")
             raise SystemExit(1)
 
+    # Upload the local source first; the orchestrator only knows about
+    # server-relative paths. The original filename is preserved by the
+    # upload so the orchestrator picks the right content type / suffix.
+    uploaded = _run(
+        _get_client().upload_input(file),
+        on_http_error=_print_http_error,
+    )
+
     result = _run(
         _get_client().submit_job(
             source_type=source_type,
-            source_path=file,
+            source_path=uploaded.source_path,
             source_language=src,
             target_language=dest,
             executor_strategy=executor,
@@ -379,8 +395,35 @@ def workers() -> None:
 @main.command()
 @click.option("--src", default=None, help="Filter by source language")
 @click.option("--dest", default=None, help="Filter by target language")
-def capabilities(src: str | None, dest: str | None) -> None:
-    """Show supported language pairs."""
+@click.option(
+    "--type",
+    "worker_type",
+    type=click.Choice(("tts", "asr", "translation")),
+    default=None,
+    help="Show workers of a given type instead of language pairs.",
+)
+def capabilities(src: str | None, dest: str | None, worker_type: str | None) -> None:
+    """Show supported language pairs or typed worker capabilities."""
+    if worker_type is not None and (src is not None or dest is not None):
+        raise click.UsageError("--type cannot be combined with --src/--dest")
+
+    if worker_type is not None:
+        workers = _run(_get_client().get_worker_capabilities(worker_type))
+        if not workers:
+            console.print(f"No {worker_type} workers available.")
+            return
+        table = Table(title=f"{worker_type.upper()} Workers")
+        table.add_column("Worker ID")
+        table.add_column("Model")
+        table.add_column("Voice")
+        for w in workers:
+            model = w.model_source if w.model_source is not None else "-"
+            voice_raw = w.metadata.get("voice")
+            voice = voice_raw if isinstance(voice_raw, str) else "-"
+            table.add_row(w.worker_id, model, voice)
+        console.print(table)
+        return
+
     pairs = _run(_get_client().get_capabilities(src=src, dest=dest))
     if not pairs:
         console.print("No language pairs available.")

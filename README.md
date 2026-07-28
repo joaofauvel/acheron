@@ -62,7 +62,12 @@ acheron workers
 
 # Supported language pairs
 acheron capabilities --src en --dest es
+
+# Typed worker capabilities (tts | asr | translation)
+acheron capabilities --type tts
 ```
+
+`acheron job submit` uploads the local source to the orchestrator's input store before submitting it; the orchestrator only sees the server-relative path it returned.
 
 ## Dashboard
 
