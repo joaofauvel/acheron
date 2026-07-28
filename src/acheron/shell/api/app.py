@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 
-from acheron.shell.api.routes import capabilities, jobs, partials, workers
+from acheron.shell.api.routes import capabilities, inputs, jobs, partials, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.logging_context import ContextFilter, bind_request_id
@@ -91,6 +91,7 @@ def create_app(
 
     app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
     app.include_router(workers.router, prefix="/workers", tags=["workers"])
+    app.include_router(inputs.router, prefix="/inputs", tags=["inputs"])
     app.include_router(capabilities.router, tags=["capabilities"])
     app.include_router(partials.router, tags=["partials"])
 
