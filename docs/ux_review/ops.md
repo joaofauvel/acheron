@@ -6,7 +6,7 @@ version: 2
 
 # OPS
 
-**Grade**: D (7 high + 17 medium-severity open stories)
+**Grade**: D (8 high + 17 medium-severity open stories)
 **Calibration target**: an operator should be able to submit, monitor, debug, and recover a job without `docker logs`.
 
 ## OPS-001 — Dashboard renders only three read-only tables
@@ -204,7 +204,7 @@ discovered_via: [user-feedback, code-review]
 user_facing_surface: dashboard
 silent: true
 journey_stage: t1
-user_journey: "Operator submits a job to a worker in `BOOTING`, sees the worker table column show `BOOTING (3m 22s elapsed)` ticking every second, with a thin progress bar that reaches 100% at `_BOOTING_TIMEOUT_SECONDS` (10 min by default); on reaching HEALTHY, the bar fades and the column turns green."
+user_journey: "Operator submits a job to a worker in `BOOTING`, sees the worker table column show `BOOTING (202s / 600s)` ticking every second, with a thin progress bar that reaches 100% at `_BOOTING_TIMEOUT_SECONDS` (10 min by default); on reaching HEALTHY, the bar fades and the column turns green."
 files:
   - path: src/acheron/shell/registry.py
     lines: 14-32
@@ -214,6 +214,8 @@ files:
     lines: 92-107
   - path: src/acheron/shell/stores/redis.py
     lines: 153-173
+  - path: src/acheron/shell/stores/redis.py
+    lines: 236-284
   - path: src/acheron/shell/stores/redis.py
     lines: 551-566
   - path: src/acheron/shell/health.py
@@ -694,7 +696,7 @@ discovered_via: [user-feedback, code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator submits a job while all TTS workers are in `BOOTING`, sees `Job submitted: job-abc12345` and a `RUNNING` status badge, expects the response or the status badge to read 'queued: TTS workers BOOTING (3m 22s elapsed); cold-start typical 30-90s'."
+user_journey: "Operator submits a job while all TTS workers are in `BOOTING`, sees `Job submitted: job-abc12345` and a `RUNNING` status badge, expects the response or the status badge to read 'queued: TTS workers BOOTING (202s elapsed); cold-start typical 30-90s'."
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 68-73

@@ -312,7 +312,7 @@ discovered_via: [on-call, code-review]
 user_facing_surface: dashboard
 silent: true
 journey_stage: t2
-user_journey: "On-call sees a worker in `BOOTING` for 8 minutes; the dashboard's worker row shows `BOOTING — 7m 14s elapsed, timeout in 2m 46s` with a progress bar. At 9m 0s, the orchestrator logs WARNING. At 10m 0s, the row flips to `OFFLINE` with reason `provider BOOTING timeout exceeded`."
+user_journey: "On-call sees a worker in `BOOTING` for 8 minutes; the dashboard's worker row shows `BOOTING — 434s / 600s` with a progress bar. At 9m 0s, the orchestrator logs WARNING. At 10m 0s, the row flips to `OFFLINE` with reason `provider BOOTING timeout exceeded`."
 files:
   - path: src/acheron/shell/health.py
     lines: 27-29
@@ -327,6 +327,8 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 153-173
   - path: src/acheron/shell/stores/redis.py
+    lines: 236-284
+  - path: src/acheron/shell/stores/redis.py
     lines: 551-566
   - path: src/acheron/shell/api/routes/workers.py
     lines: 22-29
@@ -334,6 +336,8 @@ files:
     lines: 74-101
   - path: dashboard/booting_progress.py
     lines: 22-54
+  - path: dashboard/app.py
+    lines: 15-22
   - path: dashboard/templates/partials/workers.html
     lines: 13-20
   - path: dashboard/templates/index.html
