@@ -126,6 +126,88 @@ class TestSave:
         assert result.size_bytes == 5
         assert (tmp_path / result.source_path).read_bytes() == b"hello"
 
+    @pytest.mark.asyncio
+    async def test_save_strips_windows_client_directories_from_filename(self, tmp_path: Path) -> None:
+        store = InputStore(tmp_path)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"data"
+
+        result = await store.save("C:\\fakepath\\book.epub", "application/epub+zip", chunks())
+        assert result.filename == "book.epub"
+        assert (tmp_path / result.source_path).read_bytes() == b"data"
+
+    @pytest.mark.asyncio
+    async def test_save_rejects_storage_root_symlink_escape_inputs(self, tmp_path: Path) -> None:
+        """A pre-existing ``data_dir/inputs -> ../outside`` symlink must not redirect writes outside ``data_dir``."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+
+        inputs_link = data_dir / "inputs"
+        inputs_link.symlink_to(outside)
+
+        store = InputStore(data_dir)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"leaked"
+
+        with pytest.raises(InputPathError):
+            await store.save("book.epub", "text/plain", chunks())
+
+        assert list(outside.iterdir()) == []
+        assert inputs_link.is_symlink()
+
+    @pytest.mark.asyncio
+    async def test_save_rejects_storage_root_symlink_escape_temp(self, tmp_path: Path) -> None:
+        """A pre-existing ``data_dir/.inputs-tmp -> ../outside`` symlink must not redirect temp writes."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+
+        temp_link = data_dir / ".inputs-tmp"
+        temp_link.symlink_to(outside)
+
+        store = InputStore(data_dir)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"leaked"
+
+        with pytest.raises(InputPathError):
+            await store.save("book.epub", "text/plain", chunks())
+
+        assert list(outside.iterdir()) == []
+        assert temp_link.is_symlink()
+
+    @pytest.mark.asyncio
+    async def test_save_cleans_temp_file_when_replace_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = InputStore(tmp_path)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"data"
+
+        def fail_replace(src: Path, dst: Path) -> None:
+            raise OSError("replace failed")
+
+        monkeypatch.setattr("acheron.shell.input_store.os.replace", fail_replace)
+
+        with pytest.raises(OSError, match="replace failed"):
+            await store.save("book.epub", "text/plain", chunks())
+
+        tmp_dir = tmp_path / ".inputs-tmp"
+        if tmp_dir.exists():
+            files_under_tmp = [p for p in tmp_dir.rglob("*") if p.is_file()]
+            assert files_under_tmp == []
+
+        inputs_dir = tmp_path / "inputs"
+        if inputs_dir.exists():
+            files_under_inputs = [p for p in inputs_dir.rglob("*") if p.is_file()]
+            assert files_under_inputs == []
+
 
 class TestResolveSourcePath:
     @pytest.mark.asyncio

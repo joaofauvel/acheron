@@ -46,6 +46,11 @@ def _check_size(current_size: int, chunk: bytes, filename: str) -> None:
         raise InputTooLargeError(msg)
 
 
+def _safe_basename(filename: str) -> str:
+    """Return the last path component, stripping both POSIX and Windows client directory components."""
+    return Path(filename.replace("\\", "/")).name or _DEFAULT_BASENAME
+
+
 class InputStore:
     """Streams uploads to disk and resolves user-supplied paths against the data directory."""
 
@@ -58,6 +63,23 @@ class InputStore:
         """The data directory under which ``inputs/`` and ``.inputs-tmp/`` live."""
         return self._data_dir
 
+    def _ensure_storage_root(self, name: str) -> Path:
+        """Ensure ``data_dir / name`` exists and resolves inside ``data_dir``.
+
+        Resolves symlinks before validating containment so a pre-existing
+        symlink at the storage root cannot redirect writes outside the data
+        directory.
+        """
+        subdir = self._data_dir / name
+        subdir.mkdir(parents=True, exist_ok=True)
+        resolved = subdir.resolve()
+        try:
+            resolved.relative_to(self._data_dir)
+        except ValueError as exc:
+            msg = f"Storage root {name!r} resolves outside data directory {self._data_dir}: {resolved}"
+            raise InputPathError(msg) from exc
+        return resolved
+
     async def save(
         self,
         filename: str,
@@ -68,18 +90,17 @@ class InputStore:
 
         Raises:
             InputTooLargeError: If the accumulated byte count would exceed ``MAX_INPUT_BYTES``.
+            InputPathError: If a storage root resolves outside the data directory.
         """
-        basename = Path(filename).name or _DEFAULT_BASENAME
+        basename = _safe_basename(filename)
         random_id = secrets.token_hex(16)
 
-        inputs_root = self._data_dir / _INPUTS_DIR_NAME
-        inputs_root.mkdir(parents=True, exist_ok=True)
+        inputs_root = self._ensure_storage_root(_INPUTS_DIR_NAME)
         dest_dir = inputs_root / random_id
         dest_dir.mkdir()
         dest_path = dest_dir / basename
 
-        temp_dir = self._data_dir / _TEMP_DIR_NAME
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = self._ensure_storage_root(_TEMP_DIR_NAME)
         temp_path = temp_dir / f"{random_id}{_TEMP_SUFFIX}"
 
         size = 0
