@@ -4,7 +4,7 @@
 
 **Goal:** Make the documented fresh-clone Compose and RunPod-profile setup honor its documented environment contract without requiring hidden build or naming knowledge.
 
-**Architecture:** The edge image will build the Acheron wheel in a Docker builder stage, so both `just build-edge` and direct `docker compose --profile runpod-* up --build` work without a host `dist/` directory. All three real edge services will share the same worker ID/host override contract, while RunPod mock services will be opt-in under a simulation profile. README, worker README, and `.env.example` instructions will use the actual Compose-to-worker environment mapping and current `runpodctl` commands.
+**Architecture:** The edge image will build the Acheron wheel in a Docker builder stage, so both `just build-edge` and direct `docker compose --profile runpod-* up --build` work without a host `dist/` directory. All three real edge services will share the same worker ID/host override contract, while all local and RunPod mock services will be opt-in under the `sim` profile, enabled by `COMPOSE_PROFILES=sim` in the copied `.env`; RunPod commands clear that variable before selecting a real edge profile. README, worker README, and `.env.example` instructions will use the actual Compose-to-worker environment mapping and current `runpodctl` commands.
 
 **Tech Stack:** Docker Compose, multi-stage Dockerfiles, Just, Markdown, pytest first-run harness, Python 3.14.
 
@@ -13,7 +13,7 @@
 - Use TDD for executable behavior and opt-in first-run checks before implementation.
 - Add no dependencies and no type ignores.
 - Preserve production TLS, registration authentication, non-root images, and default local Compose behavior.
-- Keep RunPod mock services out of `docker compose --profile runpod-*` and available only through an explicit `sim` profile.
+- Keep all local and RunPod mock services out of `docker compose --profile runpod-*` when `COMPOSE_PROFILES` is cleared, and make them available through the explicit `sim` profile used by the default Quick Start.
 - Keep the README Quick Start commands unchanged; `DEPLOY-012` is a later bundle.
 - Do not modify TLS generation, model-image dependencies, or worker runtime behavior in this bundle.
 - Use `git archive HEAD` fresh-checkout coverage for README and Compose contract assertions.
@@ -22,12 +22,12 @@
 ## File map
 
 - Modify `Dockerfile.edge`: build the Acheron wheel in an internal builder stage.
-- Modify `docker-compose.yml`: add ID/host overrides for Granite and TranslateGemma and gate RunPod mocks behind `sim`.
+- Modify `docker-compose.yml`: add ID/host overrides for Granite and TranslateGemma and gate all mock workers behind `sim`.
 - Modify `.env.example`: document all RunPod endpoint IDs and generic edge overrides.
-- Modify `README.md`: document RunPod CLI setup, image paths, and the edge build prerequisite/contract.
+- Modify `README.md`: document RunPod CLI setup, image paths, cache pre-warming, and the edge build/profile contract.
 - Modify `workers/qwen3tts/README.md`, `workers/granite_speech/README.md`, and `workers/translategemma/README.md`: document current `runpodctl` setup and Compose variable mapping.
 - Modify `tests/first_run/test_1_quick_start.py` and `tests/first_run/test_2_compose_start.py`: add fresh-checkout documentation and profile-contract assertions.
-- Modify `docs/ux_review/deploy.md`: update the six story records and line references after implementation.
+- Modify `docs/ux_review/deploy.md`: update the seven story records and line references after implementation.
 
 ## Interfaces
 
@@ -107,7 +107,7 @@ Expected: the new variable/profile assertions fail because the current Compose a
 - Consumes: the existing workspace `pyproject.toml`, `uv.lock`, `README.md`, and `src/acheron` package.
 - Produces: a direct-Compose-safe edge image and a deterministic profile service graph.
 
-- [ ] **Step 1: Add a wheel-builder stage to `Dockerfile.edge`**
+- [ ] **Step 1: Add a wheel-builder stage and explicit handler to `Dockerfile.edge`**
 
 Add a builder before the existing `edge` stage:
 
@@ -121,7 +121,7 @@ COPY src/acheron/ ./src/acheron/
 RUN uv build --package acheron --out-dir /build/dist
 ```
 
-Change the final image's wheel copy to `COPY --from=wheel-builder /build/dist/acheron-*.whl /tmp/`. Keep the existing non-root user, worker source copies, and entrypoint unchanged.
+Change the final image's wheel copy to `COPY --from=wheel-builder /build/dist/acheron-*.whl /tmp/`. Keep the existing non-root user and worker source copies, and change the entrypoint to `CMD ["acheron-worker-edge", "--handler", "acheron.worker_sdk.cloud:RunPodForwarderHandler"]` because the edge CLI requires the handler argument.
 
 - [ ] **Step 2: Apply the common ID/host overrides to all real edge services**
 
@@ -134,9 +134,9 @@ ACHERON_WORKER__WORKER_HOST: ${ACHERON_WORKER__WORKER_HOST:-granite-speech-edge}
 
 Use `translategemma-edge` for both TranslateGemma defaults. Do not change endpoint, token, TLS, price, or model variables.
 
-- [ ] **Step 3: Gate RunPod mock services**
+- [ ] **Step 3: Gate all mock services**
 
-Add `profiles: ["sim"]` to `tts-runpod-stub` and `translation-runpod-stub`. Do not add a profile to local stubs or real edge services. This keeps default Quick Start behavior unchanged and prevents RunPod-profile startup from registering mock workers.
+Add `profiles: ["sim"]` to the local TTS, ASR, translation, and gRPC stubs as well as the RunPod TTS and translation stubs. Add `COMPOSE_PROFILES=sim` to `.env.example` so the unchanged default `docker compose up --build` Quick Start still starts the mock fleet. The documented RunPod commands clear `COMPOSE_PROFILES` before selecting a real edge profile, preventing mock workers from registering alongside the edge.
 
 - [ ] **Step 4: Run configuration checks**
 
@@ -147,7 +147,7 @@ docker compose --profile runpod-asr config --services
 docker compose --profile sim config --services
 ```
 
-Expected: the first output includes `granite-speech-edge` but not the RunPod mock services; the second includes both RunPod mock services. Then rerun the focused first-run tests from Task 1.
+Expected: with `COMPOSE_PROFILES=` the first output includes `granite-speech-edge` but no mock services; with `COMPOSE_PROFILES=sim` the second includes the local and RunPod mock services. Then rerun the focused first-run tests from Task 1.
 
 ### Task 3: Align deployment documentation and environment examples
 
@@ -166,7 +166,7 @@ Expected: the first output includes `granite-speech-edge` but not the RunPod moc
 
 Add Granite and TranslateGemma endpoint IDs to `.env.example`. Replace the single-profile-only edge comment with a clearly labelled “set one active profile at a time” block showing the generic `ACHERON_WORKER__WORKER_ID` and `ACHERON_WORKER__WORKER_HOST` overrides and the defaults for each profile. Keep secrets commented and do not put generated values in the file.
 
-- [ ] **Step 2: Add RunPod CLI prerequisites to the top-level README**
+- [ ] **Step 2: Add RunPod CLI prerequisites and cache setup to the top-level README**
 
 In the RunPod deployment section, document the non-root Linux installation and authentication commands:
 
@@ -178,7 +178,7 @@ export PATH="$HOME/.local/bin:$PATH"
 runpodctl config --apiKey "$RUNPOD_API_KEY"
 ```
 
-Document network-volume creation with:
+Export a concrete API key before the config command, and document network-volume creation with:
 
 ```bash
 runpodctl network-volume create --name "acheron-hf-cache" --size 30 --data-center-id "<data-center-id>"
@@ -190,15 +190,15 @@ Document endpoint creation from an already-created template with:
 runpodctl serverless create --template-id "<template-id>" --gpu-id "<gpu-id>"
 ```
 
-State which values are copied into `.env`, where the template image path comes from, and that the template itself is created in the RunPod console. Do not invent an unsupported template-creation command.
+State which values are copied into `.env`, where the template image path comes from, and that the template itself is created in the RunPod console. Make the pre-warm commands install `hf-transfer`, set `HF_HUB_ENABLE_HF_TRANSFER=1`, and use model-specific `--local-dir` paths under `/runpod-volume/huggingface-cache`. Do not invent an unsupported template-creation command.
 
-- [ ] **Step 3: Standardize GHCR image examples**
+- [ ] **Step 3: Standardize GHCR image examples and profile commands**
 
-Change top-level README image examples from `ghcr.io/<repo>/...` to `ghcr.io/<owner>/<repo>/...`, matching the worker READMEs and CI's `${{ github.repository }}` expansion. Add the explicit instruction to run `just build-edge` before direct edge image use, while explaining that direct Compose `up --build` is self-building after this change.
+Change top-level and worker README image examples to `ghcr.io/<owner>/<repo>/...`, matching CI's `${{ github.repository }}` expansion. Document `COMPOSE_PROFILES= docker compose --profile runpod-* ...` for real edges, add the explicit instruction to run `just build-edge` before direct edge image use, and explain that direct Compose `up --build` is self-building after this change.
 
-- [ ] **Step 4: Add the Compose-to-SDK mapping to each worker README**
+- [ ] **Step 4: Add the Compose-to-SDK mapping and quoted endpoint command to each worker README**
 
-In each worker README, add a short table stating that Compose maps `ACHERON_REGISTRATION_TOKEN` to `ACHERON_WORKER__REGISTRATION_TOKEN`, `RUNPOD_API_KEY` to `ACHERON_WORKER__RUNPOD_API_KEY`, and that the profile-specific endpoint ID maps to `ACHERON_WORKER__RUNPOD_ENDPOINT_ID`. Keep the existing SDK environment-variable reference for non-Compose deployments.
+In each worker README, standardize the image as `ghcr.io/<owner>/<repo>/...`, quote `<template-id>` and `<gpu-id>` in the `runpodctl serverless create` command, prefix the Compose command with `COMPOSE_PROFILES=`, and add a short table stating that Compose maps `ACHERON_REGISTRATION_TOKEN` to `ACHERON_WORKER__REGISTRATION_TOKEN`, `RUNPOD_API_KEY` to `ACHERON_WORKER__RUNPOD_API_KEY`, and that the profile-specific endpoint ID maps to `ACHERON_WORKER__RUNPOD_ENDPOINT_ID`. Keep the existing SDK environment-variable reference for non-Compose deployments.
 
 - [ ] **Step 5: Run documentation contract tests**
 
@@ -252,9 +252,9 @@ just runpod-bootstrap
 
 Expected: all quality checks, simulator scenarios, and UX metadata validation pass.
 
-- [ ] **Step 4: Update the six story records**
+- [ ] **Step 4: Update the seven story records**
 
-Refresh file line ranges and issue text where the existing records describe the pre-fix state. Set each story to `status: fixed` and `fixed_in: [pending]` until the implementation commit exists; leave `verified_in` empty until post-merge verification.
+Refresh file line ranges and issue text where the existing records describe the pre-fix state. Set `DEPLOY-001`, `DEPLOY-003`, `DEPLOY-004`, `DEPLOY-005`, `DEPLOY-007`, `DEPLOY-011`, and `DEPLOY-014` to `status: fixed` and `fixed_in: [pending]` until the implementation commit exists; leave `verified_in` empty until post-merge verification.
 
 - [ ] **Step 5: Commit the bundle atomically**
 
