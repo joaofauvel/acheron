@@ -31,7 +31,7 @@ files:
   - path: docker-compose.yml
     lines: 245-279
 related: [DX-005, DX-006]
-fixed_in: [pending]
+fixed_in: [f4a2811]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -105,7 +105,7 @@ files:
   - path: docker-compose.yml
     lines: 173-176
 related: [DX-006]
-fixed_in: [pending]
+fixed_in: [f4a2811, a953d4d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -146,7 +146,7 @@ files:
   - path: workers/translategemma/README.md
     lines: 11-55
 related: []
-fixed_in: [pending]
+fixed_in: [f4a2811, 0cb3bc7]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -178,7 +178,7 @@ journey_stage: t0
 user_journey: "Deployer in a GitHub org (e.g., `myorg/acheron-fork`) copies the top-level README's `ghcr.io/<repo>/acheron-qwen3tts-runpod:<tag>` placeholder and substitutes `<repo>` with `acheron-fork`, getting `ghcr.io/acheron-fork/acheron-qwen3tts-runpod:<tag>`. RunPod's template creation rejects the image (404 from ghcr.io) because the org's package path is `ghcr.io/myorg/...`."
 files:
   - path: README.md
-    lines: 204-208
+    lines: 209-211
   - path: workers/qwen3tts/README.md
     lines: 6-9
   - path: workers/granite_speech/README.md
@@ -186,7 +186,7 @@ files:
   - path: workers/translategemma/README.md
     lines: 6-9
 related: [DOC-012]
-fixed_in: [pending]
+fixed_in: [f4a2811]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -252,11 +252,11 @@ journey_stage: t0
 user_journey: "Deployer wants to test the RunPod path against the orchestrator. They run `docker compose --profile runpod-tts up -d` to start the qwen3tts-edge service. The deployer didn't realize that `tts-runpod-stub` (port 8006) and `tts-local-stub` (port 8001) both start as well. The orchestrator now sees TWO TTS workers registered: `qwen3tts-1` (the real edge) and `tts-runpod-stub` (the dev-mode stub). The first job submission hits the stub, returns static mock data, and the deployer is confused why the RunPod path isn't being exercised."
 files:
   - path: docker-compose.yml
-    lines: 281-337
+    lines: 284-340
   - path: README.md
     lines: 231-243
 related: []
-fixed_in: [pending]
+fixed_in: [f4a2811, a953d4d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -394,13 +394,13 @@ journey_stage: t0
 user_journey: "Deployer follows the qwen3tts setup in `.env.example:21-28`, then mirrors the pattern for granite-speech: sets `RUNPOD_API_KEY` and `QWEN3TTS_RUNPOD_ENDPOINT_ID`, but does not see `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` documented. They run `docker compose --profile runpod-asr up -d` and the granite-speech-edge container starts, registers with the orchestrator, but on the first `/execute` returns a RunPod `404 endpoint not found` (because `GRANITE_SPEECH_RUNPOD_ENDPOINT_ID` is the empty string per docker-compose.yml:219's `${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID:-}` fallback)."
 files:
   - path: .env.example
-    lines: 17-29
+    lines: 21-42
   - path: docker-compose.yml
-    lines: 216-223
+    lines: 219-226
   - path: docker-compose.yml
-    lines: 251-258
+    lines: 254-265
 related: [DOC-010, DOC-011]
-fixed_in: [pending]
+fixed_in: [f4a2811, a953d4d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -510,7 +510,7 @@ files:
   - path: workers/translategemma/README.md
     lines: 11-22
 related: []
-fixed_in: [pending]
+fixed_in: [a953d4d, 0cb3bc7]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -541,17 +541,19 @@ journey_stage: t0
 user_journey: "Deployer follows a worker README, sets ACHERON_WORKER__REGISTRATION_TOKEN and ACHERON_WORKER__RUNPOD_ENDPOINT_ID in .env, and starts the matching Compose profile. Compose actually requires ACHERON_REGISTRATION_TOKEN and a profile-specific endpoint variable, so registration fails or the endpoint remains empty."
 files:
   - path: .env.example
-    lines: 17-37
+    lines: 21-42
   - path: docker-compose.yml
-    lines: 216-223
+    lines: 219-226
+  - path: docker-compose.yml
+    lines: 254-265
   - path: workers/qwen3tts/README.md
-    lines: 37-55
+    lines: 33-49
   - path: workers/granite_speech/README.md
-    lines: 42-55
+    lines: 39-49
   - path: workers/translategemma/README.md
-    lines: 42-55
+    lines: 41-52
 related: [DEPLOY-001, DEPLOY-004, DEPLOY-011]
-fixed_in: [pending]
+fixed_in: [a953d4d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
