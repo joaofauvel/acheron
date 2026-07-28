@@ -66,11 +66,16 @@ class InputStore:
     def _ensure_storage_root(self, name: str) -> Path:
         """Ensure ``data_dir / name`` exists and resolves inside ``data_dir``.
 
-        Resolves symlinks before validating containment so a pre-existing
-        symlink at the storage root cannot redirect writes outside the data
-        directory.
+        Rejects any symlink at the storage root, including a target that
+        remains inside ``data_dir`` (e.g. ``data_dir/inputs -> data_dir/elsewhere``).
+        Allowing such a symlink would silently redirect writes to the
+        target and break the public ``inputs/<id>/<name>`` source-path
+        invariant promised to API callers.
         """
         subdir = self._data_dir / name
+        if subdir.is_symlink():
+            msg = f"Storage root {name!r} is a symlink in data directory {self._data_dir}"
+            raise InputPathError(msg)
         subdir.mkdir(parents=True, exist_ok=True)
         resolved = subdir.resolve()
         try:

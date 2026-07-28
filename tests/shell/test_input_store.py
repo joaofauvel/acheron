@@ -182,6 +182,33 @@ class TestSave:
         assert temp_link.is_symlink()
 
     @pytest.mark.asyncio
+    async def test_save_rejects_internal_storage_root_symlink(self, tmp_path: Path) -> None:
+        """An internal ``data_dir/inputs -> data_dir/elsewhere`` symlink must be rejected.
+
+        Allowing such a symlink would silently redirect writes to
+        ``data_dir/elsewhere/<id>/<name>`` and return a source path outside
+        the public ``inputs/<id>/<name>`` layout promised to API callers.
+        """
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        elsewhere = data_dir / "elsewhere"
+        elsewhere.mkdir()
+
+        inputs_link = data_dir / "inputs"
+        inputs_link.symlink_to(elsewhere)
+
+        store = InputStore(data_dir)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"data"
+
+        with pytest.raises(InputPathError):
+            await store.save("book.epub", "text/plain", chunks())
+
+        assert list(elsewhere.iterdir()) == []
+        assert inputs_link.is_symlink()
+
+    @pytest.mark.asyncio
     async def test_save_cleans_temp_file_when_replace_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
