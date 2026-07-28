@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import mimetypes
+import secrets
 import ssl
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import aiofiles
 import httpx
@@ -20,6 +21,9 @@ from acheron.core.schemas import (
     WorkerListResponse,
     WorkerResponse,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 def _ssl_context_for(verify: bool | str | Path) -> bool | ssl.SSLContext:  # noqa: FBT001
@@ -105,20 +109,22 @@ class AcheronClient:
             return JobResponse.model_validate(resp.json())
 
     async def upload_input(self, path: str | Path) -> InputResponse:
-        """Upload a local file to the orchestrator's input store."""
+        """Upload a local file to the orchestrator's input store as a streaming multipart body."""
         source = Path(path)
         content_type, _ = mimetypes.guess_type(source.name)
         if content_type is None:
             content_type = "application/octet-stream"
-        async with aiofiles.open(source, "rb") as fp:
-            data = await fp.read()
+        body, boundary = _stream_file_multipart(source=source, content_type=content_type)
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.post(
                 "/inputs",
-                files={"file": (source.name, data, content_type)},
-                headers=self._mutation_headers(),
+                content=body,
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    **self._mutation_headers(),
+                },
             )
             resp.raise_for_status()
             return InputResponse.model_validate(resp.json())
@@ -176,3 +182,34 @@ class AcheronClient:
             resp = await client.get("/capabilities", params={"type": worker_type})
             resp.raise_for_status()
             return CapabilitiesResponse.model_validate(resp.json()).workers
+
+
+def _stream_file_multipart(
+    *,
+    source: Path,
+    content_type: str,
+    chunk_size: int = 64 * 1024,
+) -> tuple[AsyncIterator[bytes], str]:
+    """Build a streaming ``multipart/form-data`` body for a single file part.
+
+    Reads ``source`` in ``chunk_size``-byte chunks via aiofiles so the full
+    file is never materialised in memory; each chunk is yielded on demand
+    as httpx drains the iterator. Returns ``(body_iterator, boundary)`` for
+    use with :meth:`httpx.AsyncClient.post`'s ``content=`` and a
+    ``Content-Type: multipart/form-data; boundary=<boundary>`` header.
+    """
+    boundary = f"acheron-{secrets.token_hex(16)}"
+
+    async def _gen() -> AsyncIterator[bytes]:
+        yield (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{source.name}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        async with aiofiles.open(source, "rb") as fp:
+            while chunk := await fp.read(chunk_size):
+                yield chunk
+        yield b"\r\n"
+        yield f"--{boundary}--\r\n".encode()
+
+    return _gen(), boundary
