@@ -85,12 +85,12 @@ async def _register_worker(
 
 class TestStatusPartial:
     @pytest.mark.asyncio
-    async def test_no_tts_workers_report_zero_of_zero(self, client: AsyncClient) -> None:
+    async def test_no_service_workers_report_waiting(self, client: AsyncClient) -> None:
         response = await client.get("/partials/status")
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/html")
-        assert response.text == '<span class="dot dot-yellow"></span> Waiting (0/0 TTS healthy)'
+        assert response.text == '<span class="dot dot-yellow"></span> Waiting for workers (0/0 service workers healthy)'
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -98,15 +98,15 @@ class TestStatusPartial:
         [
             (
                 (WorkerStatus.BOOTING, WorkerStatus.OFFLINE, WorkerStatus.BOOTING),
-                '<span class="dot dot-yellow"></span> Waiting (0/3 TTS healthy)',
+                '<span class="dot dot-yellow"></span> Waiting (tts 0/3)',
             ),
             (
                 (WorkerStatus.HEALTHY, WorkerStatus.BOOTING, WorkerStatus.OFFLINE),
-                '<span class="dot dot-yellow"></span> Waiting (1/3 TTS healthy)',
+                '<span class="dot dot-yellow"></span> Waiting (tts 1/3)',
             ),
             (
                 (WorkerStatus.HEALTHY, WorkerStatus.HEALTHY, WorkerStatus.HEALTHY),
-                '<span class="dot dot-green"></span> Ready (3/3 TTS healthy)',
+                '<span class="dot dot-green"></span> Ready (tts 3/3)',
             ),
         ],
     )
@@ -125,16 +125,18 @@ class TestStatusPartial:
         assert response.text == expected
 
     @pytest.mark.asyncio
-    async def test_asr_only_fleet_is_not_ready(
+    @pytest.mark.parametrize("worker_type", [WorkerType.ASR, WorkerType.TRANSLATION])
+    async def test_healthy_single_type_fleet_is_ready(
         self,
         client: AsyncClient,
         registry: InMemoryWorkerStore,
+        worker_type: WorkerType,
     ) -> None:
-        await _register_worker(registry, "asr-1", WorkerType.ASR)
+        await _register_worker(registry, "service-1", worker_type)
 
         response = await client.get("/partials/status")
 
-        assert response.text == '<span class="dot dot-yellow"></span> Waiting (0/0 TTS healthy)'
+        assert response.text == f'<span class="dot dot-green"></span> Ready ({worker_type.value} 1/1)'
 
     @pytest.mark.asyncio
     async def test_healthy_mixed_service_fleet_is_ready(
@@ -148,7 +150,7 @@ class TestStatusPartial:
 
         response = await client.get("/partials/status")
 
-        assert response.text == '<span class="dot dot-green"></span> Ready (1/1 TTS healthy)'
+        assert response.text == '<span class="dot dot-green"></span> Ready (asr 1/1, translation 1/1, tts 1/1)'
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("unhealthy_worker_type", [WorkerType.ASR, WorkerType.TRANSLATION])
@@ -169,7 +171,11 @@ class TestStatusPartial:
 
         response = await client.get("/partials/status")
 
-        assert response.text == '<span class="dot dot-yellow"></span> Waiting (1/1 TTS healthy)'
+        expected_details = ", ".join(
+            f"{worker_type.value} {int(worker_type is not unhealthy_worker_type)}/1"
+            for worker_type in sorted(worker_ids, key=lambda worker_type: worker_type.value)
+        )
+        assert response.text == f'<span class="dot dot-yellow"></span> Waiting ({expected_details})'
 
     @pytest.mark.asyncio
     async def test_unhealthy_builtin_workers_do_not_block_readiness(
@@ -183,4 +189,4 @@ class TestStatusPartial:
 
         response = await client.get("/partials/status")
 
-        assert response.text == '<span class="dot dot-green"></span> Ready (1/1 TTS healthy)'
+        assert response.text == '<span class="dot dot-green"></span> Ready (tts 1/1)'

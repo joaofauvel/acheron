@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
@@ -19,34 +19,28 @@ router = APIRouter()
 _SERVICE_WORKER_TYPES = frozenset({WorkerType.ASR, WorkerType.TRANSLATION, WorkerType.TTS})
 
 
-@dataclass(frozen=True)
-class _ReadinessSummary:
-    healthy_tts: int
-    total_tts: int
-    all_service_workers_healthy: bool
-
-    @property
-    def is_ready(self) -> bool:
-        return self.healthy_tts > 0 and self.all_service_workers_healthy
-
-
-def _summarize_readiness(workers: tuple[RegisteredWorker, ...]) -> _ReadinessSummary:
-    tts_workers = tuple(worker for worker in workers if worker.capabilities.worker_type is WorkerType.TTS)
+def _render_fleet_status(workers: tuple[RegisteredWorker, ...]) -> str:
     service_workers = tuple(worker for worker in workers if worker.capabilities.worker_type in _SERVICE_WORKER_TYPES)
-    return _ReadinessSummary(
-        healthy_tts=sum(worker.status is WorkerStatus.HEALTHY for worker in tts_workers),
-        total_tts=len(tts_workers),
-        all_service_workers_healthy=all(worker.status is WorkerStatus.HEALTHY for worker in service_workers),
+    if not service_workers:
+        return '<span class="dot dot-yellow"></span> Waiting for workers (0/0 service workers healthy)'
+
+    grouped_workers: defaultdict[WorkerType, list[RegisteredWorker]] = defaultdict(list)
+    for worker in service_workers:
+        grouped_workers[worker.capabilities.worker_type].append(worker)
+
+    details = ", ".join(
+        f"{worker_type.value} "
+        f"{sum(worker.status is WorkerStatus.HEALTHY for worker in grouped_workers[worker_type])}/"
+        f"{len(grouped_workers[worker_type])}"
+        for worker_type in sorted(grouped_workers, key=lambda worker_type: worker_type.value)
     )
-
-
-def _render_readiness(summary: _ReadinessSummary) -> str:
-    dot_class, label = ("dot-green", "Ready") if summary.is_ready else ("dot-yellow", "Waiting")
-    return f'<span class="dot {dot_class}"></span> {label} ({summary.healthy_tts}/{summary.total_tts} TTS healthy)'
+    healthy_count = sum(worker.status is WorkerStatus.HEALTHY for worker in service_workers)
+    dot_class, label = ("dot-green", "Ready") if healthy_count == len(service_workers) else ("dot-yellow", "Waiting")
+    return f'<span class="dot {dot_class}"></span> {label} ({details})'
 
 
 @router.get("/partials/status", response_class=HTMLResponse)
 async def status_partial(orch: OrchestratorDep) -> HTMLResponse:
     """Return the current service-worker readiness badge."""
     workers = await orch.list_workers()
-    return HTMLResponse(_render_readiness(_summarize_readiness(workers)))
+    return HTMLResponse(_render_fleet_status(workers))
