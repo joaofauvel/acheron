@@ -27,7 +27,7 @@
 - Modify `README.md`: document RunPod CLI setup, image paths, cache pre-warming, and the edge build/profile contract.
 - Modify `workers/qwen3tts/README.md`, `workers/granite_speech/README.md`, and `workers/translategemma/README.md`: document current `runpodctl` setup and Compose variable mapping.
 - Modify `tests/first_run/test_1_quick_start.py` and `tests/first_run/test_2_compose_start.py`: add fresh-checkout documentation and profile-contract assertions.
-- Modify `docs/ux_review/deploy.md`: update the seven story records and line references after implementation.
+- Modify `docs/ux_review/deploy.md`: update the eight fixed story records and line references after implementation.
 
 ## Interfaces
 
@@ -181,7 +181,7 @@ runpodctl config --apiKey "$RUNPOD_API_KEY"
 Export a concrete API key before the config command, and document network-volume creation with:
 
 ```bash
-runpodctl network-volume create --name "acheron-hf-cache" --size 30 --data-center-id "<data-center-id>"
+runpodctl network-volume create --name "acheron-hf-cache" --size 50 --data-center-id "<data-center-id>"
 ```
 
 Document endpoint creation from an already-created template with:
@@ -190,7 +190,7 @@ Document endpoint creation from an already-created template with:
 runpodctl serverless create --template-id "<template-id>" --gpu-id "<gpu-id>"
 ```
 
-State which values are copied into `.env`, where the template image path comes from, and that the template itself is created in the RunPod console. Make the pre-warm commands install `hf-transfer`, set `HF_HUB_ENABLE_HF_TRANSFER=1`, and use model-specific `--local-dir` paths under `/runpod-volume/huggingface-cache`. Do not invent an unsupported template-creation command.
+State which values are copied into `.env`, where the template image path comes from, and that the template itself is created in the RunPod console. Make the pre-warm commands install `hf-transfer`, set `HF_HUB_ENABLE_HF_TRANSFER=1`, export `HF_HOME=/runpod-volume/huggingface-cache`, and download into the standard Hub cache layout without `--local-dir`. Do not invent an unsupported template-creation command.
 
 - [ ] **Step 3: Standardize GHCR image examples and profile commands**
 
@@ -252,9 +252,9 @@ just runpod-bootstrap
 
 Expected: all quality checks, simulator scenarios, and UX metadata validation pass.
 
-- [ ] **Step 4: Update the seven story records**
+- [ ] **Step 4: Update the eight story records**
 
-Refresh file line ranges and issue text where the existing records describe the pre-fix state. Set `DEPLOY-001`, `DEPLOY-003`, `DEPLOY-004`, `DEPLOY-005`, `DEPLOY-007`, `DEPLOY-011`, and `DEPLOY-014` to `status: fixed` and `fixed_in: [pending]` until the implementation commit exists; leave `verified_in` empty until post-merge verification.
+Refresh file line ranges and issue text where the existing records describe the pre-fix state. Set `DEPLOY-001`, `DEPLOY-003`, `DEPLOY-004`, `DEPLOY-005`, `DEPLOY-007`, `DEPLOY-011`, `DEPLOY-014`, and `DEPLOY-015` to `status: fixed` and leave `verified_in` empty until post-merge verification.
 
 - [ ] **Step 5: Commit the bundle atomically**
 
@@ -268,15 +268,9 @@ git add Dockerfile.edge docker-compose.yml .env.example README.md \
 git commit -m "fix(DEPLOY-001,DEPLOY-003,DEPLOY-004,DEPLOY-005,DEPLOY-007,DEPLOY-011): harden fresh clone deployment"
 ```
 
-- [ ] **Step 6: Resolve the implementation commit reference**
+- [ ] **Step 6: Record implementation commit references**
 
-Replace every `fixed_in: [pending]` with the implementation commit hash and amend without changing the commit message:
-
-```bash
-git rev-parse HEAD
-git add docs/ux_review/deploy.md
-git commit --amend --no-edit
-```
+After the implementation commits are final, replace each pending `fixed_in` value with the relevant implementation commit hash and make a separate metadata commit. Do not amend the implementation commit after recording its hash, which would invalidate the reference.
 
 - [ ] **Step 7: Run fresh correctness and documentation-staleness reviews**
 
