@@ -5,16 +5,19 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+from collections.abc import Collection
 from pathlib import Path
 
 import pytest
 
 from acheron.core.errors import (
     ChunkingTooLongForWorkerError,
+    InvalidationTargetError,
     InvalidLanguagePathError,
     JobAlreadyRunningError,
     JobNotCancellableError,
     JobNotFoundError,
+    NoPlanToResumeError,
 )
 from acheron.core.models import (
     AudioRequest,
@@ -150,6 +153,18 @@ class _ObservingJobStore(InMemoryJobStore):
     async def put(self, job: TrackedJob) -> None:
         self.snapshots.append(copy.deepcopy(job))
         await super().put(copy.deepcopy(job))
+
+
+class _RecordingStepCache(InMemoryStepCache):
+    """Records invalidation requests for resume tests."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.invalidated: list[set[str]] = []
+
+    async def invalidate_steps(self, job_id: str, step_ids: Collection[str]) -> None:
+        self.invalidated.append(set(step_ids))
+        await super().invalidate_steps(job_id, step_ids)
 
 
 def _single_step_plan(job_id: str) -> Plan:
@@ -1253,6 +1268,95 @@ class TestOrchestrator:
         assert len(jobs) == 2
 
     @pytest.mark.asyncio
+    async def test_resume_invalidates_selected_steps_and_dependents(self, tmp_path: Path) -> None:
+        cache = _RecordingStepCache()
+        jobs = InMemoryJobStore()
+        plan = Plan(
+            plan_id="plan-resume",
+            job_id="job-resume",
+            source_type="epub",
+            source_language="en",
+            target_language="en",
+            executor_strategy=ExecutorStrategy.SEQUENTIAL,
+            steps=(
+                PlanStep("extract", WorkerType.EXTRACTION, (), StepStatus.PENDING, {}),
+                PlanStep("step-46", WorkerType.CHUNKING, ("extract",), StepStatus.PENDING, {"chapter_id": "ch46"}),
+                PlanStep("step-47", WorkerType.CHUNKING, ("extract",), StepStatus.PENDING, {"chapter_id": "ch47"}),
+                PlanStep("step-48", WorkerType.TTS, ("step-47",), StepStatus.PENDING, {"chapter_id": "ch47"}),
+            ),
+        )
+        tracked = TrackedJob(
+            job_id=plan.job_id,
+            request=EpubRequest("/input/book.epub", "en", "en"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=plan,
+            status=PlanStatus.FAILED,
+        )
+        orch = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(tmp_path),
+            _success_handler,
+            job_store=jobs,
+            step_cache=cache,
+        )
+        await orch.start()
+        await jobs.put(tracked)
+
+        await orch.resume_job("job-resume", invalidate_steps=("step-47",))
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+
+        assert cache.invalidated == [{"step-47", "step-48"}]
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_resume_invalidates_chapter_and_rejects_unknown_target(self, tmp_path: Path) -> None:
+        cache = _RecordingStepCache()
+        jobs = InMemoryJobStore()
+        plan = Plan(
+            plan_id="plan-chapter",
+            job_id="job-chapter",
+            source_type="epub",
+            source_language="en",
+            target_language="en",
+            executor_strategy=ExecutorStrategy.SEQUENTIAL,
+            steps=(PlanStep("step-1", WorkerType.CHUNKING, (), StepStatus.PENDING, {"chapter_id": "ch1"}),),
+        )
+        await jobs.put(
+            TrackedJob(
+                job_id=plan.job_id,
+                request=EpubRequest("/input/book.epub", "en", "en"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                plan=plan,
+                status=PlanStatus.FAILED,
+            )
+        )
+        orch = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(tmp_path),
+            _success_handler,
+            job_store=jobs,
+            step_cache=cache,
+        )
+        await orch.start()
+
+        await orch.resume_job("job-chapter", invalidate_chapters=(1,))
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+        assert cache.invalidated == [{"step-1"}]
+
+        await jobs.put(
+            TrackedJob(
+                job_id="job-unknown",
+                request=EpubRequest("/input/book.epub", "en", "en"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                plan=plan,
+                status=PlanStatus.FAILED,
+            )
+        )
+        with pytest.raises(InvalidationTargetError):
+            await orch.resume_job("job-unknown", invalidate_steps=("missing",))
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
     async def test_resume_job_restarts_stale_running_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
         jobs = InMemoryJobStore()
@@ -1287,8 +1391,9 @@ class TestOrchestrator:
             ExecutorStrategy.STREAMING,
         )
 
-        with pytest.raises(JobAlreadyRunningError):
+        with pytest.raises(JobAlreadyRunningError) as exc_info:
             await orch.resume_job(tracked.job_id)
+        assert exc_info.value.remediation == "acheron job cancel " + tracked.job_id
         await orch.shutdown()
 
     @pytest.mark.asyncio
@@ -1317,6 +1422,26 @@ class TestOrchestrator:
 
         with pytest.raises(JobNotFoundError):
             await orch.resume_job("missing")
+
+    @pytest.mark.asyncio
+    async def test_resume_job_without_plan_exposes_resubmission(self, tmp_path: Path) -> None:
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        await jobs.put(
+            TrackedJob(
+                job_id="job-no-plan",
+                request=EpubRequest("/input/book.epub", "en", "en"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                plan=None,
+                status=PlanStatus.FAILED,
+            )
+        )
+
+        with pytest.raises(NoPlanToResumeError) as exc_info:
+            await orch.resume_job("job-no-plan")
+        assert exc_info.value.remediation == "acheron job submit <source> --src ... --dest ..."
+        await orch.shutdown()
 
     @pytest.mark.asyncio
     async def test_register_and_list_workers(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

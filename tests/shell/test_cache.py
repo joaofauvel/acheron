@@ -15,7 +15,7 @@ from acheron.core.models import (
     StepStatus,
     WorkerType,
 )
-from acheron.shell.cache import PlanCache, StepCache
+from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache
 
 
 def _sample_plan(plan_id: str = "plan-abcd1234") -> Plan:
@@ -166,3 +166,45 @@ class TestStepCache:
         )
         await cache.save_outputs("job-1", "tts-ch1", outputs)
         assert not await cache.step_has_valid_cache("job-1", "tts-ch1")
+
+    @pytest.mark.asyncio
+    async def test_invalidate_steps_removes_only_selected_manifests(self, cache: StepCache) -> None:
+        outputs = (
+            OutputFile(
+                path="/nonexistent/output.wav",
+                filename="output.wav",
+                size_bytes=10,
+                checksum="abc",
+                content_type="audio/wav",
+            ),
+        )
+        await cache.save_outputs("job-1", "step-46", outputs)
+        await cache.save_outputs("job-1", "step-47", outputs)
+        await cache.save_outputs("job-1", "step-48", outputs)
+
+        await cache.invalidate_steps("job-1", {"step-47", "step-48"})
+
+        assert (cache.data_dir / "job-1" / "step-46" / "manifest.json").exists()
+        assert not (cache.data_dir / "job-1" / "step-47" / "manifest.json").exists()
+        assert not (cache.data_dir / "job-1" / "step-48" / "manifest.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_inmemory_invalidate_steps_removes_only_selected_manifests(self) -> None:
+        cache = InMemoryStepCache()
+        outputs = (
+            OutputFile(
+                path="/nonexistent/output.wav",
+                filename="output.wav",
+                size_bytes=10,
+                checksum="abc",
+                content_type="audio/wav",
+            ),
+        )
+        await cache.save_outputs("job-1", "step-46", outputs)
+        await cache.save_outputs("job-1", "step-47", outputs)
+
+        await cache.invalidate_steps("job-1", {"step-47"})
+
+        with pytest.raises(CacheMissError):
+            await cache.load_outputs("job-1", "step-47")
+        assert await cache.load_outputs("job-1", "step-46") == outputs

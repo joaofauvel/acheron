@@ -618,7 +618,10 @@ class TestJobRoutes:
                 break
             await asyncio.sleep(0.05)
 
-        resume_resp = await client.post(f"/jobs/{job_id}/resume")
+        resume_resp = await client.post(
+            f"/jobs/{job_id}/resume",
+            json={"invalidate_steps": [], "invalidate_chapters": []},
+        )
         assert resume_resp.status_code == 200
         assert resume_resp.json()["status"] == "running"
 
@@ -861,7 +864,10 @@ class TestJobRouteAuth:
         await app.state.orchestrator.start()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            response = await c.post("/jobs/j-1/resume")
+            response = await c.post(
+                "/jobs/j-1/resume",
+                json={"invalidate_steps": [], "invalidate_chapters": []},
+            )
         await app.state.orchestrator.shutdown()
         assert response.status_code == 401
 

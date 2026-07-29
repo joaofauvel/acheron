@@ -443,9 +443,17 @@ async def test_resume_job_sends_bearer_header_when_token_configured() -> None:
         )
     )
 
-    await AcheronClient("http://test", registration_token="secret").resume_job("job-1")
+    await AcheronClient("http://test", registration_token="secret").resume_job(
+        "job-1",
+        invalidate_steps=("step-47",),
+        invalidate_chapters=(47,),
+    )
 
     assert route.calls.last.request.headers["authorization"] == "Bearer secret"
+    assert json.loads(route.calls.last.request.content) == {
+        "invalidate_steps": ["step-47"],
+        "invalidate_chapters": [47],
+    }
 
 
 @pytest.mark.asyncio

@@ -5,13 +5,19 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter, ValidationError
 
 from acheron.core.errors import CacheCorruptedError, CacheMissError
 from acheron.core.models import OutputFile, Plan
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
+
 
 _plan_adapter = TypeAdapter(Plan)
 _output_adapter = TypeAdapter(tuple[OutputFile, ...])
@@ -142,6 +148,12 @@ class StepCache:
                 return False
         return True
 
+    async def invalidate_steps(self, job_id: str, step_ids: Collection[str]) -> None:
+        """Remove selected step manifests while retaining unrelated job cache entries."""
+        for step_id in step_ids:
+            step_dir = self._data_dir / job_id / step_id
+            await asyncio.to_thread(shutil.rmtree, step_dir, ignore_errors=True)
+
     @staticmethod
     def _write_manifest(step_dir: Path, manifest_file: Path, manifest: bytes) -> None:
         step_dir.mkdir(parents=True, exist_ok=True)
@@ -194,3 +206,8 @@ class InMemoryStepCache:
             if checksum != output.checksum:
                 return False
         return True
+
+    async def invalidate_steps(self, job_id: str, step_ids: Collection[str]) -> None:
+        """Remove selected step manifests while retaining unrelated job cache entries."""
+        for step_id in step_ids:
+            self._outputs.pop((job_id, step_id), None)

@@ -515,9 +515,12 @@ def test_job_resume() -> None:
         return_value=httpx.Response(200, json=_job_payload("job-abc"))
     )
     runner = CliRunner()
-    result = runner.invoke(main, ["job", "resume", "job-abc", "--force-fresh"])
+    result = runner.invoke(main, ["job", "resume", "job-abc", "--invalidate-step", "step-47"])
     assert result.exit_code == 0
-    assert route.calls[0].request.url.params["force_fresh"] == "true"
+    assert json.loads(route.calls[0].request.content) == {
+        "invalidate_steps": ["step-47"],
+        "invalidate_chapters": [],
+    }
     assert "job-abc" in result.output
 
 
@@ -1017,31 +1020,43 @@ def test_generic_http_error_handles_non_object_json(body: bytes) -> None:
 def test_job_resume_already_running_shows_remediation() -> None:
     respx.post(f"{_BASE_URL}/jobs/job-abc/resume").mock(
         return_value=httpx.Response(
-            400,
-            json={"detail": "JobAlreadyRunningError: job-abc is already running"},
+            409,
+            json={
+                "detail": {
+                    "type": "JobAlreadyRunningError",
+                    "message": "Job job-abc is already running",
+                    "remediation": "acheron job cancel job-abc",
+                }
+            },
         )
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "resume", "job-abc"])
     assert result.exit_code != 0
     assert "Job job-abc is already running" in result.output
-    assert "acheron job status job-abc" in result.output
+    assert "acheron job cancel job-abc" in result.output
 
 
 @respx.mock
-def test_job_resume_unknown_domain_error_shows_generic_remediation() -> None:
+def test_job_resume_no_plan_shows_resubmit_remediation() -> None:
     respx.post(f"{_BASE_URL}/jobs/job-abc/resume").mock(
         return_value=httpx.Response(
             422,
-            json={"detail": "AcheronError: resume prerequisites are incomplete"},
+            json={
+                "detail": {
+                    "type": "NoPlanToResumeError",
+                    "message": "Job job-abc has no saved plan to resume",
+                    "remediation": "acheron job submit <source> --src ... --dest ...",
+                }
+            },
         )
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "resume", "job-abc"])
     assert result.exit_code != 0
-    assert "Job resume failed: resume prerequisites are incomplete" in result.output
-    assert "AcheronError" not in result.output
-    assert "acheron job status job-abc" in result.output
+    assert "Job resume failed: Job job-abc has no saved plan to resume" in result.output
+    assert "NoPlanToResumeError" not in result.output
+    assert "Try: acheron job submit" in result.output
 
 
 @respx.mock

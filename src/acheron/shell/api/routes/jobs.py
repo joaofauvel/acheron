@@ -37,7 +37,7 @@ from acheron.core.schemas import (
     StepError as StepErrorResponse,
 )
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.schemas import RetryJobRequest, SubmitJobRequest  # noqa: TC001
+from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
 
 if TYPE_CHECKING:
@@ -304,19 +304,23 @@ async def cancel_job(
 @router.post("/{job_id}/resume", response_model=JobResponse)
 async def resume_job(
     job_id: str,
+    body: ResumeJobRequest,
     orch: OrchestratorDep,
     _token: RegistrationTokenDep,
-    force_fresh: bool = False,  # noqa: FBT001, FBT002
 ) -> JobResponse:
-    """Resume a saved job."""
+    """Resume a saved job with selected cache invalidation."""
     try:
-        tracked = await orch.resume_job(job_id, force_fresh=force_fresh)
+        tracked = await orch.resume_job(
+            job_id,
+            invalidate_steps=body.invalidate_steps,
+            invalidate_chapters=body.invalidate_chapters,
+        )
     except JobNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=sanitise_exc_message(exc)) from exc
+        raise HTTPException(status_code=404, detail=_error_response(exc).model_dump()) from exc
     except JobAlreadyRunningError as exc:
-        raise HTTPException(status_code=400, detail=sanitise_exc_message(exc)) from exc
+        raise HTTPException(status_code=409, detail=_error_response(exc).model_dump()) from exc
     except AcheronError as exc:
-        raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
+        raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
     return _tracked_to_response(tracked)
 
 

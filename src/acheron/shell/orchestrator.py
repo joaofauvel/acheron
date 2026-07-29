@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import logging
 import secrets
-import shutil
 import time
 import uuid
 import weakref
@@ -16,9 +15,11 @@ from typing import TYPE_CHECKING
 
 from acheron.core.errors import (
     AcheronError,
+    InvalidationTargetError,
     JobAlreadyRunningError,
     JobNotCancellableError,
     JobNotFoundError,
+    NoPlanToResumeError,
     sanitise_exc_message,
 )
 from acheron.core.models import (
@@ -56,6 +57,8 @@ from acheron.shell.stores import create_job_store
 from acheron.shell.stores.base import StoreError
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Sequence
+
     from acheron.core.interfaces import Executor
     from acheron.core.models import JobRequest
     from acheron.shell.cache import PlanCache
@@ -91,6 +94,47 @@ def _validate_registration_token(token: str | None) -> None:
             f"Generate a fresh token with `openssl rand -hex 32`."
         )
         raise RuntimeError(msg)
+
+
+def _chapter_matches(payload: dict[str, JsonValue], chapter: int) -> bool:
+    value = payload.get("chapter_id")
+    match value:
+        case int() as number:
+            return number == chapter
+        case str() as text:
+            return text in {str(chapter), f"ch{chapter}"}
+        case _:
+            return False
+
+
+def _resolve_invalidation_steps(
+    plan: Plan,
+    requested_steps: Collection[str],
+    requested_chapters: Collection[int],
+) -> set[str]:
+    step_ids = {step.step_id for step in plan.steps}
+    unknown_steps = set(requested_steps) - step_ids
+    if unknown_steps:
+        names = ", ".join(sorted(unknown_steps))
+        msg = f"Unknown step invalidation target: {names}"
+        raise InvalidationTargetError(msg)
+
+    selected = set(requested_steps)
+    for chapter in requested_chapters:
+        chapter_steps = {step.step_id for step in plan.steps if _chapter_matches(step.payload, chapter)}
+        if not chapter_steps:
+            msg = f"Unknown chapter invalidation target: {chapter}"
+            raise InvalidationTargetError(msg)
+        selected.update(chapter_steps)
+
+    changed = True
+    while changed:
+        changed = False
+        for step in plan.steps:
+            if step.step_id not in selected and any(dependency in selected for dependency in step.depends_on):
+                selected.add(step.step_id)
+                changed = True
+    return selected
 
 
 class Orchestrator:
@@ -880,8 +924,14 @@ class Orchestrator:
                 raise JobNotFoundError(msg)
             return final
 
-    async def resume_job(self, job_id: str, force_fresh: bool = False) -> TrackedJob:  # noqa: FBT001, FBT002
-        """Resume a tracked job, optionally discarding existing step cache."""
+    async def resume_job(
+        self,
+        job_id: str,
+        *,
+        invalidate_steps: Sequence[str] = (),
+        invalidate_chapters: Sequence[int] = (),
+    ) -> TrackedJob:
+        """Resume a tracked job with selected step or chapter cache invalidation."""
         lock = self._job_locks.get(job_id)
         if lock is None:
             lock = asyncio.Lock()
@@ -900,19 +950,20 @@ class Orchestrator:
             if tracked.status == PlanStatus.RUNNING:
                 if job_id in self._active_jobs:
                     msg = f"Job {job_id} is already running"
-                    raise JobAlreadyRunningError(msg)
+                    raise JobAlreadyRunningError(msg, remediation=f"acheron job cancel {job_id}")
                 logger.warning(
                     "Job %s status is RUNNING but not active in this process; overriding stale state", job_id
                 )
             if tracked.plan is None:
                 msg = f"Job {job_id} has no saved plan to resume"
-                raise AcheronError(msg)
+                raise NoPlanToResumeError(msg, remediation="acheron job submit <source> --src ... --dest ...")
 
-            if force_fresh:
-                job_dir = self._step_cache.data_dir / job_id
-                logger.info("force_fresh=True: deleting job step-cache directory: %s", job_dir)
-                if job_dir.exists():
-                    await asyncio.to_thread(shutil.rmtree, job_dir, ignore_errors=True)
+            invalidated_steps = _resolve_invalidation_steps(
+                tracked.plan,
+                invalidate_steps,
+                invalidate_chapters,
+            )
+            await self._step_cache.invalidate_steps(job_id, invalidated_steps)
 
             async with self._lifecycle_lock:
                 if self._shutting_down:

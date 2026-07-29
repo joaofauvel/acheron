@@ -136,7 +136,26 @@ def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
     if not isinstance(payload, dict):
         return str(exc)
     detail = payload.get("detail", str(exc))
+    if isinstance(detail, dict):
+        error_type = detail.get("type")
+        message = detail.get("message")
+        if isinstance(error_type, str) and isinstance(message, str):
+            return f"{error_type}: {message}"
+        if isinstance(message, str):
+            return message
     return detail if isinstance(detail, str) else str(detail)
+
+
+def _http_error_remediation(exc: httpx.HTTPStatusError) -> str | None:
+    """Extract an optional structured remediation from an HTTP error."""
+    try:
+        payload = exc.response.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("detail"), dict):
+        return None
+    remediation = payload["detail"].get("remediation")
+    return remediation if isinstance(remediation, str) else None
 
 
 def _parse_remote_error(detail: str) -> tuple[_RemoteErrorType | None, str]:
@@ -188,17 +207,23 @@ def _print_submit_http_error(
 
 def _print_resume_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
     error_type, message = _parse_remote_error(_http_error_detail(exc))
+    remediation = _http_error_remediation(exc)
 
     match error_type:
         case _RemoteErrorType.JOB_ALREADY_RUNNING:
             console.print(f"[red]Job {job_id} is already running.[/red]")
-            console.print(f"Run [bold]acheron job status {job_id}[/bold] to monitor it.")
         case _RemoteErrorType.JOB_NOT_FOUND:
             console.print(f"[red]Job {job_id} was not found.[/red]")
-            console.print("Run [bold]acheron jobs[/bold] to list available jobs.")
         case _:
             console.print(f"[red]Error {exc.response.status_code}: Job resume failed: {message}[/red]")
-            console.print(f"Run [bold]acheron job status {job_id}[/bold] to inspect the job before retrying.")
+    if remediation:
+        console.print(f"Try: {remediation}")
+    elif error_type is _RemoteErrorType.JOB_ALREADY_RUNNING:
+        console.print(f"Try: acheron job cancel {job_id}")
+    elif error_type is _RemoteErrorType.JOB_NOT_FOUND:
+        console.print("Try: acheron jobs")
+    else:
+        console.print(f"Run [bold]acheron job status {job_id}[/bold] to inspect the job before retrying.")
 
 
 def _print_cancel_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
@@ -496,11 +521,22 @@ def show_plan(plan_id: str | None, job_id: str | None) -> None:
 
 @job.command()
 @click.argument("job_id")
-@click.option("--force-fresh", is_flag=True, help="Delete cached step outputs before resuming")
-def resume(job_id: str, force_fresh: bool) -> None:  # noqa: FBT001
-    """Resume a job."""
+@click.option("--invalidate-step", "invalidate_steps", multiple=True, help="Invalidate a step cache entry; repeatable")
+@click.option(
+    "--invalidate-chapter",
+    "invalidate_chapters",
+    type=int,
+    multiple=True,
+    help="Invalidate a chapter cache entry; repeatable",
+)
+def resume(job_id: str, invalidate_steps: tuple[str, ...], invalidate_chapters: tuple[int, ...]) -> None:
+    """Resume a job with selected cache invalidation."""
     result = _run(
-        _get_client().resume_job(job_id, force_fresh=force_fresh),
+        _get_client().resume_job(
+            job_id,
+            invalidate_steps=invalidate_steps,
+            invalidate_chapters=invalidate_chapters,
+        ),
         on_http_error=lambda exc: _print_resume_http_error(exc, job_id=job_id),
     )
     console.print(f"Job resumed: [bold]{result.job_id}[/bold]")

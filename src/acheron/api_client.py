@@ -24,7 +24,7 @@ from acheron.core.schemas import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Sequence
 
 
 def _ssl_context_for(verify: bool | str | Path) -> bool | ssl.SSLContext:  # noqa: FBT001
@@ -174,14 +174,23 @@ class AcheronClient:
             resp.raise_for_status()
             return PlanResponse.model_validate(resp.json())
 
-    async def resume_job(self, job_id: str, *, force_fresh: bool = False) -> JobResponse:
-        """Resume a saved job."""
+    async def resume_job(
+        self,
+        job_id: str,
+        *,
+        invalidate_steps: Sequence[str] = (),
+        invalidate_chapters: Sequence[int] = (),
+    ) -> JobResponse:
+        """Resume a saved job with selected cache invalidation."""
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
             resp = await client.post(
                 f"/jobs/{job_id}/resume",
-                params={"force_fresh": force_fresh},
+                json={
+                    "invalidate_steps": list(invalidate_steps),
+                    "invalidate_chapters": list(invalidate_chapters),
+                },
                 headers=self._mutation_headers(),
             )
             resp.raise_for_status()
