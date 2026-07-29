@@ -4,11 +4,21 @@ WorkerResponse enum coercion."""
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from acheron.core.models import CostBasis, PlanStatus, WorkerStatus
+from acheron.core.models import (
+    CostBasis,
+    ExecutorStrategy,
+    Plan,
+    PlanStatus,
+    PlanStep,
+    StepStatus,
+    WorkerStatus,
+    WorkerType,
+)
 from acheron.core.schemas import (
     CapabilitiesResponse,
     InputResponse,
     JobResponse,
+    PlanResponse,
     WorkerCapability,
     WorkerResponse,
 )
@@ -180,3 +190,32 @@ def test_capabilities_response_typed_mode_round_trips() -> None:
     dumped = response.model_dump(mode="json")
     assert dumped["workers"][0]["metadata"] == {"voice": "vivian"}
     assert dumped["workers"][1]["model_source"] == "Qwen/Qwen3-TTS"
+
+
+def test_plan_response_exposes_structure_without_internal_payload() -> None:
+    plan = Plan(
+        plan_id="plan-1",
+        job_id="job-1",
+        source_type="epub",
+        source_language="en",
+        target_language="es",
+        executor_strategy=ExecutorStrategy.STREAMING,
+        steps=(
+            PlanStep(
+                step_id="extract",
+                type=WorkerType.EXTRACTION,
+                depends_on=(),
+                status=StepStatus.PENDING,
+                payload={"source_path": "/data/inputs/book.epub"},
+            ),
+        ),
+    )
+
+    response = PlanResponse.from_plan(plan)
+
+    assert response.plan_id == "plan-1"
+    assert response.steps[0].worker_type is WorkerType.EXTRACTION
+    assert response.steps[0].depends_on == []
+    assert response.steps[0].status is StepStatus.PENDING
+    assert "payload" not in response.model_dump()
+    assert "/data/inputs/book.epub" not in response.model_dump_json()

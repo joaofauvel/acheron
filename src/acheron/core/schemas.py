@@ -4,9 +4,13 @@ from pydantic import BaseModel, Field
 
 from acheron.core.models import (
     CostBasis,
+    ExecutorStrategy,
     JsonValue,
+    Plan,
     PlanStatus,
+    StepStatus,
     WorkerStatus,
+    WorkerType,
 )
 
 
@@ -83,3 +87,45 @@ class WorkerCapability(BaseModel):
     worker_type: str
     model_source: str | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class PlanStepResponse(BaseModel):
+    """Public structure for one planned pipeline step."""
+
+    step_id: str
+    worker_type: WorkerType
+    depends_on: list[str]
+    status: StepStatus
+
+
+class PlanResponse(BaseModel):
+    """Public operator-facing representation of a compiled plan."""
+
+    plan_id: str
+    job_id: str
+    source_type: str
+    source_language: str
+    target_language: str
+    executor_strategy: ExecutorStrategy
+    steps: list[PlanStepResponse]
+
+    @classmethod
+    def from_plan(cls, plan: Plan) -> PlanResponse:
+        """Convert a compiled Plan into its public response shape."""
+        return cls(
+            plan_id=plan.plan_id,
+            job_id=plan.job_id,
+            source_type=plan.source_type,
+            source_language=plan.source_language,
+            target_language=plan.target_language,
+            executor_strategy=plan.executor_strategy,
+            steps=[
+                PlanStepResponse(
+                    step_id=step.step_id,
+                    worker_type=step.type,
+                    depends_on=list(step.depends_on),
+                    status=step.status,
+                )
+                for step in plan.steps
+            ],
+        )

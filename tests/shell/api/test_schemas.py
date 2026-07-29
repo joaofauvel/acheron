@@ -18,3 +18,11 @@ def test_response_models_keep_their_public_import_path() -> None:
     assert schemas.LanguagePair is LanguagePair
     assert schemas.WorkerListResponse is WorkerListResponse
     assert schemas.WorkerResponse is WorkerResponse
+
+
+def test_plan_response_models_keep_their_public_import_path() -> None:
+    from acheron.core.schemas import PlanResponse, PlanStepResponse
+    from acheron.shell.api import schemas
+
+    assert schemas.PlanResponse is PlanResponse
+    assert schemas.PlanStepResponse is PlanStepResponse
