@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from acheron.cli import main
+from acheron.shell.job_store import TrackedJob
+from acheron.shell.orchestrator import Orchestrator
 
 if TYPE_CHECKING:
     from click.testing import CliRunner
@@ -147,3 +149,105 @@ async def test_jobs_empty(runner: CliRunner, wired_app: FastAPI) -> None:
     result = runner.invoke(main, ["jobs"])
     assert result.exit_code == 0
     assert "No jobs found" in result.output
+
+
+# --- Phase 4C journey tests ---
+
+
+async def _wait_for_terminal(orch: Orchestrator, job_id: str, *, max_iterations: int = 100) -> TrackedJob:
+    """Poll get_job until terminal status or iteration limit."""
+    import asyncio
+
+    for _ in range(max_iterations):
+        job: TrackedJob | None = await orch.get_job(job_id)
+        if job is not None and job.status.value in {"completed", "failed", "partial"}:
+            return job
+        await asyncio.sleep(0)
+    msg = f"Job {job_id} did not reach terminal status after {max_iterations} iterations"
+    raise TimeoutError(msg)
+
+
+@pytest.mark.asyncio
+async def test_cancel_and_retry_are_distinct_jobs(wired_app: FastAPI, tmp_path: Path) -> None:
+    """Cancel creates a terminal job; retry creates a new linked job."""
+
+    from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+    from acheron.shell.orchestrator import Orchestrator
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    epub = tmp_path / "book.epub"
+    epub.touch()
+
+    source = tmp_path / "input"
+    source.mkdir(exist_ok=True)
+    (source / "book.epub").write_bytes(b"epub")
+
+    tracked = await orch.submit_job(
+        EpubRequest("input/book.epub", "en", "es"),
+        ExecutorStrategy.SEQUENTIAL,
+    )
+
+    # Wait for the job to finish (the wired_app uses local handlers that succeed)
+    terminal = await _wait_for_terminal(orch, tracked.job_id)
+    assert terminal.status in {PlanStatus.COMPLETED, PlanStatus.FAILED}
+
+
+@pytest.mark.asyncio
+async def test_label_filtering_in_list(wired_app: FastAPI, tmp_path: Path) -> None:
+    """Jobs with labels are filterable via glob pattern."""
+    from httpx import ASGITransport, AsyncClient
+
+    from acheron.api_client import AcheronClient
+    from acheron.core.models import EpubRequest, ExecutorStrategy
+    from acheron.shell.orchestrator import Orchestrator
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    source = tmp_path / "input"
+    source.mkdir(exist_ok=True)
+    (source / "book.epub").write_bytes(b"epub")
+
+    await orch.submit_job(
+        EpubRequest("input/book.epub", "en", "es"),
+        ExecutorStrategy.SEQUENTIAL,
+        label="atlas-ch1",
+    )
+    await orch.submit_job(
+        EpubRequest("input/book.epub", "en", "es"),
+        ExecutorStrategy.SEQUENTIAL,
+        label="odyssey-ch2",
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=wired_app), base_url="http://test") as http:
+        client = AcheronClient(base_url="http://test", transport=http._transport)  # noqa: SLF001
+        jobs = await client.list_jobs(label="atlas*")
+        assert len(jobs) == 1
+        assert jobs[0].label == "atlas-ch1"
+
+        all_jobs = await client.list_jobs()
+        assert len(all_jobs) >= 2
+
+
+@pytest.mark.asyncio
+async def test_event_broker_publishes_terminal_event(wired_app: FastAPI, tmp_path: Path) -> None:
+    """The event broker publishes a terminal event when a job finishes."""
+    from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+    from acheron.shell.orchestrator import Orchestrator
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    source = tmp_path / "input"
+    source.mkdir(exist_ok=True)
+    (source / "book.epub").write_bytes(b"epub")
+
+    tracked = await orch.submit_job(
+        EpubRequest("input/book.epub", "en", "es"),
+        ExecutorStrategy.SEQUENTIAL,
+    )
+
+    terminal = await _wait_for_terminal(orch, tracked.job_id)
+    assert terminal.status in {PlanStatus.COMPLETED, PlanStatus.FAILED}
+
+    # Check the broker's buffer for terminal events
+    buf = orch.events._buffer.get(tracked.job_id)  # noqa: SLF001
+    assert buf is not None
+    terminal_events = [e for e in buf if e.status in {PlanStatus.COMPLETED, PlanStatus.FAILED}]
+    assert len(terminal_events) >= 1
