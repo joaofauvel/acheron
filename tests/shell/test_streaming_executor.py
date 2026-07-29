@@ -156,6 +156,28 @@ class TestNormalCompletion:
 
         assert completed == ["extract", "chunk", "package"]
 
+    @pytest.mark.asyncio
+    async def test_fully_cached_plan_reports_every_completion(
+        self,
+        tmp_path: Path,
+        step_cache: StepCache,
+    ) -> None:
+        plan = _linear_plan(job_id="job-fully-cached")
+        for step_id in ("extract", "chunk", "package"):
+            await step_cache.save_outputs(plan.job_id, step_id, (_real_output(tmp_path, f"{step_id}.out"),))
+        handler, calls = _make_handler({})
+        completed: list[str] = []
+
+        def on_step_complete(step: PlanStep, _plan: Plan, _result: JobResult) -> None:
+            completed.append(step.step_id)
+
+        result = await StreamingExecutor(handler, step_cache, on_step_complete=on_step_complete).run(plan)
+
+        assert result.status is PlanStatus.COMPLETED
+        assert result.completed_steps == len(plan.steps)
+        assert completed == ["extract", "chunk", "package"]
+        assert calls == []
+
 
 class TestStepTimeout:
     @pytest.mark.asyncio
@@ -217,6 +239,7 @@ class TestNonSuccessResult:
                     outputs=(),
                     metrics=JobMetrics(duration_seconds=0.0),
                     error="worker reported failure",
+                    worker_id="extract-local",
                 )
             downstream_called.append(step.step_id)
             return JobResult(
@@ -233,6 +256,9 @@ class TestNonSuccessResult:
         assert result.total_steps == 3
         assert result.completed_steps == 0
         assert downstream_called == []
+        assert result.errors[0].step_id == "extract"
+        assert result.errors[0].worker_type is WorkerType.EXTRACTION
+        assert result.errors[0].worker_id == "extract-local"
         assert any("worker reported failure" in e.message for e in result.errors)
 
     @pytest.mark.asyncio
@@ -258,7 +284,7 @@ class TestNonSuccessResult:
         result = await executor.run(plan)
 
         assert result.status == PlanStatus.FAILED
-        assert any("partial" in e.message.lower() for e in result.errors)
+        assert any("some outputs missing" in e.message.lower() for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_failed_status_preserves_cost_estimate(

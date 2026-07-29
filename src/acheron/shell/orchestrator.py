@@ -656,12 +656,23 @@ class Orchestrator:
             tracked.progress.current_step_id = step.step_id
             tracked.progress.current_worker_type = step.type
             tracked.progress.current_worker_id = None
-            res = await handler(step, plan)
-            self._record_step_progress(tracked, plan, step, res)
             await self._persist_shielded(tracked)
+            res = await handler(step, plan)
+            if tracked.strategy != ExecutorStrategy.STREAMING:
+                self._record_step_progress(tracked, plan, step, res)
+                await self._persist_shielded(tracked)
             return res
 
-        return create_executor(tracked.strategy, progress_handler, step_cache=self._step_cache)
+        async def record_streaming_step(step: PlanStep, plan: Plan, result: JobResult) -> None:
+            self._record_step_progress(tracked, plan, step, result)
+            await self._persist_shielded(tracked)
+
+        return create_executor(
+            tracked.strategy,
+            progress_handler,
+            step_cache=self._step_cache,
+            on_step_complete=record_streaming_step if tracked.strategy == ExecutorStrategy.STREAMING else None,
+        )
 
     def _record_step_progress(
         self,
@@ -711,8 +722,12 @@ class Orchestrator:
         tracked.progress.current_step_id = None if completed_steps >= len(plan.steps) else step.step_id
         tracked.progress.current_worker_type = None if completed_steps >= len(plan.steps) else step.type
         tracked.progress.current_worker_id = None if completed_steps >= len(plan.steps) else result.worker_id
-        if completed_steps:
-            average_duration = tracked.result.total_duration_seconds / completed_steps
+        if result.status is JobStatus.SUCCESS:
+            tracked.progress.successful_duration_seconds += result.metrics.duration_seconds
+        if completed_steps >= len(plan.steps):
+            tracked.progress.eta_seconds = 0.0
+        elif completed_steps and tracked.progress.successful_duration_seconds:
+            average_duration = tracked.progress.successful_duration_seconds / completed_steps
             tracked.progress.eta_seconds = max(0.0, average_duration * (len(plan.steps) - completed_steps))
         else:
             tracked.progress.eta_seconds = None

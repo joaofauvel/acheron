@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
 from acheron.core.errors import (
     AcheronError,
@@ -43,6 +44,16 @@ logger = logging.getLogger(__name__)
 _END: None = None
 
 
+class _StepFailureError(WorkerError):
+    """A returned failed result with its execution context intact."""
+
+    def __init__(self, step: PlanStep, result: JobResult) -> None:
+        message = f"step {step.step_id} returned {result.status.value}: {result.error or 'unknown error'}"
+        super().__init__(message)
+        self.step = step
+        self.result = result
+
+
 class StreamingExecutor(Executor):
     """Pipeline executor with bounded backpressure and TaskGroup cancellation."""
 
@@ -53,7 +64,7 @@ class StreamingExecutor(Executor):
         *,
         queue_size: int = 4,
         step_timeout: float = 1800.0,
-        on_step_complete: Callable[[PlanStep, Plan, JobResult], None] | None = None,
+        on_step_complete: Callable[[PlanStep, Plan, JobResult], None | Awaitable[None]] | None = None,
     ) -> None:
         self._handler = handler
         self._cache = step_cache
@@ -191,6 +202,22 @@ class StreamingExecutor(Executor):
                 errors=(),
                 total_cost_basis=total_cost_basis,
             )
+        if isinstance(last_error, _StepFailureError):
+            error = StepError(
+                step_id=last_error.step.step_id,
+                worker_type=last_error.step.type,
+                worker_id=last_error.result.worker_id,
+                message=last_error.result.error or str(last_error),
+                timestamp=datetime.now(UTC),
+            )
+        else:
+            error = StepError(
+                step_id=None,
+                worker_type=None,
+                worker_id=None,
+                message=sanitise_exc_message(last_error),
+                timestamp=datetime.now(UTC),
+            )
         return PlanResult(
             plan_id=plan.plan_id,
             status=PlanStatus.FAILED,
@@ -199,15 +226,7 @@ class StreamingExecutor(Executor):
             outputs=outputs,
             total_cost=total_cost,
             total_duration_seconds=duration,
-            errors=(
-                StepError(
-                    step_id=None,
-                    worker_type=None,
-                    worker_id=None,
-                    message=sanitise_exc_message(last_error),
-                    timestamp=datetime.now(UTC),
-                ),
-            ),
+            errors=(error,),
             total_cost_basis=total_cost_basis,
         )
 
@@ -246,7 +265,7 @@ class StreamingExecutor(Executor):
                     metrics=JobMetrics(duration_seconds=0.0),
                 )
                 record_cost(0.0, result.metrics)
-                self._notify_step_complete(step, plan, result)
+                await self._notify_step_complete(step, plan, result)
                 await downstream.put(result)
                 return
 
@@ -269,8 +288,8 @@ class StreamingExecutor(Executor):
             record_cost(result.metrics.cost_estimate or 0.0, result.metrics)
 
             if result.status is not JobStatus.SUCCESS:
-                msg = f"step {step.step_id} returned {result.status.value}: {result.error or 'unknown error'}"
-                raise WorkerError(msg)
+                await self._notify_step_complete(step, plan, result)
+                raise _StepFailureError(step, result)
 
             try:
                 await self._cache.save_outputs(plan.job_id, step.step_id, result.outputs)
@@ -278,14 +297,16 @@ class StreamingExecutor(Executor):
                 msg = f"save_outputs failed for step {step.step_id}"
                 raise PipelineError(msg) from exc
 
-            self._notify_step_complete(step, plan, result)
+            await self._notify_step_complete(step, plan, result)
             await downstream.put(result)
         finally:
             await downstream.put(_END)
 
-    def _notify_step_complete(self, step: PlanStep, plan: Plan, result: JobResult) -> None:
+    async def _notify_step_complete(self, step: PlanStep, plan: Plan, result: JobResult) -> None:
         if self._on_step_complete is not None:
-            self._on_step_complete(step, plan, result)
+            callback_result = self._on_step_complete(step, plan, result)
+            if inspect.isawaitable(callback_result):
+                await callback_result
 
     def _empty_result(self, plan: Plan, start: float) -> PlanResult:
         return PlanResult(

@@ -376,6 +376,7 @@ def _serialize_job(job: TrackedJob) -> str:
                 ),
                 "current_worker_id": job.progress.current_worker_id,
                 "eta_seconds": job.progress.eta_seconds,
+                "successful_duration_seconds": job.progress.successful_duration_seconds,
             },
             "plan": plan_dict,
             "result": result_dict,
@@ -485,6 +486,7 @@ def _deserialize_job(blob: str) -> TrackedJob:
         ),
         current_worker_id=progress_data["current_worker_id"],
         eta_seconds=progress_data["eta_seconds"],
+        successful_duration_seconds=progress_data["successful_duration_seconds"],
     )
     return TrackedJob(
         job_id=data["job_id"],

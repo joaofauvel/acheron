@@ -22,6 +22,7 @@ class JobProgressState:
     current_worker_type: WorkerType | None = None
     current_worker_id: str | None = None
     eta_seconds: float | None = None
+    successful_duration_seconds: float = 0.0
 
 
 def _normalise_utc(value: datetime) -> datetime:

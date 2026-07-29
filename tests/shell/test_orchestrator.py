@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from acheron.core.models import (
     JobMetrics,
     JobResult,
     JobStatus,
+    OutputFile,
     Plan,
     PlanStatus,
     PlanStep,
@@ -45,7 +47,7 @@ async def _success_handler(_step: PlanStep, _plan: Plan) -> JobResult:
 
 
 class _ControlledPutJobStore(InMemoryJobStore):
-    """Job store that gates the first reconciliation write."""
+    """Job store that gates the first post-dispatch reconciliation write."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -56,7 +58,7 @@ class _ControlledPutJobStore(InMemoryJobStore):
 
     async def put(self, job: TrackedJob) -> None:
         self._puts += 1
-        if self._puts == 2:
+        if self._puts == 3:
             self.persist_started.set()
             try:
                 await self.release_persist.wait()
@@ -66,8 +68,8 @@ class _ControlledPutJobStore(InMemoryJobStore):
         await super().put(copy.deepcopy(job))
 
 
-class _FailingSecondPutJobStore(InMemoryJobStore):
-    """Fails the second put; snapshots all other jobs like a remote store."""
+class _FailingReconciliationPutJobStore(InMemoryJobStore):
+    """Fails the first post-dispatch reconciliation put."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -75,14 +77,14 @@ class _FailingSecondPutJobStore(InMemoryJobStore):
 
     async def put(self, job: TrackedJob) -> None:
         self._puts += 1
-        if self._puts == 2:
+        if self._puts == 3:
             msg = "store temporarily unavailable"
             raise RuntimeError(msg)
         await super().put(copy.deepcopy(job))
 
 
-class _KeyErrorOnSecondPutJobStore(InMemoryJobStore):
-    """Raises KeyError on the second put (programming-error stand-in)."""
+class _KeyErrorOnReconciliationPutJobStore(InMemoryJobStore):
+    """Raises KeyError on the first post-dispatch reconciliation put."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -90,13 +92,13 @@ class _KeyErrorOnSecondPutJobStore(InMemoryJobStore):
 
     async def put(self, job: TrackedJob) -> None:
         self._puts += 1
-        if self._puts == 2:
+        if self._puts == 3:
             msg = "serialiser drift"
             raise KeyError(msg)
         await super().put(copy.deepcopy(job))
 
 
-class _StoreErrorOnSecondPutJobStore(InMemoryJobStore):
+class _StoreErrorOnReconciliationPutJobStore(InMemoryJobStore):
     """Raises a domain persistence error during cancellation reconciliation."""
 
     def __init__(self) -> None:
@@ -105,8 +107,20 @@ class _StoreErrorOnSecondPutJobStore(InMemoryJobStore):
 
     async def put(self, job: TrackedJob) -> None:
         self._puts += 1
-        if self._puts == 2:
+        if self._puts == 3:
             raise StoreError("store temporarily unavailable")
+        await super().put(copy.deepcopy(job))
+
+
+class _ObservingJobStore(InMemoryJobStore):
+    """Retains snapshots so tests can inspect persisted progress transitions."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.snapshots: list[TrackedJob] = []
+
+    async def put(self, job: TrackedJob) -> None:
+        self.snapshots.append(copy.deepcopy(job))
         await super().put(copy.deepcopy(job))
 
 
@@ -377,6 +391,55 @@ class TestOrchestrator:
         assert tracked.progress.current_step_id == "step-2"
         assert tracked.progress.current_worker_id == "chunking-local"
 
+    def test_eta_uses_successful_durations_only(self, tmp_path: Path) -> None:
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
+        plan = Plan(
+            plan_id="plan-eta",
+            job_id="job-eta",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.SEQUENTIAL,
+            steps=(
+                PlanStep("step-1", WorkerType.EXTRACTION, (), StepStatus.PENDING, {}),
+                PlanStep("step-2", WorkerType.TTS, ("step-1",), StepStatus.PENDING, {}),
+            ),
+        )
+        tracked = TrackedJob(
+            job_id=plan.job_id,
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=plan,
+            status=PlanStatus.RUNNING,
+        )
+
+        orch._record_step_progress(  # noqa: SLF001
+            tracked,
+            plan,
+            plan.steps[0],
+            JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.SUCCESS,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=2.0),
+            ),
+        )
+        orch._record_step_progress(  # noqa: SLF001
+            tracked,
+            plan,
+            plan.steps[1],
+            JobResult(
+                job_id=plan.job_id,
+                status=JobStatus.FAILED,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=100.0),
+                error="worker failed",
+            ),
+        )
+
+        assert tracked.progress.successful_duration_seconds == 2.0
+        assert tracked.progress.eta_seconds == 2.0
+
     @pytest.mark.asyncio
     async def test_progress_snapshot_is_set_while_handler_runs(self, tmp_path: Path) -> None:
         observed: list[tuple[str | None, WorkerType | None]] = []
@@ -406,6 +469,85 @@ class TestOrchestrator:
         assert tracked.progress.current_step_id is None
         assert tracked.progress.completed_steps == 1
         assert tracked.progress.eta_seconds == 0.0
+
+    @pytest.mark.asyncio
+    async def test_persists_current_step_before_blocked_handler_returns(self, tmp_path: Path) -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+        store = _ObservingJobStore()
+        plan = _single_step_plan("job-blocked-progress")
+        tracked = TrackedJob(
+            job_id=plan.job_id,
+            request=EpubRequest("/input/book.epub", "en", "en"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=plan,
+            status=PlanStatus.RUNNING,
+        )
+
+        async def blocked_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            started.set()
+            await release.wait()
+            return await _success_handler(_step, _plan)
+
+        orch = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(tmp_path),
+            blocked_handler,
+            job_store=store,
+        )
+        execution = asyncio.create_task(orch._create_executor(tracked).run(plan))  # noqa: SLF001
+        await started.wait()
+
+        assert any(
+            snapshot.progress.current_step_id == "extract" and snapshot.progress.completed_steps == 0
+            for snapshot in store.snapshots
+        )
+
+        release.set()
+        result = await execution
+        assert result.status is PlanStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_streaming_cache_hits_update_and_persist_progress(self, tmp_path: Path) -> None:
+        store = _ObservingJobStore()
+        step_cache = InMemoryStepCache()
+        plan = _single_step_plan("job-streaming-cache")
+        cached_path = tmp_path / "cached.txt"
+        cached_bytes = b"cached"
+        cached_path.write_bytes(cached_bytes)
+        cached = OutputFile(
+            path=str(cached_path),
+            filename="cached.txt",
+            size_bytes=len(cached_bytes),
+            checksum=hashlib.sha256(cached_bytes).hexdigest(),
+            content_type="text/plain",
+        )
+        await step_cache.save_outputs(plan.job_id, "extract", (cached,))
+
+        async def unexpected_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            raise AssertionError("cached streaming step dispatched to worker")
+
+        tracked = TrackedJob(
+            job_id=plan.job_id,
+            request=EpubRequest("/input/book.epub", "en", "en"),
+            strategy=ExecutorStrategy.STREAMING,
+            plan=plan,
+            status=PlanStatus.RUNNING,
+        )
+        orch = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(tmp_path),
+            unexpected_handler,
+            job_store=store,
+            step_cache=step_cache,
+        )
+
+        result = await orch._create_executor(tracked).run(plan)  # noqa: SLF001
+
+        assert result.status is PlanStatus.COMPLETED
+        assert tracked.progress.completed_steps == 1
+        assert tracked.progress.eta_seconds == 0.0
+        assert any(snapshot.progress.completed_steps == 1 for snapshot in store.snapshots)
 
     @pytest.mark.asyncio
     async def test_shutdown_drains_inflight_jobs_to_failed(self, tmp_path: Path) -> None:
@@ -644,15 +786,16 @@ class TestOrchestrator:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
-        job_store = _FailingSecondPutJobStore()
+        job_store = _FailingReconciliationPutJobStore()
         orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=job_store)
         await orch.start()
         tracked = await orch.submit_job(
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
         )
-        # put#1 (submit) succeeds; put#2 (post-execution) raises; the
-        # _execute recovery put must reconcile the job to FAILED.
+        # put#1 (submit) and put#2 (pre-dispatch snapshot) succeed; put#3
+        # (post-execution) raises; the _execute recovery put must reconcile
+        # the job to FAILED.
         await asyncio.gather(*orch._tasks, return_exceptions=True)  # noqa: SLF001
         persisted = await job_store.get(tracked.job_id)
         assert persisted is not None
@@ -717,7 +860,9 @@ class TestOrchestrator:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
-        orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=_KeyErrorOnSecondPutJobStore())
+        orch = Orchestrator(
+            reg, PlanCache(tmp_path), _blocking_handler, job_store=_KeyErrorOnReconciliationPutJobStore()
+        )
         await orch.start()
         await orch.submit_job(
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
@@ -744,7 +889,7 @@ class TestOrchestrator:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
         await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
-        job_store = _StoreErrorOnSecondPutJobStore()
+        job_store = _StoreErrorOnReconciliationPutJobStore()
         orch = Orchestrator(reg, PlanCache(tmp_path), _blocking_handler, job_store=job_store)
         await orch.start()
         tracked = await orch.submit_job(

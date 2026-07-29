@@ -10,7 +10,7 @@ from acheron.shell.executors.sequential import SequentialExecutor
 from acheron.shell.executors.streaming import StreamingExecutor
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from acheron.core.interfaces import Executor
     from acheron.shell.cache import InMemoryStepCache, StepCache
@@ -22,7 +22,7 @@ def create_executor(
     handler: StepHandler,
     *,
     step_cache: StepCache | InMemoryStepCache | None = None,
-    on_step_complete: Callable[[PlanStep, Plan, JobResult], None] | None = None,
+    on_step_complete: Callable[[PlanStep, Plan, JobResult], None | Awaitable[None]] | None = None,
 ) -> Executor:
     """Create an executor instance for the given strategy."""
     match strategy:
