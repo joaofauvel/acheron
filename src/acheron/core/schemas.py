@@ -1,8 +1,8 @@
 """Wire-format response schemas shared between the Acheron client and server."""
 
-from datetime import datetime  # noqa: TC003
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from acheron.core.models import (
     CostBasis,
@@ -89,6 +89,14 @@ class JobResponse(BaseModel):
     outputs: list[OutputSummary]
     errors: list[StepError]
     warnings: list[str]
+
+    @field_validator("created_at", "last_persisted_at")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "lifecycle timestamps must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
 
 
 class JobListResponse(BaseModel):
@@ -191,3 +199,22 @@ class PlanResponse(BaseModel):
                 for step in plan.steps
             ],
         )
+
+
+__all__ = [
+    "CapabilitiesResponse",
+    "ErrorResponse",
+    "InputResponse",
+    "JobListResponse",
+    "JobLogEvent",
+    "JobProgress",
+    "JobResponse",
+    "LanguagePair",
+    "OutputSummary",
+    "PlanResponse",
+    "PlanStepResponse",
+    "StepError",
+    "WorkerCapability",
+    "WorkerListResponse",
+    "WorkerResponse",
+]

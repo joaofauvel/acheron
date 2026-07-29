@@ -20,6 +20,7 @@ from acheron.core.schemas import (
     CapabilitiesResponse,
     InputResponse,
     JobLogEvent,
+    JobProgress,
     JobResponse,
     PlanResponse,
     WorkerCapability,
@@ -197,15 +198,27 @@ def test_job_response_exposes_phase_4c_fields() -> None:
     assert response.created_at.tzinfo is not None
 
 
+def test_job_response_rejects_naive_lifecycle_timestamps() -> None:
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        JobResponse.model_validate(_job_response_data(created_at=datetime.fromisoformat("2026-07-29T00:00:00")))
+
+
+def test_job_response_normalizes_offset_lifecycle_timestamps() -> None:
+    response = JobResponse.model_validate(_job_response_data(created_at="2026-07-29T14:00:00+02:00"))
+
+    assert response.created_at == datetime(2026, 7, 29, 12, tzinfo=UTC)
+    assert response.created_at.tzinfo == UTC
+
+
 def test_job_log_event_serializes_as_one_json_object() -> None:
     event = JobLogEvent(
         job_id="job-1",
         timestamp=datetime(2026, 7, 29, tzinfo=UTC),
-        status="running",
+        status=PlanStatus.RUNNING,
         step_id="step-3",
-        worker_type="tts",
+        worker_type=WorkerType.TTS,
         worker_id="tts-1",
-        progress={"completed_steps": 2, "total_steps": 5},
+        progress=JobProgress(completed_steps=2, total_steps=5),
         message="step started",
     )
 

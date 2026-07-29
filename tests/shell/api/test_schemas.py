@@ -5,9 +5,14 @@ from pydantic import ValidationError
 
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    ErrorResponse,
     JobListResponse,
+    JobLogEvent,
+    JobProgress,
     JobResponse,
     LanguagePair,
+    OutputSummary,
+    StepError,
     WorkerListResponse,
     WorkerResponse,
 )
@@ -17,9 +22,14 @@ from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJ
 
 def test_response_models_keep_their_public_import_path() -> None:
     assert schemas.CapabilitiesResponse is CapabilitiesResponse
+    assert schemas.ErrorResponse is ErrorResponse
     assert schemas.JobListResponse is JobListResponse
+    assert schemas.JobLogEvent is JobLogEvent
+    assert schemas.JobProgress is JobProgress
     assert schemas.JobResponse is JobResponse
     assert schemas.LanguagePair is LanguagePair
+    assert schemas.OutputSummary is OutputSummary
+    assert schemas.StepError is StepError
     assert schemas.WorkerListResponse is WorkerListResponse
     assert schemas.WorkerResponse is WorkerResponse
 
@@ -48,6 +58,25 @@ def test_resume_request_accepts_selected_cache_entries() -> None:
 def test_retry_request_rejects_unknown_fields() -> None:
     with pytest.raises(ValidationError):
         RetryJobRequest.model_validate({"unexpected": "value"})
+
+
+def test_public_schema_exports_include_phase_4c_models() -> None:
+    from acheron.core import schemas as core_schemas
+
+    assert {
+        "ErrorResponse",
+        "JobLogEvent",
+        "JobProgress",
+        "OutputSummary",
+        "StepError",
+    } <= set(core_schemas.__all__)
+    assert {
+        "ErrorResponse",
+        "JobLogEvent",
+        "JobProgress",
+        "OutputSummary",
+        "StepError",
+    } <= set(schemas.__all__)
 
 
 def test_plan_response_models_keep_their_public_import_path() -> None:
