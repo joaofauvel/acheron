@@ -1,5 +1,7 @@
 """Tests for the job store."""
 
+from datetime import UTC, datetime, timedelta, timezone
+
 import pytest
 
 from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
@@ -60,3 +62,25 @@ class TestJobStore:
         stored = await store.get("job-1")
         assert stored is not None
         assert stored.status == PlanStatus.RUNNING
+
+    def test_lifecycle_timestamps_reject_naive_values(self) -> None:
+        with pytest.raises(ValueError, match="timezone-aware"):
+            TrackedJob(
+                job_id="job-naive",
+                request=_tracked().request,
+                strategy=ExecutorStrategy.STREAMING,
+                created_at=datetime.fromisoformat("2026-07-29T00:00:00"),
+            )
+
+    def test_lifecycle_timestamps_normalize_to_utc(self) -> None:
+        offset = timezone(timedelta(hours=2))
+        job = TrackedJob(
+            job_id="job-offset",
+            request=_tracked().request,
+            strategy=ExecutorStrategy.STREAMING,
+            created_at=datetime(2026, 7, 29, 14, tzinfo=offset),
+            last_persisted_at=datetime(2026, 7, 29, 14, tzinfo=offset),
+        )
+
+        assert job.created_at == datetime(2026, 7, 29, 12, tzinfo=UTC)
+        assert job.last_persisted_at == datetime(2026, 7, 29, 12, tzinfo=UTC)

@@ -38,8 +38,6 @@ from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.orchestrator import Orchestrator
     from acheron.shell.registry import RegisteredWorker
@@ -222,34 +220,14 @@ def _booting_tts_warnings(
     return [f"BOOTING TTS workers: {elapsed}; cold start typically takes 30\u201390 seconds."]
 
 
-def _to_step_error_response(
-    error: DomainStepError | str,
-    *,
-    timestamp: datetime,
-) -> StepErrorResponse:
-    match error:
-        case str(message):
-            return StepErrorResponse(
-                step_id=None,
-                worker_type=None,
-                worker_id=None,
-                message=message,
-                timestamp=timestamp,
-            )
-        case DomainStepError(
-            step_id=step_id,
-            worker_type=worker_type,
-            worker_id=worker_id,
-            message=message,
-            timestamp=error_timestamp,
-        ):
-            return StepErrorResponse(
-                step_id=step_id,
-                worker_type=worker_type,
-                worker_id=worker_id,
-                message=message,
-                timestamp=error_timestamp,
-            )
+def _to_step_error_response(error: DomainStepError) -> StepErrorResponse:
+    return StepErrorResponse(
+        step_id=error.step_id,
+        worker_type=error.worker_type,
+        worker_id=error.worker_id,
+        message=error.message,
+        timestamp=error.timestamp,
+    )
 
 
 def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None) -> JobResponse:
@@ -269,11 +247,6 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
             asr_model = None
 
     progress = tracked.progress
-    completed_steps = progress.completed_steps
-    total_steps = progress.total_steps
-    if result is not None:
-        completed_steps = completed_steps or result.completed_steps
-        total_steps = total_steps or result.total_steps
     return JobResponse(
         job_id=tracked.job_id,
         status=tracked.status,
@@ -288,8 +261,8 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         created_at=tracked.created_at,
         last_persisted_at=tracked.last_persisted_at,
         progress=JobProgress(
-            completed_steps=completed_steps,
-            total_steps=total_steps,
+            completed_steps=progress.completed_steps,
+            total_steps=progress.total_steps,
             current_step_id=progress.current_step_id,
             current_worker_type=progress.current_worker_type,
             current_worker_id=progress.current_worker_id,
@@ -311,10 +284,6 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
             if result
             else []
         ),
-        errors=(
-            [_to_step_error_response(error, timestamp=tracked.last_persisted_at) for error in result.errors]
-            if result
-            else []
-        ),
+        errors=([_to_step_error_response(error) for error in result.errors] if result else []),
         warnings=warnings if warnings is not None else [],
     )

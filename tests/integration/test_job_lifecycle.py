@@ -24,6 +24,25 @@ async def test_submit_epub_shows_job_id(runner: CliRunner, wired_app: FastAPI, t
     assert "job-" in result.output
     assert "Status:" in result.output
 
+    job_id = next(word for word in result.output.split() if word.startswith("job-"))
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(transport=ASGITransport(app=wired_app), base_url="http://test") as client:
+        response = await client.get(f"/jobs/{job_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["created_at"].endswith("Z")
+    assert body["last_persisted_at"].endswith("Z")
+    assert set(body["progress"]) == {
+        "completed_steps",
+        "total_steps",
+        "current_step_id",
+        "current_worker_type",
+        "current_worker_id",
+        "eta_seconds",
+    }
+
 
 @pytest.mark.asyncio
 async def test_submit_audio_with_asr(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:

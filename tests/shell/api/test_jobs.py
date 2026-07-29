@@ -16,7 +16,7 @@ from acheron.core.models import (
     WorkerStatus,
     WorkerType,
 )
-from acheron.shell.api.routes.jobs import _booting_tts_warnings
+from acheron.shell.api.routes.jobs import _booting_tts_warnings, _tracked_to_response
 from acheron.shell.registry import RegisteredWorker
 
 if TYPE_CHECKING:
@@ -182,6 +182,36 @@ class TestJobRoutes:
         ]
         assert data["errors"][0]["worker_id"] == "packaging-1"
         assert data["created_at"] == "2026-07-29T12:00:00Z"
+
+    def test_response_uses_persisted_progress_when_result_differs(self) -> None:
+        from datetime import UTC, datetime
+
+        from acheron.core.models import PlanResult, PlanStatus
+        from acheron.shell.job_store import JobProgressState, TrackedJob
+
+        tracked = TrackedJob(
+            job_id="job-progress",
+            request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            created_at=datetime(2026, 7, 29, tzinfo=UTC),
+            last_persisted_at=datetime(2026, 7, 29, tzinfo=UTC),
+            progress=JobProgressState(completed_steps=0, total_steps=5),
+            result=PlanResult(
+                plan_id="plan-progress",
+                status=PlanStatus.RUNNING,
+                completed_steps=3,
+                total_steps=5,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=2.0,
+            ),
+            status=PlanStatus.RUNNING,
+        )
+
+        response = _tracked_to_response(tracked)
+
+        assert response.progress.completed_steps == 0
+        assert response.progress.total_steps == 5
 
     @pytest.mark.asyncio
     async def test_submit_job(self, client) -> None:  # type: ignore[no-untyped-def]

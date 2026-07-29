@@ -24,6 +24,14 @@ class JobProgressState:
     eta_seconds: float | None = None
 
 
+def _normalise_utc(value: datetime) -> datetime:
+    """Require a timezone-aware timestamp and normalize it to UTC."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        msg = "lifecycle timestamps must be timezone-aware"
+        raise ValueError(msg)
+    return value.astimezone(UTC)
+
+
 @dataclass
 class TrackedJob:
     """A job tracked through its lifecycle."""
@@ -39,3 +47,7 @@ class TrackedJob:
     plan: Plan | None = None
     result: PlanResult | None = None
     status: PlanStatus = PlanStatus.PENDING
+
+    def __post_init__(self) -> None:
+        self.created_at = _normalise_utc(self.created_at)
+        self.last_persisted_at = _normalise_utc(self.last_persisted_at)
