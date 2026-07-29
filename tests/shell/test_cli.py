@@ -19,6 +19,39 @@ _BASE_URL = "http://test.local:8000"
 _UPLOAD_PATH = "inputs/abc/book.epub"
 
 
+def _job_payload(job_id: str = "job-1", **overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "job_id": job_id,
+        "status": "running",
+        "plan_id": "plan-1",
+        "label": None,
+        "retries_from": None,
+        "source_type": "epub",
+        "source_language": "en",
+        "target_language": "es",
+        "asr_model": None,
+        "executor_strategy": "streaming",
+        "created_at": "2026-07-29T12:00:00Z",
+        "last_persisted_at": "2026-07-29T12:00:01Z",
+        "progress": {
+            "completed_steps": 0,
+            "total_steps": 0,
+            "current_step_id": None,
+            "current_worker_type": None,
+            "current_worker_id": None,
+            "eta_seconds": None,
+        },
+        "total_cost": 0.0,
+        "total_duration_seconds": 0.0,
+        "total_cost_basis": None,
+        "outputs": [],
+        "errors": [],
+        "warnings": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _mock_upload_success(filename: str = "book.epub", size: int = 10) -> respx.Route:
     """Mock a successful ``POST /inputs`` returning a server-relative ``source_path``."""
     return respx.post(f"{_BASE_URL}/inputs").mock(
@@ -49,7 +82,7 @@ def test_submit_epub(tmp_path: Path) -> None:
     jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
         return_value=httpx.Response(
             201,
-            json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1", "warnings": [warning]},
+            json=_job_payload("job-abc", plan_id="plan-1", warnings=[warning]),
         )
     )
     runner = CliRunner()
@@ -74,9 +107,7 @@ def test_submit_audio(tmp_path: Path) -> None:
     mp3 = tmp_path / "podcast.mp3"
     mp3.touch()
     _mock_upload_success(filename="podcast.mp3")
-    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
-        return_value=httpx.Response(201, json={"job_id": "job-def", "status": "running"})
-    )
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(201, json=_job_payload("job-def")))
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", str(mp3), "--src", "en", "--dest", "es", "--asr", "whisper-v3"])
     assert result.exit_code == 0, result.output
@@ -93,9 +124,7 @@ def test_submit_with_type_override(tmp_path: Path) -> None:
     unknown = tmp_path / "input.dat"
     unknown.touch()
     _mock_upload_success(filename="input.dat")
-    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
-        return_value=httpx.Response(201, json={"job_id": "job-xyz", "status": "running"})
-    )
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(201, json=_job_payload("job-xyz")))
     runner = CliRunner()
     result = runner.invoke(main, ["job", "submit", str(unknown), "--src", "en", "--dest", "es", "--type", "epub"])
     assert result.exit_code == 0, result.output
@@ -146,9 +175,7 @@ def test_submit_sends_bearer_token_on_upload_and_jobs(tmp_path: Path, monkeypatc
     token = "test-registration-token-must-be-32-chars-or-more"
     monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", token)
     upload_route = _mock_upload_success(filename="book.epub")
-    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(
-        return_value=httpx.Response(201, json={"job_id": "job-abc", "status": "running"})
-    )
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(201, json=_job_payload("job-abc")))
     epub = tmp_path / "book.epub"
     epub.touch()
     runner = CliRunner()
@@ -163,13 +190,18 @@ def test_status() -> None:
     respx.get(f"{_BASE_URL}/jobs/job-abc").mock(
         return_value=httpx.Response(
             200,
-            json={
-                "job_id": "job-abc",
-                "status": "running",
-                "plan_id": "plan-1",
-                "completed_steps": 2,
-                "total_steps": 5,
-            },
+            json=_job_payload(
+                "job-abc",
+                plan_id="plan-1",
+                progress={
+                    "completed_steps": 2,
+                    "total_steps": 5,
+                    "current_step_id": None,
+                    "current_worker_type": None,
+                    "current_worker_id": None,
+                    "eta_seconds": None,
+                },
+            ),
         )
     )
     runner = CliRunner()
@@ -177,6 +209,52 @@ def test_status() -> None:
     assert result.exit_code == 0
     assert "job-abc" in result.output
     assert "2/5" in result.output
+
+
+@respx.mock
+def test_job_status_renders_output_and_step_error() -> None:
+    respx.get(f"{_BASE_URL}/jobs/job-1").mock(
+        return_value=httpx.Response(
+            200,
+            json=_job_payload(
+                "job-1",
+                status="failed",
+                outputs=[
+                    {
+                        "path": "/data/job-1/result.m4b",
+                        "filename": "result.m4b",
+                        "size_bytes": 123,
+                        "content_type": "audio/mp4",
+                    }
+                ],
+                errors=[
+                    {
+                        "step_id": "step-3",
+                        "worker_type": "tts",
+                        "worker_id": "tts-1",
+                        "message": "malformed audio",
+                        "timestamp": "2026-07-29T12:00:02Z",
+                    }
+                ],
+            ),
+        )
+    )
+    result = CliRunner().invoke(main, ["job", "status", "job-1", "--verbose"])
+    assert result.exit_code == 0, result.output
+    assert "Output: /data/job-1/result.m4b" in result.output
+    assert "step=step-3" in result.output
+    assert "worker_id=tts-1" in result.output
+
+
+@respx.mock
+def test_jobs_accepts_label_filter() -> None:
+    route = respx.get(f"{_BASE_URL}/jobs", params={"label": "atlas-*"}).mock(
+        return_value=httpx.Response(200, json={"jobs": [_job_payload("job-1", label="atlas-ch1")]})
+    )
+    result = CliRunner().invoke(main, ["jobs", "--label", "atlas-*"])
+    assert result.exit_code == 0, result.output
+    assert route.called
+    assert "atlas-ch1" in result.output
 
 
 @respx.mock
@@ -209,7 +287,7 @@ def test_job_plan_by_job_id() -> None:
     respx.get(f"{_BASE_URL}/jobs/job-abc").mock(
         return_value=httpx.Response(
             200,
-            json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1"},
+            json=_job_payload("job-abc", plan_id="plan-1"),
         )
     )
     respx.get(f"{_BASE_URL}/plans/plan-1").mock(
@@ -281,7 +359,19 @@ def test_status_verbose() -> None:
     respx.get(f"{_BASE_URL}/jobs/job-abc").mock(
         return_value=httpx.Response(
             200,
-            json={"job_id": "job-abc", "status": "failed", "errors": ["Worker timeout"]},
+            json=_job_payload(
+                "job-abc",
+                status="failed",
+                errors=[
+                    {
+                        "step_id": "step-3",
+                        "worker_type": "tts",
+                        "worker_id": "tts-1",
+                        "message": "Worker timeout",
+                        "timestamp": "2026-07-29T12:00:02Z",
+                    }
+                ],
+            ),
         )
     )
     runner = CliRunner()
@@ -333,7 +423,7 @@ def test_status_service() -> None:
 @respx.mock
 def test_job_resume() -> None:
     route = respx.post(f"{_BASE_URL}/jobs/job-abc/resume").mock(
-        return_value=httpx.Response(200, json={"job_id": "job-abc", "status": "running"})
+        return_value=httpx.Response(200, json=_job_payload("job-abc"))
     )
     runner = CliRunner()
     result = runner.invoke(main, ["job", "resume", "job-abc", "--force-fresh"])
@@ -358,20 +448,31 @@ def test_jobs_list() -> None:
             200,
             json={
                 "jobs": [
-                    {
-                        "job_id": "job-1",
-                        "status": "running",
-                        "plan_id": "plan-1",
-                        "completed_steps": 1,
-                        "total_steps": 3,
-                    },
-                    {
-                        "job_id": "job-2",
-                        "status": "completed",
-                        "plan_id": "plan-2",
-                        "completed_steps": 3,
-                        "total_steps": 3,
-                    },
+                    _job_payload(
+                        "job-1",
+                        plan_id="plan-1",
+                        progress={
+                            "completed_steps": 1,
+                            "total_steps": 3,
+                            "current_step_id": None,
+                            "current_worker_type": None,
+                            "current_worker_id": None,
+                            "eta_seconds": None,
+                        },
+                    ),
+                    _job_payload(
+                        "job-2",
+                        status="completed",
+                        plan_id="plan-2",
+                        progress={
+                            "completed_steps": 3,
+                            "total_steps": 3,
+                            "current_step_id": None,
+                            "current_worker_type": None,
+                            "current_worker_id": None,
+                            "eta_seconds": None,
+                        },
+                    ),
                 ]
             },
         )
@@ -390,8 +491,19 @@ def test_jobs_filter_active() -> None:
             200,
             json={
                 "jobs": [
-                    {"job_id": "job-1", "status": "running", "completed_steps": 0, "total_steps": 0},
-                    {"job_id": "job-2", "status": "completed", "completed_steps": 3, "total_steps": 3},
+                    _job_payload("job-1"),
+                    _job_payload(
+                        "job-2",
+                        status="completed",
+                        progress={
+                            "completed_steps": 3,
+                            "total_steps": 3,
+                            "current_step_id": None,
+                            "current_worker_type": None,
+                            "current_worker_id": None,
+                            "eta_seconds": None,
+                        },
+                    ),
                 ]
             },
         )
@@ -410,8 +522,19 @@ def test_jobs_filter_completed() -> None:
             200,
             json={
                 "jobs": [
-                    {"job_id": "job-1", "status": "running", "completed_steps": 0, "total_steps": 0},
-                    {"job_id": "job-2", "status": "completed", "completed_steps": 3, "total_steps": 3},
+                    _job_payload("job-1"),
+                    _job_payload(
+                        "job-2",
+                        status="completed",
+                        progress={
+                            "completed_steps": 3,
+                            "total_steps": 3,
+                            "current_step_id": None,
+                            "current_worker_type": None,
+                            "current_worker_id": None,
+                            "eta_seconds": None,
+                        },
+                    ),
                 ]
             },
         )
@@ -865,7 +988,7 @@ def test_ssl_verification_error_shows_trust_store_hint(monkeypatch: pytest.Monke
         return outer
 
     class _FakeClient:
-        async def list_jobs(self) -> list[dict[str, Any]]:
+        async def list_jobs(self, *, label: str | None = None) -> list[dict[str, Any]]:
             raise _make_connect_with_ssl_cause()
 
     monkeypatch.setattr(cli_module, "_get_client", _FakeClient)

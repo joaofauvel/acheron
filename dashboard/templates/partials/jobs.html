@@ -1,23 +1,33 @@
 {% if jobs %}
 <table>
   <thead>
-    <tr><th>Job ID</th><th>Status</th><th>Progress</th><th>Cost</th><th>Duration</th></tr>
+    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Progress</th><th>Last error</th><th>Cost</th><th>Duration</th></tr>
   </thead>
   <tbody>
     {% for j in jobs %}
+    {% set progress = j.progress|default({}) %}
+    {% set total_steps = progress.total_steps|default(0) %}
     <tr>
-      <td>{{ j.job_id }}</td>
+      <td>
+        <a href="/partials/jobs/{{ j.job_id }}"
+           hx-get="/partials/jobs/{{ j.job_id }}"
+           hx-target="#job-detail"
+           hx-swap="innerHTML"
+           hx-push-url="true">{{ j.job_id }}</a>
+      </td>
+      <td>{{ j.label|default("-") or "-" }}</td>
       <td><span class="badge badge-{{ j.status }}">{{ j.status }}</span></td>
       <td>
-        {% if j.total_steps > 0 %}
+        {% if total_steps > 0 %}
         <div style="display:flex;align-items:center;gap:0.5rem">
           <div style="flex:1;height:6px;background:#21262d;border-radius:3px;overflow:hidden">
-            <div style="width:{{ (j.completed_steps / j.total_steps * 100)|int }}%;height:100%;background:#3fb950;border-radius:3px"></div>
+            <div style="width:{{ (progress.completed_steps / total_steps * 100)|int }}%;height:100%;background:#3fb950;border-radius:3px"></div>
           </div>
-          <span style="font-size:0.8rem;color:#8b949e">{{ j.completed_steps }}/{{ j.total_steps }}</span>
+          <span style="font-size:0.8rem;color:#8b949e">{{ progress.completed_steps }}/{{ total_steps }}</span>
         </div>
         {% else %}-{% endif %}
       </td>
+      <td>{{ j.errors[0].message if j.errors else "-" }}</td>
       <td>{% if j.total_cost|default(0) > 0 %}${{ "%.2f"|format(j.total_cost) }}{% else %}-{% endif %}</td>
       <td>{% if j.total_duration_seconds|default(0) > 0 %}{{ "%.1f"|format(j.total_duration_seconds) }}s{% else %}-{% endif %}</td>
     </tr>

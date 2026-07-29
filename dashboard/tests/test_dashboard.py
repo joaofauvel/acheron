@@ -13,6 +13,39 @@ from dashboard.app import create_app
 _ORCH_URL = "http://orchestrator:8000"
 
 
+def _job_payload(job_id: str = "job-1", **overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "job_id": job_id,
+        "status": "running",
+        "plan_id": "p1",
+        "label": None,
+        "retries_from": None,
+        "source_type": "epub",
+        "source_language": "en",
+        "target_language": "es",
+        "asr_model": None,
+        "executor_strategy": "streaming",
+        "created_at": "2026-07-29T12:00:00Z",
+        "last_persisted_at": "2026-07-29T12:00:01Z",
+        "progress": {
+            "completed_steps": 0,
+            "total_steps": 0,
+            "current_step_id": None,
+            "current_worker_type": None,
+            "current_worker_id": None,
+            "eta_seconds": None,
+        },
+        "total_cost": 0.0,
+        "total_duration_seconds": 0.0,
+        "total_cost_basis": None,
+        "outputs": [],
+        "errors": [],
+        "warnings": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
 @pytest.fixture
 def app():
     return create_app(orchestrator_url=_ORCH_URL)
@@ -104,14 +137,16 @@ class TestJobsPartial:
                 200,
                 json={
                     "jobs": [
-                        {
-                            "job_id": "job-1",
-                            "status": "running",
-                            "plan_id": "p1",
-                            "completed_steps": 2,
-                            "total_steps": 5,
-                            "errors": [],
-                        },
+                        _job_payload(
+                            progress={
+                                "completed_steps": 2,
+                                "total_steps": 5,
+                                "current_step_id": None,
+                                "current_worker_type": None,
+                                "current_worker_id": None,
+                                "eta_seconds": None,
+                            }
+                        )
                     ]
                 },
             )
@@ -128,6 +163,26 @@ class TestJobsPartial:
         resp = await client.get("/partials/jobs")
         assert resp.status_code == 200
         assert "No jobs" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_jobs_partial_links_failed_job(self, client):
+        payload = _job_payload(status="failed")
+        payload["errors"] = [
+            {
+                "step_id": "step-3",
+                "worker_type": "tts",
+                "worker_id": "tts-1",
+                "message": "malformed audio",
+                "timestamp": "2026-07-29T12:00:02Z",
+            }
+        ]
+        respx.get(f"{_ORCH_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": [payload]}))
+        resp = await client.get("/partials/jobs")
+        assert resp.status_code == 200
+        assert 'href="/partials/jobs/job-1"' in resp.text
+        assert "last error" in resp.text.lower()
+        assert "malformed audio" in resp.text
 
 
 class TestWorkersPartial:
@@ -173,14 +228,17 @@ class TestCostPartial:
                 200,
                 json={
                     "jobs": [
-                        {
-                            "job_id": "job-1",
-                            "status": "completed",
-                            "plan_id": "p1",
-                            "completed_steps": 5,
-                            "total_steps": 5,
-                            "errors": [],
-                        },
+                        _job_payload(
+                            status="completed",
+                            progress={
+                                "completed_steps": 5,
+                                "total_steps": 5,
+                                "current_step_id": None,
+                                "current_worker_type": None,
+                                "current_worker_id": None,
+                                "eta_seconds": None,
+                            },
+                        )
                     ]
                 },
             )

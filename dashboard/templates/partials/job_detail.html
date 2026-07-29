@@ -1,0 +1,47 @@
+{% if job.job_id %}
+<section aria-labelledby="job-detail-title">
+  <h2 id="job-detail-title">Job {{ job.job_id }}</h2>
+  <dl>
+    <dt>Status</dt><dd>{{ job.status }}</dd>
+    <dt>Label</dt><dd>{{ job.label|default("-") or "-" }}</dd>
+    <dt>Created</dt><dd>{{ job.created_at }}</dd>
+    <dt>Last persisted</dt><dd>{{ job.last_persisted_at }}</dd>
+    <dt>Progress</dt><dd>{{ job.progress.completed_steps }}/{{ job.progress.total_steps }}</dd>
+  </dl>
+
+  {% if job.outputs %}
+  <h3>Outputs</h3>
+  <ul>
+    {% for output in job.outputs %}
+    <li>
+      <a href="/outputs/{{ job.job_id }}/{{ output.filename|urlencode }}"
+         data-output-url="{{ orchestrator_url }}/jobs/{{ job.job_id }}/outputs/{{ output.filename|urlencode }}">
+        {{ output.filename }}
+      </a>
+      ({{ output.size_bytes }} bytes, {{ output.content_type }})
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if job.errors %}
+  <h3>Errors</h3>
+  <table>
+    <thead><tr><th>Step</th><th>Worker type</th><th>Worker ID</th><th>Message</th><th>Timestamp</th></tr></thead>
+    <tbody>
+      {% for error in job.errors %}
+      <tr>
+        <td>{{ error.step_id|default("-") or "-" }}</td>
+        <td>{{ error.worker_type|default("-") or "-" }}</td>
+        <td>{{ error.worker_id|default("-") or "-" }}</td>
+        <td>{{ error.message }}</td>
+        <td>{{ error.timestamp }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% else %}
+<p style="color:#8b949e">Job details unavailable.</p>
+{% endif %}

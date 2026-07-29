@@ -364,13 +364,23 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     result = _run(_get_client().get_job(job_id))
     console.print(f"Job: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
+    console.print(f"Label: {result.label or '-'}")
+    console.print(f"Created: {result.created_at.isoformat()}")
     if result.plan_id:
         console.print(f"Plan: {result.plan_id}")
-    if result.total_steps:
-        console.print(f"Steps: {result.completed_steps}/{result.total_steps}")
-    if verbose and result.errors:
-        for err in result.errors:
-            console.print(f"[red]Error: {err}[/red]")
+    progress = result.progress
+    if progress.total_steps:
+        console.print(f"Steps: {progress.completed_steps}/{progress.total_steps}")
+    for output in result.outputs:
+        console.print(f"Output: {output.path} ({output.size_bytes} bytes, {output.content_type})")
+    if verbose:
+        for error in result.errors:
+            console.print(
+                f"Error [step={error.step_id}, worker_type={error.worker_type}, "
+                f"worker_id={error.worker_id}]: {error.message}",
+                markup=False,
+                style="red",
+            )
 
 
 @job.command("plan")
@@ -407,9 +417,10 @@ def resume(job_id: str, force_fresh: bool) -> None:  # noqa: FBT001
 @main.command("jobs")
 @click.option("--active", is_flag=True, help="Show only running jobs")
 @click.option("--completed", is_flag=True, help="Show only completed/failed jobs")
-def list_jobs(active: bool, completed: bool) -> None:  # noqa: FBT001
+@click.option("--label", default=None, help="Filter labels using a glob pattern")
+def list_jobs(active: bool, completed: bool, label: str | None) -> None:  # noqa: FBT001
     """List all jobs."""
-    jobs = _run(_get_client().list_jobs())
+    jobs = _run(_get_client().list_jobs(label=label))
     if active:
         jobs = [j for j in jobs if j.status.value == "running"]
     elif completed:
@@ -419,12 +430,14 @@ def list_jobs(active: bool, completed: bool) -> None:  # noqa: FBT001
         return
     table = Table(title="Jobs")
     table.add_column("Job ID")
+    table.add_column("Label")
     table.add_column("Status")
     table.add_column("Plan")
     table.add_column("Steps")
     for j in jobs:
-        steps = f"{j.completed_steps}/{j.total_steps}" if j.total_steps else "-"
-        table.add_row(j.job_id, j.status.value, j.plan_id or "-", steps)
+        progress = j.progress
+        steps = f"{progress.completed_steps}/{progress.total_steps}" if progress.total_steps else "-"
+        table.add_row(j.job_id, j.label or "-", j.status.value, j.plan_id or "-", steps)
     console.print(table)
 
 
