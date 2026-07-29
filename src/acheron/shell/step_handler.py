@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import WorkerError
@@ -146,7 +147,8 @@ class CachingStepHandler:
             job_instances.append(worker_instance)
             worker_key = id(worker_instance)
             self._worker_refcounts[worker_key] = self._worker_refcounts.get(worker_key, 0) + 1
-        return await worker_instance.execute(job)
+        result = await worker_instance.execute(job)
+        return replace(result, worker_id=selected.worker_id)
 
     async def _invalidate_worker_cache(self) -> None:
         """Drop both the worker-list snapshot and the worker-instance pool.

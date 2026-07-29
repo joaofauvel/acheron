@@ -324,6 +324,89 @@ class TestOrchestrator:
         await orch.start()
         assert await orch.get_job("nope") is None
 
+    def test_record_step_progress_preserves_worker_attribution(self, tmp_path: Path) -> None:
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
+        plan = Plan(
+            plan_id="plan-1",
+            job_id="job-1",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.SEQUENTIAL,
+            steps=(
+                PlanStep(
+                    step_id="step-2",
+                    type=WorkerType.CHUNKING,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={},
+                ),
+                PlanStep(
+                    step_id="step-3",
+                    type=WorkerType.TTS,
+                    depends_on=("step-2",),
+                    status=StepStatus.PENDING,
+                    payload={},
+                ),
+            ),
+        )
+        tracked = TrackedJob(
+            job_id="job-1",
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=plan,
+            status=PlanStatus.RUNNING,
+        )
+        result = JobResult(
+            job_id="job-1",
+            status=JobStatus.FAILED,
+            outputs=(),
+            metrics=JobMetrics(duration_seconds=1.0),
+            error="input too long",
+            worker_id="chunking-local",
+        )
+
+        orch._record_step_progress(tracked, plan, plan.steps[0], result)  # noqa: SLF001
+
+        assert tracked.result is not None
+        error = tracked.result.errors[0]
+        assert error.step_id == "step-2"
+        assert error.worker_type == WorkerType.CHUNKING
+        assert error.worker_id == "chunking-local"
+        assert error.message == "input too long"
+        assert tracked.progress.current_step_id == "step-2"
+        assert tracked.progress.current_worker_id == "chunking-local"
+
+    @pytest.mark.asyncio
+    async def test_progress_snapshot_is_set_while_handler_runs(self, tmp_path: Path) -> None:
+        observed: list[tuple[str | None, WorkerType | None]] = []
+        plan = _single_step_plan("job-1")
+        tracked = TrackedJob(
+            job_id="job-1",
+            request=EpubRequest("/input/book.epub", "en", "en"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=plan,
+            status=PlanStatus.RUNNING,
+        )
+
+        async def handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            observed.append((tracked.progress.current_step_id, tracked.progress.current_worker_type))
+            return await _success_handler(_step, _plan)
+
+        orch = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(tmp_path),
+            handler,
+            job_store=InMemoryJobStore(),
+        )
+        result = await orch._create_executor(tracked).run(plan)  # noqa: SLF001
+
+        assert result.status is PlanStatus.COMPLETED
+        assert observed == [("extract", WorkerType.EXTRACTION)]
+        assert tracked.progress.current_step_id is None
+        assert tracked.progress.completed_steps == 1
+        assert tracked.progress.eta_seconds == 0.0
+
     @pytest.mark.asyncio
     async def test_shutdown_drains_inflight_jobs_to_failed(self, tmp_path: Path) -> None:
         """OBS-001: shutdown() must cancel and await in-flight _execute tasks
@@ -369,7 +452,7 @@ class TestOrchestrator:
         assert persisted.result.status == PlanStatus.FAILED
         assert persisted.result.completed_steps == 0
         assert persisted.result.total_steps == (len(tracked.plan.steps) if tracked.plan else 0)
-        assert persisted.result.errors == ("execution cancelled during shutdown",)
+        assert [error.message for error in persisted.result.errors] == ["execution cancelled during shutdown"]
         # Wake the handler so the test event loop can exit cleanly.
         release_handler.set()
 
@@ -968,8 +1051,13 @@ class TestOrchestrator:
         progress: list[int] = []
         record_progress = orch._record_step_progress  # noqa: SLF001
 
-        def capture_progress(tracked_job: TrackedJob, plan: Plan, result: JobResult) -> None:
-            record_progress(tracked_job, plan, result)
+        def capture_progress(
+            tracked_job: TrackedJob,
+            plan: Plan,
+            step: PlanStep,
+            result: JobResult,
+        ) -> None:
+            record_progress(tracked_job, plan, step, result)
             assert tracked_job.result is not None
             progress.append(tracked_job.result.completed_steps)
 
@@ -1021,7 +1109,7 @@ class TestOrchestrator:
 
         assert tracked.status == PlanStatus.FAILED
         assert tracked.result is not None
-        assert tracked.result.errors == ("RuntimeError: secret stuff",)
+        assert [error.message for error in tracked.result.errors] == ["RuntimeError: secret stuff"]
 
     @pytest.mark.asyncio
     async def test_orchestrator_generates_and_persists_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

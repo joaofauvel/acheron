@@ -88,6 +88,7 @@ class TestStepHandler:
         step = plan.steps[0]
         result = await handler(step, plan)
         assert result.status == JobStatus.SUCCESS
+        assert result.worker_id == "tts-1"
 
     @pytest.mark.asyncio
     async def test_raises_when_no_worker_found(self) -> None:

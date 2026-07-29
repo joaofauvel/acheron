@@ -156,6 +156,7 @@ class JobResult:
     outputs: tuple[OutputFile, ...]
     metrics: JobMetrics
     error: str | None = None
+    worker_id: str | None = None
 
     def model_dump_json(self) -> bytes:
         """Pydantic-style JSON serialisation for the error-response body.

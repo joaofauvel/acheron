@@ -175,7 +175,7 @@ class TestStepTimeout:
         result = await executor.run(plan)
 
         assert result.status == PlanStatus.FAILED
-        assert "timed out" in result.errors[0].lower()
+        assert "timed out" in result.errors[0].message.lower()
 
 
 class TestWorkerError:
@@ -193,7 +193,7 @@ class TestWorkerError:
         result = await executor.run(plan)
 
         assert result.status == PlanStatus.FAILED
-        assert any("no worker" in e.lower() for e in result.errors)
+        assert any("no worker" in e.message.lower() for e in result.errors)
 
 
 class TestNonSuccessResult:
@@ -233,7 +233,7 @@ class TestNonSuccessResult:
         assert result.total_steps == 3
         assert result.completed_steps == 0
         assert downstream_called == []
-        assert any("worker reported failure" in e for e in result.errors)
+        assert any("worker reported failure" in e.message for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_partial_result_also_treated_as_failure(
@@ -258,7 +258,7 @@ class TestNonSuccessResult:
         result = await executor.run(plan)
 
         assert result.status == PlanStatus.FAILED
-        assert any("partial" in e.lower() for e in result.errors)
+        assert any("partial" in e.message.lower() for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_failed_status_preserves_cost_estimate(
@@ -306,7 +306,7 @@ class TestUnexpectedException:
         result = await executor.run(plan)
 
         assert result.status == PlanStatus.FAILED
-        assert any("unexpected failure in stage" in e.lower() for e in result.errors)
+        assert any("unexpected failure in stage" in e.message.lower() for e in result.errors)
 
 
 class TestCacheFailure:
@@ -333,7 +333,7 @@ class TestCacheFailure:
         result = await executor.run(plan)
 
         assert result.status == PlanStatus.FAILED
-        assert any("save_outputs" in e.lower() for e in result.errors)
+        assert any("save_outputs" in e.message.lower() for e in result.errors)
 
 
 class TestTaskGroupCancellation:

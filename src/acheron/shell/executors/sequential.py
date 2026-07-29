@@ -1,7 +1,9 @@
 """Sequential plan executor — walks steps one at a time."""
 
 import time
+from datetime import UTC, datetime
 
+from acheron.core.errors import sanitise_exc_message
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
     JobMetrics,
@@ -10,6 +12,7 @@ from acheron.core.models import (
     Plan,
     PlanResult,
     PlanStatus,
+    StepError,
 )
 from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, topological_order
@@ -29,14 +32,22 @@ class SequentialExecutor(Executor):
         outputs: list[OutputFile] = []
         total_cost = 0.0
         failed_steps: set[str] = set()
-        errors: list[str] = []
+        errors: list[StepError] = []
         per_step_metrics: list[JobMetrics | None] = []
 
         for step in topological_order(plan.steps):
             if any(dep in failed_steps for dep in step.depends_on):
                 failed_steps.add(step.step_id)
                 failed += 1
-                errors.append(f"{step.step_id}: skipped (dependency failed)")
+                errors.append(
+                    StepError(
+                        step_id=step.step_id,
+                        worker_type=step.type,
+                        worker_id=None,
+                        message="skipped (dependency failed)",
+                        timestamp=datetime.now(UTC),
+                    )
+                )
                 per_step_metrics.append(None)
                 continue
 
@@ -45,7 +56,15 @@ class SequentialExecutor(Executor):
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 failed_steps.add(step.step_id)
-                errors.append(f"{step.step_id}: {type(exc).__name__}: {exc}")
+                errors.append(
+                    StepError(
+                        step_id=step.step_id,
+                        worker_type=step.type,
+                        worker_id=None,
+                        message=sanitise_exc_message(exc),
+                        timestamp=datetime.now(UTC),
+                    )
+                )
                 per_step_metrics.append(None)
                 continue
 
@@ -55,7 +74,15 @@ class SequentialExecutor(Executor):
             else:
                 failed += 1
                 failed_steps.add(step.step_id)
-                errors.append(f"{step.step_id}: {result.error or 'unknown error'}")
+                errors.append(
+                    StepError(
+                        step_id=step.step_id,
+                        worker_type=step.type,
+                        worker_id=result.worker_id,
+                        message=result.error or "unknown error",
+                        timestamp=datetime.now(UTC),
+                    )
+                )
             total_cost += result.metrics.cost_estimate or 0.0
             per_step_metrics.append(result.metrics)
 

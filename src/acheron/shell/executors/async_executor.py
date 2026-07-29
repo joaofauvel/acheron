@@ -2,7 +2,9 @@
 
 import asyncio
 import time
+from datetime import UTC, datetime
 
+from acheron.core.errors import sanitise_exc_message
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
     JobMetrics,
@@ -11,6 +13,7 @@ from acheron.core.models import (
     Plan,
     PlanResult,
     PlanStatus,
+    StepError,
 )
 from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, dependency_waves
@@ -30,7 +33,7 @@ class AsyncExecutor(Executor):
         outputs: list[OutputFile] = []
         total_cost = 0.0
         failed_steps: set[str] = set()
-        errors: list[str] = []
+        errors: list[StepError] = []
         per_step_metrics: list[JobMetrics | None] = []
 
         for wave in dependency_waves(plan.steps):
@@ -40,7 +43,15 @@ class AsyncExecutor(Executor):
             for step in skipped:
                 failed_steps.add(step.step_id)
                 failed += 1
-                errors.append(f"{step.step_id}: skipped (dependency failed)")
+                errors.append(
+                    StepError(
+                        step_id=step.step_id,
+                        worker_type=step.type,
+                        worker_id=None,
+                        message="skipped (dependency failed)",
+                        timestamp=datetime.now(UTC),
+                    )
+                )
                 per_step_metrics.append(None)
 
             if not runnable:
@@ -54,7 +65,15 @@ class AsyncExecutor(Executor):
                 if isinstance(result, BaseException):
                     failed += 1
                     failed_steps.add(step.step_id)
-                    errors.append(f"{step.step_id}: {type(result).__name__}: {result}")
+                    errors.append(
+                        StepError(
+                            step_id=step.step_id,
+                            worker_type=step.type,
+                            worker_id=None,
+                            message=sanitise_exc_message(result),
+                            timestamp=datetime.now(UTC),
+                        )
+                    )
                     per_step_metrics.append(None)
                 elif result.status == JobStatus.SUCCESS:
                     completed += 1
@@ -64,7 +83,15 @@ class AsyncExecutor(Executor):
                 else:
                     failed += 1
                     failed_steps.add(step.step_id)
-                    errors.append(f"{step.step_id}: {result.error or 'unknown error'}")
+                    errors.append(
+                        StepError(
+                            step_id=step.step_id,
+                            worker_type=step.type,
+                            worker_id=result.worker_id,
+                            message=result.error or "unknown error",
+                            timestamp=datetime.now(UTC),
+                        )
+                    )
                     total_cost += result.metrics.cost_estimate or 0.0
                     per_step_metrics.append(result.metrics)
 

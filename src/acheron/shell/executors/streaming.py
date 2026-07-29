@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,9 +17,20 @@ from acheron.core.errors import (
     CacheMissError,
     PipelineError,
     WorkerError,
+    sanitise_exc_message,
 )
 from acheron.core.interfaces import Executor
-from acheron.core.models import JobMetrics, JobResult, JobStatus, OutputFile, Plan, PlanResult, PlanStatus, PlanStep
+from acheron.core.models import (
+    JobMetrics,
+    JobResult,
+    JobStatus,
+    OutputFile,
+    Plan,
+    PlanResult,
+    PlanStatus,
+    PlanStep,
+    StepError,
+)
 from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors._utils import StepHandler, topological_order
 
@@ -187,7 +199,15 @@ class StreamingExecutor(Executor):
             outputs=outputs,
             total_cost=total_cost,
             total_duration_seconds=duration,
-            errors=(str(last_error),),
+            errors=(
+                StepError(
+                    step_id=None,
+                    worker_type=None,
+                    worker_id=None,
+                    message=sanitise_exc_message(last_error),
+                    timestamp=datetime.now(UTC),
+                ),
+            ),
             total_cost_basis=total_cost_basis,
         )
 

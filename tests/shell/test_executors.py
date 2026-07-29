@@ -165,8 +165,12 @@ class TestSequentialExecutor:
         assert result.status == PlanStatus.PARTIAL
         assert result.total_steps == 3
         assert result.completed_steps == 1
-        assert any("a" in e and "RuntimeError" in e and "worker crashed" in e for e in result.errors)
-        assert any("skipped" in e for e in result.errors)
+        assert any(
+            "a" in e.step_id and "RuntimeError" in e.message and "worker crashed" in e.message
+            for e in result.errors
+            if e.step_id
+        )
+        assert any("skipped" in e.message for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_handler_raises_on_only_step_marks_failed(self) -> None:
@@ -180,7 +184,7 @@ class TestSequentialExecutor:
         assert result.status == PlanStatus.FAILED
         assert result.total_steps == 1
         assert result.completed_steps == 0
-        assert any("RuntimeError" in e and "boom" in e for e in result.errors)
+        assert any("RuntimeError" in e.message and "boom" in e.message for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_cost_accumulated(self) -> None:
@@ -297,7 +301,7 @@ class TestErrorCapture:
         plan = _plan((_step("a"),))
         result = await SequentialExecutor(handler).run(plan)
         assert len(result.errors) == 1
-        assert "translation timeout" in result.errors[0]
+        assert "translation timeout" in result.errors[0].message
 
     @pytest.mark.asyncio
     async def test_sequential_captures_skipped_steps(self) -> None:
@@ -309,7 +313,7 @@ class TestErrorCapture:
         plan = _plan((_step("a"), _step("b", ("a",))))
         result = await SequentialExecutor(handler).run(plan)
         assert len(result.errors) == 2
-        assert any("skipped" in e for e in result.errors)
+        assert any("skipped" in e.message for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_async_captures_handler_exception(self) -> None:
@@ -321,8 +325,8 @@ class TestErrorCapture:
         plan = _plan((_step("a"), _step("b"), _step("c")))
         result = await AsyncExecutor(handler).run(plan)
         assert len(result.errors) >= 1
-        assert any("ConnectionError" in e for e in result.errors)
-        assert any("worker unreachable" in e for e in result.errors)
+        assert any("ConnectionError" in e.message for e in result.errors)
+        assert any("worker unreachable" in e.message for e in result.errors)
 
     @pytest.mark.asyncio
     async def test_no_errors_on_success(self) -> None:

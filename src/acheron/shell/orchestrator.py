@@ -11,6 +11,7 @@ import time
 import uuid
 import weakref
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import (
@@ -31,6 +32,7 @@ from acheron.core.models import (
     PlanResult,
     PlanStatus,
     PlanStep,
+    StepError,
     WorkerCapabilities,
     WorkerType,
 )
@@ -464,7 +466,16 @@ class Orchestrator:
                 tracked.result = replace(
                     tracked.result,
                     status=PlanStatus.FAILED,
-                    errors=(*tracked.result.errors, sanitise_exc_message(exc)),
+                    errors=(
+                        *tracked.result.errors,
+                        StepError(
+                            step_id=None,
+                            worker_type=None,
+                            worker_id=None,
+                            message=sanitise_exc_message(exc),
+                            timestamp=datetime.now(UTC),
+                        ),
+                    ),
                 )
             try:
                 await self._persist_shielded(tracked)
@@ -641,24 +652,24 @@ class Orchestrator:
             handler = caching_handler
 
         async def progress_handler(step: PlanStep, plan: Plan) -> JobResult:
+            tracked.progress.total_steps = len(plan.steps)
+            tracked.progress.current_step_id = step.step_id
+            tracked.progress.current_worker_type = step.type
+            tracked.progress.current_worker_id = None
             res = await handler(step, plan)
-            self._record_step_progress(tracked, plan, res)
+            self._record_step_progress(tracked, plan, step, res)
+            await self._persist_shielded(tracked)
             return res
 
-        if tracked.strategy == ExecutorStrategy.STREAMING:
-
-            def on_step_complete(_step: PlanStep, plan: Plan, result: JobResult) -> None:
-                self._record_step_progress(tracked, plan, result)
-
-            return create_executor(
-                tracked.strategy,
-                self._handler,
-                step_cache=self._step_cache,
-                on_step_complete=on_step_complete,
-            )
         return create_executor(tracked.strategy, progress_handler, step_cache=self._step_cache)
 
-    def _record_step_progress(self, tracked: TrackedJob, plan: Plan, result: JobResult) -> None:
+    def _record_step_progress(
+        self,
+        tracked: TrackedJob,
+        plan: Plan,
+        step: PlanStep,
+        result: JobResult,
+    ) -> None:
         """Accumulate completed step metrics so a mid-plan cancel keeps partial state."""
         partial = tracked.result or PlanResult(
             plan_id=plan.plan_id,
@@ -669,9 +680,21 @@ class Orchestrator:
             total_cost=0.0,
             total_duration_seconds=0.0,
         )
+        error = (
+            StepError(
+                step_id=step.step_id,
+                worker_type=step.type,
+                worker_id=result.worker_id,
+                message=result.error or "unknown error",
+                timestamp=datetime.now(UTC),
+            )
+            if result.status is not JobStatus.SUCCESS
+            else None
+        )
+        completed_steps = partial.completed_steps + int(result.status is JobStatus.SUCCESS)
         tracked.result = replace(
             partial,
-            completed_steps=partial.completed_steps + int(result.status is JobStatus.SUCCESS),
+            completed_steps=completed_steps,
             outputs=(*partial.outputs, *result.outputs) if result.status is JobStatus.SUCCESS else partial.outputs,
             total_cost=partial.total_cost + (result.metrics.cost_estimate or 0.0),
             total_duration_seconds=partial.total_duration_seconds + result.metrics.duration_seconds,
@@ -681,32 +704,64 @@ class Orchestrator:
                     result.metrics,
                 ]
             ),
-            errors=partial.errors + ((result.error,) if result.error else ()),
+            errors=partial.errors + ((error,) if error is not None else ()),
         )
+        tracked.progress.completed_steps = completed_steps
+        tracked.progress.total_steps = len(plan.steps)
+        tracked.progress.current_step_id = None if completed_steps >= len(plan.steps) else step.step_id
+        tracked.progress.current_worker_type = None if completed_steps >= len(plan.steps) else step.type
+        tracked.progress.current_worker_id = None if completed_steps >= len(plan.steps) else result.worker_id
+        if completed_steps:
+            average_duration = tracked.result.total_duration_seconds / completed_steps
+            tracked.progress.eta_seconds = max(0.0, average_duration * (len(plan.steps) - completed_steps))
+        else:
+            tracked.progress.eta_seconds = None
 
     def _record_cancellation(self, tracked: TrackedJob) -> None:
         message = "execution cancelled during shutdown"
+        cancellation = StepError(
+            step_id=tracked.progress.current_step_id,
+            worker_type=tracked.progress.current_worker_type,
+            worker_id=tracked.progress.current_worker_id,
+            message=message,
+            timestamp=datetime.now(UTC),
+        )
         if tracked.result is None:
             tracked.result = self._new_failure_result(tracked, message)
             return
-        errors = tracked.result.errors if message in tracked.result.errors else (*tracked.result.errors, message)
+        errors = (
+            tracked.result.errors
+            if any(error.message == message for error in tracked.result.errors)
+            else (*tracked.result.errors, cancellation)
+        )
         tracked.result = replace(tracked.result, status=PlanStatus.FAILED, errors=errors)
 
     def _record_failure(self, tracked: TrackedJob, exc: BaseException) -> None:
         """Mark ``tracked`` as failed and build the resulting :class:`PlanResult`."""
         tracked.status = PlanStatus.FAILED
-        tracked.result = self._new_failure_result(tracked, sanitise_exc_message(exc))
+        if tracked.result is not None and tracked.result.errors:
+            tracked.result = replace(tracked.result, status=PlanStatus.FAILED)
+        else:
+            tracked.result = self._new_failure_result(tracked, sanitise_exc_message(exc))
 
     def _new_failure_result(self, tracked: TrackedJob, error: str) -> PlanResult:
         return PlanResult(
             plan_id=tracked.plan.plan_id if tracked.plan else tracked.job_id,
             status=PlanStatus.FAILED,
-            completed_steps=0,
-            total_steps=len(tracked.plan.steps) if tracked.plan else 0,
-            outputs=(),
-            total_cost=0.0,
-            total_duration_seconds=0.0,
-            errors=(error,),
+            completed_steps=tracked.progress.completed_steps,
+            total_steps=len(tracked.plan.steps) if tracked.plan else tracked.progress.total_steps,
+            outputs=tracked.result.outputs if tracked.result is not None else (),
+            total_cost=tracked.result.total_cost if tracked.result is not None else 0.0,
+            total_duration_seconds=tracked.result.total_duration_seconds if tracked.result is not None else 0.0,
+            errors=(
+                StepError(
+                    step_id=tracked.progress.current_step_id,
+                    worker_type=tracked.progress.current_worker_type,
+                    worker_id=tracked.progress.current_worker_id,
+                    message=error,
+                    timestamp=datetime.now(UTC),
+                ),
+            ),
         )
 
     async def get_job(self, job_id: str) -> TrackedJob | None:
