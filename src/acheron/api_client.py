@@ -17,6 +17,7 @@ from acheron.core.schemas import (
     JobListResponse,
     JobResponse,
     LanguagePair,
+    PlanResponse,
     WorkerCapability,
     WorkerListResponse,
     WorkerResponse,
@@ -94,6 +95,40 @@ class AcheronClient:
             resp = await client.get(f"/jobs/{job_id}")
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
+
+    async def preview_job(  # noqa: PLR0913
+        self,
+        source_type: str,
+        source_path: str,
+        source_language: str,
+        target_language: str,
+        executor_strategy: str = "streaming",
+        asr_model: str | None = None,
+    ) -> PlanResponse:
+        """Preview the compiled plan for a job without persisting it or starting execution."""
+        payload: dict[str, str | None] = {
+            "source_type": source_type,
+            "source_path": source_path,
+            "source_language": source_language,
+            "target_language": target_language,
+            "executor_strategy": executor_strategy,
+            "asr_model": asr_model,
+        }
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post("/jobs:preview", json=payload, headers=self._mutation_headers())
+            resp.raise_for_status()
+            return PlanResponse.model_validate(resp.json())
+
+    async def get_plan(self, plan_id: str) -> PlanResponse:
+        """Retrieve a persisted plan by ID."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.get(f"/plans/{plan_id}")
+            resp.raise_for_status()
+            return PlanResponse.model_validate(resp.json())
 
     async def resume_job(self, job_id: str, *, force_fresh: bool = False) -> JobResponse:
         """Resume a saved job."""

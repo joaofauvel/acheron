@@ -470,6 +470,63 @@ async def test_upload_input_finalizes_body_iterator_on_success(tmp_path: Path, m
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_preview_job_posts_typed_request_with_bearer_header() -> None:
+    """preview_job must POST to ``/jobs:preview`` with the existing submission
+    payload and mutation/bearer headers, and parse the response as ``PlanResponse``.
+    """
+    route = respx.post("http://test/jobs:preview").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "plan_id": "plan-preview",
+                "job_id": "job-preview",
+                "source_type": "epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategy": "streaming",
+                "steps": [{"step_id": "extract", "worker_type": "extraction", "depends_on": [], "status": "pending"}],
+            },
+        )
+    )
+
+    result = await AcheronClient("http://test", registration_token="secret").preview_job(
+        source_type="epub",
+        source_path="inputs/book.epub",
+        source_language="en",
+        target_language="es",
+    )
+
+    assert result.plan_id == "plan-preview"
+    assert route.calls.last.request.headers["authorization"] == "Bearer secret"
+    assert route.calls.last.request.url.path == "/jobs:preview"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_plan_round_trips_plan() -> None:
+    """get_plan must GET ``/plans/{plan_id}`` and parse the response as ``PlanResponse``."""
+    respx.get("http://test/plans/plan-1").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "plan_id": "plan-1",
+                "job_id": "job-1",
+                "source_type": "epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategy": "streaming",
+                "steps": [],
+            },
+        )
+    )
+
+    result = await AcheronClient("http://test").get_plan("plan-1")
+
+    assert result.job_id == "job-1"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_upload_input_sanitizes_crlf_in_filename(tmp_path: Path) -> None:
     """upload_input must sanitize CR/LF in the filename to prevent header injection.
 
