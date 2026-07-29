@@ -6,7 +6,11 @@ from acheron.core.errors import (
     CacheError,
     CacheMissError,
     ChunkingTooLongForWorkerError,
+    InvalidationTargetError,
     InvalidLanguagePathError,
+    JobAlreadyRunningError,
+    JobNotCancellableError,
+    NoPlanToResumeError,
     PlanError,
     WorkerError,
     WorkerUnavailableError,
@@ -45,6 +49,22 @@ class TestExceptionHierarchy:
 
 
 class TestMessagePropagation:
+    def test_remediation_is_available_on_domain_errors(self) -> None:
+        exc = JobAlreadyRunningError(
+            "Job job-1 is already running",
+            remediation="acheron job cancel job-1",
+        )
+
+        assert str(exc) == "Job job-1 is already running"
+        assert exc.remediation == "acheron job cancel job-1"
+
+    def test_new_job_errors_inherit_from_job_error(self) -> None:
+        from acheron.core.errors import JobError
+
+        assert issubclass(NoPlanToResumeError, JobError)
+        assert issubclass(JobNotCancellableError, JobError)
+        assert issubclass(InvalidationTargetError, JobError)
+
     def test_message_accessible(self) -> None:
         exc = InvalidLanguagePathError("en -> xx not supported")
         assert str(exc) == "en -> xx not supported"

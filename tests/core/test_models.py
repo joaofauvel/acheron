@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import TypeAdapter
 
@@ -13,6 +15,7 @@ from acheron.core.models import (
     PlanResult,
     PlanStatus,
     PlanStep,
+    StepError,
     StepStatus,
     WorkerCapabilities,
     WorkerStatus,
@@ -282,6 +285,28 @@ class TestPlan:
 
 
 class TestPlanResult:
+    def test_typed_step_errors_preserve_attribution(self) -> None:
+        error = StepError(
+            step_id="step-3",
+            worker_type=WorkerType.TTS,
+            worker_id="tts-1",
+            message="malformed audio",
+            timestamp=datetime(2026, 7, 29, tzinfo=UTC),
+        )
+        result = PlanResult(
+            plan_id="plan-1",
+            status=PlanStatus.FAILED,
+            completed_steps=2,
+            total_steps=5,
+            outputs=(),
+            total_cost=0.0,
+            total_duration_seconds=4.5,
+            errors=(error,),
+        )
+
+        assert result.errors[0].worker_id == "tts-1"
+        assert result.errors[0].step_id == "step-3"
+
     def test_construction(self) -> None:
         result = PlanResult(
             plan_id="plan-1",

@@ -32,6 +32,25 @@ class SubmitJobRequest(_StrictRequest):
     target_language: str
     executor_strategy: str = "streaming"
     asr_model: str | None = None
+    label: str | None = None
+
+
+class RetryJobRequest(_StrictRequest):
+    """Optional overrides for a fresh retry submission."""
+
+    source_path: str | None = None
+    source_language: str | None = None
+    target_language: str | None = None
+    executor_strategy: str | None = None
+    asr_model: str | None = None
+    label: str | None = None
+
+
+class ResumeJobRequest(_StrictRequest):
+    """Targeted cache invalidation selections for plan resume."""
+
+    invalidate_steps: list[str] = Field(default_factory=list)
+    invalidate_chapters: list[int] = Field(default_factory=list)
 
 
 class WorkerCapabilitiesRequest(_StrictRequest):
@@ -57,6 +76,8 @@ __all__ = [
     "LanguagePair",
     "PlanResponse",
     "PlanStepResponse",
+    "ResumeJobRequest",
+    "RetryJobRequest",
     "SubmitJobRequest",
     "WorkerCapabilitiesRequest",
     "WorkerCapability",

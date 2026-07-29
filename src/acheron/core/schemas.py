@@ -1,5 +1,7 @@
 """Wire-format response schemas shared between the Acheron client and server."""
 
+from datetime import datetime  # noqa: TC003
+
 from pydantic import BaseModel, Field
 
 from acheron.core.models import (
@@ -14,19 +16,79 @@ from acheron.core.models import (
 )
 
 
+class OutputSummary(BaseModel):
+    """Operator-relevant metadata for a produced artifact."""
+
+    path: str
+    filename: str
+    size_bytes: int
+    content_type: str
+
+
+class StepError(BaseModel):
+    """Public failure attribution for one execution step."""
+
+    step_id: str | None
+    worker_type: WorkerType | None
+    worker_id: str | None
+    message: str
+    timestamp: datetime
+
+
+class JobProgress(BaseModel):
+    """Current aggregate and step-level execution progress."""
+
+    completed_steps: int = 0
+    total_steps: int = 0
+    current_step_id: str | None = None
+    current_worker_type: WorkerType | None = None
+    current_worker_id: str | None = None
+    eta_seconds: float | None = None
+
+
+class JobLogEvent(BaseModel):
+    """One newline-delimited progress event."""
+
+    job_id: str
+    timestamp: datetime
+    status: PlanStatus
+    step_id: str | None = None
+    worker_type: WorkerType | None = None
+    worker_id: str | None = None
+    progress: JobProgress
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    """Structured domain error returned by the API."""
+
+    type: str
+    message: str
+    remediation: str | None = None
+
+
 class JobResponse(BaseModel):
-    """Response for a single job."""
+    """Complete operator-facing response for a tracked job."""
 
     job_id: str
     status: PlanStatus
-    plan_id: str | None = None
-    completed_steps: int = 0
-    total_steps: int = 0
-    total_cost: float = 0.0
-    total_duration_seconds: float = 0.0
-    total_cost_basis: CostBasis | None = None
-    errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
+    plan_id: str | None
+    label: str | None
+    retries_from: str | None
+    source_type: str
+    source_language: str
+    target_language: str
+    asr_model: str | None
+    executor_strategy: ExecutorStrategy
+    created_at: datetime
+    last_persisted_at: datetime
+    progress: JobProgress
+    total_cost: float
+    total_duration_seconds: float
+    total_cost_basis: CostBasis | None
+    outputs: list[OutputSummary]
+    errors: list[StepError]
+    warnings: list[str]
 
 
 class JobListResponse(BaseModel):

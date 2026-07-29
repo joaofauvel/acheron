@@ -6,6 +6,10 @@ import re
 class AcheronError(Exception):
     """Base exception for all Acheron errors."""
 
+    def __init__(self, message: str, *, remediation: str | None = None) -> None:
+        super().__init__(message)
+        self.remediation = remediation
+
 
 class PathNotAllowedError(AcheronError):
     """A path submitted for filesystem access resolves outside the configured allowlist."""
@@ -69,6 +73,18 @@ class JobNotFoundError(JobError):
 
 class JobAlreadyRunningError(JobError):
     """Requested tracked job is already active in this orchestrator."""
+
+
+class NoPlanToResumeError(JobError):
+    """Requested tracked job has no saved plan to resume."""
+
+
+class JobNotCancellableError(JobError):
+    """Requested tracked job cannot be cancelled in its current state."""
+
+
+class InvalidationTargetError(JobError):
+    """Requested cache invalidation target does not exist in the saved plan."""
 
 
 _CREDENTIAL_PATTERN = re.compile(

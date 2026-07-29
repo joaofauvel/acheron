@@ -1,5 +1,8 @@
 """Tests for the request-schema module's response-model re-exports."""
 
+import pytest
+from pydantic import ValidationError
+
 from acheron.core.schemas import (
     CapabilitiesResponse,
     JobListResponse,
@@ -9,6 +12,7 @@ from acheron.core.schemas import (
     WorkerResponse,
 )
 from acheron.shell.api import schemas
+from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest
 
 
 def test_response_models_keep_their_public_import_path() -> None:
@@ -18,6 +22,32 @@ def test_response_models_keep_their_public_import_path() -> None:
     assert schemas.LanguagePair is LanguagePair
     assert schemas.WorkerListResponse is WorkerListResponse
     assert schemas.WorkerResponse is WorkerResponse
+
+
+def test_submit_accepts_label() -> None:
+    request = SubmitJobRequest(
+        source_type="epub",
+        source_path="book.epub",
+        source_language="en",
+        target_language="es",
+        label="atlas-ch1",
+    )
+
+    assert request.label == "atlas-ch1"
+
+
+def test_resume_request_accepts_selected_cache_entries() -> None:
+    request = ResumeJobRequest(
+        invalidate_steps=["step-47", "step-48"],
+        invalidate_chapters=[47],
+    )
+
+    assert request.invalidate_steps == ["step-47", "step-48"]
+
+
+def test_retry_request_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        RetryJobRequest.model_validate({"unexpected": "value"})
 
 
 def test_plan_response_models_keep_their_public_import_path() -> None:

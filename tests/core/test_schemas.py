@@ -1,6 +1,8 @@
 """Pydantic models for the JobResponse + total_cost_basis round-trip and
 WorkerResponse enum coercion."""
 
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
@@ -17,6 +19,7 @@ from acheron.core.models import (
 from acheron.core.schemas import (
     CapabilitiesResponse,
     InputResponse,
+    JobLogEvent,
     JobResponse,
     PlanResponse,
     WorkerCapability,
@@ -26,56 +29,70 @@ from acheron.core.schemas import (
 _adapter = TypeAdapter(JobResponse)
 
 
+def _job_response_data(**overrides: object) -> dict[str, object]:
+    data: dict[str, object] = {
+        "job_id": "j",
+        "status": PlanStatus.COMPLETED,
+        "plan_id": None,
+        "label": None,
+        "retries_from": None,
+        "source_type": "epub",
+        "source_language": "en",
+        "target_language": "es",
+        "asr_model": None,
+        "executor_strategy": ExecutorStrategy.STREAMING,
+        "created_at": datetime(2026, 7, 29, tzinfo=UTC),
+        "last_persisted_at": datetime(2026, 7, 29, tzinfo=UTC),
+        "progress": {},
+        "total_cost": 0.0,
+        "total_duration_seconds": 0.0,
+        "total_cost_basis": None,
+        "outputs": [],
+        "errors": [],
+        "warnings": [],
+    }
+    data.update(overrides)
+    return data
+
+
 class TestJobResponseTotalCostBasis:
     def test_default_total_cost_basis_is_none(self) -> None:
-        r = JobResponse(job_id="j", status=PlanStatus.COMPLETED)
+        r = JobResponse.model_validate(_job_response_data())
         assert r.total_cost_basis is None
 
     def test_warnings_default_to_empty(self) -> None:
-        r = JobResponse(job_id="j", status=PlanStatus.COMPLETED)
+        r = JobResponse.model_validate(_job_response_data())
         assert r.warnings == []
 
     def test_warnings_serialize_and_validate(self) -> None:
         warning = "BOOTING TTS workers: tts-1 (3s elapsed); cold start typically takes 30\u201390 seconds."
-        r = JobResponse(job_id="j", status=PlanStatus.RUNNING, warnings=[warning])
+        r = JobResponse.model_validate(_job_response_data(status=PlanStatus.RUNNING, warnings=[warning]))
         dumped = _adapter.dump_python(r, mode="json")
         assert dumped["warnings"] == [warning]
         assert _adapter.validate_python(dumped).warnings == [warning]
 
     def test_explicit_total_cost_basis_round_trip(self) -> None:
-        r = JobResponse(
-            job_id="j",
-            status=PlanStatus.COMPLETED,
-            total_cost_basis=CostBasis.MEASURED,
-        )
+        r = JobResponse.model_validate(_job_response_data(total_cost_basis=CostBasis.MEASURED))
         dumped = _adapter.dump_python(r, mode="json")
         assert dumped["total_cost_basis"] == "measured"
         round_trip = _adapter.validate_python(dumped)
         assert round_trip.total_cost_basis == CostBasis.MEASURED
 
     def test_total_cost_basis_serialization(self) -> None:
-        r = JobResponse(
-            job_id="j",
-            status=PlanStatus.COMPLETED,
-            total_cost_basis=CostBasis.UNKNOWN,
-        )
+        r = JobResponse.model_validate(_job_response_data(total_cost_basis=CostBasis.UNKNOWN))
         assert r.model_dump(mode="json")["total_cost_basis"] == "unknown"
 
     def test_status_accepts_value_string(self) -> None:
-        r = JobResponse(job_id="j", status="completed")  # type: ignore[arg-type]
+        r = JobResponse.model_validate(_job_response_data(status="completed"))
         assert r.status is PlanStatus.COMPLETED
 
     def test_rejects_invalid_status(self) -> None:
         with pytest.raises(ValidationError):
-            JobResponse(job_id="j", status="complted")  # type: ignore[arg-type]
+            JobResponse.model_validate(_job_response_data(status="complted"))
 
     def test_rejects_invalid_cost_basis(self) -> None:
         with pytest.raises(ValidationError):
-            JobResponse(
-                job_id="j",
-                status=PlanStatus.COMPLETED,
-                total_cost_basis="not-a-basis",  # type: ignore[arg-type]
-            )
+            JobResponse.model_validate(_job_response_data(total_cost_basis="not-a-basis"))
 
 
 class TestWorkerResponseStatus:
@@ -133,6 +150,66 @@ class TestWorkerResponseStatus:
             status=WorkerStatus.HEALTHY,
         )
         assert r.model_dump(mode="json")["status"] == "healthy"
+
+
+def test_job_response_exposes_phase_4c_fields() -> None:
+    response = JobResponse.model_validate(
+        {
+            "job_id": "job-1",
+            "status": "failed",
+            "plan_id": "plan-1",
+            "label": "atlas-ch1",
+            "retries_from": None,
+            "source_type": "audio",
+            "source_language": "en",
+            "target_language": "es",
+            "asr_model": "whisper-v3",
+            "executor_strategy": "streaming",
+            "created_at": "2026-07-29T12:00:00Z",
+            "last_persisted_at": "2026-07-29T12:00:05Z",
+            "progress": {
+                "completed_steps": 2,
+                "total_steps": 5,
+                "current_step_id": "step-3",
+                "current_worker_type": "tts",
+                "current_worker_id": "tts-1",
+                "eta_seconds": None,
+            },
+            "total_cost": 0.0,
+            "total_duration_seconds": 4.5,
+            "total_cost_basis": None,
+            "outputs": [],
+            "errors": [
+                {
+                    "step_id": "step-3",
+                    "worker_type": "tts",
+                    "worker_id": "tts-1",
+                    "message": "malformed audio",
+                    "timestamp": "2026-07-29T12:00:04Z",
+                }
+            ],
+            "warnings": [],
+        }
+    )
+
+    assert response.progress.current_worker_id == "tts-1"
+    assert response.errors[0].message == "malformed audio"
+    assert response.created_at.tzinfo is not None
+
+
+def test_job_log_event_serializes_as_one_json_object() -> None:
+    event = JobLogEvent(
+        job_id="job-1",
+        timestamp=datetime(2026, 7, 29, tzinfo=UTC),
+        status="running",
+        step_id="step-3",
+        worker_type="tts",
+        worker_id="tts-1",
+        progress={"completed_steps": 2, "total_steps": 5},
+        message="step started",
+    )
+
+    assert event.model_dump_json().count("\n") == 0
 
 
 def test_input_response_preserves_upload_metadata() -> None:

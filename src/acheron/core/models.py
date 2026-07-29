@@ -1,6 +1,7 @@
 """Core data models and enums for the Acheron pipeline."""
 
 from dataclasses import dataclass, field
+from datetime import datetime  # noqa: TC003
 from enum import Enum
 
 from pydantic import TypeAdapter
@@ -136,6 +137,17 @@ class JobMetrics:
 
 
 @dataclass(frozen=True)
+class StepError:
+    """Sanitized failure attribution for one execution step."""
+
+    step_id: str | None
+    worker_type: WorkerType | None
+    worker_id: str | None
+    message: str
+    timestamp: datetime
+
+
+@dataclass(frozen=True)
 class JobResult:
     """Outcome of executing a job."""
 
@@ -190,7 +202,7 @@ class PlanResult:
     outputs: tuple[OutputFile, ...]
     total_cost: float
     total_duration_seconds: float
-    errors: tuple[str, ...] = ()
+    errors: tuple[StepError, ...] = ()
     total_cost_basis: CostBasis | None = None
 
 
