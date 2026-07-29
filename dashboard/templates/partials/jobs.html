@@ -7,6 +7,7 @@
     {% for j in jobs %}
     {% set progress = j.progress|default({}) %}
     {% set total_steps = progress.total_steps|default(0) %}
+    {% set last_error = (j.errors|sort(attribute="timestamp")|last) if j.errors else none %}
     <tr>
       <td>
         <a href="/partials/jobs/{{ j.job_id }}"
@@ -27,7 +28,7 @@
         </div>
         {% else %}-{% endif %}
       </td>
-      <td>{{ j.errors[0].message if j.errors else "-" }}</td>
+      <td>{{ last_error.message if last_error else "-" }}</td>
       <td>{% if j.total_cost|default(0) > 0 %}${{ "%.2f"|format(j.total_cost) }}{% else %}-{% endif %}</td>
       <td>{% if j.total_duration_seconds|default(0) > 0 %}{{ "%.1f"|format(j.total_duration_seconds) }}s{% else %}-{% endif %}</td>
     </tr>

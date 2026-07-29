@@ -170,12 +170,19 @@ class TestJobsPartial:
         payload = _job_payload(status="failed")
         payload["errors"] = [
             {
+                "step_id": "step-2",
+                "worker_type": "tts",
+                "worker_id": "tts-1",
+                "message": "older failure",
+                "timestamp": "2026-07-29T12:00:01Z",
+            },
+            {
                 "step_id": "step-3",
                 "worker_type": "tts",
                 "worker_id": "tts-1",
                 "message": "malformed audio",
                 "timestamp": "2026-07-29T12:00:02Z",
-            }
+            },
         ]
         respx.get(f"{_ORCH_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": [payload]}))
         resp = await client.get("/partials/jobs")
@@ -183,6 +190,7 @@ class TestJobsPartial:
         assert 'href="/partials/jobs/job-1"' in resp.text
         assert "last error" in resp.text.lower()
         assert "malformed audio" in resp.text
+        assert "older failure" not in resp.text
 
 
 class TestWorkersPartial:

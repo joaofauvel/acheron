@@ -241,9 +241,24 @@ def test_job_status_renders_output_and_step_error() -> None:
     )
     result = CliRunner().invoke(main, ["job", "status", "job-1", "--verbose"])
     assert result.exit_code == 0, result.output
-    assert "Output: /data/job-1/result.m4b" in result.output
-    assert "step=step-3" in result.output
-    assert "worker_id=tts-1" in result.output
+    for value in (
+        "Plan: plan-1",
+        "Retries from: -",
+        "Source type: epub",
+        "Source language: en",
+        "Target language: es",
+        "ASR model: -",
+        "Executor strategy: streaming",
+        "Created: 2026-07-29T12:00:00+00:00",
+        "Last persisted: 2026-07-29T12:00:01+00:00",
+        "Progress: 0/0",
+        "Cost: $0.00",
+        "Duration: 0.0s",
+        "Output: /data/job-1/result.m4b",
+        "step=step-3",
+        "worker_id=tts-1",
+    ):
+        assert value in result.output
 
 
 @respx.mock

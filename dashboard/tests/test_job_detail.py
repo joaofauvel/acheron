@@ -79,8 +79,23 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
     response = await client.get("/partials/jobs/job-1")
 
     assert response.status_code == 200
-    assert "2026-07-29T12:00:00Z" in response.text
-    assert "/jobs/job-1/outputs/result.m4b" in response.text
+    for value in (
+        "plan-1",
+        "atlas-ch1",
+        "audio",
+        "en",
+        "es",
+        "whisper-v3",
+        "streaming",
+        "2026-07-29T12:00:00Z",
+        "2026-07-29T12:00:05Z",
+        "2/5",
+        "$0.00",
+        "4.5s",
+    ):
+        assert value in response.text
+    assert 'href="/outputs/job-1/result.m4b"' in response.text
+    assert "data-output-url" not in response.text
     assert "step-3" in response.text
     assert "tts-1" in response.text
     assert "malformed audio" in response.text

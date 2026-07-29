@@ -365,12 +365,23 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     console.print(f"Job: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
     console.print(f"Label: {result.label or '-'}")
+    console.print(f"Plan: {result.plan_id or '-'}")
+    console.print(f"Retries from: {result.retries_from or '-'}")
+    console.print(f"Source type: {result.source_type}")
+    console.print(f"Source language: {result.source_language}")
+    console.print(f"Target language: {result.target_language}")
+    console.print(f"ASR model: {result.asr_model or '-'}")
+    console.print(f"Executor strategy: {result.executor_strategy.value}")
     console.print(f"Created: {result.created_at.isoformat()}")
-    if result.plan_id:
-        console.print(f"Plan: {result.plan_id}")
+    console.print(f"Last persisted: {result.last_persisted_at.isoformat()}")
     progress = result.progress
-    if progress.total_steps:
-        console.print(f"Steps: {progress.completed_steps}/{progress.total_steps}")
+    console.print(f"Progress: {progress.completed_steps}/{progress.total_steps}")
+    if progress.current_step_id:
+        console.print(f"Current step: {progress.current_step_id}")
+    if progress.eta_seconds is not None:
+        console.print(f"ETA: {progress.eta_seconds:.1f}s")
+    console.print(f"Cost: ${result.total_cost:.2f}")
+    console.print(f"Duration: {result.total_duration_seconds:.1f}s")
     for output in result.outputs:
         console.print(f"Output: {output.path} ({output.size_bytes} bytes, {output.content_type})")
     if verbose:

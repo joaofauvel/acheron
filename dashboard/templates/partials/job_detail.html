@@ -3,10 +3,19 @@
   <h2 id="job-detail-title">Job {{ job.job_id }}</h2>
   <dl>
     <dt>Status</dt><dd>{{ job.status }}</dd>
+    <dt>Plan</dt><dd>{{ job.plan_id|default("-") or "-" }}</dd>
     <dt>Label</dt><dd>{{ job.label|default("-") or "-" }}</dd>
+    <dt>Retries from</dt><dd>{{ job.retries_from|default("-") or "-" }}</dd>
+    <dt>Source type</dt><dd>{{ job.source_type }}</dd>
+    <dt>Source language</dt><dd>{{ job.source_language }}</dd>
+    <dt>Target language</dt><dd>{{ job.target_language }}</dd>
+    <dt>ASR model</dt><dd>{{ job.asr_model|default("-") or "-" }}</dd>
+    <dt>Executor strategy</dt><dd>{{ job.executor_strategy }}</dd>
     <dt>Created</dt><dd>{{ job.created_at }}</dd>
     <dt>Last persisted</dt><dd>{{ job.last_persisted_at }}</dd>
     <dt>Progress</dt><dd>{{ job.progress.completed_steps }}/{{ job.progress.total_steps }}</dd>
+    <dt>Cost</dt><dd>${{ "%.2f"|format(job.total_cost|default(0)) }}</dd>
+    <dt>Duration</dt><dd>{{ "%.1f"|format(job.total_duration_seconds|default(0)) }}s</dd>
   </dl>
 
   {% if job.outputs %}
@@ -14,8 +23,7 @@
   <ul>
     {% for output in job.outputs %}
     <li>
-      <a href="/outputs/{{ job.job_id }}/{{ output.filename|urlencode }}"
-         data-output-url="{{ orchestrator_url }}/jobs/{{ job.job_id }}/outputs/{{ output.filename|urlencode }}">
+      <a href="/outputs/{{ job.job_id }}/{{ output.filename|urlencode }}">
         {{ output.filename }}
       </a>
       ({{ output.size_bytes }} bytes, {{ output.content_type }})
