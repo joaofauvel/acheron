@@ -17,6 +17,37 @@ from acheron.api_client import AcheronClient
 from acheron.core.schemas import WorkerCapability
 
 
+def _job_response_payload(*, status: str = "running", warnings: list[str] | None = None) -> dict[str, object]:
+    return {
+        "job_id": "job-1",
+        "status": status,
+        "plan_id": None,
+        "label": None,
+        "retries_from": None,
+        "source_type": "epub",
+        "source_language": "en",
+        "target_language": "es",
+        "asr_model": None,
+        "executor_strategy": "streaming",
+        "created_at": "2026-07-29T12:00:00Z",
+        "last_persisted_at": "2026-07-29T12:00:00Z",
+        "progress": {
+            "completed_steps": 0,
+            "total_steps": 0,
+            "current_step_id": None,
+            "current_worker_type": None,
+            "current_worker_id": None,
+            "eta_seconds": None,
+        },
+        "total_cost": 0.0,
+        "total_duration_seconds": 0.0,
+        "total_cost_basis": None,
+        "outputs": [],
+        "errors": [],
+        "warnings": warnings or [],
+    }
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_submit_job_round_trips_warnings() -> None:
@@ -24,7 +55,7 @@ async def test_submit_job_round_trips_warnings() -> None:
     respx.post("http://test/jobs").mock(
         return_value=httpx.Response(
             201,
-            json={"job_id": "job-1", "status": "running", "warnings": [warning]},
+            json=_job_response_payload(warnings=[warning]),
         )
     )
 
@@ -37,6 +68,54 @@ async def test_submit_job_round_trips_warnings() -> None:
 
     assert result.job_id == "job-1"
     assert result.warnings == [warning]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_list_jobs_filters_by_label_and_validates_response() -> None:
+    route = respx.get("http://test/jobs", params={"label": "atlas-*"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "job_id": "job-1",
+                        "status": "completed",
+                        "plan_id": "plan-1",
+                        "label": "atlas-ch1",
+                        "retries_from": None,
+                        "source_type": "epub",
+                        "source_language": "en",
+                        "target_language": "es",
+                        "asr_model": None,
+                        "executor_strategy": "streaming",
+                        "created_at": "2026-07-29T12:00:00Z",
+                        "last_persisted_at": "2026-07-29T12:00:01Z",
+                        "progress": {
+                            "completed_steps": 1,
+                            "total_steps": 1,
+                            "current_step_id": None,
+                            "current_worker_type": None,
+                            "current_worker_id": None,
+                            "eta_seconds": 0.0,
+                        },
+                        "total_cost": 0.0,
+                        "total_duration_seconds": 0.0,
+                        "total_cost_basis": None,
+                        "outputs": [],
+                        "errors": [],
+                        "warnings": [],
+                    }
+                ]
+            },
+        )
+    )
+
+    result = await AcheronClient("http://test").list_jobs(label="atlas-*")
+
+    assert route.calls.last.request.url.params["label"] == "atlas-*"
+    assert len(result) == 1
+    assert result[0].label == "atlas-ch1"
 
 
 @pytest.mark.asyncio
@@ -80,7 +159,7 @@ async def test_submit_job_sends_bearer_header_when_token_configured() -> None:
     route = respx.post("http://test/jobs").mock(
         return_value=httpx.Response(
             201,
-            json={"job_id": "job-1", "status": "running"},
+            json=_job_response_payload(),
         )
     )
 
@@ -319,7 +398,7 @@ async def test_resume_job_sends_bearer_header_when_token_configured() -> None:
     route = respx.post("http://test/jobs/job-1/resume").mock(
         return_value=httpx.Response(
             200,
-            json={"job_id": "job-1", "status": "running"},
+            json=_job_response_payload(),
         )
     )
 

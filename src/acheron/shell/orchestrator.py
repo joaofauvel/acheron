@@ -351,7 +351,13 @@ class Orchestrator:
             raise unexpected[0]
         logger.info("Drained %d tasks in %.2fs", len(pending), time.monotonic() - start)
 
-    async def submit_job(self, request: JobRequest, strategy: ExecutorStrategy) -> TrackedJob:
+    async def submit_job(
+        self,
+        request: JobRequest,
+        strategy: ExecutorStrategy,
+        *,
+        label: str | None = None,
+    ) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
 
         Raises:
@@ -391,6 +397,7 @@ class Orchestrator:
             job_id=job_id,
             request=request,
             strategy=strategy,
+            label=label,
             plan=plan,
             status=PlanStatus.RUNNING,
         )

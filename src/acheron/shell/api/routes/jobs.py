@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import math
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from acheron.core.errors import (
     AcheronError,
@@ -128,7 +129,10 @@ async def submit_job(
     """Submit a new job for processing."""
     job_request, strategy = await _build_job_request(orch, body)
     try:
-        tracked = await orch.submit_job(job_request, strategy)
+        if body.label is None:
+            tracked = await orch.submit_job(job_request, strategy)
+        else:
+            tracked = await orch.submit_job(job_request, strategy, label=body.label)
     except AcheronError as exc:
         raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
 
@@ -189,9 +193,14 @@ async def resume_job(
 
 
 @router.get("", response_model=JobListResponse)
-async def list_jobs(orch: OrchestratorDep) -> JobListResponse:
-    """List all jobs."""
+async def list_jobs(
+    orch: OrchestratorDep,
+    label: Annotated[str | None, Query()] = None,
+) -> JobListResponse:
+    """List jobs, optionally filtered by label glob."""
     jobs = await orch.list_jobs()
+    if label is not None:
+        jobs = tuple(job for job in jobs if fnmatch.fnmatchcase(job.label or "", label))
     return JobListResponse(jobs=[_tracked_to_response(j) for j in jobs])
 
 

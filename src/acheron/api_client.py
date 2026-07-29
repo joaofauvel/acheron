@@ -180,12 +180,13 @@ class AcheronClient:
             resp.raise_for_status()
             return cast("dict[str, str]", resp.json())
 
-    async def list_jobs(self) -> list[JobResponse]:
-        """List all jobs."""
+    async def list_jobs(self, *, label: str | None = None) -> list[JobResponse]:
+        """List all jobs, optionally filtered by label glob."""
+        params = {"label": label} if label is not None else None
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
-            resp = await client.get("/jobs")
+            resp = await client.get("/jobs", params=params)
             resp.raise_for_status()
             return JobListResponse.model_validate(resp.json()).jobs
 

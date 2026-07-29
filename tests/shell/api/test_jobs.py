@@ -329,6 +329,26 @@ class TestJobRoutes:
         assert len(response.json()["jobs"]) == 1
 
     @pytest.mark.asyncio
+    async def test_list_jobs_filters_by_label(self, client) -> None:  # type: ignore[no-untyped-def]
+        for label in ("atlas-ch1", "other-project"):
+            response = await client.post(
+                "/jobs",
+                json={
+                    "source_type": "epub",
+                    "source_path": "input/book.epub",
+                    "source_language": "en",
+                    "target_language": "es",
+                    "label": label,
+                },
+            )
+            assert response.status_code == 201
+
+        response = await client.get("/jobs", params={"label": "atlas-*"})
+
+        assert response.status_code == 200
+        assert [job["label"] for job in response.json()["jobs"]] == ["atlas-ch1"]
+
+    @pytest.mark.asyncio
     async def test_resume_job_route(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.post(
             "/jobs",
