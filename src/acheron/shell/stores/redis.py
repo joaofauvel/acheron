@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast, runtime_checkable
 
 import redis.asyncio
@@ -342,7 +343,16 @@ def _serialize_job(job: TrackedJob) -> str:
             ],
             "total_cost": job.result.total_cost,
             "total_duration_seconds": job.result.total_duration_seconds,
-            "errors": list(job.result.errors),
+            "errors": [
+                {
+                    "step_id": error.step_id,
+                    "worker_type": error.worker_type.value if error.worker_type else None,
+                    "worker_id": error.worker_id,
+                    "message": error.message,
+                    "timestamp": error.timestamp.isoformat(),
+                }
+                for error in job.result.errors
+            ],
             "total_cost_basis": (job.result.total_cost_basis.value if job.result.total_cost_basis else None),
         }
 
@@ -353,6 +363,20 @@ def _serialize_job(job: TrackedJob) -> str:
             "request": request_dict,
             "strategy": job.strategy.value,
             "status": job.status.value,
+            "label": job.label,
+            "retries_from": job.retries_from,
+            "created_at": job.created_at.isoformat(),
+            "last_persisted_at": job.last_persisted_at.isoformat(),
+            "progress": {
+                "completed_steps": job.progress.completed_steps,
+                "total_steps": job.progress.total_steps,
+                "current_step_id": job.progress.current_step_id,
+                "current_worker_type": (
+                    job.progress.current_worker_type.value if job.progress.current_worker_type else None
+                ),
+                "current_worker_id": job.progress.current_worker_id,
+                "eta_seconds": job.progress.eta_seconds,
+            },
             "plan": plan_dict,
             "result": result_dict,
         },
@@ -372,10 +396,11 @@ def _deserialize_job(blob: str) -> TrackedJob:
         PlanResult,
         PlanStatus,
         PlanStep,
+        StepError,
         StepStatus,
         WorkerType,
     )
-    from acheron.shell.job_store import TrackedJob  # noqa: PLC0415
+    from acheron.shell.job_store import JobProgressState, TrackedJob  # noqa: PLC0415
 
     try:
         data = json.loads(blob)
@@ -437,14 +462,39 @@ def _deserialize_job(blob: str) -> TrackedJob:
             ),
             total_cost=rd["total_cost"],
             total_duration_seconds=rd["total_duration_seconds"],
-            errors=tuple(rd["errors"]),
+            errors=tuple(
+                StepError(
+                    step_id=error["step_id"],
+                    worker_type=WorkerType(error["worker_type"]) if error["worker_type"] else None,
+                    worker_id=error["worker_id"],
+                    message=error["message"],
+                    timestamp=datetime.fromisoformat(error["timestamp"]),
+                )
+                for error in rd["errors"]
+            ),
             total_cost_basis=CostBasis(basis_value) if basis_value else None,
         )
 
+    progress_data = data["progress"]
+    progress = JobProgressState(
+        completed_steps=progress_data["completed_steps"],
+        total_steps=progress_data["total_steps"],
+        current_step_id=progress_data["current_step_id"],
+        current_worker_type=(
+            WorkerType(progress_data["current_worker_type"]) if progress_data["current_worker_type"] else None
+        ),
+        current_worker_id=progress_data["current_worker_id"],
+        eta_seconds=progress_data["eta_seconds"],
+    )
     return TrackedJob(
         job_id=data["job_id"],
         request=request,
         strategy=ExecutorStrategy(data["strategy"]),
+        label=data["label"],
+        retries_from=data["retries_from"],
+        created_at=datetime.fromisoformat(data["created_at"]),
+        last_persisted_at=datetime.fromisoformat(data["last_persisted_at"]),
+        progress=progress,
         plan=plan,
         result=result,
         status=PlanStatus(data["status"]),
@@ -585,6 +635,7 @@ class RedisJobStore(JobStore):
 
     async def put(self, job: TrackedJob) -> None:
         """Store or update a tracked job."""
+        job.last_persisted_at = datetime.now(UTC)
         try:
             async with self._redis.pipeline(transaction=True) as pipe:
                 pipe.set(_JOB_KEY.format(job_id=job.job_id), _serialize_job(job))

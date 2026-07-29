@@ -86,12 +86,22 @@ class TestBootingTtsWarnings:
 class TestJobRoutes:
     @pytest.mark.asyncio
     async def test_get_job_maps_total_cost_basis(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import UTC, datetime
+
         from httpx import ASGITransport, AsyncClient
 
-        from acheron.core.models import CostBasis, EpubRequest, ExecutorStrategy, PlanResult, PlanStatus
+        from acheron.core.models import (
+            CostBasis,
+            EpubRequest,
+            ExecutorStrategy,
+            OutputFile,
+            PlanResult,
+            PlanStatus,
+            StepError,
+        )
         from acheron.shell.api.app import create_app
         from acheron.shell.cache import PlanCache
-        from acheron.shell.job_store import TrackedJob
+        from acheron.shell.job_store import JobProgressState, TrackedJob
         from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
         monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
@@ -109,15 +119,36 @@ class TestJobRoutes:
                 job_id="job-measured",
                 request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
                 strategy=ExecutorStrategy.SEQUENTIAL,
+                label="atlas-ch1",
+                created_at=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
+                last_persisted_at=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
+                progress=JobProgressState(completed_steps=1, total_steps=1),
                 status=PlanStatus.COMPLETED,
                 result=PlanResult(
                     plan_id="plan-measured",
                     status=PlanStatus.COMPLETED,
                     completed_steps=1,
                     total_steps=1,
-                    outputs=(),
+                    outputs=(
+                        OutputFile(
+                            path="/data/job-measured/output.m4b",
+                            filename="output.m4b",
+                            size_bytes=1234,
+                            checksum="checksum",
+                            content_type="audio/mp4",
+                        ),
+                    ),
                     total_cost=0.25,
                     total_duration_seconds=1.0,
+                    errors=(
+                        StepError(
+                            step_id="step-1",
+                            worker_type=WorkerType.PACKAGING,
+                            worker_id="packaging-1",
+                            message="warning only",
+                            timestamp=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
+                        ),
+                    ),
                     total_cost_basis=CostBasis.MEASURED,
                 ),
             )
@@ -130,7 +161,27 @@ class TestJobRoutes:
             await app.state.orchestrator.shutdown()
             await app.state.orchestrator.close()
         assert response.status_code == 200
-        assert response.json()["total_cost_basis"] == "measured"
+        data = response.json()
+        assert data["total_cost_basis"] == "measured"
+        assert data["label"] == "atlas-ch1"
+        assert data["progress"] == {
+            "completed_steps": 1,
+            "total_steps": 1,
+            "current_step_id": None,
+            "current_worker_type": None,
+            "current_worker_id": None,
+            "eta_seconds": None,
+        }
+        assert data["outputs"] == [
+            {
+                "path": "/data/job-measured/output.m4b",
+                "filename": "output.m4b",
+                "size_bytes": 1234,
+                "content_type": "audio/mp4",
+            }
+        ]
+        assert data["errors"][0]["worker_id"] == "packaging-1"
+        assert data["created_at"] == "2026-07-29T12:00:00Z"
 
     @pytest.mark.asyncio
     async def test_submit_job(self, client) -> None:  # type: ignore[no-untyped-def]

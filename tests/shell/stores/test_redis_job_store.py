@@ -1,6 +1,7 @@
 """Integration tests for the Redis job store."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Self, cast
 
 import pytest
@@ -19,10 +20,11 @@ from acheron.core.models import (
     PlanResult,
     PlanStatus,
     PlanStep,
+    StepError,
     StepStatus,
     WorkerType,
 )
-from acheron.shell.job_store import TrackedJob
+from acheron.shell.job_store import JobProgressState, TrackedJob
 from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.redis import RedisJobStore, _RedisAwaitable
 
@@ -79,7 +81,15 @@ def _result() -> PlanResult:
         ),
         total_cost=0.5,
         total_duration_seconds=1.2,
-        errors=("synthesize: GPU down",),
+        errors=(
+            StepError(
+                step_id="synthesize",
+                worker_type=WorkerType.TTS,
+                worker_id="tts-1",
+                message="GPU down",
+                timestamp=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
+            ),
+        ),
         total_cost_basis=CostBasis.UNKNOWN,
     )
 
@@ -107,6 +117,39 @@ class TestPut:
         assert loaded.request.source_language == "en"
         assert loaded.request.target_language == "es"
         assert loaded.strategy == ExecutorStrategy.STREAMING
+
+    @pytest.mark.asyncio
+    async def test_phase_4c_fields_round_trip(self, store: RedisJobStore) -> None:
+        created = datetime(2026, 7, 29, 12, 0, tzinfo=UTC)
+        job = TrackedJob(
+            job_id="job-phase-4c",
+            request=AudioRequest("/data/book.wav", "en", "es", "whisper-v3"),
+            strategy=ExecutorStrategy.STREAMING,
+            label="atlas-ch1",
+            retries_from="job-old",
+            created_at=created,
+            last_persisted_at=created,
+            progress=JobProgressState(
+                completed_steps=2,
+                total_steps=5,
+                current_step_id="step-3",
+                current_worker_type=WorkerType.TTS,
+                current_worker_id="tts-1",
+            ),
+            result=_result(),
+            status=PlanStatus.FAILED,
+        )
+
+        await store.put(job)
+        loaded = await store.get("job-phase-4c")
+
+        assert loaded is not None
+        assert loaded.label == "atlas-ch1"
+        assert loaded.retries_from == "job-old"
+        assert loaded.created_at == created
+        assert loaded.progress.current_worker_id == "tts-1"
+        assert loaded.result is not None
+        assert loaded.result.errors[0].worker_id == "tts-1"
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self, store: RedisJobStore) -> None:
@@ -166,7 +209,8 @@ class TestPlanRoundTrip:
         assert loaded.result.total_steps == 5
         assert loaded.result.total_cost == 0.5
         assert loaded.result.total_duration_seconds == 1.2
-        assert loaded.result.errors == ("synthesize: GPU down",)
+        assert loaded.result.errors[0].message == "GPU down"
+        assert loaded.result.errors[0].worker_id == "tts-1"
         assert loaded.result.total_cost_basis == CostBasis.UNKNOWN
         assert len(loaded.result.outputs) == 1
         assert loaded.result.outputs[0].path == "/out/x.wav"
@@ -217,7 +261,12 @@ class TestPlanRoundTrip:
             blob = (
                 '{"job_id":"j-bad","source_type":"epub",'
                 '"request":{"source_path":"/x","source_language":"en","target_language":"es"},'
-                '"strategy":"streaming","status":"failed","plan":null,'
+                '"strategy":"streaming","status":"failed","label":null,'
+                '"retries_from":null,"created_at":"2026-07-29T12:00:00+00:00",'
+                '"last_persisted_at":"2026-07-29T12:00:00+00:00",'
+                '"progress":{"completed_steps":0,"total_steps":0,"current_step_id":null,'
+                '"current_worker_type":null,"current_worker_id":null,"eta_seconds":null},'
+                '"plan":null,'
                 '"result":{"plan_id":"p","status":"failed","completed_steps":1,'
                 '"total_steps":1,"outputs":[{"path":"/x","filename":"x","size_bytes":1,'
                 '"checksum":"c","content_type":"audio/wav","metadata":' + metadata_json + "}],"

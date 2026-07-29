@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from acheron.core.models import WorkerStatus
@@ -119,6 +120,7 @@ class InMemoryJobStore(JobStore):
 
     async def put(self, job: TrackedJob) -> None:
         """Store or update a tracked job."""
+        job.last_persisted_at = datetime.now(UTC)
         self._jobs[job.job_id] = job
 
     async def get(self, job_id: str) -> TrackedJob | None:

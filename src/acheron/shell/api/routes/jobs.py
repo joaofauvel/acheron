@@ -21,15 +21,25 @@ from acheron.core.models import (
     EpubRequest,
     ExecutorStrategy,
     JobRequest,
+    StepError as DomainStepError,
     WorkerStatus,
     WorkerType,
 )
-from acheron.core.schemas import JobListResponse, JobResponse, PlanResponse
+from acheron.core.schemas import (
+    JobListResponse,
+    JobProgress,
+    JobResponse,
+    OutputSummary,
+    PlanResponse,
+    StepError as StepErrorResponse,
+)
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.orchestrator import Orchestrator
     from acheron.shell.registry import RegisteredWorker
@@ -212,17 +222,99 @@ def _booting_tts_warnings(
     return [f"BOOTING TTS workers: {elapsed}; cold start typically takes 30\u201390 seconds."]
 
 
+def _to_step_error_response(
+    error: DomainStepError | str,
+    *,
+    timestamp: datetime,
+) -> StepErrorResponse:
+    match error:
+        case str(message):
+            return StepErrorResponse(
+                step_id=None,
+                worker_type=None,
+                worker_id=None,
+                message=message,
+                timestamp=timestamp,
+            )
+        case DomainStepError(
+            step_id=step_id,
+            worker_type=worker_type,
+            worker_id=worker_id,
+            message=message,
+            timestamp=error_timestamp,
+        ):
+            return StepErrorResponse(
+                step_id=step_id,
+                worker_type=worker_type,
+                worker_id=worker_id,
+                message=message,
+                timestamp=error_timestamp,
+            )
+
+
 def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None) -> JobResponse:
     result = tracked.result
+    match tracked.request:
+        case AudioRequest(
+            source_language=source_language,
+            target_language=target_language,
+            asr_model=asr_model,
+        ):
+            source_type = "audio"
+        case EpubRequest(
+            source_language=source_language,
+            target_language=target_language,
+        ):
+            source_type = "epub"
+            asr_model = None
+
+    progress = tracked.progress
+    completed_steps = progress.completed_steps
+    total_steps = progress.total_steps
+    if result is not None:
+        completed_steps = completed_steps or result.completed_steps
+        total_steps = total_steps or result.total_steps
     return JobResponse(
         job_id=tracked.job_id,
         status=tracked.status,
         plan_id=tracked.plan.plan_id if tracked.plan else None,
-        completed_steps=result.completed_steps if result else 0,
-        total_steps=result.total_steps if result else 0,
+        label=tracked.label,
+        retries_from=tracked.retries_from,
+        source_type=source_type,
+        source_language=source_language,
+        target_language=target_language,
+        asr_model=asr_model,
+        executor_strategy=tracked.strategy,
+        created_at=tracked.created_at,
+        last_persisted_at=tracked.last_persisted_at,
+        progress=JobProgress(
+            completed_steps=completed_steps,
+            total_steps=total_steps,
+            current_step_id=progress.current_step_id,
+            current_worker_type=progress.current_worker_type,
+            current_worker_id=progress.current_worker_id,
+            eta_seconds=progress.eta_seconds,
+        ),
         total_cost=result.total_cost if result else 0.0,
         total_duration_seconds=result.total_duration_seconds if result else 0.0,
         total_cost_basis=(result.total_cost_basis if result and result.total_cost_basis else None),
-        errors=list(result.errors) if result else [],
+        outputs=(
+            [
+                OutputSummary(
+                    path=output.path,
+                    filename=output.filename,
+                    size_bytes=output.size_bytes,
+                    content_type=output.content_type,
+                )
+                for output in result.outputs
+            ]
+            if result
+            else []
+        ),
+        errors=(
+            [_to_step_error_response(error, timestamp=tracked.last_persisted_at) for error in result.errors]
+            if result
+            else []
+        ),
         warnings=warnings if warnings is not None else [],
     )
