@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query
+from starlette.responses import StreamingResponse
 
 from acheron.core.errors import (
     AcheronError,
@@ -30,6 +31,7 @@ from acheron.core.models import (
 from acheron.core.schemas import (
     ErrorResponse,
     JobListResponse,
+    JobLogEvent,
     JobProgress,
     JobResponse,
     OutputSummary,
@@ -41,6 +43,8 @@ from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJ
 from acheron.shell.input_store import InputPathError, InputStore
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.orchestrator import Orchestrator
     from acheron.shell.registry import RegisteredWorker
@@ -299,6 +303,57 @@ async def cancel_job(
             detail=_error_response(exc).model_dump(),
         ) from exc
     return _tracked_to_response(tracked)
+
+
+@router.get("/{job_id}/logs")
+async def job_logs(
+    job_id: str,
+    orch: OrchestratorDep,
+    *,
+    follow: Annotated[bool, Query()] = True,
+) -> StreamingResponse:
+    """Stream job progress events as newline-delimited JSON."""
+    from acheron.shell.job_events import iter_events  # noqa: PLC0415
+
+    tracked = await orch.get_job(job_id)
+    if tracked is None:
+        raise HTTPException(
+            status_code=404,
+            detail=_error_response(JobNotFoundError(f"Job not found: {job_id}")).model_dump(),
+        )
+
+    queue = orch.events.subscribe(job_id)
+
+    async def _stream() -> AsyncIterator[bytes]:
+        if not follow:
+            # Emit current snapshot and close
+            yield (
+                JobLogEvent(
+                    job_id=tracked.job_id,
+                    timestamp=tracked.last_persisted_at or tracked.created_at,
+                    status=tracked.status,
+                    step_id=tracked.progress.current_step_id,
+                    worker_type=tracked.progress.current_worker_type,
+                    worker_id=tracked.progress.current_worker_id,
+                    progress=JobProgress(
+                        completed_steps=tracked.progress.completed_steps,
+                        total_steps=tracked.progress.total_steps,
+                        current_step_id=tracked.progress.current_step_id,
+                        current_worker_type=tracked.progress.current_worker_type,
+                        current_worker_id=tracked.progress.current_worker_id,
+                        eta_seconds=tracked.progress.eta_seconds,
+                    ),
+                    message=f"job {tracked.status.value}",
+                )
+                .model_dump_json()
+                .encode()
+                + b"\n"
+            )
+            return
+        async for event in iter_events(queue):
+            yield event.model_dump_json().encode() + b"\n"
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
 
 @router.post("/{job_id}/resume", response_model=JobResponse)

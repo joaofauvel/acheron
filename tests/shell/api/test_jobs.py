@@ -845,6 +845,37 @@ class TestJobRoutes:
         assert result.status is PlanStatus.RUNNING
         assert result.warnings == []
 
+    @pytest.mark.asyncio
+    async def test_job_logs_ndjson_stream(self, client: AsyncClient) -> None:
+        """GET /jobs/{id}/logs streams NDJSON events."""
+        from acheron.core.schemas import JobLogEvent
+
+        resp = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert resp.status_code == 201
+        job_id = resp.json()["job_id"]
+
+        logs_resp = await client.get(f"/jobs/{job_id}/logs", params={"follow": "false"})
+        assert logs_resp.status_code == 200
+        lines = [line for line in logs_resp.text.strip().split("\n") if line]
+        assert len(lines) >= 1
+        for line in lines:
+            event = JobLogEvent.model_validate_json(line)
+            assert event.job_id == job_id
+
+    @pytest.mark.asyncio
+    async def test_job_logs_404_for_missing_job(self, client: AsyncClient) -> None:
+        """GET /jobs/{id}/logs returns 404 for unknown job."""
+        resp = await client.get("/jobs/nonexistent/logs")
+        assert resp.status_code == 404
+
 
 class TestJobRouteAuth:
     """SEC-005: mutating job routes require auth when no open-registration flag is set."""

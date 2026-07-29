@@ -15,6 +15,7 @@ from acheron.core.schemas import (
     CapabilitiesResponse,
     InputResponse,
     JobListResponse,
+    JobLogEvent,
     JobResponse,
     LanguagePair,
     PlanResponse,
@@ -104,6 +105,18 @@ class AcheronClient:
             resp = await client.post(f"/jobs/{job_id}/cancel", headers=self._mutation_headers())
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
+
+    async def tail_job(self, job_id: str, *, follow: bool = True) -> AsyncGenerator[JobLogEvent]:
+        """Stream job progress events as NDJSON."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            params = {"follow": str(follow).lower()}
+            async with client.stream("GET", f"/jobs/{job_id}/logs", params=params) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if line.strip():
+                        yield JobLogEvent.model_validate_json(line)
 
     async def retry_job(  # noqa: PLR0913
         self,

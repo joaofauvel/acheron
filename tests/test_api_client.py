@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Literal
@@ -15,6 +16,7 @@ import respx
 from pydantic import ValidationError
 
 from acheron.api_client import AcheronClient
+from acheron.core.models import PlanStatus
 from acheron.core.schemas import WorkerCapability
 
 
@@ -688,3 +690,36 @@ async def test_upload_input_sanitizes_crlf_in_filename(tmp_path: Path) -> None:
     assert b'filename="bad__file.epub"' in body
     # Raw CR/LF must not appear inside the Content-Disposition filename.
     assert b'filename="bad\r\nfile.epub"' not in body
+
+
+@pytest.mark.asyncio
+async def test_tail_job_streams_ndjson_events() -> None:
+    """tail_job yields typed JobLogEvent objects from NDJSON stream."""
+    from acheron.core.schemas import JobLogEvent, JobProgress
+
+    event1 = JobLogEvent(
+        job_id="job-1",
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+        status=PlanStatus.RUNNING,
+        progress=JobProgress(),
+        message="step started",
+    )
+    event2 = JobLogEvent(
+        job_id="job-1",
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+        status=PlanStatus.COMPLETED,
+        progress=JobProgress(),
+        message="job completed",
+    )
+    ndjson = (event1.model_dump_json() + "\n" + event2.model_dump_json() + "\n").encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=ndjson)
+
+    transport = httpx.MockTransport(handler)
+
+    events = [ev async for ev in AcheronClient("http://test", transport=transport).tail_job("job-1")]
+
+    assert len(events) == 2
+    assert events[0].status == PlanStatus.RUNNING
+    assert events[1].status == PlanStatus.COMPLETED
