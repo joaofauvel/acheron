@@ -1233,3 +1233,85 @@ def test_env_var_overrides_dev_ca(
     monkeypatch.setenv("SSL_CERT_FILE", str(explicit))
     cli_module._get_client()  # noqa: SLF001
     assert captured_client[0].kwargs["verify"] == str(explicit)
+
+
+@respx.mock
+def test_job_watch_exits_zero_on_completion() -> None:
+    """watch exits 0 when job completes."""
+    import time
+
+    call_count = 0
+
+    def _mock_get(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            return httpx.Response(200, json=_job_payload("job-1", status="completed"))
+        return httpx.Response(200, json=_job_payload("job-1", status="running"))
+
+    respx.get(f"{_BASE_URL}/jobs/job-1").mock(side_effect=_mock_get)
+    original_sleep = time.sleep
+    time.sleep = lambda _s: None
+    try:
+        result = CliRunner().invoke(main, ["job", "watch", "job-1"])
+        assert result.exit_code == 0, result.output
+    finally:
+        time.sleep = original_sleep
+
+
+@respx.mock
+def test_job_watch_exits_one_on_failure() -> None:
+    """watch exits 1 when job fails."""
+    import time
+
+    call_count = 0
+
+    def _mock_get(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            return httpx.Response(200, json=_job_payload("job-1", status="failed"))
+        return httpx.Response(200, json=_job_payload("job-1", status="running"))
+
+    respx.get(f"{_BASE_URL}/jobs/job-1").mock(side_effect=_mock_get)
+    original_sleep = time.sleep
+    time.sleep = lambda _s: None
+    try:
+        result = CliRunner().invoke(main, ["job", "watch", "job-1"])
+        assert result.exit_code == 1, result.output
+        assert "failed" in result.output.lower()
+    finally:
+        time.sleep = original_sleep
+
+
+@respx.mock
+def test_job_tail_streams_events() -> None:
+    """tail streams NDJSON events and exits 0."""
+    from datetime import UTC, datetime
+
+    from acheron.core.models import PlanStatus
+    from acheron.core.schemas import JobLogEvent, JobProgress
+
+    events = [
+        JobLogEvent(
+            job_id="job-1",
+            timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+            status=PlanStatus.RUNNING,
+            progress=JobProgress(),
+            message="step extract started",
+        ),
+        JobLogEvent(
+            job_id="job-1",
+            timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+            status=PlanStatus.COMPLETED,
+            progress=JobProgress(),
+            message="job completed",
+        ),
+    ]
+    ndjson = ("\n".join(e.model_dump_json() for e in events) + "\n").encode()
+
+    respx.get(f"{_BASE_URL}/jobs/job-1/logs").mock(return_value=httpx.Response(200, content=ndjson))
+    result = CliRunner().invoke(main, ["job", "tail", "job-1"])
+    assert result.exit_code == 0, result.output
+    assert "running" in result.output.lower()
+    assert "completed" in result.output.lower()

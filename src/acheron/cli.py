@@ -8,16 +8,23 @@ import logging
 import os
 import ssl
 import sys
+import time
+from collections.abc import Callable, Coroutine
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterator
+
 import click
 import httpx
 from rich.console import Console
+from rich.live import Live
 from rich.table import Table
 
 from acheron.api_client import AcheronClient
+from acheron.core.models import PlanStatus
 from acheron.tls import resolve_ca_path
 
 if TYPE_CHECKING:
@@ -124,6 +131,36 @@ def _run[T](
         else:
             on_http_error(exc)
         raise SystemExit(1) from exc
+
+
+def _run_sync_generator[T](async_gen: AsyncIterator[T]) -> Iterator[T]:
+    """Drain an async generator synchronously via a thread pool."""
+
+    def _next(ait: AsyncIterator[T]) -> T:
+        coro = ait.__anext__()
+        return asyncio.run(coro)  # type: ignore[arg-type]
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        try:
+            async_iter = async_gen.__aiter__()
+            while True:
+                try:
+                    yield loop.run_until_complete(async_iter.__anext__())
+                except StopAsyncIteration:
+                    return
+        finally:
+            loop.close()
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            async_iter = async_gen.__aiter__()
+            while True:
+                try:
+                    yield pool.submit(_next, async_iter).result()
+                except StopAsyncIteration:
+                    return
 
 
 def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
@@ -330,6 +367,7 @@ def job() -> None:
 @click.option("--asr", "asr_model", default=None, help="ASR model (for audio input)")
 @click.option("--type", "source_type", default=None, help="Source type override (epub/audio)")
 @click.option("--dry-run", is_flag=True, help="Preview the plan without submitting a job")
+@click.option("--follow", is_flag=True, help="Watch the job after submission")
 def submit(  # noqa: PLR0913
     file: Path,
     src: str,
@@ -338,6 +376,7 @@ def submit(  # noqa: PLR0913
     asr_model: str | None,
     source_type: str | None,
     dry_run: bool,  # noqa: FBT001
+    follow: bool,  # noqa: FBT001
 ) -> None:
     """Submit a new job for processing."""
     file_str = str(file)
@@ -395,6 +434,9 @@ def submit(  # noqa: PLR0913
         console.print(f"Plan: {result.plan_id}")
     for warning in result.warnings:
         console.print(f"[yellow]Warning: {warning}[/yellow]")
+    if follow:
+        exit_code = _watch_job(_get_client(), result.job_id)
+        raise SystemExit(exit_code)
 
 
 @main.command()
@@ -541,6 +583,51 @@ def resume(job_id: str, invalidate_steps: tuple[str, ...], invalidate_chapters: 
     )
     console.print(f"Job resumed: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
+
+
+def _watch_job(client: AcheronClient, job_id: str, *, poll_interval: float = 2.0) -> int:
+    """Poll job status and render progress until terminal. Returns exit code."""
+    with Live(console=console, refresh_per_second=4) as live:
+        while True:
+            job = _run(client.get_job(job_id))
+            progress = job.progress
+            parts = [
+                f"[bold]{job.job_id}[/bold]",
+                f"Status: {job.status.value}",
+                f"Progress: {progress.completed_steps}/{progress.total_steps}",
+            ]
+            if progress.current_step_id:
+                parts.append(f"Step: {progress.current_step_id}")
+            if progress.eta_seconds is not None:
+                parts.append(f"ETA: {progress.eta_seconds:.1f}s")
+            if job.errors:
+                parts.append(f"[red]Error: {job.errors[0].message}[/red]")
+            live.update(" | ".join(parts))
+            if job.status == PlanStatus.COMPLETED:
+                return 0
+            if job.status in {PlanStatus.FAILED, PlanStatus.PARTIAL}:
+                return 1
+            time.sleep(poll_interval)
+
+
+@job.command()
+@click.argument("job_id")
+def watch(job_id: str) -> None:
+    """Watch a job's progress until completion."""
+    exit_code = _watch_job(_get_client(), job_id)
+    raise SystemExit(exit_code)
+
+
+@job.command()
+@click.argument("job_id")
+def tail(job_id: str) -> None:
+    """Stream live progress events for a job."""
+    try:
+        for event in _run_sync_generator(_get_client().tail_job(job_id)):
+            console.print(f"{event.status.value}: {event.message}", markup=False)
+    except KeyboardInterrupt:
+        pass
+    raise SystemExit(0)
 
 
 @main.command("jobs")
