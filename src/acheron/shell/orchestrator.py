@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from acheron.core.errors import (
     AcheronError,
     JobAlreadyRunningError,
+    JobNotCancellableError,
     JobNotFoundError,
     sanitise_exc_message,
 )
@@ -122,6 +123,7 @@ class Orchestrator:
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)
         self._tasks: set[asyncio.Task[None]] = set()
+        self._execution_tasks: dict[str, asyncio.Task[None]] = {}
         self._background_persists: set[asyncio.Task[None]] = set()
         self._background_persists_by_job: dict[str, set[asyncio.Task[None]]] = {}
         self._lifecycle_lock = asyncio.Lock()
@@ -456,9 +458,10 @@ class Orchestrator:
         try:
             with bind_job_id(tracked.job_id):
                 await self._run_execution(tracked)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as exc:
             tracked.status = PlanStatus.FAILED
-            self._record_cancellation(tracked)
+            reason = str(exc) or "execution cancelled during shutdown"
+            self._record_cancellation(tracked, reason=reason)
             try:
                 await self._persist_shielded(tracked)
             except (OSError, ConnectionError, StoreError) as exc:
@@ -498,9 +501,12 @@ class Orchestrator:
     def _track_execution_task(self, tracked: TrackedJob) -> None:
         task = asyncio.create_task(self._execute(tracked))
         self._tasks.add(task)
+        self._execution_tasks[tracked.job_id] = task
 
         def _discard(done: asyncio.Task[None]) -> None:
             self._tasks.discard(done)
+            if self._execution_tasks.get(tracked.job_id) is done:
+                self._execution_tasks.pop(tracked.job_id, None)
             if done.cancelled():
                 return
             exc = done.exception()
@@ -739,8 +745,8 @@ class Orchestrator:
         else:
             tracked.progress.eta_seconds = None
 
-    def _record_cancellation(self, tracked: TrackedJob) -> None:
-        message = "execution cancelled during shutdown"
+    def _record_cancellation(self, tracked: TrackedJob, *, reason: str) -> None:
+        message = reason
         cancellation = StepError(
             step_id=tracked.progress.current_step_id,
             worker_type=tracked.progress.current_worker_type,
@@ -789,6 +795,51 @@ class Orchestrator:
     async def get_job(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
         return await self._job_store.get(job_id)
+
+    async def cancel_job(self, job_id: str) -> TrackedJob:
+        """Cancel an active job and wait for its failed state to persist."""
+        lock = self._job_locks.get(job_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._job_locks[job_id] = lock
+
+        async with lock:
+            await self._wait_for_background_persists(
+                job_id,
+                max_wait=self._settings.orchestrator.shutdown_drain_seconds,
+                raise_on_timeout=True,
+            )
+            tracked = await self._job_store.get(job_id)
+            if tracked is None:
+                msg = f"Job not found: {job_id}"
+                raise JobNotFoundError(msg)
+            if tracked.status in {PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL}:
+                msg = f"Job {job_id} is already {tracked.status.value}"
+                raise JobNotCancellableError(
+                    msg,
+                    remediation=f"acheron job status {job_id}",
+                )
+            task = self._execution_tasks.get(job_id)
+            if task is None:
+                msg = f"Job {job_id} has no active execution task"
+                raise JobNotCancellableError(
+                    msg,
+                    remediation=f"acheron job status {job_id}",
+                )
+
+            task.cancel("cancelled by operator")
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            await self._wait_for_background_persists(
+                job_id,
+                max_wait=self._settings.orchestrator.shutdown_drain_seconds,
+                raise_on_timeout=True,
+            )
+            final = await self._job_store.get(job_id)
+            if final is None:
+                msg = f"Job not found: {job_id}"
+                raise JobNotFoundError(msg)
+            return final
 
     async def resume_job(self, job_id: str, force_fresh: bool = False) -> TrackedJob:  # noqa: FBT001, FBT002
         """Resume a tracked job, optionally discarding existing step cache."""

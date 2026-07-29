@@ -13,6 +13,7 @@ from acheron.core.errors import (
     ChunkingTooLongForWorkerError,
     InvalidLanguagePathError,
     JobAlreadyRunningError,
+    JobNotCancellableError,
     JobNotFoundError,
 )
 from acheron.core.models import (
@@ -85,6 +86,21 @@ class _KeyErrorOnReconciliationPutJobStore(InMemoryJobStore):
         if job.result is not None and job.result.status is PlanStatus.FAILED:
             msg = "serialiser drift"
             raise KeyError(msg)
+        await super().put(copy.deepcopy(job))
+
+
+class _DelayedCancellationPutJobStore(InMemoryJobStore):
+    """Delays the operator-cancellation write until released by the test."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.persist_started = asyncio.Event()
+        self.release_persist = asyncio.Event()
+
+    async def put(self, job: TrackedJob) -> None:
+        if job.result is not None and any(error.message == "cancelled by operator" for error in job.result.errors):
+            self.persist_started.set()
+            await self.release_persist.wait()
         await super().put(copy.deepcopy(job))
 
 
@@ -538,6 +554,95 @@ class TestOrchestrator:
         assert tracked.progress.completed_steps == 1
         assert tracked.progress.eta_seconds == 0.0
         assert any(snapshot.progress.completed_steps == 1 for snapshot in store.snapshots)
+
+    @pytest.mark.asyncio
+    async def test_cancel_job_persists_partial_result(self, tmp_path: Path) -> None:
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(registry, PlanCache(tmp_path), _blocking_handler, job_store=jobs)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(str(tmp_path / "book.epub"), "en", "es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        cancelled = await orch.cancel_job(tracked.job_id)
+
+        assert cancelled.status is PlanStatus.FAILED
+        assert cancelled.result is not None
+        assert cancelled.result.errors[0].message == "cancelled by operator"
+        assert cancelled.result.completed_steps < cancelled.result.total_steps
+        persisted = await jobs.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
+        await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_cancel_job_rejects_missing_and_terminal_jobs(self, tmp_path: Path) -> None:
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(registry, PlanCache(tmp_path), _success_handler)
+        await orch.start()
+
+        with pytest.raises(JobNotFoundError):
+            await orch.cancel_job("job-missing")
+
+        tracked = await orch.submit_job(
+            EpubRequest(str(tmp_path / "book.epub"), "en", "es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+        completed = await orch.get_job(tracked.job_id)
+        assert completed is not None
+        assert completed.status is PlanStatus.COMPLETED
+
+        with pytest.raises(JobNotCancellableError):
+            await orch.cancel_job(tracked.job_id)
+        await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_cancel_job_waits_for_failed_persistence(self, tmp_path: Path) -> None:
+        handler_started = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        jobs = _DelayedCancellationPutJobStore()
+        orch = Orchestrator(registry, PlanCache(tmp_path), _blocking_handler, job_store=jobs)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(str(tmp_path / "book.epub"), "en", "es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+
+        cancellation = asyncio.create_task(orch.cancel_job(tracked.job_id))
+        await jobs.persist_started.wait()
+        assert not cancellation.done()
+        jobs.release_persist.set()
+        cancelled = await cancellation
+
+        assert cancelled.status is PlanStatus.FAILED
+        persisted = await jobs.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
+        await orch.close()
 
     @pytest.mark.asyncio
     async def test_shutdown_drains_inflight_jobs_to_failed(self, tmp_path: Path) -> None:
