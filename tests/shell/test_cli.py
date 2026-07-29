@@ -180,6 +180,103 @@ def test_status() -> None:
 
 
 @respx.mock
+def test_job_plan_by_plan_id() -> None:
+    respx.get(f"{_BASE_URL}/plans/plan-1").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "plan_id": "plan-1",
+                "job_id": "job-1",
+                "source_type": "epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategy": "streaming",
+                "steps": [{"step_id": "extract", "worker_type": "extraction", "depends_on": [], "status": "pending"}],
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["job", "plan", "plan-1"])
+
+    assert result.exit_code == 0, result.output
+    assert "extract" in result.output
+    assert "extraction" in result.output
+
+
+@respx.mock
+def test_job_plan_by_job_id() -> None:
+    """`--job` resolves the plan ID from the job before fetching the plan."""
+    respx.get(f"{_BASE_URL}/jobs/job-abc").mock(
+        return_value=httpx.Response(
+            200,
+            json={"job_id": "job-abc", "status": "running", "plan_id": "plan-1"},
+        )
+    )
+    respx.get(f"{_BASE_URL}/plans/plan-1").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "plan_id": "plan-1",
+                "job_id": "job-1",
+                "source_type": "epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategy": "streaming",
+                "steps": [{"step_id": "extract", "worker_type": "extraction", "depends_on": [], "status": "pending"}],
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["job", "plan", "--job", "job-abc"])
+
+    assert result.exit_code == 0, result.output
+    assert "extract" in result.output
+    assert "extraction" in result.output
+
+
+def test_job_plan_requires_exactly_one_selector() -> None:
+    """Supplying neither or both `PLAN_ID` and `--job` returns a Click usage error."""
+    runner = CliRunner()
+
+    neither = runner.invoke(main, ["job", "plan"])
+    assert neither.exit_code != 0
+    assert "exactly one" in neither.output.lower()
+
+    both = runner.invoke(main, ["job", "plan", "plan-1", "--job", "job-abc"])
+    assert both.exit_code != 0
+    assert "exactly one" in both.output.lower()
+
+
+@respx.mock
+def test_submit_dry_run_previews_without_submitting(tmp_path: Path) -> None:
+    """`--dry-run` uploads, calls `/jobs:preview`, and never calls `/jobs`."""
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    _mock_upload_success()
+    preview_route = respx.post(f"{_BASE_URL}/jobs:preview").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "plan_id": "plan-preview",
+                "job_id": "job-preview",
+                "source_type": "epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategy": "streaming",
+                "steps": [{"step_id": "extract", "worker_type": "extraction", "depends_on": [], "status": "pending"}],
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "no job submitted" in result.output.lower()
+    assert "plan-preview" in result.output
+    assert preview_route.called
+
+
+@respx.mock
 def test_status_verbose() -> None:
     respx.get(f"{_BASE_URL}/jobs/job-abc").mock(
         return_value=httpx.Response(

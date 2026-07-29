@@ -23,6 +23,8 @@ from acheron.tls import resolve_ca_path
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
+    from acheron.core.schemas import PlanResponse
+
 console = Console()
 err_console = Console(stderr=True)
 
@@ -203,6 +205,25 @@ def _detect_source_type(path: str) -> str | None:
     return _SOURCE_TYPE_MAP.get(ext)
 
 
+def _print_plan(plan: PlanResponse, *, dry_run: bool = False) -> None:
+    """Render a PlanResponse via Rich. Uses only public fields; never prints step payloads."""
+    title = "Plan preview" if dry_run else "Plan"
+    console.print(f"{title}: [bold]{plan.plan_id}[/bold]")
+    console.print(f"Job: {plan.job_id}")
+    console.print(f"Input: {plan.source_type} ({plan.source_language} → {plan.target_language})")
+    console.print(f"Strategy: {plan.executor_strategy.value}")
+    table = Table(title="Steps")
+    table.add_column("Step")
+    table.add_column("Worker type")
+    table.add_column("Depends on")
+    table.add_column("Status")
+    for step in plan.steps:
+        table.add_row(step.step_id, step.worker_type.value, ", ".join(step.depends_on) or "-", step.status.value)
+    console.print(table)
+    if dry_run:
+        console.print("Dry run complete; no job submitted.")
+
+
 def _is_ssl_error(exc: BaseException) -> bool:
     """True if the failure happened during TLS verification.
 
@@ -246,6 +267,7 @@ def job() -> None:
 @click.option("--executor", default="streaming", show_default=True, help="Executor strategy")
 @click.option("--asr", "asr_model", default=None, help="ASR model (for audio input)")
 @click.option("--type", "source_type", default=None, help="Source type override (epub/audio)")
+@click.option("--dry-run", is_flag=True, help="Preview the plan without submitting a job")
 def submit(  # noqa: PLR0913
     file: Path,
     src: str,
@@ -253,6 +275,7 @@ def submit(  # noqa: PLR0913
     executor: str,
     asr_model: str | None,
     source_type: str | None,
+    dry_run: bool,  # noqa: FBT001
 ) -> None:
     """Submit a new job for processing."""
     file_str = str(file)
@@ -269,6 +292,25 @@ def submit(  # noqa: PLR0913
         _get_client().upload_input(file),
         on_http_error=_print_http_error,
     )
+
+    if dry_run:
+        preview = _run(
+            _get_client().preview_job(
+                source_type=source_type,
+                source_path=uploaded.source_path,
+                source_language=src,
+                target_language=dest,
+                executor_strategy=executor,
+                asr_model=asr_model,
+            ),
+            on_http_error=lambda exc: _print_submit_http_error(
+                exc,
+                source_language=src,
+                target_language=dest,
+            ),
+        )
+        _print_plan(preview, dry_run=True)
+        return
 
     result = _run(
         _get_client().submit_job(
@@ -329,6 +371,24 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     if verbose and result.errors:
         for err in result.errors:
             console.print(f"[red]Error: {err}[/red]")
+
+
+@job.command("plan")
+@click.argument("plan_id", required=False)
+@click.option("--job", "job_id", default=None, help="Resolve the plan ID from a job")
+def show_plan(plan_id: str | None, job_id: str | None) -> None:
+    """Show a compiled plan."""
+    if plan_id is not None and job_id is None:
+        resolved: str = plan_id
+    elif plan_id is None and job_id is not None:
+        job_response = _run(_get_client().get_job(job_id))
+        if job_response.plan_id is None:
+            console.print(f"[red]Job {job_id} has no plan ID.[/red]")
+            raise SystemExit(1)
+        resolved = job_response.plan_id
+    else:
+        raise click.UsageError("provide exactly one plan ID or --job JOB_ID")
+    _print_plan(_run(_get_client().get_plan(resolved)))
 
 
 @job.command()
