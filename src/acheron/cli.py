@@ -376,10 +376,14 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     console.print(f"Last persisted: {result.last_persisted_at.isoformat()}")
     progress = result.progress
     console.print(f"Progress: {progress.completed_steps}/{progress.total_steps}")
-    if progress.current_step_id:
-        console.print(f"Current step: {progress.current_step_id}")
-    if progress.eta_seconds is not None:
-        console.print(f"ETA: {progress.eta_seconds:.1f}s")
+    console.print(f"Current step: {progress.current_step_id or '-'}")
+    console.print(
+        "Current worker type: "
+        f"{progress.current_worker_type.value if progress.current_worker_type is not None else '-'}"
+    )
+    console.print(f"Current worker ID: {progress.current_worker_id or '-'}")
+    eta = f"{progress.eta_seconds:.1f}s" if progress.eta_seconds is not None else "Unknown"
+    console.print(f"ETA: {eta}")
     console.print(f"Cost: ${result.total_cost:.2f}")
     console.print(f"Duration: {result.total_duration_seconds:.1f}s")
     for output in result.outputs:

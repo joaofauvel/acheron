@@ -33,7 +33,7 @@ def _job_payload() -> dict[str, object]:
             "current_step_id": "step-3",
             "current_worker_type": "tts",
             "current_worker_id": "tts-1",
-            "eta_seconds": None,
+            "eta_seconds": 12.5,
         },
         "total_cost": 0.0,
         "total_duration_seconds": 4.5,
@@ -90,6 +90,10 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
         "2026-07-29T12:00:00Z",
         "2026-07-29T12:00:05Z",
         "2/5",
+        "step-3",
+        "tts",
+        "tts-1",
+        "12.5s",
         "$0.00",
         "4.5s",
     ):
@@ -99,6 +103,29 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
     assert "step-3" in response.text
     assert "tts-1" in response.text
     assert "malformed audio" in response.text
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_job_detail_renders_unknown_progress_values(client: AsyncClient) -> None:
+    payload = _job_payload()
+    payload["progress"] = {
+        "completed_steps": 0,
+        "total_steps": 0,
+        "current_step_id": None,
+        "current_worker_type": None,
+        "current_worker_id": None,
+        "eta_seconds": None,
+    }
+    respx.get(f"{_ORCH_URL}/jobs/job-1").mock(return_value=httpx.Response(200, json=payload))
+
+    response = await client.get("/partials/jobs/job-1")
+
+    assert response.status_code == 200
+    assert "Current step" in response.text
+    assert "Current worker type" in response.text
+    assert "Current worker ID" in response.text
+    assert "Unknown" in response.text
 
 
 @respx.mock

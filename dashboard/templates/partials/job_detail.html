@@ -14,6 +14,10 @@
     <dt>Created</dt><dd>{{ job.created_at }}</dd>
     <dt>Last persisted</dt><dd>{{ job.last_persisted_at }}</dd>
     <dt>Progress</dt><dd>{{ job.progress.completed_steps }}/{{ job.progress.total_steps }}</dd>
+    <dt>Current step</dt><dd>{{ job.progress.current_step_id|default("-") or "-" }}</dd>
+    <dt>Current worker type</dt><dd>{{ job.progress.current_worker_type|default("-") or "-" }}</dd>
+    <dt>Current worker ID</dt><dd>{{ job.progress.current_worker_id|default("-") or "-" }}</dd>
+    <dt>ETA</dt><dd>{% if job.progress.eta_seconds is not none %}{{ "%.1f"|format(job.progress.eta_seconds) }}s{% else %}Unknown{% endif %}</dd>
     <dt>Cost</dt><dd>${{ "%.2f"|format(job.total_cost|default(0)) }}</dd>
     <dt>Duration</dt><dd>{{ "%.1f"|format(job.total_duration_seconds|default(0)) }}s</dd>
   </dl>

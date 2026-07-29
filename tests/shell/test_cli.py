@@ -209,6 +209,10 @@ def test_status() -> None:
     assert result.exit_code == 0
     assert "job-abc" in result.output
     assert "2/5" in result.output
+    assert "Current step: -" in result.output
+    assert "Current worker type: -" in result.output
+    assert "Current worker ID: -" in result.output
+    assert "ETA: Unknown" in result.output
 
 
 @respx.mock
@@ -219,6 +223,14 @@ def test_job_status_renders_output_and_step_error() -> None:
             json=_job_payload(
                 "job-1",
                 status="failed",
+                progress={
+                    "completed_steps": 2,
+                    "total_steps": 5,
+                    "current_step_id": "step-3",
+                    "current_worker_type": "tts",
+                    "current_worker_id": "tts-1",
+                    "eta_seconds": 12.5,
+                },
                 outputs=[
                     {
                         "path": "/data/job-1/result.m4b",
@@ -251,7 +263,11 @@ def test_job_status_renders_output_and_step_error() -> None:
         "Executor strategy: streaming",
         "Created: 2026-07-29T12:00:00+00:00",
         "Last persisted: 2026-07-29T12:00:01+00:00",
-        "Progress: 0/0",
+        "Progress: 2/5",
+        "Current step: step-3",
+        "Current worker type: tts",
+        "Current worker ID: tts-1",
+        "ETA: 12.5s",
         "Cost: $0.00",
         "Duration: 0.0s",
         "Output: /data/job-1/result.m4b",
