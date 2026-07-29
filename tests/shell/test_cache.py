@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from acheron.core.errors import CacheMissError
+from acheron.core.errors import CacheError, CacheMissError
 from acheron.core.models import (
     ExecutorStrategy,
     OutputFile,
@@ -208,3 +208,20 @@ class TestStepCache:
         with pytest.raises(CacheMissError):
             await cache.load_outputs("job-1", "step-47")
         assert await cache.load_outputs("job-1", "step-46") == outputs
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("bad_part", ["/tmp/out", "../out", "step/../out", "step\\\\out", ".", ".."])
+    async def test_file_cache_rejects_unsafe_invalidation_parts(self, cache: StepCache, bad_part: str) -> None:
+        with pytest.raises(CacheError):
+            await cache.invalidate_steps(bad_part, {"step-1"})
+        with pytest.raises(CacheError):
+            await cache.invalidate_steps("job-1", {bad_part})
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("bad_part", ["/tmp/out", "../out", "step/../out", "step\\\\out", ".", ".."])
+    async def test_inmemory_cache_rejects_unsafe_invalidation_parts(self, bad_part: str) -> None:
+        cache = InMemoryStepCache()
+        with pytest.raises(CacheError):
+            await cache.invalidate_steps(bad_part, {"step-1"})
+        with pytest.raises(CacheError):
+            await cache.invalidate_steps("job-1", {bad_part})

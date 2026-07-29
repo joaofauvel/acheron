@@ -1,6 +1,8 @@
 """Tests for plan compilation."""
 
 import logging
+import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -59,7 +61,34 @@ def _asr_caps(lang: str = "en") -> WorkerCapabilities:
     )
 
 
+def _write_epub(path: Path) -> None:
+    container = (
+        """<?xml version=\"1.0\"?><container><rootfiles><rootfile full-path=\"book.opf\"/></rootfiles></container>"""
+    )
+    opf = (
+        '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf">'
+        '<manifest><item id="one" href="one.xhtml"/><item id="two" href="two.xhtml"/></manifest>'
+        '<spine><itemref idref="one"/><itemref idref="two"/></spine></package>'
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("META-INF/container.xml", container)
+        archive.writestr("book.opf", opf)
+        archive.writestr("one.xhtml", "<h1>Chapter one</h1><p>Text.</p>")
+        archive.writestr("two.xhtml", "<p>Chapter two.</p>")
+
+
 class TestCompilePlan:
+    def test_epub_steps_include_real_chapter_ids(self, tmp_path: Path) -> None:
+        source = tmp_path / "book.epub"
+        _write_epub(source)
+        plan = compile_plan(
+            EpubRequest(str(source), "en", "es"),
+            ExecutorStrategy.STREAMING,
+            (_tts_caps(), _translation_caps()),
+        )
+
+        assert all(step.payload["chapter_ids"] == ["chapter_001", "chapter_002"] for step in plan.steps)
+
     def test_epub_produces_correct_steps(self) -> None:
         caps = (_tts_caps(), _translation_caps())
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")

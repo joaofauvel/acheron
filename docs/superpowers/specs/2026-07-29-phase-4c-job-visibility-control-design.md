@@ -135,6 +135,8 @@ Resume replaces the boolean whole-job invalidation request with repeated explici
 
 There is no `force_fresh` compatibility path. If neither selection is supplied, resume retains the existing cached outputs. If a selection is supplied, the invalidation closure includes the selected cache entries and all dependent downstream steps required for a correct plan result.
 
+Chapter invalidation is truthful only for readable EPUB sources. Planning discovers the same non-empty EPUB spine documents that extraction names `chapter_001`, `chapter_002`, and so on; audio jobs have no chapter identities. If planning cannot read the source, the plan carries no chapter metadata and resume returns an explicit source-metadata limitation instead of guessing. Because the current cache is stage-level rather than chapter-level, a chapter selection invalidates the stage steps associated with that chapter and their downstream dependents.
+
 ### Structured errors
 
 Domain failures use a structured response body:

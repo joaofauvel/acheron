@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from httpx import AsyncClient
 
-from acheron.core.errors import JobNotCancellableError, JobNotFoundError
+from acheron.core.errors import JobAlreadyRunningError, JobNotCancellableError, JobNotFoundError, NoPlanToResumeError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -624,6 +624,51 @@ class TestJobRoutes:
         )
         assert resume_resp.status_code == 200
         assert resume_resp.json()["status"] == "running"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "status_code", "remediation"),
+        [
+            (
+                JobAlreadyRunningError("job-1 is running password=secret", remediation="acheron job cancel job-1"),
+                409,
+                "acheron job cancel job-1",
+            ),
+            (
+                NoPlanToResumeError("no saved plan token=secret", remediation="acheron job submit <source>"),
+                422,
+                "acheron job submit <source>",
+            ),
+        ],
+    )
+    async def test_resume_errors_are_structured_and_sanitized(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        error: Exception,
+        status_code: int,
+        remediation: str,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        monkeypatch.setattr(app.state.orchestrator, "resume_job", AsyncMock(side_effect=error))
+
+        response = await client_with_token.post(
+            "/jobs/job-1/resume",
+            json={"invalidate_steps": [], "invalidate_chapters": []},
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+
+        assert response.status_code == status_code
+        detail = response.json()["detail"]
+        assert detail["type"] == type(error).__name__
+        assert "secret" not in detail["message"]
+        assert detail["remediation"] == remediation
 
     @pytest.mark.asyncio
     async def test_submit_job_unsupported_language(self, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

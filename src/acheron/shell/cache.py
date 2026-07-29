@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter, ValidationError
 
-from acheron.core.errors import CacheCorruptedError, CacheMissError
+from acheron.core.errors import CacheCorruptedError, CacheError, CacheMissError
 from acheron.core.models import OutputFile, Plan
 
 if TYPE_CHECKING:
@@ -23,6 +23,18 @@ _plan_adapter = TypeAdapter(Plan)
 _output_adapter = TypeAdapter(tuple[OutputFile, ...])
 
 _PLAN_ID_RE = re.compile(r"\Aplan-[0-9a-f]+\Z")
+
+
+def _validate_step_cache_part(value: str, field: str) -> None:
+    if not value or value in {".", ".."} or Path(value).is_absolute() or "/" in value or "\\" in value:
+        msg = f"Invalid {field} cache path component: {value!r}"
+        raise CacheError(msg)
+
+
+def _step_dir(data_dir: Path, job_id: str, step_id: str) -> Path:
+    _validate_step_cache_part(job_id, "job_id")
+    _validate_step_cache_part(step_id, "step_id")
+    return data_dir / job_id / step_id
 
 
 def _checksum(path: Path) -> str:
@@ -103,7 +115,7 @@ class StepCache:
 
     async def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
         """Write output manifest. Creates the step directory if needed."""
-        step_dir = self._data_dir / job_id / step_id
+        step_dir = _step_dir(self._data_dir, job_id, step_id)
         manifest_file = step_dir / "manifest.json"
         manifest = _output_adapter.dump_json(outputs, indent=2)
         await asyncio.to_thread(self._write_manifest, step_dir, manifest_file, manifest)
@@ -115,7 +127,7 @@ class StepCache:
             CacheMissError: If the manifest does not exist.
             CacheCorruptedError: If the manifest is malformed.
         """
-        manifest_file = self._data_dir / job_id / step_id / "manifest.json"
+        manifest_file = _step_dir(self._data_dir, job_id, step_id) / "manifest.json"
         if not manifest_file.exists():
             msg = f"Step cache miss: {job_id}/{step_id}"
             raise CacheMissError(msg)
@@ -132,7 +144,7 @@ class StepCache:
 
     async def step_has_valid_cache(self, job_id: str, step_id: str) -> bool:
         """Check if a step has a valid manifest with all files present and checksums matching."""
-        manifest_file = self._data_dir / job_id / step_id / "manifest.json"
+        manifest_file = _step_dir(self._data_dir, job_id, step_id) / "manifest.json"
         if not manifest_file.exists():
             return False
         try:
@@ -151,7 +163,7 @@ class StepCache:
     async def invalidate_steps(self, job_id: str, step_ids: Collection[str]) -> None:
         """Remove selected step manifests while retaining unrelated job cache entries."""
         for step_id in step_ids:
-            step_dir = self._data_dir / job_id / step_id
+            step_dir = _step_dir(self._data_dir, job_id, step_id)
             await asyncio.to_thread(shutil.rmtree, step_dir, ignore_errors=True)
 
     @staticmethod
@@ -179,6 +191,8 @@ class InMemoryStepCache:
 
     async def save_outputs(self, job_id: str, step_id: str, outputs: tuple[OutputFile, ...]) -> None:
         """Record the step's output manifest in memory."""
+        _validate_step_cache_part(job_id, "job_id")
+        _validate_step_cache_part(step_id, "step_id")
         self._outputs[(job_id, step_id)] = outputs
 
     async def load_outputs(self, job_id: str, step_id: str) -> tuple[OutputFile, ...]:
@@ -187,6 +201,8 @@ class InMemoryStepCache:
         Raises:
             CacheMissError: If no manifest is recorded for ``(job_id, step_id)``.
         """
+        _validate_step_cache_part(job_id, "job_id")
+        _validate_step_cache_part(step_id, "step_id")
         try:
             return self._outputs[(job_id, step_id)]
         except KeyError as exc:
@@ -195,6 +211,8 @@ class InMemoryStepCache:
 
     async def step_has_valid_cache(self, job_id: str, step_id: str) -> bool:
         """Return True iff the manifest is recorded and every file still exists on disk."""
+        _validate_step_cache_part(job_id, "job_id")
+        _validate_step_cache_part(step_id, "step_id")
         outputs = self._outputs.get((job_id, step_id))
         if outputs is None:
             return False
@@ -209,5 +227,7 @@ class InMemoryStepCache:
 
     async def invalidate_steps(self, job_id: str, step_ids: Collection[str]) -> None:
         """Remove selected step manifests while retaining unrelated job cache entries."""
+        _validate_step_cache_part(job_id, "job_id")
         for step_id in step_ids:
+            _validate_step_cache_part(step_id, "step_id")
             self._outputs.pop((job_id, step_id), None)

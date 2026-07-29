@@ -10,15 +10,12 @@ import re
 import shutil
 import struct
 import time
-import urllib.parse
-import xml.etree.ElementTree as ET
-import zipfile
 from collections.abc import Awaitable, Callable
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import BinaryIO
 
 from acheron.core.chunking import chunk_text
+from acheron.core.epub import read_epub_chapters
 from acheron.core.errors import CacheCorruptedError, CacheMissError, PathNotAllowedError, WorkerError
 from acheron.core.models import (
     SUPPORTED_LANGUAGES,
@@ -57,44 +54,6 @@ def all_languages_caps(worker_type: WorkerType) -> WorkerCapabilities:
     )
 
 
-class HTMLStripper(HTMLParser):
-    """HTML parser that strips tags while preserving block boundaries."""
-
-    BLOCK_TAGS: frozenset[str] = frozenset({"p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "br", "li"})
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.reset()
-        self.convert_charrefs = True
-        self.text: list[str] = []
-
-    def handle_data(self, data: str) -> None:
-        """Append text data from the parser."""
-        self.text.append(data)
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Insert a space at block tag openings to prevent word merging."""
-        if tag in self.BLOCK_TAGS:
-            self.text.append(" ")
-        _ = attrs
-
-    def handle_endtag(self, tag: str) -> None:
-        """Insert a space at block tag closings to prevent word merging."""
-        if tag in self.BLOCK_TAGS:
-            self.text.append(" ")
-
-    def get_data(self) -> str:
-        """Return the accumulated text."""
-        return "".join(self.text)
-
-
-def strip_html_tags(html: str) -> str:
-    """Strip HTML tags while preserving block-level spacing."""
-    s = HTMLStripper()
-    s.feed(html)
-    return s.get_data()
-
-
 def _sha256_file(path: Path) -> str:
     """Compute SHA-256 hex digest of a file."""
     hasher = hashlib.sha256()
@@ -109,75 +68,6 @@ def _sha256_bytes(data: bytes) -> str:
     hasher = hashlib.sha256()
     hasher.update(data)
     return hasher.hexdigest()
-
-
-def _resolve_opf_path(z: zipfile.ZipFile) -> str:
-    """Locate the OPF package document path inside an EPUB archive."""
-    try:
-        container_xml = z.read("META-INF/container.xml")
-        root = ET.fromstring(container_xml)  # noqa: S314 (Expat 2.8.1; see cpython#135294)
-        rootfile_el = root.find(".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
-        if rootfile_el is None:
-            rootfile_el = root.find(".//rootfile")
-    except Exception as e:
-        opf_files = [name for name in z.namelist() if name.endswith(".opf")]
-        if not opf_files:
-            msg = "No OPF file found in EPUB"
-            raise WorkerError(msg) from e
-        return opf_files[0]
-
-    if rootfile_el is None:
-        msg = "container.xml has no rootfile"
-        raise WorkerError(msg)
-    opf_path: str | None = rootfile_el.get("full-path")
-    if not opf_path:
-        msg = "Failed to find OPF path"
-        raise WorkerError(msg)
-    return str(opf_path)
-
-
-def _resolve_spine_hrefs(opf_root: ET.Element) -> list[str]:
-    """Resolve spine itemref idrefs to hrefs via the manifest."""
-    manifest_map: dict[str, str] = {}
-    items = opf_root.findall(".//{http://www.idpf.org/2007/opf}item")
-    if not items:
-        items = opf_root.findall(".//item")
-    for item in items:
-        item_id = item.get("id")
-        href = item.get("href")
-        if item_id and href:
-            manifest_map[item_id] = urllib.parse.unquote(href)
-
-    itemrefs = opf_root.findall(".//{http://www.idpf.org/2007/opf}itemref")
-    if not itemrefs:
-        itemrefs = opf_root.findall(".//itemref")
-
-    spine_hrefs: list[str] = []
-    for itemref in itemrefs:
-        idref = itemref.get("idref")
-        if idref in manifest_map:
-            spine_hrefs.append(manifest_map[idref])
-
-    if not spine_hrefs:
-        msg = "No chapters in spine"
-        raise WorkerError(msg)
-    return spine_hrefs
-
-
-def _read_chapter_html(z: zipfile.ZipFile, opf_dir: Path, href: str) -> str:
-    """Read a chapter XHTML file from the EPUB archive."""
-    clean_href = href.split("#", maxsplit=1)[0]
-    zip_path = (opf_dir / clean_href).as_posix()
-    zip_path = zip_path.replace("./", "").replace("//", "/")
-    zip_path = zip_path.removeprefix("/")
-    try:
-        return z.read(zip_path).decode("utf-8", errors="ignore")
-    except KeyError:
-        try:
-            return z.read(clean_href).decode("utf-8", errors="ignore")
-        except KeyError as e_inner:
-            msg = f"Chapter file not found in ZIP: {zip_path}"
-            raise WorkerError(msg) from e_inner
 
 
 def _output_file(path: Path, filename: str, content_type: str, data: bytes | None = None) -> OutputFile:
@@ -195,35 +85,19 @@ def _output_file(path: Path, filename: str, content_type: str, data: bytes | Non
 
 def _extract_epub(source_path: Path, extract_dir: Path) -> list[OutputFile]:
     """Extract chapters from an EPUB archive into plain text files."""
-    outputs: list[OutputFile] = []
     try:
-        with zipfile.ZipFile(source_path, "r") as z:
-            opf_path = _resolve_opf_path(z)
-            opf_bytes = z.read(opf_path)
-            opf_root = ET.fromstring(opf_bytes)  # noqa: S314 (Expat 2.8.1; see cpython#135294)
-            opf_dir = Path(opf_path).parent
-            spine_hrefs = _resolve_spine_hrefs(opf_root)
-
-            chapter_num = 1
-            for href in spine_hrefs:
-                html_content = _read_chapter_html(z, opf_dir, href)
-                text_content = strip_html_tags(html_content).strip()
-                if not text_content:
-                    continue
-
-                out_filename = f"chapter_{chapter_num:03d}.txt"
-                out_path = extract_dir / out_filename
-                cleaned_text = " ".join(text_content.split())
-                out_path.write_text(cleaned_text, encoding="utf-8")
-
-                outputs.append(_output_file(out_path, out_filename, "text/plain"))
-                chapter_num += 1
-    except WorkerError:
-        raise
-    except Exception as e:
-        msg = f"EPUB extraction failed: {e}"
-        raise WorkerError(msg) from e
-    return outputs
+        chapters = read_epub_chapters(source_path)
+        outputs: list[OutputFile] = []
+        for chapter in chapters:
+            out_filename = f"{chapter.chapter_id}.txt"
+            out_path = extract_dir / out_filename
+            out_path.write_text(chapter.text, encoding="utf-8")
+            outputs.append(_output_file(out_path, out_filename, "text/plain"))
+    except Exception as exc:
+        msg = f"EPUB extraction failed: {exc}"
+        raise WorkerError(msg) from exc
+    else:
+        return outputs
 
 
 def _copy_audio(source_path: Path, extract_dir: Path) -> list[OutputFile]:

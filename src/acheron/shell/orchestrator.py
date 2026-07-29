@@ -19,6 +19,7 @@ from acheron.core.errors import (
     JobAlreadyRunningError,
     JobNotCancellableError,
     JobNotFoundError,
+    JobNotResumableError,
     NoPlanToResumeError,
     sanitise_exc_message,
 )
@@ -97,12 +98,14 @@ def _validate_registration_token(token: str | None) -> None:
 
 
 def _chapter_matches(payload: dict[str, JsonValue], chapter: int) -> bool:
-    value = payload.get("chapter_id")
+    value = payload.get("chapter_ids", payload.get("chapter_id"))
     match value:
+        case list() as chapter_ids:
+            return f"chapter_{chapter:03d}" in chapter_ids or f"ch{chapter}" in chapter_ids
         case int() as number:
             return number == chapter
         case str() as text:
-            return text in {str(chapter), f"ch{chapter}"}
+            return text in {str(chapter), f"ch{chapter}", f"chapter_{chapter:03d}"}
         case _:
             return False
 
@@ -120,6 +123,14 @@ def _resolve_invalidation_steps(
         raise InvalidationTargetError(msg)
 
     selected = set(requested_steps)
+    if requested_chapters and not any(
+        "chapter_ids" in step.payload or "chapter_id" in step.payload for step in plan.steps
+    ):
+        msg = (
+            "Chapter metadata is unavailable for this plan; numeric chapter invalidation requires "
+            "a readable EPUB source. Use --invalidate-step or re-submit the source."
+        )
+        raise InvalidationTargetError(msg)
     for chapter in requested_chapters:
         chapter_steps = {step.step_id for step in plan.steps if _chapter_matches(step.payload, chapter)}
         if not chapter_steps:
@@ -948,12 +959,11 @@ class Orchestrator:
                 msg = f"Job not found: {job_id}"
                 raise JobNotFoundError(msg)
             if tracked.status == PlanStatus.RUNNING:
-                if job_id in self._active_jobs:
-                    msg = f"Job {job_id} is already running"
-                    raise JobAlreadyRunningError(msg, remediation=f"acheron job cancel {job_id}")
-                logger.warning(
-                    "Job %s status is RUNNING but not active in this process; overriding stale state", job_id
-                )
+                msg = f"Job {job_id} is already running"
+                raise JobAlreadyRunningError(msg, remediation=f"acheron job cancel {job_id}")
+            if tracked.status not in {PlanStatus.FAILED, PlanStatus.PARTIAL}:
+                msg = f"Job {job_id} has status {tracked.status.value} and cannot be resumed"
+                raise JobNotResumableError(msg, remediation=f"acheron job status {job_id}")
             if tracked.plan is None:
                 msg = f"Job {job_id} has no saved plan to resume"
                 raise NoPlanToResumeError(msg, remediation="acheron job submit <source> --src ... --dest ...")

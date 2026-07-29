@@ -17,6 +17,7 @@ from acheron.core.errors import (
     JobAlreadyRunningError,
     JobNotCancellableError,
     JobNotFoundError,
+    JobNotResumableError,
     NoPlanToResumeError,
 )
 from acheron.core.models import (
@@ -1357,27 +1358,66 @@ class TestOrchestrator:
         await orch.shutdown()
 
     @pytest.mark.asyncio
-    async def test_resume_job_restarts_stale_running_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
-        reg = InMemoryWorkerStore()
+    async def test_resume_job_reports_missing_chapter_metadata(self, tmp_path: Path) -> None:
         jobs = InMemoryJobStore()
-        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=jobs)
-        await orch.start()
-        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="en")
-        tracked = TrackedJob(
-            job_id="job-stale",
-            request=request,
-            strategy=ExecutorStrategy.SEQUENTIAL,
-            plan=_single_step_plan("job-stale"),
-            status=PlanStatus.RUNNING,
+        plan = _single_step_plan("job-no-chapter-metadata")
+        await jobs.put(
+            TrackedJob(
+                job_id=plan.job_id,
+                request=EpubRequest("/input/book.epub", "en", "en"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                plan=plan,
+                status=PlanStatus.FAILED,
+            )
         )
-        await jobs.put(tracked)
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
 
-        resumed = await orch.resume_job("job-stale")
-        assert resumed.status == PlanStatus.RUNNING
-        assert orch._tasks  # noqa: SLF001
-        for task in tuple(orch._tasks):  # noqa: SLF001
-            task.cancel()
-        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+        with pytest.raises(InvalidationTargetError, match="Chapter metadata is unavailable"):
+            await orch.resume_job(plan.job_id, invalidate_chapters=(1,))
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_resume_job_rejects_stale_running_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        await jobs.put(
+            TrackedJob(
+                job_id="job-stale",
+                request=EpubRequest("/input/book.epub", "en", "en"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                plan=_single_step_plan("job-stale"),
+                status=PlanStatus.RUNNING,
+            )
+        )
+
+        with pytest.raises(JobAlreadyRunningError) as exc_info:
+            await orch.resume_job("job-stale")
+        assert exc_info.value.remediation == "acheron job cancel job-stale"
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [PlanStatus.PENDING, PlanStatus.COMPLETED])
+    async def test_resume_job_rejects_non_terminal_incomplete_status(self, tmp_path, status) -> None:  # type: ignore[no-untyped-def]
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        job_id = f"job-{status.value}"
+        await jobs.put(
+            TrackedJob(
+                job_id=job_id,
+                request=EpubRequest("/input/book.epub", "en", "en"),
+                strategy=ExecutorStrategy.SEQUENTIAL,
+                plan=_single_step_plan(job_id),
+                status=status,
+            )
+        )
+
+        with pytest.raises(JobNotResumableError) as exc_info:
+            await orch.resume_job(job_id)
+        assert exc_info.value.remediation == f"acheron job status {job_id}"
+        await orch.shutdown()
 
     @pytest.mark.asyncio
     async def test_resume_job_rejects_a_newly_submitted_job(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -1596,6 +1636,8 @@ class TestOrchestrator:
 
         # Resume job and verify
         orch._active_jobs.clear()  # noqa: SLF001
+        tracked.status = PlanStatus.FAILED
+        await orch._job_store.put(tracked)  # noqa: SLF001
         handler_calls = 0
         progress: list[int] = []
         record_progress = orch._record_step_progress  # noqa: SLF001

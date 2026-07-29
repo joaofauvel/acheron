@@ -79,6 +79,10 @@ class NoPlanToResumeError(JobError):
     """Requested tracked job has no saved plan to resume."""
 
 
+class JobNotResumableError(JobError):
+    """Requested tracked job is not an incomplete terminal job."""
+
+
 class JobNotCancellableError(JobError):
     """Requested tracked job cannot be cancelled in its current state."""
 

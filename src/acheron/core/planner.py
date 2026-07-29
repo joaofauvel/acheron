@@ -2,14 +2,18 @@
 
 import logging
 import uuid
+import zipfile
 from dataclasses import dataclass
+from pathlib import Path
 
+from acheron.core.epub import read_epub_chapters
 from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
     ExecutorStrategy,
     JobRequest,
+    JsonValue,
     Plan,
     PlanStep,
     StepStatus,
@@ -65,7 +69,8 @@ def compile_plan(  # noqa: PLR0913
 
     match request:
         case EpubRequest():
-            steps = _epub_steps(request)
+            chapter_ids = _discover_epub_chapter_ids(request.source_path)
+            steps = _epub_steps(request, chapter_ids)
             source_type = "epub"
         case AudioRequest():
             steps = _audio_steps(request)
@@ -173,8 +178,31 @@ def _validate_chunking_fits_workers(
     )
 
 
-def _epub_steps(request: EpubRequest) -> list[PlanStep]:
-    """Generate step sequence for EPUB input."""
+def _discover_epub_chapter_ids(source_path: str) -> tuple[str, ...]:
+    """Discover stable chapter IDs when the source is a readable EPUB.
+
+    Planner tests and preview requests may reference a path that is not mounted
+    in the planner process. Those plans carry no chapter metadata; resume then
+    reports that limitation instead of guessing chapter identities.
+    """
+    path = Path(source_path)
+    if not path.is_file():
+        return ()
+    try:
+        return tuple(chapter.chapter_id for chapter in read_epub_chapters(path))
+    except (OSError, UnicodeError, ValueError, zipfile.BadZipFile) as exc:
+        logger.warning("EPUB chapter metadata unavailable for %s: %s", path, exc)
+        return ()
+
+
+def _chapter_payload(payload: dict[str, JsonValue], chapter_ids: tuple[str, ...]) -> dict[str, JsonValue]:
+    if not chapter_ids:
+        return payload
+    return {**payload, "chapter_ids": list(chapter_ids)}
+
+
+def _epub_steps(request: EpubRequest, chapter_ids: tuple[str, ...] = ()) -> list[PlanStep]:
+    """Generate EPUB stages and attach discovered chapter identities."""
     needs_translation = request.source_language != request.target_language
     translate_dep = "chunk"
 
@@ -184,14 +212,14 @@ def _epub_steps(request: EpubRequest) -> list[PlanStep]:
             type=WorkerType.EXTRACTION,
             depends_on=(),
             status=StepStatus.PENDING,
-            payload={"source_path": request.source_path},
+            payload=_chapter_payload({"source_path": request.source_path}, chapter_ids),
         ),
         PlanStep(
             step_id="chunk",
             type=WorkerType.CHUNKING,
             depends_on=("extract",),
             status=StepStatus.PENDING,
-            payload={},
+            payload=_chapter_payload({}, chapter_ids),
         ),
     ]
 
@@ -202,7 +230,10 @@ def _epub_steps(request: EpubRequest) -> list[PlanStep]:
                 type=WorkerType.TRANSLATION,
                 depends_on=("chunk",),
                 status=StepStatus.PENDING,
-                payload={"source_language": request.source_language, "target_language": request.target_language},
+                payload=_chapter_payload(
+                    {"source_language": request.source_language, "target_language": request.target_language},
+                    chapter_ids,
+                ),
             ),
         )
         translate_dep = "translate"
@@ -214,14 +245,14 @@ def _epub_steps(request: EpubRequest) -> list[PlanStep]:
                 type=WorkerType.TTS,
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
-                payload={"target_language": request.target_language},
+                payload=_chapter_payload({"target_language": request.target_language}, chapter_ids),
             ),
             PlanStep(
                 step_id="package",
                 type=WorkerType.PACKAGING,
                 depends_on=("synthesize",),
                 status=StepStatus.PENDING,
-                payload={},
+                payload=_chapter_payload({}, chapter_ids),
             ),
         ]
     )
