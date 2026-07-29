@@ -113,13 +113,16 @@ class _DelayedBackgroundPutJobStore(InMemoryJobStore):
         self.release_persist = asyncio.Event()
         self.delay_enabled = False
         self._delayed = False
+        self.snapshots: list[TrackedJob] = []
 
     async def put(self, job: TrackedJob) -> None:
+        snapshot = copy.deepcopy(job)
+        self.snapshots.append(copy.deepcopy(snapshot))
         if self.delay_enabled and not self._delayed:
             self._delayed = True
             self.persist_started.set()
             await self.release_persist.wait()
-        await super().put(copy.deepcopy(job))
+        await super().put(snapshot)
 
 
 class _StoreErrorOnReconciliationPutJobStore(InMemoryJobStore):
@@ -663,6 +666,11 @@ class TestOrchestrator:
         assert cancelled.status is PlanStatus.FAILED
         assert cancelled.result is not None
         assert cancelled.result.errors[0].message == "cancelled by operator"
+        assert any(snapshot.status is PlanStatus.RUNNING for snapshot in jobs.snapshots)
+        assert jobs.snapshots[-1].status is PlanStatus.FAILED
+        persisted = await jobs.get(tracked.job_id)
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
         await orch.close()
 
     @pytest.mark.asyncio
