@@ -69,30 +69,20 @@ class _ControlledPutJobStore(InMemoryJobStore):
 
 
 class _FailingReconciliationPutJobStore(InMemoryJobStore):
-    """Fails the first post-dispatch reconciliation put."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._puts = 0
+    """Fails the terminal completion persistence write."""
 
     async def put(self, job: TrackedJob) -> None:
-        self._puts += 1
-        if self._puts == 3:
+        if job.status is PlanStatus.COMPLETED:
             msg = "store temporarily unavailable"
             raise RuntimeError(msg)
         await super().put(copy.deepcopy(job))
 
 
 class _KeyErrorOnReconciliationPutJobStore(InMemoryJobStore):
-    """Raises KeyError on the first post-dispatch reconciliation put."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._puts = 0
+    """Raises KeyError on cancellation reconciliation persistence."""
 
     async def put(self, job: TrackedJob) -> None:
-        self._puts += 1
-        if self._puts == 3:
+        if job.result is not None and job.result.status is PlanStatus.FAILED:
             msg = "serialiser drift"
             raise KeyError(msg)
         await super().put(copy.deepcopy(job))
@@ -793,8 +783,8 @@ class TestOrchestrator:
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
         )
-        # put#1 (submit) and put#2 (pre-dispatch snapshot) succeed; put#3
-        # (post-execution) raises; the _execute recovery put must reconcile
+        # Pre-dispatch and per-step progress writes succeed; the terminal
+        # completion write raises; the _execute recovery put must reconcile
         # the job to FAILED.
         await asyncio.gather(*orch._tasks, return_exceptions=True)  # noqa: SLF001
         persisted = await job_store.get(tracked.job_id)
