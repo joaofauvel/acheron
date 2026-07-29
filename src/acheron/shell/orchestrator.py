@@ -47,6 +47,7 @@ from acheron.shell.cost import aggregate_cost_basis
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.health_providers import create_health_providers
+from acheron.shell.job_events import JobEventBroker
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.local_handlers import (
     LocalJobHandler,
@@ -188,6 +189,7 @@ class Orchestrator:
         self._started = False
         self._shutting_down = False
         self._health_providers = create_health_providers(self._settings)
+        self._events = JobEventBroker()
         self._health_monitor = HealthMonitor(
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),
@@ -198,6 +200,11 @@ class Orchestrator:
     def settings(self) -> Settings:
         """Get the configuration settings."""
         return self._settings
+
+    @property
+    def events(self) -> JobEventBroker:
+        """Event broker for live progress monitoring."""
+        return self._events
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
@@ -633,6 +640,30 @@ class Orchestrator:
         """Persist a job without letting cancellation interrupt the store write."""
         await asyncio.shield(self._track_persist(tracked))
 
+    async def _publish_event(self, tracked: TrackedJob, message: str) -> None:
+        """Publish a progress event to the broker."""
+        from acheron.core.schemas import JobLogEvent, JobProgress  # noqa: PLC0415
+
+        ps = tracked.progress
+        event = JobLogEvent(
+            job_id=tracked.job_id,
+            timestamp=datetime.now(tz=UTC),
+            status=tracked.status,
+            step_id=ps.current_step_id,
+            worker_type=ps.current_worker_type,
+            worker_id=ps.current_worker_id,
+            progress=JobProgress(
+                completed_steps=ps.completed_steps,
+                total_steps=ps.total_steps,
+                current_step_id=ps.current_step_id,
+                current_worker_type=ps.current_worker_type,
+                current_worker_id=ps.current_worker_id,
+                eta_seconds=ps.eta_seconds,
+            ),
+            message=message,
+        )
+        await self._events.publish(event)
+
     async def _wait_for_background_persists(
         self,
         job_id: str | None = None,
@@ -729,6 +760,8 @@ class Orchestrator:
                 _log_unexpected(label, exc)
                 self._record_failure(tracked, exc)
             await self._job_store.put(tracked)
+            await self._publish_event(tracked, f"job {tracked.status.value}")
+            await self._events.finish(tracked.job_id)
         finally:
             self._active_jobs.discard(tracked.job_id)
 
@@ -758,6 +791,7 @@ class Orchestrator:
             tracked.progress.current_worker_type = step.type
             tracked.progress.current_worker_id = None
             await self._persist_shielded(tracked)
+            await self._publish_event(tracked, f"step {step.step_id} started")
             res = await handler(step, plan)
             if (
                 tracked.strategy != ExecutorStrategy.STREAMING
@@ -765,6 +799,7 @@ class Orchestrator:
             ):
                 self._record_step_progress(tracked, plan, step, res)
                 await self._persist_shielded(tracked)
+                await self._publish_event(tracked, f"step {step.step_id} completed")
             return res
 
         async def record_streaming_step(step: PlanStep, plan: Plan, result: JobResult) -> None:
@@ -772,6 +807,7 @@ class Orchestrator:
                 return
             self._record_step_progress(tracked, plan, step, result)
             await self._persist_shielded(tracked)
+            await self._publish_event(tracked, f"step {step.step_id} completed")
 
         return create_executor(
             tracked.strategy,
@@ -933,6 +969,8 @@ class Orchestrator:
             if final is None:
                 msg = f"Job not found: {job_id}"
                 raise JobNotFoundError(msg)
+            await self._publish_event(final, "job cancelled")
+            await self._events.finish(job_id)
             return final
 
     async def resume_job(
