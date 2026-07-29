@@ -132,6 +132,21 @@ async def _build_job_request(
     return job_request, strategy
 
 
+def _resolve_stored_source(orch: Orchestrator, source_path: str) -> Path:
+    """Revalidate a stored source through the normal input boundary."""
+    candidate = Path(source_path)
+    data_dir = orch.settings.orchestrator.data_dir
+    if candidate.is_absolute():
+        try:
+            relative_path = candidate.resolve(strict=False).relative_to(data_dir.resolve())
+        except ValueError as exc:
+            msg = f"Invalid source path {source_path!r}: must be under {data_dir}"
+            raise HTTPException(status_code=422, detail=msg) from exc
+    else:
+        relative_path = candidate
+    return _resolve_submission_source(orch, str(relative_path))
+
+
 async def _build_retry_request(
     orch: Orchestrator,
     source: TrackedJob,
@@ -139,6 +154,9 @@ async def _build_retry_request(
 ) -> tuple[JobRequest, ExecutorStrategy, str | None]:
     """Merge retry overrides into the stored request and validate strategy."""
     strategy_value = body.executor_strategy if body.executor_strategy is not None else source.strategy.value
+    if "asr_model" in body.model_fields_set and body.asr_model is not None and not body.asr_model.strip():
+        msg = "asr_model override must not be empty"
+        raise HTTPException(status_code=422, detail=msg)
     try:
         strategy = ExecutorStrategy(strategy_value)
     except ValueError as exc:
@@ -148,7 +166,7 @@ async def _build_retry_request(
     label = body.label if body.label is not None else source.label
     match source.request:
         case EpubRequest(source_path=source_path, source_language=source_language, target_language=target_language):
-            path = source_path
+            path = str(_resolve_stored_source(orch, source_path))
             if body.source_path is not None:
                 path = str(_resolve_submission_source(orch, body.source_path))
             if body.asr_model is not None and body.asr_model.strip():
@@ -165,7 +183,7 @@ async def _build_retry_request(
             target_language=target_language,
             asr_model=asr_model,
         ):
-            path = source_path
+            path = str(_resolve_stored_source(orch, source_path))
             if body.source_path is not None:
                 path = str(_resolve_submission_source(orch, body.source_path))
             selected_asr_model = body.asr_model.strip() if body.asr_model is not None else asr_model

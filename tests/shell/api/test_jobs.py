@@ -93,9 +93,12 @@ class TestJobRoutes:
         from acheron.shell.orchestrator import Orchestrator
         from acheron.shell.stores.memory import InMemoryWorkerStore
 
+        source_path = tmp_path / "input" / "book.wav"
+        source_path.parent.mkdir()
+        source_path.write_bytes(b"audio")
         source = TrackedJob(
             job_id="job-old",
-            request=AudioRequest("/data/book.wav", "en", "es", "whisper-v3"),
+            request=AudioRequest(str(source_path), "en", "es", "whisper-v3"),
             strategy=ExecutorStrategy.STREAMING,
             label="atlas-ch1",
         )
@@ -108,12 +111,83 @@ class TestJobRoutes:
         )
 
         assert isinstance(request, AudioRequest)
-        assert request.source_path == "/data/book.wav"
+        assert request.source_path == str(source_path)
         assert request.source_language == "en"
         assert request.target_language == "es"
         assert request.asr_model == "whisper-tiny"
         assert strategy is ExecutorStrategy.STREAMING
         assert label == "atlas-ch1"
+
+    @pytest.mark.asyncio
+    async def test_retry_route_revalidates_missing_stored_source(
+        self,
+        client: AsyncClient,
+        tmp_path: Path,
+    ) -> None:
+        source = tmp_path / "input" / "book.epub"
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert response.status_code == 201
+        source.unlink()
+
+        retry = await client.post(f"/jobs/{response.json()['job_id']}/retry", json={})
+
+        assert retry.status_code == 422
+        assert retry.json()["detail"].startswith("source_path not found: input/book.epub")
+
+    @pytest.mark.asyncio
+    async def test_retry_route_rejects_empty_asr_override(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert response.status_code == 201
+
+        retry = await client.post(
+            f"/jobs/{response.json()['job_id']}/retry",
+            json={"asr_model": "  "},
+        )
+
+        assert retry.status_code == 422
+        assert retry.json()["detail"] == "asr_model override must not be empty"
+
+    @pytest.mark.asyncio
+    async def test_retry_route_merges_valid_asr_override(self, client: AsyncClient, tmp_path: Path) -> None:
+        audio = tmp_path / "input" / "book.wav"
+        audio.write_bytes(b"audio")
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "audio",
+                "source_path": "input/book.wav",
+                "source_language": "en",
+                "target_language": "es",
+                "asr_model": "whisper-v3",
+            },
+        )
+        assert response.status_code == 201
+
+        retry = await client.post(
+            f"/jobs/{response.json()['job_id']}/retry",
+            json={"asr_model": "whisper-tiny"},
+        )
+
+        assert retry.status_code == 200
+        assert retry.json()["job_id"] != response.json()["job_id"]
+        assert retry.json()["retries_from"] == response.json()["job_id"]
+        assert retry.json()["asr_model"] == "whisper-tiny"
 
     @pytest.mark.asyncio
     async def test_get_job_maps_total_cost_basis(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
