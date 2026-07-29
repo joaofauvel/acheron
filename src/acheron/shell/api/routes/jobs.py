@@ -37,7 +37,7 @@ from acheron.core.schemas import (
     StepError as StepErrorResponse,
 )
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
+from acheron.shell.api.schemas import RetryJobRequest, SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
 
 if TYPE_CHECKING:
@@ -132,6 +132,55 @@ async def _build_job_request(
     return job_request, strategy
 
 
+async def _build_retry_request(
+    orch: Orchestrator,
+    source: TrackedJob,
+    body: RetryJobRequest,
+) -> tuple[JobRequest, ExecutorStrategy, str | None]:
+    """Merge retry overrides into the stored request and validate strategy."""
+    strategy_value = body.executor_strategy if body.executor_strategy is not None else source.strategy.value
+    try:
+        strategy = ExecutorStrategy(strategy_value)
+    except ValueError as exc:
+        msg = f"Invalid strategy: {strategy_value}"
+        raise HTTPException(status_code=400, detail=msg) from exc
+
+    label = body.label if body.label is not None else source.label
+    match source.request:
+        case EpubRequest(source_path=source_path, source_language=source_language, target_language=target_language):
+            path = source_path
+            if body.source_path is not None:
+                path = str(_resolve_submission_source(orch, body.source_path))
+            if body.asr_model is not None and body.asr_model.strip():
+                msg = "asr_model is only valid for source_type='audio'"
+                raise HTTPException(status_code=422, detail=msg)
+            request: JobRequest = EpubRequest(
+                source_path=path,
+                source_language=body.source_language if body.source_language is not None else source_language,
+                target_language=body.target_language if body.target_language is not None else target_language,
+            )
+        case AudioRequest(
+            source_path=source_path,
+            source_language=source_language,
+            target_language=target_language,
+            asr_model=asr_model,
+        ):
+            path = source_path
+            if body.source_path is not None:
+                path = str(_resolve_submission_source(orch, body.source_path))
+            selected_asr_model = body.asr_model.strip() if body.asr_model is not None else asr_model
+            if not selected_asr_model:
+                msg = "asr_model is required for source_type='audio'"
+                raise HTTPException(status_code=422, detail=msg)
+            request = AudioRequest(
+                source_path=path,
+                source_language=body.source_language if body.source_language is not None else source_language,
+                target_language=body.target_language if body.target_language is not None else target_language,
+                asr_model=selected_asr_model,
+            )
+    return request, strategy, label
+
+
 @router.post("", status_code=201, response_model=JobResponse)
 async def submit_job(
     body: SubmitJobRequest,
@@ -154,6 +203,26 @@ async def submit_job(
     except Exception:
         logger.exception("Failed to inspect workers for job submission warnings")
     return _tracked_to_response(tracked, warnings=warnings)
+
+
+@router.post("/{job_id}/retry", response_model=JobResponse)
+async def retry_job(
+    job_id: str,
+    body: RetryJobRequest,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> JobResponse:
+    """Create a fresh job from a stored submission with optional overrides."""
+    source = await orch.get_job(job_id)
+    if source is None:
+        exc = JobNotFoundError(f"Job not found: {job_id}")
+        raise HTTPException(status_code=404, detail=_error_response(exc).model_dump()) from exc
+    request, strategy, label = await _build_retry_request(orch, source, body)
+    try:
+        tracked = await orch.submit_retry(job_id, request, strategy, label=label)
+    except AcheronError as exc:
+        raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
+    return _tracked_to_response(tracked)
 
 
 @router.post(":preview", response_model=PlanResponse)

@@ -105,6 +105,41 @@ class AcheronClient:
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
+    async def retry_job(  # noqa: PLR0913
+        self,
+        job_id: str,
+        *,
+        source_path: str | None = None,
+        source_language: str | None = None,
+        target_language: str | None = None,
+        executor_strategy: str | None = None,
+        asr_model: str | None = None,
+        label: str | None = None,
+    ) -> JobResponse:
+        """Create a fresh job from an earlier submission with overrides."""
+        payload = {
+            key: value
+            for key, value in {
+                "source_path": source_path,
+                "source_language": source_language,
+                "target_language": target_language,
+                "executor_strategy": executor_strategy,
+                "asr_model": asr_model,
+                "label": label,
+            }.items()
+            if value is not None
+        }
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post(
+                f"/jobs/{job_id}/retry",
+                json=payload,
+                headers=self._mutation_headers(),
+            )
+            resp.raise_for_status()
+            return JobResponse.model_validate(resp.json())
+
     async def preview_job(  # noqa: PLR0913
         self,
         source_type: str,

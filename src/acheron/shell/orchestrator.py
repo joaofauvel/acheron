@@ -360,6 +360,7 @@ class Orchestrator:
         strategy: ExecutorStrategy,
         *,
         label: str | None = None,
+        retries_from: str | None = None,
     ) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
 
@@ -401,6 +402,7 @@ class Orchestrator:
             request=request,
             strategy=strategy,
             label=label,
+            retries_from=retries_from,
             plan=plan,
             status=PlanStatus.RUNNING,
         )
@@ -413,6 +415,26 @@ class Orchestrator:
             self._track_execution_task(tracked)
 
         return tracked
+
+    async def submit_retry(
+        self,
+        source_job_id: str,
+        request: JobRequest,
+        strategy: ExecutorStrategy,
+        *,
+        label: str | None,
+    ) -> TrackedJob:
+        """Create a fresh job linked to an earlier submission."""
+        source = await self._job_store.get(source_job_id)
+        if source is None:
+            msg = f"Job not found: {source_job_id}"
+            raise JobNotFoundError(msg)
+        return await self.submit_job(
+            request,
+            strategy,
+            label=label,
+            retries_from=source_job_id,
+        )
 
     async def _compile_plan(
         self,

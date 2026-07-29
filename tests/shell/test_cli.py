@@ -278,6 +278,31 @@ def test_job_status_renders_output_and_step_error() -> None:
 
 
 @respx.mock
+def test_retry_cli_sends_overrides_and_reports_link() -> None:
+    route = respx.post(f"{_BASE_URL}/jobs/job-old/retry").mock(
+        return_value=httpx.Response(
+            201,
+            json=_job_payload("job-new", retries_from="job-old", label="atlas-retry"),
+        )
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["job", "retry", "job-old", "--src", "en", "--dest", "fr", "--asr", "whisper-tiny", "--label", "atlas-retry"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "job-new" in result.output
+    assert "job-old" in result.output
+    assert json.loads(route.calls.last.request.content) == {
+        "source_language": "en",
+        "target_language": "fr",
+        "asr_model": "whisper-tiny",
+        "label": "atlas-retry",
+    }
+
+
+@respx.mock
 def test_cancel_cli_returns_success() -> None:
     respx.post(f"{_BASE_URL}/jobs/job-1/cancel").mock(
         return_value=httpx.Response(200, json=_job_payload("job-1", status="failed"))

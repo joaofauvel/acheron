@@ -1,5 +1,6 @@
 """Tests for the Acheron HTTP client."""
 
+import json
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from types import TracebackType
@@ -171,6 +172,31 @@ async def test_submit_job_sends_bearer_header_when_token_configured() -> None:
     )
 
     assert route.calls.last.request.headers["authorization"] == "Bearer secret"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_retry_job_sends_overrides_and_bearer_header() -> None:
+    route = respx.post("http://test/jobs/job-old/retry").mock(
+        return_value=httpx.Response(201, json=_job_response_payload(status="running"))
+    )
+
+    result = await AcheronClient("http://test", registration_token="secret").retry_job(
+        "job-old",
+        source_language="en",
+        target_language="fr",
+        asr_model="whisper-tiny",
+        label="atlas-retry",
+    )
+
+    assert result.job_id == "job-1"
+    assert route.calls.last.request.headers["authorization"] == "Bearer secret"
+    assert json.loads(route.calls.last.request.content) == {
+        "source_language": "en",
+        "target_language": "fr",
+        "asr_model": "whisper-tiny",
+        "label": "atlas-retry",
+    }
 
 
 @pytest.mark.asyncio

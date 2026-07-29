@@ -219,6 +219,24 @@ def _print_cancel_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None
         console.print(f"Try: {remediation}")
 
 
+def _print_retry_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
+    """Render a structured retry error and its remediation."""
+    message = _http_error_detail(exc)
+    remediation: str | None = None
+    try:
+        payload = exc.response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict) and isinstance(payload.get("detail"), dict):
+        detail = payload["detail"]
+        message = str(detail.get("message", message))
+        candidate = detail.get("remediation")
+        remediation = candidate if isinstance(candidate, str) else None
+    console.print(f"[red]Error {exc.response.status_code}: Job retry failed for {job_id}: {message}[/red]")
+    if remediation:
+        console.print(f"Try: {remediation}")
+
+
 def _detect_source_type(path: str) -> str | None:
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
     return _SOURCE_TYPE_MAP.get(ext)
@@ -426,6 +444,35 @@ def cancel(job_id: str) -> None:
         on_http_error=lambda exc: _print_cancel_http_error(exc, job_id=job_id),
     )
     console.print(f"Job cancelled: [bold]{result.job_id}[/bold]")
+    console.print(f"Status: {result.status.value}")
+
+
+@job.command("retry")
+@click.argument("job_id")
+@click.option("--src", default=None, help="Replacement source language")
+@click.option("--dest", default=None, help="Replacement target language")
+@click.option("--asr", "asr_model", default=None, help="Replacement ASR model")
+@click.option("--label", default=None, help="Replacement job label")
+def retry(
+    job_id: str,
+    src: str | None,
+    dest: str | None,
+    asr_model: str | None,
+    label: str | None,
+) -> None:
+    """Create a fresh job from an earlier submission."""
+    result = _run(
+        _get_client().retry_job(
+            job_id,
+            source_language=src,
+            target_language=dest,
+            asr_model=asr_model,
+            label=label,
+        ),
+        on_http_error=lambda exc: _print_retry_http_error(exc, job_id=job_id),
+    )
+    console.print(f"Job retried: [bold]{result.job_id}[/bold]")
+    console.print(f"Retries from: {result.retries_from or job_id}")
     console.print(f"Status: {result.status.value}")
 
 

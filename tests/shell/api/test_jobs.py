@@ -17,7 +17,7 @@ from acheron.core.models import (
     WorkerStatus,
     WorkerType,
 )
-from acheron.shell.api.routes.jobs import _booting_tts_warnings, _tracked_to_response
+from acheron.shell.api.routes.jobs import _booting_tts_warnings, _build_retry_request, _tracked_to_response
 from acheron.shell.registry import RegisteredWorker
 
 if TYPE_CHECKING:
@@ -85,6 +85,36 @@ class TestBootingTtsWarnings:
 
 
 class TestJobRoutes:
+    @pytest.mark.asyncio
+    async def test_retry_request_reuses_stored_fields_for_asr_override(self, tmp_path: Path) -> None:
+        from acheron.shell.api.schemas import RetryJobRequest
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.job_store import TrackedJob
+        from acheron.shell.orchestrator import Orchestrator
+        from acheron.shell.stores.memory import InMemoryWorkerStore
+
+        source = TrackedJob(
+            job_id="job-old",
+            request=AudioRequest("/data/book.wav", "en", "es", "whisper-v3"),
+            strategy=ExecutorStrategy.STREAMING,
+            label="atlas-ch1",
+        )
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path))
+
+        request, strategy, label = await _build_retry_request(
+            orch,
+            source,
+            RetryJobRequest(asr_model="whisper-tiny"),
+        )
+
+        assert isinstance(request, AudioRequest)
+        assert request.source_path == "/data/book.wav"
+        assert request.source_language == "en"
+        assert request.target_language == "es"
+        assert request.asr_model == "whisper-tiny"
+        assert strategy is ExecutorStrategy.STREAMING
+        assert label == "atlas-ch1"
+
     @pytest.mark.asyncio
     async def test_get_job_maps_total_cost_basis(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from datetime import UTC, datetime

@@ -17,6 +17,7 @@ from acheron.core.errors import (
     JobNotFoundError,
 )
 from acheron.core.models import (
+    AudioRequest,
     EpubRequest,
     ExecutorStrategy,
     JobMetrics,
@@ -35,7 +36,7 @@ from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
-from tests.shell.conftest import translation_caps, tts_caps
+from tests.shell.conftest import asr_caps, translation_caps, tts_caps
 
 
 async def _success_handler(_step: PlanStep, _plan: Plan) -> JobResult:
@@ -283,6 +284,42 @@ class TestOrchestrator:
         assert tracked.job_id.startswith("job-")
         assert tracked.status == PlanStatus.RUNNING
         assert tracked.plan is not None
+
+    @pytest.mark.asyncio
+    async def test_submit_retry_creates_linked_fresh_job(self, tmp_path: Path) -> None:
+        jobs = InMemoryJobStore()
+        registry = InMemoryWorkerStore()
+        await registry.register("asr-1", "http://127.0.0.1:1", "http", asr_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        await registry.register("tts-1", "http://127.0.0.1:3", "http", tts_caps())
+        orch = Orchestrator(registry, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        try:
+            original = TrackedJob(
+                job_id="job-old",
+                request=AudioRequest("/input/book.wav", "en", "es", "whisper-v3"),
+                strategy=ExecutorStrategy.STREAMING,
+                label="atlas-ch1",
+            )
+            await jobs.put(original)
+
+            retried = await orch.submit_retry(
+                original.job_id,
+                AudioRequest("/input/book.wav", "en", "es", "whisper-tiny"),
+                ExecutorStrategy.STREAMING,
+                label="atlas-retry",
+            )
+
+            assert retried.job_id != original.job_id
+            assert retried.retries_from == original.job_id
+            assert isinstance(retried.request, AudioRequest)
+            assert retried.request.asr_model == "whisper-tiny"
+            stored_original = await orch.get_job(original.job_id)
+            assert stored_original is not None
+            assert stored_original.retries_from is None
+        finally:
+            await orch.shutdown()
+            await orch.close()
 
     @pytest.mark.asyncio
     async def test_submit_job_invalid_language_raises(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

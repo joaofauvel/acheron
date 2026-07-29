@@ -68,6 +68,22 @@ async def test_submit_then_status(runner: CliRunner, wired_app: FastAPI, tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_retry_creates_linked_job(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    submit_result = runner.invoke(main, ["job", "submit", str(epub), "--src", "en", "--dest", "es"])
+    assert submit_result.exit_code == 0, submit_result.output
+    original_id = next(word for word in submit_result.output.split() if word.startswith("job-"))
+
+    retry_result = runner.invoke(main, ["job", "retry", original_id, "--label", "atlas-retry"])
+
+    assert retry_result.exit_code == 0, retry_result.output
+    retried_id = next(word for word in retry_result.output.split() if word.startswith("job-"))
+    assert retried_id != original_id
+    assert original_id in retry_result.output
+
+
+@pytest.mark.asyncio
 async def test_submit_then_status_verbose(runner: CliRunner, wired_app: FastAPI, tmp_path: Path) -> None:
     epub = tmp_path / "book.epub"
     epub.touch()
