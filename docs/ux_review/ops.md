@@ -444,9 +444,9 @@ files:
     lines: 183-249
 related: [OPS-001, OPS-013]
 fixed_in: [07a7ba5, 57d0bc2, f01dabb, 68d7f29]
-verified_in: [pending]
+verified_in: [6dc6353f1b9f8ed85d6d8a64bc1a3672cbb3da72]
 last_verified_at:
-  commit: pending
+  commit: 6dc6353f1b9f8ed85d6d8a64bc1a3672cbb3da72
   date: "2026-07-29"
 verified_by: "harness:phase-4b-journey+pytest"
 feedback_ref: "TBD-pagerduty"
@@ -648,9 +648,9 @@ files:
     lines: 473-503
 related: [OPS-011, OPS-019, OPS-025]
 fixed_in: [84aa30c, 57d0bc2, f01dabb, 68d7f29]
-verified_in: [pending]
+verified_in: [6dc6353f1b9f8ed85d6d8a64bc1a3672cbb3da72]
 last_verified_at:
-  commit: pending
+  commit: 6dc6353f1b9f8ed85d6d8a64bc1a3672cbb3da72
   date: "2026-07-29"
 verified_by: "harness:phase-4b-journey+pytest"
 feedback_ref: "TBD-pagerduty"
