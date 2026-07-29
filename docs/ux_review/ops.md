@@ -420,7 +420,7 @@ discovered_via: [code-review, user-feedback]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator runs `acheron job status job-abc`, sees `Plan: plan-9c0a1b`, wants to know how many steps are in the plan and which workers were assigned, runs `acheron job plan plan-9c0a1b`, expects a table of step_id / worker_type / status / duration."
+user_journey: "Operator runs `acheron job status job-abc`, sees `Plan: plan-9c0a1b`, wants to know how many steps are in the plan and which workers were assigned, runs `acheron job plan plan-9c0a1b`, expects a table of step_id / worker_type / depends_on / status (no duration — duration tracking is explicitly out of scope for this plan preview surface; the user approved the reduced structure-only contract)."
 files:
   - path: src/acheron/core/schemas.py
     lines: 92-130
@@ -628,7 +628,7 @@ discovered_via: [user-feedback, code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator runs `acheron job submit book.epub --src en --dest es --dry-run`, expects a printed plan with steps, estimated cost, and worker assignment, and exits 0 without persisting."
+user_journey: "Operator runs `acheron job submit book.epub --src en --dest es --dry-run`, expects a printed plan with steps and worker assignment, and exits 0 without persisting (no cost estimate — cost estimation is explicitly a non-goal for the preview; the user approved the reduced non-persisting preview contract)."
 files:
   - path: src/acheron/cli.py
     lines: 270-312
@@ -663,7 +663,7 @@ feedback_ref: "TBD-pagerduty"
 
 **Recommendation.** Keep the dry-run branch in front of the submit branch in the CLI so the `submit_job` call site is unreachable when `--dry-run` is set. Reuse `_build_job_request` for both `POST /jobs` and `POST /jobs:preview` so the two endpoints cannot drift in their preflight behaviour. Keep `preview_job` free of any persistence or scheduling side effect, and keep the `RegistrationTokenDep` on the preview route (a preview is still a mutating request from the cluster's perspective — it consumes the planner). Do not weaken the `PlanResponse` shape to include step payloads; the dry-run is a UI surface, not a data export.
 
-**Verification.** A live orchestrator session captured in `.superpowers/sdd/2026-07-29-phase-4b-plan-preview/ops-011-016-journey.txt` shows: (1) `acheron job submit /tmp/book.epub --src en --dest es --dry-run` prints the 5-step plan with title `Plan preview` and the line `Dry run complete; no job submitted.`, then exits 0; (2) `acheron jobs` taken after the dry run is identical to `acheron jobs` taken before it — only the single pre-existing `job-eebb2d80` row is present, so the dry run created no `job-*` row; (3) with a token set and no bearer, `POST /jobs:preview` is rejected with HTTP 401 `Missing Authorization header` (preview shares the auth posture of submit); (4) the returned `plan_id` and `job_id` in the dry-run output match the response from the live `POST /jobs:preview` endpoint, confirming the CLI and the route agree on the shape. Focused tests: `tests/shell/test_cli.py:251-277` (`test_submit_dry_run_previews_without_submitting`) does not mock `POST /jobs`, so any spurious call to it would raise `RequestNotConfigured`; `tests/shell/test_orchestrator.py:210-230` (`test_preview_job_compiles_without_persistence`) asserts `jobs.list_all() == ()` and `cache.plan_exists(plan.plan_id) is False` after a preview; `tests/shell/api/test_jobs.py:1034-1100` covers the preview route's preflight reuse and the no-payload wire shape; `tests/test_api_client.py:473-503` asserts the preview client's payload and bearer header.
+**Verification.** A live orchestrator session captured in `.superpowers/sdd/2026-07-29-phase-4b-plan-preview/ops-011-016-journey.txt` shows: (1) `acheron job submit /tmp/book.epub --src en --dest es --dry-run` prints the 5-step plan with title `Plan preview` and the line `Dry run complete; no job submitted.`, then exits 0; (2) `acheron jobs` taken after the dry run is identical to `acheron jobs` taken before it — only the single pre-existing `job-eebb2d80` row is present, so the dry run created no `job-*` row; (3) with a token set and no bearer, `POST /jobs:preview` is rejected with HTTP 401 `Missing Authorization header` (preview shares the auth posture of submit); (4) the returned `plan_id` and `job_id` in the dry-run output match the response from the live `POST /jobs:preview` endpoint, confirming the CLI and the route agree on the shape. Focused tests: `tests/shell/test_cli.py:251-277` (`test_submit_dry_run_previews_without_submitting`) does not mock `POST /jobs`, so any spurious call to it would raise `RequestNotConfigured`; `tests/shell/test_orchestrator.py:210-230` (`test_preview_job_compiles_without_persistence`) asserts `jobs.list_all() == ()` and `cache.plan_exists(plan.plan_id) is False` after a preview; `tests/shell/api/test_jobs.py:1034-1094` covers the preview route's preflight reuse and the no-payload wire shape; `tests/test_api_client.py:473-503` asserts the preview client's payload and bearer header.
 
 ## OPS-017 — Jobs have no human-readable name
 
