@@ -59,7 +59,7 @@ async def client_with_output(
                 total_steps=1,
                 outputs=(
                     OutputFile(
-                        path=str(output_path),
+                        path=str(tmp_path / "external" / "result.m4b"),
                         filename="result.m4b",
                         size_bytes=5,
                         checksum="checksum",
@@ -109,11 +109,28 @@ async def test_output_route_rejects_artifact_outside_job_directory(
     assert not response.content.startswith(b"secret")
 
 
+def test_safe_output_path_rejects_absolute_filename(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job-1"
+    job_dir.mkdir()
+    (job_dir / "result.m4b").write_bytes(b"audio")
+
+    with pytest.raises(HTTPException):
+        safe_output_path(tmp_path, "job-1", str(job_dir / "result.m4b"))
+
+
+def test_safe_output_path_rejects_traversal_filename(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job-1"
+    job_dir.mkdir()
+    (tmp_path / "secret.txt").write_bytes(b"secret")
+
+    with pytest.raises(HTTPException):
+        safe_output_path(tmp_path, "job-1", "../secret.txt")
+
+
 def test_safe_output_path_rejects_cross_job_path(tmp_path: Path) -> None:
     outside = tmp_path / "job-2"
     outside.mkdir()
-    output = outside / "result.m4b"
-    output.write_bytes(b"secret")
+    (outside / "result.m4b").write_bytes(b"secret")
 
     with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "job-1", "result.m4b", str(output))
+        safe_output_path(tmp_path, "job-1", "result.m4b")
