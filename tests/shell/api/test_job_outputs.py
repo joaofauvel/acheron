@@ -134,3 +134,20 @@ def test_safe_output_path_rejects_cross_job_path(tmp_path: Path) -> None:
 
     with pytest.raises(HTTPException):
         safe_output_path(tmp_path, "job-1", "result.m4b")
+
+
+def test_safe_output_path_rejects_standalone_traversal_components(tmp_path: Path) -> None:
+    with pytest.raises(HTTPException):
+        safe_output_path(tmp_path, "..", "result.m4b")
+    with pytest.raises(HTTPException):
+        safe_output_path(tmp_path, "job-1", "..")
+
+
+def test_safe_output_path_rejects_job_root_symlink_outside_data_dir(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-job-root"
+    outside.mkdir()
+    (outside / "result.m4b").write_bytes(b"secret")
+    (tmp_path / "job-1").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(HTTPException):
+        safe_output_path(tmp_path, "job-1", "result.m4b")

@@ -22,16 +22,16 @@ def _not_found(error_type: str, message: str, remediation: str) -> HTTPException
 
 def safe_output_path(data_dir: Path, job_id: str, filename: str) -> Path:
     """Resolve a listed artifact below its canonical job directory."""
-    if not filename or Path(filename).is_absolute() or Path(filename).name != filename:
-        raise _not_found("OutputNotFoundError", f"Output not found: {filename}", f"acheron job status {job_id}")
-    if not job_id or Path(job_id).is_absolute() or Path(job_id).name != job_id:
+    if not _is_path_component(filename) or not _is_path_component(job_id):
         raise _not_found("OutputNotFoundError", f"Output not found: {filename}", f"acheron job status {job_id}")
 
     data_root = data_dir.resolve()
     job_root = data_root / job_id
     try:
-        resolved = (job_root / filename).resolve(strict=True)
-        resolved.relative_to(job_root.resolve())
+        resolved_job_root = job_root.resolve(strict=True)
+        resolved_job_root.relative_to(data_root)
+        resolved = (resolved_job_root / filename).resolve(strict=True)
+        resolved.relative_to(resolved_job_root)
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise _not_found(
             "OutputNotFoundError", f"Output not found: {filename}", f"acheron job status {job_id}"
@@ -39,6 +39,12 @@ def safe_output_path(data_dir: Path, job_id: str, filename: str) -> Path:
     if not resolved.is_file():
         raise _not_found("OutputNotFoundError", f"Output not found: {filename}", f"acheron job status {job_id}")
     return resolved
+
+
+def _is_path_component(value: str) -> bool:
+    """Return whether a value is one non-traversing relative path component."""
+    path = Path(value)
+    return bool(value) and value not in {".", ".."} and not path.is_absolute() and path.name == value
 
 
 @router.get("/{job_id}/outputs/{filename}")
