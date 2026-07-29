@@ -278,6 +278,39 @@ def test_job_status_renders_output_and_step_error() -> None:
 
 
 @respx.mock
+def test_cancel_cli_returns_success() -> None:
+    respx.post(f"{_BASE_URL}/jobs/job-1/cancel").mock(
+        return_value=httpx.Response(200, json=_job_payload("job-1", status="failed"))
+    )
+
+    result = CliRunner().invoke(main, ["job", "cancel", "job-1"])
+
+    assert result.exit_code == 0, result.output
+    assert "cancelled" in result.output.lower()
+
+
+@respx.mock
+def test_cancel_cli_returns_failure_with_remediation() -> None:
+    respx.post(f"{_BASE_URL}/jobs/job-1/cancel").mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "detail": {
+                    "type": "JobNotCancellableError",
+                    "message": "Job job-1 is already completed",
+                    "remediation": "acheron job status job-1",
+                }
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["job", "cancel", "job-1"])
+
+    assert result.exit_code == 1
+    assert "acheron job status job-1" in result.output
+
+
+@respx.mock
 def test_jobs_accepts_label_filter() -> None:
     route = respx.get(f"{_BASE_URL}/jobs", params={"label": "atlas-*"}).mock(
         return_value=httpx.Response(200, json={"jobs": [_job_payload("job-1", label="atlas-ch1")]})

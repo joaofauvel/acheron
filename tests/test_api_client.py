@@ -391,6 +391,21 @@ async def test_upload_input_raises_on_invalid_response_body(tmp_path: Path) -> N
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_cancel_job_sends_bearer_header_when_token_configured() -> None:
+    route = respx.post("http://test/jobs/job-1/cancel").mock(
+        return_value=httpx.Response(
+            200,
+            json=_job_response_payload(status="failed"),
+        )
+    )
+
+    await AcheronClient("http://test", registration_token="secret").cancel_job("job-1")
+
+    assert route.calls.last.request.headers["authorization"] == "Bearer secret"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_resume_job_sends_bearer_header_when_token_configured() -> None:
     """resume_job must include the bearer header on the mutation request
     when a registration token is configured on the client.

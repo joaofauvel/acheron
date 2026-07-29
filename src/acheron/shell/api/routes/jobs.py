@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from acheron.core.errors import (
     AcheronError,
     JobAlreadyRunningError,
+    JobNotCancellableError,
     JobNotFoundError,
     sanitise_exc_message,
 )
@@ -27,6 +28,7 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.core.schemas import (
+    ErrorResponse,
     JobListResponse,
     JobProgress,
     JobResponse,
@@ -170,6 +172,45 @@ async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
     tracked = await orch.get_job(job_id)
     if tracked is None:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    return _tracked_to_response(tracked)
+
+
+@router.post("/{job_id}/cancel", response_model=JobResponse)
+async def cancel_job(
+    job_id: str,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> JobResponse:
+    """Cancel an active job and return its persisted partial result."""
+    try:
+        tracked = await orch.cancel_job(job_id)
+    except JobNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                type=type(exc).__name__,
+                message=str(exc),
+                remediation=exc.remediation,
+            ).model_dump(),
+        ) from exc
+    except JobNotCancellableError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=ErrorResponse(
+                type=type(exc).__name__,
+                message=str(exc),
+                remediation=exc.remediation,
+            ).model_dump(),
+        ) from exc
+    except AcheronError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=ErrorResponse(
+                type=type(exc).__name__,
+                message=str(exc),
+                remediation=exc.remediation,
+            ).model_dump(),
+        ) from exc
     return _tracked_to_response(tracked)
 
 

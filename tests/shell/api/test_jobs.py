@@ -309,6 +309,61 @@ class TestJobRoutes:
         assert response.json()["job_id"] == job_id
 
     @pytest.mark.asyncio
+    async def test_cancel_job_route_returns_failed_job(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from datetime import UTC, datetime
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanResult, PlanStatus, StepError
+        from acheron.shell.job_store import TrackedJob
+
+        transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        now = datetime.now(UTC)
+        tracked = TrackedJob(
+            job_id="job-1",
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            created_at=now,
+            last_persisted_at=now,
+            status=PlanStatus.FAILED,
+            result=PlanResult(
+                plan_id="plan-1",
+                status=PlanStatus.FAILED,
+                completed_steps=0,
+                total_steps=1,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=0.0,
+                errors=(
+                    StepError(
+                        step_id=None,
+                        worker_type=None,
+                        worker_id=None,
+                        message="cancelled by operator",
+                        timestamp=now,
+                    ),
+                ),
+            ),
+        )
+        monkeypatch.setattr(app.state.orchestrator, "cancel_job", AsyncMock(return_value=tracked))
+
+        response = await client_with_token.post(
+            "/jobs/job-1/cancel",
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "failed"
+        assert response.json()["errors"][0]["message"] == "cancelled by operator"
+
+    @pytest.mark.asyncio
     async def test_get_job_not_found(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.get("/jobs/nonexistent")
         assert response.status_code == 404

@@ -46,6 +46,7 @@ class _RemoteErrorType(StrEnum):
     INVALID_LANGUAGE_PATH = "InvalidLanguagePathError"
     CHUNKING_TOO_LONG = "ChunkingTooLongForWorkerError"
     JOB_ALREADY_RUNNING = "JobAlreadyRunningError"
+    JOB_NOT_CANCELLABLE = "JobNotCancellableError"
     JOB_NOT_FOUND = "JobNotFoundError"
 
 
@@ -198,6 +199,24 @@ def _print_resume_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None
         case _:
             console.print(f"[red]Error {exc.response.status_code}: Job resume failed: {message}[/red]")
             console.print(f"Run [bold]acheron job status {job_id}[/bold] to inspect the job before retrying.")
+
+
+def _print_cancel_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
+    """Render a structured cancellation error and its remediation."""
+    message = _http_error_detail(exc)
+    remediation: str | None = None
+    try:
+        payload = exc.response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict) and isinstance(payload.get("detail"), dict):
+        detail = payload["detail"]
+        message = str(detail.get("message", message))
+        candidate = detail.get("remediation")
+        remediation = candidate if isinstance(candidate, str) else None
+    console.print(f"[red]Error {exc.response.status_code}: Job cancellation failed for {job_id}: {message}[/red]")
+    if remediation:
+        console.print(f"Try: {remediation}")
 
 
 def _detect_source_type(path: str) -> str | None:
@@ -396,6 +415,18 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
                 markup=False,
                 style="red",
             )
+
+
+@job.command("cancel")
+@click.argument("job_id")
+def cancel(job_id: str) -> None:
+    """Cancel an active job."""
+    result = _run(
+        _get_client().cancel_job(job_id),
+        on_http_error=lambda exc: _print_cancel_http_error(exc, job_id=job_id),
+    )
+    console.print(f"Job cancelled: [bold]{result.job_id}[/bold]")
+    console.print(f"Status: {result.status.value}")
 
 
 @job.command("plan")

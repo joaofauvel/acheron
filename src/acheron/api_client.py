@@ -96,6 +96,15 @@ class AcheronClient:
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
+    async def cancel_job(self, job_id: str) -> JobResponse:
+        """Cancel an active job and return its persisted terminal result."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post(f"/jobs/{job_id}/cancel", headers=self._mutation_headers())
+            resp.raise_for_status()
+            return JobResponse.model_validate(resp.json())
+
     async def preview_job(  # noqa: PLR0913
         self,
         source_type: str,
