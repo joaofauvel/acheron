@@ -380,17 +380,7 @@ class Orchestrator:
             strategy.value,
         )
 
-        capabilities = tuple(w.capabilities for w in await self._registry.list_all())
-        plan = compile_plan(
-            request,
-            strategy,
-            capabilities,
-            job_id=job_id,
-            chunking=ChunkingLimits(
-                max_chunk_length=self._settings.workers.chunking.max_chunk_length,
-                chars_per_token=self._settings.chars_per_token,
-            ),
-        )
+        plan = await self._compile_plan(request, strategy, job_id=job_id)
         self._cache.save_plan(plan)
         await self._invalidate_handler_cache()
         logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
@@ -411,6 +401,42 @@ class Orchestrator:
             self._track_execution_task(tracked)
 
         return tracked
+
+    async def _compile_plan(
+        self,
+        request: JobRequest,
+        strategy: ExecutorStrategy,
+        *,
+        job_id: str | None = None,
+    ) -> Plan:
+        """Compile a :class:`Plan` for ``request`` using the current registry.
+
+        Shared by :meth:`submit_job` (which passes a generated ``job_id``)
+        and :meth:`preview_job` (which omits it so ``compile_plan`` mints a
+        throwaway ``job_id`` for the in-memory plan).
+        """
+        capabilities = tuple(w.capabilities for w in await self._registry.list_all())
+        return compile_plan(
+            request,
+            strategy,
+            capabilities,
+            job_id=job_id,
+            chunking=ChunkingLimits(
+                max_chunk_length=self._settings.workers.chunking.max_chunk_length,
+                chars_per_token=self._settings.chars_per_token,
+            ),
+        )
+
+    async def preview_job(self, request: JobRequest, strategy: ExecutorStrategy) -> Plan:
+        """Compile a plan without persisting or executing a job."""
+        if not self._started:
+            msg = "Orchestrator.start() must be called before preview_job()"
+            raise RuntimeError(msg)
+        return await self._compile_plan(request, strategy)
+
+    async def get_plan(self, plan_id: str) -> Plan:
+        """Load a persisted plan without exposing the cache implementation."""
+        return await asyncio.to_thread(self._cache.load_plan, plan_id)
 
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status.

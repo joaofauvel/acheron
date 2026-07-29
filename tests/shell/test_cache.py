@@ -18,7 +18,7 @@ from acheron.core.models import (
 from acheron.shell.cache import PlanCache, StepCache
 
 
-def _sample_plan(plan_id: str = "plan-1") -> Plan:
+def _sample_plan(plan_id: str = "plan-abcd1234") -> Plan:
     return Plan(
         plan_id=plan_id,
         job_id="job-1",
@@ -50,7 +50,7 @@ class TestPlanCache:
         cache = PlanCache(tmp_path)
         plan = _sample_plan()
         cache.save_plan(plan)
-        loaded = cache.load_plan("plan-1")
+        loaded = cache.load_plan("plan-abcd1234")
         assert loaded.plan_id == plan.plan_id
         assert loaded.job_id == plan.job_id
         assert loaded.source_type == plan.source_type
@@ -63,7 +63,7 @@ class TestPlanCache:
     def test_plan_exists_true(self, tmp_path: Path) -> None:
         cache = PlanCache(tmp_path)
         cache.save_plan(_sample_plan())
-        assert cache.plan_exists("plan-1")
+        assert cache.plan_exists("plan-abcd1234")
 
     def test_plan_exists_false(self, tmp_path: Path) -> None:
         cache = PlanCache(tmp_path)
@@ -77,7 +77,16 @@ class TestPlanCache:
     def test_save_creates_directory(self, tmp_path: Path) -> None:
         cache = PlanCache(tmp_path)
         cache.save_plan(_sample_plan())
-        assert (tmp_path / "plan-1" / "plan.json").exists()
+        assert (tmp_path / "plan-abcd1234" / "plan.json").exists()
+
+    def test_load_rejects_plan_id_path_escape(self, tmp_path: Path) -> None:
+        """A plan_id with traversal segments must raise CacheMissError before touching the filesystem."""
+        outside = tmp_path.parent / "escaped-plan"
+        outside.mkdir()
+        (outside / "plan.json").write_text("{}")
+
+        with pytest.raises(CacheMissError):
+            PlanCache(tmp_path).load_plan("../escaped-plan")
 
 
 class TestStepCache:

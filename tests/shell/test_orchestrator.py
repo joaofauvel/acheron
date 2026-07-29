@@ -207,6 +207,28 @@ class TestOrchestrator:
             assert await reg.find_by_type(wt), f"{wt.value}-local should be registered"
 
     @pytest.mark.asyncio
+    async def test_preview_job_compiles_without_persistence(self, tmp_path: Path) -> None:
+        """OPS-016: preview_job must compile a plan without creating a job record or a plan file."""
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        jobs = InMemoryJobStore()
+        cache = PlanCache(tmp_path)
+        orch = Orchestrator(registry, cache, job_store=jobs)
+        await orch.start()
+        try:
+            plan = await orch.preview_job(
+                EpubRequest("/input/book.epub", "en", "es"),
+                ExecutorStrategy.STREAMING,
+            )
+            assert plan.steps
+            assert await jobs.list_all() == ()
+            assert not cache.plan_exists(plan.plan_id)
+        finally:
+            await orch.shutdown()
+            await orch.close()
+
+    @pytest.mark.asyncio
     async def test_submit_job_returns_tracked(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())

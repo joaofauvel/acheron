@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import tempfile
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from acheron.core.models import OutputFile, Plan
 
 _plan_adapter = TypeAdapter(Plan)
 _output_adapter = TypeAdapter(tuple[OutputFile, ...])
+
+_PLAN_ID_RE = re.compile(r"\Aplan-[0-9a-f]+\Z")
 
 
 def _checksum(path: Path) -> str:
@@ -36,11 +39,22 @@ class PlanCache:
         """The root directory for cached plans and step outputs."""
         return self._data_dir
 
+    def _plan_file(self, plan_id: str) -> Path:
+        """Resolve a plan_id to its on-disk plan.json path.
+
+        Raises:
+            CacheMissError: If ``plan_id`` is not a ``plan-<hex>`` identifier,
+                so traversal-style IDs cannot escape the cache root.
+        """
+        if _PLAN_ID_RE.fullmatch(plan_id) is None:
+            msg = f"Plan not found: {plan_id}"
+            raise CacheMissError(msg)
+        return self._data_dir / plan_id / "plan.json"
+
     def save_plan(self, plan: Plan) -> Path:
         """Save a plan as JSON. Returns the path to the plan file."""
-        plan_dir = self._data_dir / plan.plan_id
-        plan_dir.mkdir(parents=True, exist_ok=True)
-        plan_file = plan_dir / "plan.json"
+        plan_file = self._plan_file(plan.plan_id)
+        plan_file.parent.mkdir(parents=True, exist_ok=True)
         plan_file.write_text(_plan_adapter.dump_json(plan, indent=2).decode())
         return plan_file
 
@@ -48,10 +62,11 @@ class PlanCache:
         """Load a plan from disk.
 
         Raises:
-            CacheMissError: If the plan file does not exist.
+            CacheMissError: If the plan file does not exist or the plan_id
+                is not a valid ``plan-<hex>`` identifier.
             CacheCorruptedError: If the plan file is malformed.
         """
-        plan_file = self._data_dir / plan_id / "plan.json"
+        plan_file = self._plan_file(plan_id)
         if not plan_file.exists():
             msg = f"Plan not found: {plan_id}"
             raise CacheMissError(msg)
@@ -63,7 +78,10 @@ class PlanCache:
 
     def plan_exists(self, plan_id: str) -> bool:
         """Check whether a plan file exists on disk."""
-        return (self._data_dir / plan_id / "plan.json").exists()
+        try:
+            return self._plan_file(plan_id).exists()
+        except CacheMissError:
+            return False
 
 
 class StepCache:
