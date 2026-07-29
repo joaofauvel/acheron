@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from httpx import AsyncClient
 
+from acheron.core.errors import JobNotCancellableError, JobNotFoundError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -362,6 +363,65 @@ class TestJobRoutes:
         assert response.status_code == 200
         assert response.json()["status"] == "failed"
         assert response.json()["errors"][0]["message"] == "cancelled by operator"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "status_code"),
+        [
+            (
+                JobNotFoundError("missing /data/job-1 secret=top-secret"),
+                404,
+            ),
+            (
+                JobNotCancellableError("job is running password=top-secret", remediation="acheron job status job-1"),
+                409,
+            ),
+        ],
+    )
+    async def test_cancel_errors_are_sanitized(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        error: Exception,
+        status_code: int,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        monkeypatch.setattr(app.state.orchestrator, "cancel_job", AsyncMock(side_effect=error))
+
+        response = await client_with_token.post(
+            "/jobs/job-1/cancel",
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+
+        assert response.status_code == status_code
+        detail = response.json()["detail"]
+        assert detail["type"] == type(error).__name__
+        assert "top-secret" not in detail["message"]
+        assert "<redacted>" in detail["message"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {},
+            {"Authorization": "Bearer invalid-token"},
+        ],
+    )
+    async def test_cancel_requires_valid_registration_token(
+        self,
+        client_with_token: AsyncClient,
+        headers: dict[str, str],
+    ) -> None:
+        response = await client_with_token.post("/jobs/job-1/cancel", headers=headers)
+
+        assert response.status_code == 401
+        assert response.json()["detail"] in {"Missing Authorization header", "Invalid registration token"}
 
     @pytest.mark.asyncio
     async def test_get_job_not_found(self, client) -> None:  # type: ignore[no-untyped-def]

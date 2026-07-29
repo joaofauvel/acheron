@@ -49,6 +49,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _error_response(exc: AcheronError) -> ErrorResponse:
+    safe = sanitise_exc_message(exc)
+    _, separator, message = safe.partition(": ")
+    return ErrorResponse(
+        type=type(exc).__name__,
+        message=message if separator else safe,
+        remediation=exc.remediation,
+    )
+
+
 def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
     """Resolve a user-supplied relative source path to an allowlisted regular file.
 
@@ -187,29 +197,17 @@ async def cancel_job(
     except JobNotFoundError as exc:
         raise HTTPException(
             status_code=404,
-            detail=ErrorResponse(
-                type=type(exc).__name__,
-                message=str(exc),
-                remediation=exc.remediation,
-            ).model_dump(),
+            detail=_error_response(exc).model_dump(),
         ) from exc
     except JobNotCancellableError as exc:
         raise HTTPException(
             status_code=409,
-            detail=ErrorResponse(
-                type=type(exc).__name__,
-                message=str(exc),
-                remediation=exc.remediation,
-            ).model_dump(),
+            detail=_error_response(exc).model_dump(),
         ) from exc
     except AcheronError as exc:
         raise HTTPException(
             status_code=422,
-            detail=ErrorResponse(
-                type=type(exc).__name__,
-                message=str(exc),
-                remediation=exc.remediation,
-            ).model_dump(),
+            detail=_error_response(exc).model_dump(),
         ) from exc
     return _tracked_to_response(tracked)
 
