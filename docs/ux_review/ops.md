@@ -413,7 +413,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-011
 title: "`JobResponse.plan_id` is exposed but there is no `acheron job plan` command to inspect it"
-status: open
+status: verified
 severity: medium
 effort: S
 discovered_via: [code-review, user-feedback]
@@ -422,26 +422,44 @@ silent: true
 journey_stage: t1
 user_journey: "Operator runs `acheron job status job-abc`, sees `Plan: plan-9c0a1b`, wants to know how many steps are in the plan and which workers were assigned, runs `acheron job plan plan-9c0a1b`, expects a table of step_id / worker_type / status / duration."
 files:
-  - path: src/acheron/cli.py
-    lines: 181-200
+  - path: src/acheron/core/schemas.py
+    lines: 92-130
+  - path: src/acheron/shell/api/routes/plans.py
+    lines: 14-30
+  - path: src/acheron/shell/orchestrator.py
+    lines: 438-440
   - path: src/acheron/api_client.py
-    lines: 1-136
+    lines: 124-131
+  - path: src/acheron/cli.py
+    lines: 208-225
+  - path: src/acheron/cli.py
+    lines: 376-391
+  - path: tests/core/test_schemas.py
+    lines: 195-221
+  - path: tests/shell/api/test_plans.py
+    lines: 1-93
+  - path: tests/test_api_client.py
+    lines: 506-527
+  - path: tests/shell/test_cli.py
+    lines: 183-249
 related: [OPS-001, OPS-013]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [07a7ba5, 57d0bc2, f01dabb, 68d7f29]
+verified_in: [pending]
+last_verified_at:
+  commit: pending
+  date: "2026-07-29"
+verified_by: "harness:phase-4b-journey+pytest"
 feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:181-200` defines only `status` and `workers` as top-level commands. `api_client.py:1-136` has no `get_plan` method, and the API has no `GET /plans/{plan_id}` route.
+**Issue.** `PlanStepResponse` (`src/acheron/core/schemas.py:92-98`) now exposes only the public fields a plan consumer needs: `step_id`, `worker_type`, `depends_on`, `status`; the internal `PlanStep.payload` (e.g. `source_path`) is never carried over. `PlanResponse.from_plan` (`src/acheron/core/schemas.py:113-130`) is the single mapper from the internal `Plan` dataclass to the wire shape, so a future refactor that adds new internal fields cannot accidentally leak them. `GET /plans/{plan_id}` (`src/acheron/shell/api/routes/plans.py:14-30`) is implemented behind `OrchestratorDep` (no registration-token dependency), turns `CacheMissError` into HTTP 404 with `Plan not found: <id>`, and turns `CacheCorruptedError` into a generic HTTP 500 with no on-disk detail. `PlanCache._plan_file` (`src/acheron/shell/cache.py:_plan_file` via `_PLAN_ID_RE = re.compile(r"\Aplan-[0-9a-f]+\Z")`) rejects any non-conforming ID before the filesystem is touched, so traversal-style IDs such as `../escaped` and `plan-../escape` both map to `CacheMissError` and become 404. `Orchestrator.get_plan` (`src/acheron/shell/orchestrator.py:438-440`) is a thin threaded wrapper over the cache. `AcheronClient.get_plan` (`src/acheron/api_client.py:124-131`) calls `GET /plans/{plan_id}` and returns the parsed `PlanResponse`. `acheron job plan` (`src/acheron/cli.py:376-391`) is the new top-level command: it takes a positional `PLAN_ID` or `--job JOB_ID`, and a `click.UsageError("provide exactly one plan ID or --job JOB_ID")` is raised when both are given or neither is given; `--job` resolves via `get_job` and surfaces a friendly `Job {id} has no plan ID` followed by `SystemExit(1)` if the job has none. `_print_plan` (`src/acheron/cli.py:208-225`) renders a `Step / Worker type / Depends on / Status` table from the public `PlanResponse` and never prints `step.payload` or any absolute on-disk path. `app.include_router(plans.router, prefix="/plans", tags=["plans"])` (`src/acheron/shell/api/app.py`) is the only wiring change to the FastAPI app.
 
-**Why it matters.** When a job fails, the operator's first question is "which step?"
+**Why it matters.** When a job fails, the operator's first question is "which step?". With a typed, public-only `PlanResponse` plus a CLI lookup that does not require a bearer token (matches the existing `GET /jobs/{id}` posture — both are read-only diagnostic surfaces), the operator can read the plan from any machine that can reach the orchestrator without needing the registration secret. The `_PLAN_ID_RE` guard makes the lookup safe to expose even though it is read-only.
 
-**Recommendation.** Add `GET /plans/{plan_id}` returning `PlanResponse`. Add `acheron job plan <plan_id>` and `acheron job plan --job <job_id>`.
+**Recommendation.** Keep the public response shape, the read-only posture on `GET /plans/{plan_id}`, and the regex-enforced plan ID contract. Preserve the "exactly one selector" usage error and the friendly "no plan ID" remediation on the CLI. Do not include step payloads in the wire shape; do not require a bearer token for `GET /plans/{plan_id}`; do not weaken the regex or accept any other plan ID format.
 
-**Verification.** `acheron job plan plan-9c0a1b` prints a 5-row table for a 5-step plan.
+**Verification.** A live orchestrator session captured in `.superpowers/sdd/2026-07-29-phase-4b-plan-preview/ops-011-016-journey.txt` shows: (1) `acheron job plan plan-a312fc67` renders a 5-step table (extract / chunk / translate / synthesize / package); (2) `acheron job plan --job job-eebb2d80` resolves the plan ID via `GET /jobs/<id>` and renders the same table; (3) `acheron job plan` with no selector and `acheron job plan <plan> --job <job>` with both selectors both exit non-zero with `Error: provide exactly one plan ID or --job JOB_ID`; (4) `GET /plans/..%2Fescaped`, `GET /plans/..%2Fplan-X`, and `GET /plans/plan-..%2Fescape` all return HTTP 404 (regex guard); (5) the `payload` key is absent from every step in the live `GET /plans/<id>` response. Focused tests: `tests/shell/api/test_plans.py` covers the public structure, traversal rejection, and 500-without-leaking-details on corrupted cache; `tests/test_api_client.py:506-527` round-trips `get_plan`; `tests/shell/test_cli.py:183-249` covers the positional lookup, the `--job` resolution, and the exactly-one-selector usage error; `tests/core/test_schemas.py` covers `PlanResponse.from_plan`.
 
 ## OPS-012 — `acheron jobs` has no time-window filter, no status filter, no archive/delete
 
@@ -603,7 +621,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-016
 title: "`acheron job submit` has no `--dry-run` — operator cannot preflight the plan before committing"
-status: open
+status: verified
 severity: medium
 effort: M
 discovered_via: [user-feedback, code-review]
@@ -613,25 +631,39 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit book.epub --src en --dest es --dry-run`, expects a printed plan with steps, estimated cost, and worker assignment, and exits 0 without persisting."
 files:
   - path: src/acheron/cli.py
-    lines: 143-179
+    lines: 270-312
+  - path: src/acheron/api_client.py
+    lines: 99-122
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 73-150
   - path: src/acheron/shell/orchestrator.py
-    lines: 352-413
+    lines: 405-435
+  - path: tests/shell/test_cli.py
+    lines: 251-277
+  - path: tests/shell/test_orchestrator.py
+    lines: 210-230
+  - path: tests/shell/api/test_jobs.py
+    lines: 1034-1094
+  - path: tests/test_api_client.py
+    lines: 473-503
 related: [OPS-011, OPS-019, OPS-025]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [84aa30c, 57d0bc2, f01dabb, 68d7f29]
+verified_in: [pending]
+last_verified_at:
+  commit: pending
+  date: "2026-07-29"
+verified_by: "harness:phase-4b-journey+pytest"
 feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `submit` has no `--dry-run`. The orchestrator's `submit_job` immediately calls `_job_store.put` and `_track_execution_task`.
+**Issue.** `Orchestrator.preview_job` (`src/acheron/shell/orchestrator.py:430-435`) is a thin wrapper over the shared `_compile_plan` (`src/acheron/shell/orchestrator.py:405-426`) that omits the `job_id` argument so `compile_plan` mints a throwaway `job_id` for the in-memory plan. It does not call `self._cache.save_plan`, `await self._job_store.put`, `self._track_execution_task`, or `self._invalidate_handler_cache` — the only side effect is the return value. The new `POST /jobs:preview` route (`src/acheron/shell/api/routes/jobs.py:135-150`) reuses `_build_job_request` (`src/acheron/shell/api/routes/jobs.py:73-132`) so the exact same preflight gates preview and submit (source-type/`asr_model`/strategy validation, the data-dir source-path resolution) — operators see the same 422 an actual submit would experience. The route is registered behind `RegistrationTokenDep` (`src/acheron/shell/api/routes/jobs.py:139`) so a `POST /jobs:preview` request without a matching bearer is rejected with 401 when `ACHERON_REGISTRATION_TOKEN` is set, matching the existing `POST /jobs` posture. The `PlanResponse.from_plan` mapper (`src/acheron/core/schemas.py:113-130`) is the only public shape the preview route returns. `AcheronClient.preview_job` (`src/acheron/api_client.py:99-122`) forwards the existing submit payload to `POST /jobs:preview` and uses the same mutation/bearer headers as `submit_job`, so a CLI that has a token for submit has a token for preview. The CLI's `submit` (`src/acheron/cli.py:270-312`) now has a `@click.option("--dry-run", is_flag=True, help="Preview the plan without submitting a job")` and, when set, branches immediately after the existing `_run(... upload_input(file) ...)` call to call `preview_job` and then `_print_plan(preview, dry_run=True)`. The branch ends with `return` so the existing `_run(... submit_job ...)` block is never entered. `_print_plan` (`src/acheron/cli.py:208-225`) sets the title to `Plan preview` and appends `Dry run complete; no job submitted.` when `dry_run=True`. The normal submit path is byte-for-byte unchanged: `--dry-run=False` flows through the same `submit_job` call as before, which still calls `self._cache.save_plan(plan)` and `await self._job_store.put(tracked)` (`src/acheron/shell/orchestrator.py:384-401`).
 
-**Why it matters.** Plan compilation is fast and produces all the data the operator needs to decide whether to commit.
+**Why it matters.** Plan compilation is fast and produces all the data the operator needs to decide whether to commit. Without a dry-run, the operator pays the cost of a full submission (and the cold-start cost of a TTS worker, OPS-019) just to learn "actually I mistyped the source language." The new endpoint also lets the dashboard and other operator tooling render a "what would this look like" view without needing a placeholder job row to clean up afterwards.
 
-**Recommendation.** Add `--dry-run` to `acheron job submit` and a `POST /jobs:preview` route that calls `compile_plan` and returns the plan (without persisting, without tracking a task).
+**Recommendation.** Keep the dry-run branch in front of the submit branch in the CLI so the `submit_job` call site is unreachable when `--dry-run` is set. Reuse `_build_job_request` for both `POST /jobs` and `POST /jobs:preview` so the two endpoints cannot drift in their preflight behaviour. Keep `preview_job` free of any persistence or scheduling side effect, and keep the `RegistrationTokenDep` on the preview route (a preview is still a mutating request from the cluster's perspective — it consumes the planner). Do not weaken the `PlanResponse` shape to include step payloads; the dry-run is a UI surface, not a data export.
 
-**Verification.** `acheron job submit book.epub --src en --dest es --dry-run` exits 0, prints the plan summary, and no `job-*` row appears in `acheron jobs`.
+**Verification.** A live orchestrator session captured in `.superpowers/sdd/2026-07-29-phase-4b-plan-preview/ops-011-016-journey.txt` shows: (1) `acheron job submit /tmp/book.epub --src en --dest es --dry-run` prints the 5-step plan with title `Plan preview` and the line `Dry run complete; no job submitted.`, then exits 0; (2) `acheron jobs` taken after the dry run is identical to `acheron jobs` taken before it — only the single pre-existing `job-eebb2d80` row is present, so the dry run created no `job-*` row; (3) with a token set and no bearer, `POST /jobs:preview` is rejected with HTTP 401 `Missing Authorization header` (preview shares the auth posture of submit); (4) the returned `plan_id` and `job_id` in the dry-run output match the response from the live `POST /jobs:preview` endpoint, confirming the CLI and the route agree on the shape. Focused tests: `tests/shell/test_cli.py:251-277` (`test_submit_dry_run_previews_without_submitting`) does not mock `POST /jobs`, so any spurious call to it would raise `RequestNotConfigured`; `tests/shell/test_orchestrator.py:210-230` (`test_preview_job_compiles_without_persistence`) asserts `jobs.list_all() == ()` and `cache.plan_exists(plan.plan_id) is False` after a preview; `tests/shell/api/test_jobs.py:1034-1100` covers the preview route's preflight reuse and the no-payload wire shape; `tests/test_api_client.py:473-503` asserts the preview client's payload and bearer header.
 
 ## OPS-017 — Jobs have no human-readable name
 
