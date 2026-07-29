@@ -16,8 +16,15 @@ from acheron.core.errors import (
     JobNotFoundError,
     sanitise_exc_message,
 )
-from acheron.core.models import AudioRequest, EpubRequest, ExecutorStrategy, WorkerStatus, WorkerType
-from acheron.core.schemas import JobListResponse, JobResponse
+from acheron.core.models import (
+    AudioRequest,
+    EpubRequest,
+    ExecutorStrategy,
+    JobRequest,
+    WorkerStatus,
+    WorkerType,
+)
+from acheron.core.schemas import JobListResponse, JobResponse, PlanResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
@@ -57,13 +64,17 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
         raise HTTPException(status_code=422, detail=msg) from exc
 
 
-@router.post("", status_code=201, response_model=JobResponse)
-async def submit_job(
+async def _build_job_request(
+    orch: Orchestrator,
     body: SubmitJobRequest,
-    orch: OrchestratorDep,
-    _token: RegistrationTokenDep,
-) -> JobResponse:
-    """Submit a new job for processing."""
+) -> tuple[JobRequest, ExecutorStrategy]:
+    """Validate a submission body and resolve its source path.
+
+    Shared by ``POST /jobs`` and ``POST /jobs:preview`` so the two endpoints
+    cannot drift in their preflight behaviour. Returns the typed
+    :class:`JobRequest` and parsed :class:`ExecutorStrategy` for the caller
+    to forward into the orchestrator.
+    """
     try:
         strategy = ExecutorStrategy(body.executor_strategy)
     except ValueError as exc:
@@ -71,7 +82,7 @@ async def submit_job(
         raise HTTPException(status_code=400, detail=msg) from exc
 
     normalized_asr_model = body.asr_model.strip() if body.asr_model is not None else None
-    job_request: EpubRequest | AudioRequest
+    job_request: JobRequest
     match body.source_type:
         case "epub":
             if normalized_asr_model is not None:
@@ -97,7 +108,17 @@ async def submit_job(
         case _:
             msg = f"Invalid source_type: {body.source_type}"
             raise HTTPException(status_code=400, detail=msg)
+    return job_request, strategy
 
+
+@router.post("", status_code=201, response_model=JobResponse)
+async def submit_job(
+    body: SubmitJobRequest,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> JobResponse:
+    """Submit a new job for processing."""
+    job_request, strategy = await _build_job_request(orch, body)
     try:
         tracked = await orch.submit_job(job_request, strategy)
     except AcheronError as exc:
@@ -109,6 +130,26 @@ async def submit_job(
     except Exception:
         logger.exception("Failed to inspect workers for job submission warnings")
     return _tracked_to_response(tracked, warnings=warnings)
+
+
+@router.post(":preview", response_model=PlanResponse)
+async def preview_job(
+    body: SubmitJobRequest,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> PlanResponse:
+    """Compile a plan without persisting a job or scheduling execution.
+
+    Reuses :func:`_build_job_request` so the same preflight that gates
+    ``POST /jobs`` also gates the preview endpoint — operators see exactly
+    the validation a real submit would experience.
+    """
+    job_request, strategy = await _build_job_request(orch, body)
+    try:
+        plan = await orch.preview_job(job_request, strategy)
+    except AcheronError as exc:
+        raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
+    return PlanResponse.from_plan(plan)
 
 
 @router.get("/{job_id}", response_model=JobResponse)

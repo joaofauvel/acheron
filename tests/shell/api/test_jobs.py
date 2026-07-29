@@ -1028,3 +1028,67 @@ class TestUploadToSubmitIntegration:
         )
         assert response.status_code == 201
         assert response.json()["job_id"].startswith("job-")
+
+
+class TestPreviewRoute:
+    """OPS-011 / OPS-016: POST /jobs:preview reuses submit's preflight but does not persist."""
+
+    @pytest.mark.asyncio
+    async def test_preview_rejects_audio_without_asr(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post(
+            "/jobs:preview",
+            json={
+                "source_type": "audio",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert response.status_code == 422
+        assert "asr_model is required" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_preview_returns_plan_without_persisting(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Preview must not create plan files, job records, or schedule execution."""
+        from httpx import ASGITransport, AsyncClient
+
+        from tests.shell.conftest import make_app
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        app = await make_app(tmp_path)
+        await app.state.orchestrator.start()
+        data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+        jobs_before = await app.state.orchestrator.list_jobs()
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.post(
+                    "/jobs:preview",
+                    json={
+                        "source_type": "epub",
+                        "source_path": "input/book.epub",
+                        "source_language": "en",
+                        "target_language": "es",
+                    },
+                )
+                jobs_after = await app.state.orchestrator.list_jobs()
+        finally:
+            await app.state.orchestrator.shutdown()
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["source_type"] == "epub"
+        assert body["source_language"] == "en"
+        assert body["target_language"] == "es"
+        assert body["steps"]
+        # No plan file should have been written for the returned plan.
+        assert not (data_dir / body["plan_id"]).exists()
+        # No job should have been recorded.
+        assert len(jobs_after) == len(jobs_before)
+        # The preview endpoint must not expose step payloads.
+        assert "payload" not in body["steps"][0]
