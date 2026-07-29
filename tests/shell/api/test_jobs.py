@@ -143,6 +143,36 @@ class TestJobRoutes:
         assert retry.json()["detail"].startswith("source_path not found: input/book.epub")
 
     @pytest.mark.asyncio
+    async def test_retry_route_accepts_valid_replacement_after_original_deleted(
+        self,
+        client: AsyncClient,
+        tmp_path: Path,
+    ) -> None:
+        source = tmp_path / "input" / "book.epub"
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert response.status_code == 201
+        source.unlink()
+
+        replacement = tmp_path / "input" / "replacement.epub"
+        replacement.write_bytes(b"replacement")
+        retry = await client.post(
+            f"/jobs/{response.json()['job_id']}/retry",
+            json={"source_path": "input/replacement.epub"},
+        )
+
+        assert retry.status_code == 200
+        assert retry.json()["job_id"] != response.json()["job_id"]
+        assert retry.json()["retries_from"] == response.json()["job_id"]
+
+    @pytest.mark.asyncio
     async def test_retry_route_rejects_empty_asr_override(self, client: AsyncClient) -> None:
         response = await client.post(
             "/jobs",

@@ -166,9 +166,10 @@ async def _build_retry_request(
     label = body.label if body.label is not None else source.label
     match source.request:
         case EpubRequest(source_path=source_path, source_language=source_language, target_language=target_language):
-            path = str(_resolve_stored_source(orch, source_path))
             if body.source_path is not None:
                 path = str(_resolve_submission_source(orch, body.source_path))
+            else:
+                path = str(_resolve_stored_source(orch, source_path))
             if body.asr_model is not None and body.asr_model.strip():
                 msg = "asr_model is only valid for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
@@ -183,9 +184,10 @@ async def _build_retry_request(
             target_language=target_language,
             asr_model=asr_model,
         ):
-            path = str(_resolve_stored_source(orch, source_path))
             if body.source_path is not None:
                 path = str(_resolve_submission_source(orch, body.source_path))
+            else:
+                path = str(_resolve_stored_source(orch, source_path))
             selected_asr_model = body.asr_model.strip() if body.asr_model is not None else asr_model
             if not selected_asr_model:
                 msg = "asr_model is required for source_type='audio'"
