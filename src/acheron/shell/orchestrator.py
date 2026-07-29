@@ -124,6 +124,7 @@ class Orchestrator:
         self._capabilities = CapabilityAggregator(registry)
         self._tasks: set[asyncio.Task[None]] = set()
         self._execution_tasks: dict[str, asyncio.Task[None]] = {}
+        self._operator_cancellation_requested: set[str] = set()
         self._background_persists: set[asyncio.Task[None]] = set()
         self._background_persists_by_job: dict[str, set[asyncio.Task[None]]] = {}
         self._lifecycle_lock = asyncio.Lock()
@@ -460,12 +461,17 @@ class Orchestrator:
                 await self._run_execution(tracked)
         except asyncio.CancelledError as exc:
             tracked.status = PlanStatus.FAILED
-            reason = str(exc) or "execution cancelled during shutdown"
+            operator_cancelled = tracked.job_id in self._operator_cancellation_requested
+            reason = (
+                "cancelled by operator" if operator_cancelled else str(exc) or "execution cancelled during shutdown"
+            )
             self._record_cancellation(tracked, reason=reason)
             try:
                 await self._persist_shielded(tracked)
-            except (OSError, ConnectionError, StoreError) as exc:
-                _log_unexpected(f"Failed to persist job {tracked.job_id} after cancellation", exc)
+            except Exception as persist_exc:
+                _log_unexpected(f"Failed to persist job {tracked.job_id} after cancellation", persist_exc)
+                if operator_cancelled or not isinstance(persist_exc, (OSError, ConnectionError, StoreError)):
+                    raise persist_exc from exc
             raise
         except Exception as exc:
             _log_unexpected(f"Job {tracked.job_id} failed in _execute", exc)
@@ -507,6 +513,7 @@ class Orchestrator:
             self._tasks.discard(done)
             if self._execution_tasks.get(tracked.job_id) is done:
                 self._execution_tasks.pop(tracked.job_id, None)
+            self._operator_cancellation_requested.discard(tracked.job_id)
             if done.cancelled():
                 return
             exc = done.exception()
@@ -623,8 +630,12 @@ class Orchestrator:
                 else:
                     executor = self._create_executor(tracked)
                     result = await executor.run(tracked.plan)
-                    tracked.result = result
-                    tracked.status = result.status
+                    if tracked.job_id in self._operator_cancellation_requested:
+                        tracked.status = PlanStatus.FAILED
+                        self._record_cancellation(tracked, reason="cancelled by operator")
+                    else:
+                        tracked.result = result
+                        tracked.status = result.status
                     logger.info(
                         "Completed %s: %s (%d/%d steps)",
                         tracked.job_id,
@@ -671,12 +682,17 @@ class Orchestrator:
             tracked.progress.current_worker_id = None
             await self._persist_shielded(tracked)
             res = await handler(step, plan)
-            if tracked.strategy != ExecutorStrategy.STREAMING:
+            if (
+                tracked.strategy != ExecutorStrategy.STREAMING
+                and tracked.job_id not in self._operator_cancellation_requested
+            ):
                 self._record_step_progress(tracked, plan, step, res)
                 await self._persist_shielded(tracked)
             return res
 
         async def record_streaming_step(step: PlanStep, plan: Plan, result: JobResult) -> None:
+            if tracked.job_id in self._operator_cancellation_requested:
+                return
             self._record_step_progress(tracked, plan, step, result)
             await self._persist_shielded(tracked)
 
@@ -827,6 +843,7 @@ class Orchestrator:
                     remediation=f"acheron job status {job_id}",
                 )
 
+            self._operator_cancellation_requested.add(job_id)
             task.cancel("cancelled by operator")
             with contextlib.suppress(asyncio.CancelledError):
                 await task
