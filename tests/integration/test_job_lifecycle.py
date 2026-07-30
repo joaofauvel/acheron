@@ -172,7 +172,6 @@ async def test_cancel_and_retry_are_distinct_jobs(wired_app: FastAPI, tmp_path: 
     """Cancel creates a terminal job; retry creates a new linked job."""
 
     from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
-    from acheron.shell.orchestrator import Orchestrator
 
     orch: Orchestrator = wired_app.state.orchestrator
     epub = tmp_path / "book.epub"
@@ -199,7 +198,6 @@ async def test_label_filtering_in_list(wired_app: FastAPI, tmp_path: Path) -> No
 
     from acheron.api_client import AcheronClient
     from acheron.core.models import EpubRequest, ExecutorStrategy
-    from acheron.shell.orchestrator import Orchestrator
 
     orch: Orchestrator = wired_app.state.orchestrator
     source = tmp_path / "input"
@@ -231,7 +229,6 @@ async def test_label_filtering_in_list(wired_app: FastAPI, tmp_path: Path) -> No
 async def test_event_broker_publishes_terminal_event(wired_app: FastAPI, tmp_path: Path) -> None:
     """The event broker publishes a terminal event when a job finishes."""
     from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
-    from acheron.shell.orchestrator import Orchestrator
 
     orch: Orchestrator = wired_app.state.orchestrator
     source = tmp_path / "input"
