@@ -24,3 +24,4 @@ certs/
 Justfile.overrides
 .local/
 .pi-subagents/
+docs/superpowers/review/
