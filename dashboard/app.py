@@ -65,6 +65,7 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
     """
     if orchestrator_url is None:
         orchestrator_url = os.environ.get("ACHERON_URL", "http://localhost:8000")
+    orchestrator_url = orchestrator_url.rstrip("/")
     app = FastAPI(title="Acheron Dashboard")
 
     @app.get("/", response_class=HTMLResponse)

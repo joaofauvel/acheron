@@ -763,7 +763,7 @@ Add CLI assertions:
 def test_job_status_renders_output_and_step_error(runner, client) -> None:
     result = runner.invoke(main, ["job", "status", "job-1", "--verbose"])
     assert result.exit_code == 0
-    assert "Output: /data/job-1/result.m4b" in result.output
+    assert "Download URL: /jobs/job-1/outputs/0" in result.output
     assert "step=step-3" in result.output
     assert "worker_id=tts-1" in result.output
 

@@ -26,8 +26,11 @@ def safe_output_path(data_dir: Path, job_id: str, stored_path: str) -> Path:
         raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}")
 
     data_root = data_dir.resolve()
+    raw_job_root = data_root / job_id
+    if raw_job_root.is_symlink():
+        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}")
     try:
-        job_root = (data_root / job_id).resolve(strict=True)
+        job_root = raw_job_root.resolve(strict=True)
         job_root.relative_to(data_root)
         resolved = Path(stored_path).resolve(strict=True)
         resolved.relative_to(job_root)

@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 import pytest_asyncio
@@ -182,3 +183,19 @@ def test_safe_output_path_rejects_job_root_symlink_outside_data_dir(tmp_path: Pa
 
     with pytest.raises(HTTPException):
         safe_output_path(tmp_path, "job-1", str(outside / "result.m4b"))
+
+
+def test_safe_output_path_rejects_job_root_symlink_to_another_job(tmp_path: Path) -> None:
+    job_2 = tmp_path / "job-2"
+    job_2.mkdir()
+    output = job_2 / "package" / "result.m4b"
+    output.parent.mkdir()
+    output.write_bytes(b"secret")
+    (tmp_path / "job-1").symlink_to(job_2, target_is_directory=True)
+
+    with pytest.raises(HTTPException) as raised:
+        safe_output_path(tmp_path, "job-1", str(output))
+
+    assert raised.value.status_code == 404
+    detail = cast("dict[str, object]", raised.value.detail)
+    assert detail["type"] == "OutputNotFoundError"

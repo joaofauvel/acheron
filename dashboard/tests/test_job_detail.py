@@ -107,6 +107,21 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_job_detail_normalizes_trailing_orchestrator_slash() -> None:
+    app = create_app(orchestrator_url=f"{_ORCH_URL}/")
+    respx.get(f"{_ORCH_URL}/jobs/job-1").mock(return_value=httpx.Response(200, json=_job_payload()))
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/partials/jobs/job-1")
+
+    assert response.status_code == 200
+    assert f'href="{_ORCH_URL}/jobs/job-1/outputs/0"' in response.text
+    assert f'href="{_ORCH_URL}//jobs/job-1/outputs/0"' not in response.text
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_job_detail_renders_unknown_progress_values(client: AsyncClient) -> None:
     payload = _job_payload()
     payload["progress"] = {
