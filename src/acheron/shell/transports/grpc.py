@@ -17,7 +17,6 @@ from acheron.core.models import (
     Job,
     JobMetrics,
     JobResult,
-    JobStatus,
     OutputFile,
     WorkerCapabilities,
     WorkerType,
@@ -104,8 +103,7 @@ class GrpcWorker(Worker):
 
         if artifact_parts:
             return await self._assemble_artifacts(job.job_id, artifact_parts, duration)
-        # Legacy PCM fallback — keep the prior behavior intact.
-        return self._assemble_pcm(job.job_id, pcm_chunks, duration)
+        return await self._assemble_pcm(job.job_id, pcm_chunks, duration)
 
     async def _assemble_artifacts(
         self,
@@ -132,22 +130,17 @@ class GrpcWorker(Worker):
         metrics = JobMetrics(duration_seconds=duration)
         return _build_result(job_id=job_id, outputs=tuple(outputs), metrics=metrics)
 
-    def _assemble_pcm(self, job_id: str, pcm_chunks: list[bytes], duration: float) -> JobResult:
+    async def _assemble_pcm(self, job_id: str, pcm_chunks: list[bytes], duration: float) -> JobResult:
         audio_data = b"".join(pcm_chunks)
-        return JobResult(
-            job_id=job_id,
-            status=JobStatus.SUCCESS,
-            outputs=(
-                OutputFile(
-                    path=f"{job_id}.pcm",
-                    filename=f"{job_id}.pcm",
-                    size_bytes=len(audio_data),
-                    checksum="",
-                    content_type="audio/pcm",
-                ),
-            ),
-            metrics=JobMetrics(duration_seconds=duration),
+        plan_job_id = "-".join(job_id.split("-")[:-1]) if "-" in job_id else job_id
+        step_id = job_id.rsplit("-", maxsplit=1)[-1] if "-" in job_id else "execute"
+        output = await _materialize_artifact(
+            data=audio_data,
+            filename=f"{job_id}.pcm",
+            content_type="audio/pcm",
+            dest_dir=self._data_dir / plan_job_id / step_id,
         )
+        return _build_result(job_id=job_id, outputs=(output,), metrics=JobMetrics(duration_seconds=duration))
 
     async def health(self) -> bool:  # noqa: D102
         try:

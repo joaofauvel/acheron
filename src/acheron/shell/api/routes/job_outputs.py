@@ -26,41 +26,23 @@ def _not_found(error_type: str, message: str, remediation: str) -> HTTPException
     )
 
 
-def safe_output_path(data_dir: Path, job_id: str, stored_path: str) -> Path:
-    """Resolve a persisted artifact beneath its canonical job directory."""
-    if not _is_path_component(job_id):
-        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}")
-
-    data_root = data_dir.resolve()
-    raw_job_root = data_root / job_id
-    if raw_job_root.is_symlink():
-        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}")
-    try:
-        job_root = raw_job_root.resolve(strict=True)
-        job_root.relative_to(data_root)
-        resolved = Path(stored_path).resolve(strict=True)
-        resolved.relative_to(job_root)
-        _require_file(resolved, stored_path)
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}") from exc
-    return resolved
-
-
-def _require_file(path: Path, stored_path: str) -> None:
-    if not path.is_file():
-        raise FileNotFoundError(stored_path)
-
-
 def _is_path_component(value: str) -> bool:
     """Return whether a value is one non-traversing relative path component."""
     path = Path(value)
     return bool(value) and value not in {".", ".."} and not path.is_absolute() and path.name == value
 
 
-def _relative_output_parts(raw_job_root: Path, stored_path: str) -> tuple[str, ...]:
+def _relative_output_parts(data_root: Path, raw_job_root: Path, stored_path: str) -> tuple[str, ...]:
     stored = Path(stored_path)
-    relative = stored.relative_to(raw_job_root)
-    if not stored.is_absolute() or not relative.parts or any(part in {".", ".."} for part in relative.parts):
+    if not stored.is_absolute():
+        cwd_relative = Path.cwd() / stored
+        stored = cwd_relative if cwd_relative.is_relative_to(data_root) else data_root / stored
+    stored = Path(os.path.normpath(stored))
+    try:
+        relative = stored.relative_to(raw_job_root)
+    except ValueError as exc:
+        raise ValueError(stored_path) from exc
+    if not relative.parts or any(part in {".", ".."} for part in relative.parts):
         raise ValueError(stored_path)
     return relative.parts
 
@@ -83,13 +65,13 @@ def _open_output_fd(data_dir: Path, job_id: str, stored_path: str) -> tuple[int,
     file_fd: int | None = None
     directory_fd: int | None = None
     try:
-        relative_parts = _relative_output_parts(raw_job_root, stored_path)
+        relative_parts = _relative_output_parts(data_root, raw_job_root, stored_path)
         directory_fd = os.open(raw_job_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         for component in relative_parts[:-1]:
             next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
             os.close(directory_fd)
             directory_fd = next_fd
-        file_fd = os.open(relative_parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+        file_fd = os.open(relative_parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
         result = os.fstat(file_fd)
         _require_regular_file(result, stored_path)
     except (FileNotFoundError, OSError, ValueError) as exc:

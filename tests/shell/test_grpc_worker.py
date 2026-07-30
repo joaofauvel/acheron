@@ -118,20 +118,31 @@ class TestGrpcWorkerCapabilities:
 
 class TestGrpcWorkerExecute:
     @pytest.mark.asyncio
-    async def test_execute_assembles_pcm_chunks(self, grpc_server: tuple[str, _FakeSynthesisServicer]) -> None:
+    async def test_execute_assembles_pcm_chunks(
+        self,
+        grpc_server: tuple[str, _FakeSynthesisServicer],
+        tmp_path: Path,
+    ) -> None:
         addr, servicer = grpc_server
         servicer._chunks = [b"\x01\x02", b"\x03\x04"]  # noqa: SLF001
         channel = grpc.aio.insecure_channel(addr)
-        worker = GrpcWorker(channel, data_dir=Path("/tmp/acheron-grpc-test"))
-        job = Job(job_id="j-1", job_type=WorkerType.TTS, payload={"text": "hola", "language": "es"}, chapter_id="ch1")
+        worker = GrpcWorker(channel, data_dir=tmp_path)
+        job = Job(
+            job_id="job-xyz-synthesize",
+            job_type=WorkerType.TTS,
+            payload={"text": "hola", "language": "es"},
+            chapter_id="ch1",
+        )
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
-        assert result.job_id == "j-1"
+        assert result.job_id == "job-xyz-synthesize"
         assert len(result.outputs) == 1
         out = result.outputs[0]
-        assert out.filename == "j-1.pcm"
+        assert out.filename == "job-xyz-synthesize.pcm"
         assert out.size_bytes == 4
         assert out.content_type == "audio/pcm"
+        assert Path(out.path) == tmp_path / "job-xyz" / "synthesize" / "job-xyz-synthesize.pcm"
+        assert Path(out.path).read_bytes() == b"\x01\x02\x03\x04"
         await channel.close()
 
     @pytest.mark.asyncio

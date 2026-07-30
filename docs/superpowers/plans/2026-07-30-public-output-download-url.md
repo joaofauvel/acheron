@@ -4,7 +4,7 @@
 
 **Goal:** Replace the public filesystem `OutputSummary.path` field with a server-relative `download_url` and make downloads serve the persisted artifact path from real step directories.
 
-**Architecture:** Keep `OutputFile.path` as internal persistence/orchestration data. Expose each public output by its stable zero-based position in the persisted `PlanResult.outputs` tuple, producing URLs such as `/jobs/{job_id}/outputs/0`. The download route selects that stored output, verifies its resolved path remains beneath the configured job directory, and serves it with the stored metadata. Dashboard links use the orchestrator URL plus the canonical download URL.
+**Architecture:** Keep `OutputFile.path` as internal persistence/orchestration data. Expose each public output by its stable zero-based position in the persisted `PlanResult.outputs` tuple, producing URLs such as `/jobs/{job_id}/outputs/0`. The download route normalizes absolute or relative stored paths beneath the canonical data root, opens each component with `O_NOFOLLOW`, rejects non-regular files, and serves a pinned descriptor with the stored metadata. Dashboard links use the orchestrator URL plus the canonical download URL.
 
 **Tech Stack:** Python 3.14, FastAPI, Pydantic, Starlette `FileResponse`, pytest, Jinja2 dashboard templates.
 
@@ -146,22 +146,9 @@ uv run pytest --no-cov tests/shell/api/test_job_outputs.py dashboard/tests/test_
 
 Expected: failures show the old filename route and flat-path resolver do not serve the nested stored artifact or parse `download_url` payloads.
 
-- [ ] **Step 3: Implement safe stored-path serving**
+- [ ] **Step 3: Implement descriptor-pinned stored-path serving**
 
-Replace the flat filename resolver with a resolver that accepts the stored path:
-
-```python
-def safe_output_path(data_dir: Path, job_id: str, stored_path: str) -> Path:
-    data_root = data_dir.resolve()
-    job_root = (data_root / job_id).resolve(strict=True)
-    resolved = Path(stored_path).resolve(strict=True)
-    resolved.relative_to(job_root)
-    if not resolved.is_file():
-        raise FileNotFoundError(stored_path)
-    return resolved
-```
-
-Translate `FileNotFoundError`, `OSError`, and `ValueError` into the existing structured `OutputNotFoundError` response. Use an integer output index to select `tracked.result.outputs[index]`, then pass that record's stored path to `safe_output_path`; never reconstruct a path from the public filename. Keep the existing content type and download filename from the selected `OutputFile`.
+Use an integer output index to select `tracked.result.outputs[index]`, then normalize that record's absolute or relative stored path beneath the canonical data root. Open the job directory, each nested component, and the final file descriptor with `O_NOFOLLOW`; use `O_NONBLOCK` for the final open, reject non-regular files, and keep the descriptor pinned while `FileResponse` serves it. Translate missing files, traversal, symlinks, and other open errors into the structured `OutputNotFoundError` response. Never reconstruct a path from the public filename; keep the selected `OutputFile` content type and download filename.
 
 Update the dashboard detail template to use `{{ orchestrator_url }}{{ output.download_url }}` and remove the now-unused filename-based dashboard proxy implementation and its tests.
 

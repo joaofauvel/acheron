@@ -702,11 +702,16 @@ async def get_job_output(job_id: str, output_index: int, orch: OrchestratorDep) 
                 remediation=f"acheron job status {job_id}",
             ).model_dump(),
         )
-    path = safe_output_path(orch.settings.orchestrator.data_dir, job_id, output.path)
-    return FileResponse(path, media_type=output.content_type, filename=output.filename)
+    file_fd, stat_result = _open_output_fd(orch.settings.orchestrator.data_dir, job_id, output.path)
+    return _PinnedFileResponse(
+        file_fd,
+        stat_result=stat_result,
+        media_type=output.content_type,
+        filename=output.filename,
+    )
 ```
 
-`safe_output_path()` accepts the persisted `OutputFile.path` and must reject missing artifacts, traversal, symlinks resolving outside the job directory, and paths outside the configured data directory. Register the router under `/jobs` after the existing jobs router without duplicating the `GET /jobs/{job_id}` route.
+`_open_output_fd()` normalizes absolute or relative persisted paths beneath the canonical data root, opens every directory and file component with `O_NOFOLLOW`, uses `O_NONBLOCK` for the final open, rejects non-regular files, and keeps the descriptor pinned while the response is served. Register the router under `/jobs` after the existing jobs router without duplicating the `GET /jobs/{job_id}` route.
 
 Update `AcheronClient.list_jobs()` to:
 
