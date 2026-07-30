@@ -266,7 +266,7 @@ async def preview_job(
     try:
         plan = await orch.preview_job(job_request, strategy)
     except AcheronError as exc:
-        raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
+        raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
     return PlanResponse.from_plan(plan)
 
 

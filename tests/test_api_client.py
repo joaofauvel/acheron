@@ -20,7 +20,12 @@ from acheron.core.models import PlanStatus
 from acheron.core.schemas import WorkerCapability
 
 
-def _job_response_payload(*, status: str = "running", warnings: list[str] | None = None) -> dict[str, object]:
+def _job_response_payload(
+    *,
+    status: str = "running",
+    warnings: list[str] | None = None,
+    outputs: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     return {
         "job_id": "job-1",
         "status": status,
@@ -45,7 +50,7 @@ def _job_response_payload(*, status: str = "running", warnings: list[str] | None
         "total_cost": 0.0,
         "total_duration_seconds": 0.0,
         "total_cost_basis": None,
-        "outputs": [],
+        "outputs": outputs or [],
         "errors": [],
         "warnings": warnings or [],
     }
@@ -71,6 +76,32 @@ async def test_submit_job_round_trips_warnings() -> None:
 
     assert result.job_id == "job-1"
     assert result.warnings == [warning]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_job_round_trips_download_url() -> None:
+    respx.get("http://test/jobs/job-1").mock(
+        return_value=httpx.Response(
+            200,
+            json=_job_response_payload(
+                status="completed",
+                outputs=[
+                    {
+                        "download_url": "/jobs/job-1/outputs/0",
+                        "filename": "result.m4b",
+                        "size_bytes": 5,
+                        "content_type": "audio/mp4",
+                    }
+                ],
+            ),
+        )
+    )
+
+    result = await AcheronClient("http://test").get_job("job-1")
+
+    assert len(result.outputs) == 1
+    assert result.outputs[0].download_url == "/jobs/job-1/outputs/0"
 
 
 @pytest.mark.asyncio

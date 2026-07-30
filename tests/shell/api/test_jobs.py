@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from httpx import AsyncClient
 
-from acheron.core.errors import JobAlreadyRunningError, JobNotCancellableError, JobNotFoundError, NoPlanToResumeError
+from acheron.core.errors import (
+    JobAlreadyRunningError,
+    JobNotCancellableError,
+    JobNotFoundError,
+    NoPlanToResumeError,
+    WorkerError,
+)
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -1559,6 +1565,39 @@ class TestPreviewRoute:
         )
         assert response.status_code == 422
         assert "asr_model is required" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_preview_domain_errors_are_structured_and_sanitized(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        error = WorkerError("preview failed password=top-secret", remediation="acheron job retry job-1")
+        monkeypatch.setattr(app.state.orchestrator, "preview_job", AsyncMock(side_effect=error))
+
+        response = await client.post(
+            "/jobs:preview",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert detail["type"] == "WorkerError"
+        assert detail["message"] == "preview failed password=<redacted>"
+        assert detail["remediation"] == "acheron job retry job-1"
+        assert "top-secret" not in detail["message"]
 
     @pytest.mark.asyncio
     async def test_preview_returns_plan_without_persisting(

@@ -371,12 +371,12 @@ feedback_ref: "TBD-pagerduty"
 
 **Verification.** `acheron job retry job-abc --asr whisper-tiny` returns a new `job_id` whose `retries_from` references the original.
 
-## OPS-010 — `job status` shows `completed` but no output path
+## OPS-010 — `job status` shows `completed` but no output download URL
 
 ```yaml
 ---
 id: OPS-010
-title: "`acheron job status` shows `completed` but no output path — operator cannot find the audiobook"
+title: "`acheron job status` shows `completed` but no output download URL — operator cannot find the audiobook"
 status: open
 severity: high
 effort: S
@@ -384,12 +384,12 @@ discovered_via: [user-feedback, code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator runs `acheron job status job-abc12345`, sees `Status: completed`, expects a line `Output: <data_dir>/job-abc12345/output.m4b` so they can copy it; gets only the status badge and counters."
+user_journey: "Operator runs `acheron job status job-abc12345`, sees `Status: completed`, expects a `Download URL` for the produced artifact; gets only the status badge and counters."
 files:
   - path: src/acheron/cli.py
-    lines: 202-217
+    lines: 493-494
   - path: src/acheron/core/schemas.py
-    lines: 12-23
+    lines: 19-25
 related: [OPS-028, OPS-001]
 fixed_in: []
 verified_in: []
@@ -399,13 +399,13 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:202-217` prints `Job`, `Status`, `Plan`, `Steps`. It never prints outputs. `JobResponse` has no `outputs` field.
+**Issue.** `src/acheron/cli.py:493-494` renders each persisted output's public `download_url`, while `JobResponse` exposes output metadata without leaking the server filesystem path.
 
-**Why it matters.** The deliverable artifact is the entire point of the pipeline.
+**Why it matters.** The deliverable artifact is the entire point of the pipeline, and remote operators need an HTTP resource rather than a path on the orchestrator host.
 
-**Recommendation.** Add `outputs: list[OutputSummary]` to `JobResponse` (path, filename, size_bytes, content_type).
+**Recommendation.** Keep `outputs: list[OutputSummary]` on `JobResponse` with a server-relative `download_url`, display filename, size, and content type.
 
-**Verification.** Submit and complete a job; `acheron job status <id>` shows `Output: /data/job-abc/output.m4b (12.3 MB, audio/mp4)`.
+**Verification.** Submit and complete a job; `acheron job status <id> --verbose` shows `Download URL: /jobs/<id>/outputs/<index> (size, content-type)` and the URL serves the selected artifact.
 
 ## OPS-011 — `plan_id` is exposed but no `acheron job plan` command
 

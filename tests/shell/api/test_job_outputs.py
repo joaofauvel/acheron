@@ -1,5 +1,6 @@
 """Tests for allowlisted job output downloads."""
 
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +19,7 @@ from acheron.core.models import (
     PlanStatus,
 )
 from acheron.shell.api.app import create_app
-from acheron.shell.api.routes.job_outputs import safe_output_path
+from acheron.shell.api.routes.job_outputs import _open_output_fd, safe_output_path
 from acheron.shell.cache import PlanCache
 from acheron.shell.job_store import JobProgressState, TrackedJob
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
@@ -44,6 +45,8 @@ async def client_with_output(
     output_dir.mkdir(parents=True)
     output_path = output_dir / "result.m4b"
     output_path.write_bytes(b"audio")
+    second_output_path = output_dir / "chapter.m4b"
+    second_output_path.write_bytes(b"chapter")
     outside_path = tmp_path / "external" / "outside.m4b"
     outside_path.parent.mkdir()
     outside_path.write_bytes(b"secret")
@@ -70,6 +73,13 @@ async def client_with_output(
                         path=str(output_path),
                         filename="result.m4b",
                         size_bytes=5,
+                        checksum="checksum",
+                        content_type="audio/mp4",
+                    ),
+                    OutputFile(
+                        path=str(second_output_path),
+                        filename="chapter.m4b",
+                        size_bytes=7,
                         checksum="checksum",
                         content_type="audio/mp4",
                     ),
@@ -127,10 +137,18 @@ async def test_output_route_rejects_non_integer_index(client_with_output: AsyncC
 
 
 @pytest.mark.asyncio
+async def test_output_route_serves_second_listed_artifact(client_with_output: AsyncClient) -> None:
+    response = await client_with_output.get("/jobs/job-1/outputs/1")
+
+    assert response.status_code == 200
+    assert response.content == b"chapter"
+
+
+@pytest.mark.asyncio
 async def test_output_route_rejects_artifact_outside_job_directory(
     client_with_output: AsyncClient,
 ) -> None:
-    response = await client_with_output.get("/jobs/job-1/outputs/1")
+    response = await client_with_output.get("/jobs/job-1/outputs/2")
 
     assert response.status_code == 404
     assert not response.content.startswith(b"secret")
@@ -138,10 +156,26 @@ async def test_output_route_rejects_artifact_outside_job_directory(
 
 @pytest.mark.asyncio
 async def test_output_route_rejects_symlink_outside_job_directory(client_with_output: AsyncClient) -> None:
-    response = await client_with_output.get("/jobs/job-1/outputs/2")
+    response = await client_with_output.get("/jobs/job-1/outputs/3")
 
     assert response.status_code == 404
     assert not response.content.startswith(b"secret")
+
+
+def test_open_output_fd_remains_pinned_after_path_replacement(tmp_path: Path) -> None:
+    output = tmp_path / "job-1" / "package" / "result.m4b"
+    output.parent.mkdir(parents=True)
+    output.write_bytes(b"audio")
+    replacement = tmp_path / "secret.m4b"
+    replacement.write_bytes(b"secret")
+
+    file_fd, _ = _open_output_fd(tmp_path, "job-1", str(output))
+    try:
+        output.unlink()
+        output.symlink_to(replacement)
+        assert os.read(file_fd, 5) == b"audio"
+    finally:
+        os.close(file_fd)
 
 
 def test_safe_output_path_rejects_stored_path_outside_job(tmp_path: Path) -> None:
