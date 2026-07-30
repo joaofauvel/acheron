@@ -36,13 +36,14 @@ class JobEventBroker:
             for q in self._subscribers.get(event.job_id, ()):
                 await q.put(event)
 
-    def subscribe(self, job_id: str) -> asyncio.Queue[object]:
+    async def subscribe(self, job_id: str) -> asyncio.Queue[object]:
         """Return a queue that receives buffered + live events for *job_id*."""
         q: asyncio.Queue[object] = asyncio.Queue()
-        buf = self._buffer.get(job_id, deque())
-        for event in buf:
-            q.put_nowait(event)
-        self._subscribers.setdefault(job_id, []).append(q)
+        async with self._lock:
+            buf = self._buffer.get(job_id, deque())
+            for event in buf:
+                q.put_nowait(event)
+            self._subscribers.setdefault(job_id, []).append(q)
         return q
 
     async def finish(self, job_id: str) -> None:

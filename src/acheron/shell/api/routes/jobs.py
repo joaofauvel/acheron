@@ -24,6 +24,7 @@ from acheron.core.models import (
     EpubRequest,
     ExecutorStrategy,
     JobRequest,
+    PlanStatus,
     StepError as DomainStepError,
     WorkerStatus,
     WorkerType,
@@ -219,7 +220,7 @@ async def submit_job(
         else:
             tracked = await orch.submit_job(job_request, strategy, label=body.label)
     except AcheronError as exc:
-        raise HTTPException(status_code=422, detail=sanitise_exc_message(exc)) from exc
+        raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
 
     warnings: list[str] = []
     try:
@@ -274,7 +275,9 @@ async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
     """Get job status and result."""
     tracked = await orch.get_job(job_id)
     if tracked is None:
-        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+        raise HTTPException(
+            status_code=404, detail=_error_response(JobNotFoundError(f"Job not found: {job_id}")).model_dump()
+        )
     return _tracked_to_response(tracked)
 
 
@@ -322,34 +325,35 @@ async def job_logs(
             detail=_error_response(JobNotFoundError(f"Job not found: {job_id}")).model_dump(),
         )
 
-    queue = orch.events.subscribe(job_id)
+    _terminal = {PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL}
+    if tracked.status in _terminal or not follow:
+        # Job already terminal or caller only wants snapshot: emit buffered
+        # snapshot directly without subscribing (avoids hang on terminal jobs).
+        snapshot = JobLogEvent(
+            job_id=tracked.job_id,
+            timestamp=tracked.last_persisted_at or tracked.created_at,
+            status=tracked.status,
+            step_id=tracked.progress.current_step_id,
+            worker_type=tracked.progress.current_worker_type,
+            worker_id=tracked.progress.current_worker_id,
+            progress=JobProgress(
+                completed_steps=tracked.progress.completed_steps,
+                total_steps=tracked.progress.total_steps,
+                current_step_id=tracked.progress.current_step_id,
+                current_worker_type=tracked.progress.current_worker_type,
+                current_worker_id=tracked.progress.current_worker_id,
+                eta_seconds=tracked.progress.eta_seconds,
+            ),
+            message=f"job {tracked.status.value}",
+        )
+        return StreamingResponse(
+            iter([snapshot.model_dump_json().encode() + b"\n"]),
+            media_type="application/x-ndjson",
+        )
+
+    queue = await orch.events.subscribe(job_id)
 
     async def _stream() -> AsyncIterator[bytes]:
-        if not follow:
-            # Emit current snapshot and close
-            yield (
-                JobLogEvent(
-                    job_id=tracked.job_id,
-                    timestamp=tracked.last_persisted_at or tracked.created_at,
-                    status=tracked.status,
-                    step_id=tracked.progress.current_step_id,
-                    worker_type=tracked.progress.current_worker_type,
-                    worker_id=tracked.progress.current_worker_id,
-                    progress=JobProgress(
-                        completed_steps=tracked.progress.completed_steps,
-                        total_steps=tracked.progress.total_steps,
-                        current_step_id=tracked.progress.current_step_id,
-                        current_worker_type=tracked.progress.current_worker_type,
-                        current_worker_id=tracked.progress.current_worker_id,
-                        eta_seconds=tracked.progress.eta_seconds,
-                    ),
-                    message=f"job {tracked.status.value}",
-                )
-                .model_dump_json()
-                .encode()
-                + b"\n"
-            )
-            return
         async for event in iter_events(queue):
             yield event.model_dump_json().encode() + b"\n"
 

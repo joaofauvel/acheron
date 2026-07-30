@@ -27,7 +27,7 @@ class TestJobEventBroker:
     async def test_subscriber_receives_snapshot_and_terminal(self) -> None:
         broker = JobEventBroker(max_events=8)
         await broker.publish(_event("job-1", "running", "step-1"))
-        stream = broker.subscribe("job-1")
+        stream = await broker.subscribe("job-1")
         await broker.publish(_event("job-1", "completed", None))
         await broker.finish("job-1")
 
@@ -39,7 +39,7 @@ class TestJobEventBroker:
         broker = JobEventBroker(max_events=3)
         for i in range(5):
             await broker.publish(_event("job-1", "running", f"step-{i}"))
-        stream = broker.subscribe("job-1")
+        stream = await broker.subscribe("job-1")
         await broker.finish("job-1")
 
         events = [item async for item in iter_events(stream)]
@@ -52,7 +52,7 @@ class TestJobEventBroker:
     @pytest.mark.asyncio
     async def test_unknown_job_subscribe_yields_nothing(self) -> None:
         broker = JobEventBroker(max_events=8)
-        stream = broker.subscribe("unknown")
+        stream = await broker.subscribe("unknown")
         await broker.finish("unknown")
         events = [item async for item in iter_events(stream)]
         assert events == []
@@ -61,9 +61,9 @@ class TestJobEventBroker:
     async def test_multiple_subscribers_independent(self) -> None:
         broker = JobEventBroker(max_events=8)
         await broker.publish(_event("job-1", "running", "step-1"))
-        s1 = broker.subscribe("job-1")
+        s1 = await broker.subscribe("job-1")
         await broker.publish(_event("job-1", "running", "step-2"))
-        s2 = broker.subscribe("job-1")
+        s2 = await broker.subscribe("job-1")
         await broker.finish("job-1")
 
         e1 = [item async for item in iter_events(s1)]
@@ -77,7 +77,7 @@ class TestJobEventBroker:
     async def test_publish_after_finish_noop(self) -> None:
         broker = JobEventBroker(max_events=8)
         await broker.publish(_event("job-1", "running", "step-1"))
-        stream = broker.subscribe("job-1")
+        stream = await broker.subscribe("job-1")
         await broker.finish("job-1")
         # Publish after finish should not crash and subscriber is already removed
         await broker.publish(_event("job-1", "completed", None))
@@ -88,7 +88,7 @@ class TestJobEventBroker:
     @pytest.mark.asyncio
     async def test_empty_subscribe_gets_terminal_only(self) -> None:
         broker = JobEventBroker(max_events=8)
-        stream = broker.subscribe("job-1")
+        stream = await broker.subscribe("job-1")
         await broker.publish(_event("job-1", "completed", None))
         await broker.finish("job-1")
         events = [item async for item in iter_events(stream)]

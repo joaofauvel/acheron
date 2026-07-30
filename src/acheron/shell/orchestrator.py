@@ -761,9 +761,9 @@ class Orchestrator:
                 self._record_failure(tracked, exc)
             await self._job_store.put(tracked)
             await self._publish_event(tracked, f"job {tracked.status.value}")
-            await self._events.finish(tracked.job_id)
         finally:
             self._active_jobs.discard(tracked.job_id)
+            await self._events.finish(tracked.job_id)
 
     def _create_executor(self, tracked: TrackedJob) -> Executor:
         handler = self._handler
