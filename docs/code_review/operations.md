@@ -1,17 +1,17 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Operations
 
 ## PERF — Performance
 
-**Grade:** B
+**Grade:** A
 
 PERF-001, PERF-002, PERF-003 remain verified. PERF-004, PERF-005 remain open and kept (code unchanged since 63faed4). Two new PERF findings: PERF-006 (medium) — edge `/execute` buffers entire multipart body in memory with O(n²) append for `FileArtifact` streams; PERF-007 (medium) — per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse). PERF-008 (medium) remains open (per-call client in `_post_multipart`). **2026-06-26 round 2 refresh**: no new PERF findings; PERF-007 line numbers re-resolved (DOC-007 trimmed the pricing.py module docstring by 6 lines).
 
@@ -1368,3 +1368,113 @@ related: [OBS-014, CORR-042]
 **Recommendation.** Restore a bounded final wait, log unresolved job IDs, and define whether writes are cancelled or handed to durable reconciliation after the deadline.
 
 **Verification.** Use a `JobStore` whose `put()` never completes, invoke `close()`, and assert it returns within the configured shutdown bound with an unresolved-write warning.
+
+## PERF (current refresh)
+
+### PERF-012 — Job event buffers and subscriber queues can grow with job volume
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/job_events.py
+    lines: 25-54
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 354-360
+related: [MAINT-024, CORR-045]
+```
+
+**Issue.** `JobEventBroker` retains a 128-event deque for every completed job, subscriber queues are unbounded, and disconnected streams are not explicitly unregistered.
+
+**Why it matters.** Long-running jobs or many clients can cause memory usage to grow without a bound tied to active work, eventually degrading the monitoring service.
+
+**Recommendation.** Evict completed-job buffers, bound subscriber queues, and unregister disconnected streams while preserving a terminal sentinel for active followers.
+
+**Verification.** Run a high-volume job/event test with disconnects and assert buffer, subscriber, and process-memory counts remain bounded.
+
+## SEC (current refresh)
+
+### SEC-024 — Public error sanitization preserves internal paths and URLs
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/core/errors.py
+    lines: 105-127
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 359-405
+related: [SEC-006, SEC-012]
+```
+
+**Issue.** `sanitise_exc_message()` claims to produce public-safe text but preserves the first non-empty message line, including absolute paths and URLs. Those messages flow through edge and job error responses.
+
+**Why it matters.** A worker or filesystem error can disclose host layout, service topology, or other internal details to unauthenticated API callers.
+
+**Recommendation.** Categorize internal exceptions into stable public messages and keep raw details in server logs instead of returning arbitrary message text.
+
+**Verification.** Exercise representative path and URL-bearing exceptions through edge and job routes; assert responses contain only the stable public category and remediation.
+
+### SEC-025 — Source validation is vulnerable to replacement after the check
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/input_store.py
+    lines: 143-150
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 106-126
+related: [SEC-007]
+```
+
+**Issue.** Input validation resolves and checks a regular file, then stores the path string for later execution. A local process able to modify the data directory can replace the file with a symlink after validation and redirect the later read outside the allowlist.
+
+**Why it matters.** The allowlist check does not pin the validated file, so a hostile local writer can turn an accepted input into an arbitrary file read.
+
+**Recommendation.** Open and retain a descriptor through execution, or revalidate immediately before each access with equivalent no-follow and containment guarantees.
+
+**Verification.** Replace the validated input between validation and execution and assert the worker reads only the originally pinned file or rejects the replacement.
+
+### SEC-026 — Input validation errors disclose the absolute data directory
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 77-88
+related: []
+```
+
+**Issue.** A 422 response includes the absolute `data_dir` in its expected-path message.
+
+**Why it matters.** Submission callers can learn the orchestrator's host filesystem layout through an ordinary validation error.
+
+**Recommendation.** Return a relative logical path or generic input-location message instead of the absolute server path.
+
+**Verification.** Submit a missing input and assert the response contains no absolute data-directory component while retaining actionable remediation.

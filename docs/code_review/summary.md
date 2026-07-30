@@ -1,10 +1,10 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Code Review Summary
@@ -13,74 +13,78 @@ last_staleness_scan:
 
 | Theme | Grade | Stories (open/in-progress/stale by severity) |
 |---|---|---|
-| ARCH | A | 0 critical, 0 high, 2 medium, 0 low |
+| ARCH | B | 0 critical, 1 high, 3 medium, 0 low |
 | CFG | A | 0 critical, 0 high, 0 medium, 0 low |
-| CORR | A | 0 critical, 0 high, 2 medium, 0 low |
-| DATA | A | 0 critical, 0 high, 0 medium, 0 low |
+| CORR | B | 0 critical, 0 high, 4 medium, 0 low |
+| DATA | A | 0 critical, 0 high, 0 medium, 1 low |
 | DOC | A | 0 critical, 0 high, 1 medium, 0 low |
-| DX | A | 0 critical, 0 high, 0 medium, 0 low |
-| EXC | A | 0 critical, 0 high, 0 medium, 0 low |
-| MAINT | A | 0 critical, 0 high, 0 medium, 1 low |
+| DX | B | 0 critical, 1 high, 2 medium, 0 low |
+| EXC | A | 0 critical, 0 high, 1 medium, 0 low |
+| MAINT | A | 0 critical, 0 high, 1 medium, 1 low |
 | OBS | A | 0 critical, 0 high, 0 medium, 0 low |
-| PERF | A | 0 critical, 0 high, 0 medium, 1 low |
+| PERF | A | 0 critical, 0 high, 1 medium, 1 low |
 | PKG | A | 0 critical, 0 high, 0 medium, 0 low |
-| REPRO | A | 0 critical, 0 high, 0 medium, 0 low |
-| SEC | A | 0 critical, 0 high, 0 medium, 0 low |
-| TEST | A | 0 critical, 0 high, 1 medium, 0 low |
-| TYPE | A | 0 critical, 0 high, 0 medium, 0 low |
-
-Themes dropped from the rubric since the 8c baseline remain empty: **ML** and **MATH**.
+| REPRO | A | 0 critical, 0 high, 0 medium, 1 low |
+| SEC | A | 0 critical, 0 high, 0 medium, 3 low |
+| TEST | B | 0 critical, 0 high, 4 medium, 0 low |
+| TYPE | A | 0 critical, 0 high, 0 medium, 1 low |
+| ML | A | 0 critical, 0 high, 0 medium, 0 low |
+| MATH | A | 0 critical, 0 high, 0 medium, 0 low |
 
 ## Top Concerns
 
-No high-severity open or stale stories were found. Remaining stale concerns:
-
-1. ARCH-011 — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time [medium, S] — `architecture.md`
-2. ARCH-012 — `create_worker_app` cherry-picks routes via a hardcoded `inner_paths` set [medium, S] — `architecture.md`
-3. CORR-015 — `create_worker_app` silently drops routes added outside `inner_paths` [medium, S] — `correctness.md`
-4. CORR-034 — Python 2 exception syntax was re-introduced across five sites [medium, S] — `correctness.md`
-5. DOC-004 — README omits the `granite_speech` worker from architecture, CI, and test paths [medium, S] — `surface.md`
-6. TEST-014 — TranslateGemma tests miss model-generation failure and partial-success paths [medium, M] — `verification.md`
-7. MAINT-020 — exception-syntax cleanup regressed at multiple sites [low, S] — `code-quality.md`
-8. PERF-008 — `HttpWorker._post_multipart` creates an `AsyncClient` per call [low, S] — `operations.md`
+1. **ARCH-027** — Remote workers cannot read upstream manifests from the orchestrator's cache [high, M] — `architecture.md`
+2. **DX-008** — Dashboard output links may expose an internal orchestrator hostname [high, M] — `surface.md`
+3. **ARCH-011** — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time [medium, S] — `architecture.md`
+4. **ARCH-012** — `create_worker_app` cherry-picks routes from `EdgeApp.app.routes` via a hardcoded `inner_paths` set [medium, S] — `architecture.md`
+5. **ARCH-028** — Plan cache and orchestrator data roots can diverge [medium, S] — `architecture.md`
+6. **CORR-015** — `create_worker_app` silently drops routes added outside `inner_paths` [medium, S] — `correctness.md`
+7. **CORR-034** — Python 2 exception syntax was re-introduced across five sites [medium, S] — `correctness.md`
+8. **CORR-045** — Late job-log subscriber can hang forever [medium, M] — `correctness.md`
+9. **CORR-046** — Public job responses omit per-artifact metadata [medium, S] — `correctness.md`
+10. **DOC-004** — README architecture tree, CI, and test paths omit the granite_speech worker [medium, S] — `surface.md`
 
 ## Quick Wins
 
-1. ARCH-011 — correct the worker SDK package documentation [medium, S] — `architecture.md`
-2. ARCH-012 — remove hardcoded route selection [medium, S] — `architecture.md`
-3. CORR-015 — make edge route registration complete [medium, S] — `correctness.md`
-4. CORR-034 — restore parenthesized exception syntax [medium, S] — `correctness.md`
-5. DOC-004 — document the `granite_speech` worker consistently [medium, S] — `surface.md`
+1. **ARCH-011** — correct the worker SDK import-time documentation [medium, S] — `architecture.md`
+2. **ARCH-012** — remove hardcoded route selection [medium, S] — `architecture.md`
+3. **ARCH-028** — unify plan and orchestrator data roots [medium, S] — `architecture.md`
+4. **CORR-015** — make edge route registration complete [medium, S] — `correctness.md`
+5. **CORR-034** — restore the repository's consistent exception syntax [medium, S] — `correctness.md`
+6. **CORR-046** — expose or explicitly contract artifact metadata [medium, S] — `correctness.md`
+7. **DOC-004** — document the granite_speech worker consistently [medium, S] — `surface.md`
+8. **DX-009** — include UX rubric validation in the documented final gate [medium, S] — `surface.md`
+9. **DX-010** — make dry-run upload side effects explicit or remove them [medium, S] — `surface.md`
+10. **EXC-006** — narrow the optional-warning exception boundary [medium, S] — `code-quality.md`
 
 ## Story Counts
 
 | Status | Count |
 |---|---|
-| open | 0 |
+| open | 19 |
 | in-progress | 0 |
 | fixed | 61 |
 | verified | 175 |
 | stale | 8 |
 | wontfix | 0 |
+| **total filed** | **263** |
 
 ## Changes Since Last Review
 
-The review scan covers `c53da1d..e0246e0`: 35 modified files, with 1,133 insertions and 272 deletions. Round 6 then verified all 11 resulting stories across 11 atomic commits through `a749f8f`; the ledger consolidation was committed as `9220781`.
-
-Round 6 addressed shutdown persistence bounds, Redis async-surface validation, BOOTING-state lifecycle, worker retirement cleanup, cancellation-path tests, and worker CI path coverage. Commit `de347c2` subsequently fixed the RunPod image Python/Torch compatibility issue. The dbt parse command remains unavailable because `resolver` is not installed.
+The refresh covers `a749f8f..49747dd`: 152 changed files, including the public output-download contract, descriptor-pinned artifact serving, structured preview errors, dashboard/CLI output links, UX rubric refreshes, cache canonicalization, and expanded API, transport, and event tests. Existing fixed, verified, and wontfix stories were preserved; open and stale stories remain tracked with current review metadata. New findings were added for the event subscription race, cache wiring, public error/path handling, output integrity metadata, remote dashboard URLs, and validation/coverage gaps.
 
 ## Last Orientation Snapshot
 
-**Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers and Redis or in-memory stores.
+**Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers, local handlers, and Redis or in-memory stores.
 
-**Branch / HEAD**: `master` at `de347c2`. The review ledger was last scanned through `a749f8f`.
+**Branch / HEAD**: `docs/code-review-refresh` at `49747dd53a5c4114dc2ac82452315bd8502c34a3`.
 
-**Top-level layout**: `src/acheron/core/` contains domain models and interfaces; `src/acheron/shell/` contains orchestration, API, stores, transports, health, cache, and configuration; `src/acheron/worker_sdk/` contains worker edge/runtime code; `dashboard/`, `stubs/`, `workers/`, `tests/`, `scripts/`, `proto/`, and `.github/` provide supporting packages and tooling.
+**Top-level layout**: `src/acheron/core/` contains domain models and interfaces; `src/acheron/shell/` contains orchestration, API, stores, transports, health, cache, and configuration; `src/acheron/worker_sdk/` contains worker edge/runtime code; `dashboard/`, `workers/`, `stubs/`, `tests/`, `scripts/`, `proto/`, `sim/`, `compose/`, and `.github/` provide supporting packages and tooling.
 
-**Boundaries**: No `application/`, `infrastructure/`, `models/`, `macros/`, or dbt layer exists. There are no `ports.py` files. Import-linter forbids `acheron.core -> acheron.shell`, `acheron.worker_sdk -> acheron.shell`, and `workers -> acheron.shell`.
+**Boundaries**: No `application/`, `infrastructure/`, `models/`, or `macros/` directory exists. No `ports.py` files were found. Import-linter contracts cover core/shell, worker-sdk/shell, and workers/shell boundaries.
 
-**Tests**: `tests/core/`, `tests/shell/`, `tests/worker_sdk/`, `tests/integration/`, and `tests/scripts/` mirror the source packages. Worker packages have their own test directories. The full suite passes with 999 tests and 93.66% coverage.
+**Tests**: Mirrors exist under `tests/core`, `tests/shell`, `tests/worker_sdk`, `tests/integration`, `tests/first_run`, `tests/sim`, and `tests/scripts`.
 
-**Tooling**: `just lint-strict`, `just lint-imports`, `just type-check`, `just type-check-pyright`, `just test`, and `just validate` are the primary quality gates. `just install` installs the uv workspace, and `just build-worker` / `just build-edge` build images.
+**Tooling**: `just validate` runs lint, type-check, and tests; `just ux-validate`, `just first-run`, and `just sim-run` provide UX and deployment-specific checks. `pyproject.toml` defines the `acheron` CLI entry point, Ruff, mypy, basedpyright, pytest, import-linter, and uv workspace configuration.
 
-**Entry points**: `acheron.cli:main`, `acheron.worker_sdk.cli:main`, `acheron.shell.api.app:create_app`, worker RunPod entrypoints, and the worker SDK edge server.
+**Entry points**: `acheron = acheron.cli:main`; worker SDK and dashboard applications are exposed through their package modules and deployment recipes. No dbt model or macro layer is present.

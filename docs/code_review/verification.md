@@ -1,10 +1,10 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Verification
@@ -1236,3 +1236,144 @@ related: [ARCH-025]
 **Recommendation.** Add a fake-pipeline test asserting `StoreError` is raised from `RedisError`, then exercise cancellation with a `JobStore` raising `StoreError`.
 
 **Verification.** Run the Redis job-store failure tests and orchestrator cancellation tests without requiring a real Redis server.
+
+## TEST (current refresh)
+
+### TEST-031 — Nested output-directory symlink rejection lacks coverage
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/job_outputs.py
+    lines: 67-87
+  - path: tests/shell/api/test_job_outputs.py
+    lines: 90-220
+related: []
+```
+
+**Issue.** `_open_output_fd()` uses `O_NOFOLLOW` for nested path components, but tests cover job-root and final-file symlinks without covering a symlinked intermediate directory.
+
+**Why it matters.** A regression in component-wise traversal could reintroduce cross-directory reads while the current suite remains green.
+
+**Recommendation.** Add a route test that replaces an intermediate output directory with a symlink and asserts a structured 404 without serving the target file.
+
+**Verification.** Run the output route tests and assert the symlinked intermediate directory is rejected.
+
+### TEST-032 — PCM WAV rejection branches lack behavioral coverage
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/local_handlers.py
+    lines: 266-303
+  - path: tests/shell/test_local_handlers.py
+    lines: 1-260
+related: []
+```
+
+**Issue.** `_validate_wav_format()`, `_validate_riff_header()`, and `_require_chunks()` reject non-PCM, zero-byte-rate, malformed, and missing chunks, but tests cover valid packaging and oversized `fmt` without exercising these rejection branches.
+
+**Why it matters.** Invalid audio can regress from a controlled worker error to an uncaught exception or an incorrectly packaged artifact without a focused test.
+
+**Recommendation.** Add parameterized malformed-WAV fixtures covering each rejection branch and assert the public error remains actionable.
+
+**Verification.** Run the local-handler tests and assert each malformed input raises the expected domain error.
+
+### TEST-033 — Late event-broker subscribers lack a terminal-sentinel regression test
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/job_events.py
+    lines: 39-54
+  - path: tests/shell/test_job_events.py
+    lines: 1-220
+related: [CORR-045, MAINT-024]
+```
+
+**Issue.** `subscribe()` after `finish()` has no terminal sentinel, while existing tests subscribe before finishing. The late-subscriber race therefore has no direct regression coverage.
+
+**Why it matters.** A follow stream can hang indefinitely after a completed job, and the test suite currently permits that behavior.
+
+**Recommendation.** Add a late-subscriber test that finishes a job before subscribing and asserts `iter_events()` terminates.
+
+**Verification.** Run the job-event tests and assert the late subscriber receives buffered events followed by termination.
+
+## REPRO (current refresh)
+
+### REPRO-007 — Cache CWD semantics are untested
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/cache.py
+    lines: 43-230
+  - path: tests/shell/test_cache.py
+    lines: 49-230
+related: [ARCH-028]
+```
+
+**Issue.** Cache tests use only absolute `tmp_path` roots and do not verify behavior when a relative cache root is constructed before the process CWD changes.
+
+**Why it matters.** Relative-root persistence can silently split plans and manifests across directories after a working-directory change.
+
+**Recommendation.** Add a test that constructs the cache with a relative root, changes CWD, and verifies plan and manifest operations remain rooted at the original directory.
+
+**Verification.** Run cache tests with the CWD-changing fixture and assert all reads and writes use the original canonical root.
+
+## DATA (current refresh)
+
+### DATA-011 — Persisted output integrity fields are not enforced or documented
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/job_outputs.py
+    lines: 124-145
+  - path: src/acheron/core/models.py
+    lines: 20-38
+related: []
+```
+
+**Issue.** Output serving uses the opened descriptor's actual size and contents but does not validate persisted `OutputFile.size_bytes` or `checksum`.
+
+**Why it matters.** Corrupt or stale artifact metadata can pass through as if it were authoritative, leaving clients unable to distinguish a damaged artifact from a valid one.
+
+**Recommendation.** Either validate the persisted integrity fields before serving or document explicitly that they are informational and expose the served size separately.
+
+**Verification.** Add an integrity-mismatch test or update the public artifact contract and assert clients use the documented semantics.

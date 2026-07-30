@@ -1,17 +1,17 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Architecture
 
 ## ARCH — Architecture
 
-**Grade:** A
+**Grade:** B
 
 Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584. ARCH-011 marked stale in the 2026-06-26 refresh: the original false claim is gone, the unconditional `from acheron.worker_sdk.cloud import ...` is the documented behavior now, not a bug. One new finding: ARCH-023 (low) — cross-module import of module-private `_ENV_ONLY_FIELDS` is the same PLC2701 anti-pattern as the original ARCH-005. **2026-06-26 round 2 refresh**: ARCH-012 marked stale (the `inner_paths` cherry-pick pattern is fully resolved by `dcebea6`); ARCH-024 (medium) added — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` (a server-internal HTTP module), tying the public client to the server's HTTP layer; CFG-013 (low) added — the 5.0-second drain timeout in `Orchestrator._drain_inflight_tasks` is hard-coded and `OrchestratorSettings` has no equivalent field (silent knob per AGENTS.md).
 
@@ -1250,3 +1250,63 @@ related: []
 **Issue.** `RunPodPrice` owns an HTTP client and cleanup, but `PriceSource` has no lifecycle contract, forcing the app to special-case the concrete implementation.
 
 **Recommendation.** Add `close()` to `PriceSource` and close all sources polymorphically.
+
+## ARCH (current refresh)
+
+### ARCH-027 — Remote workers cannot read upstream manifests from the orchestrator's cache
+
+```yaml
+status: open
+severity: high
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 168-174
+  - path: src/acheron/shell/step_handler.py
+    lines: 48-65
+  - path: src/acheron/shell/transports/http.py
+    lines: 92-104
+related: [ARCH-006, ARCH-008, CORR-009]
+```
+
+**Issue.** `Orchestrator` defaults to `InMemoryStepCache` and writes upstream manifests through that cache, while `default_worker_factory` constructs `HttpWorker` without the orchestrator cache and `HttpWorker` creates a separate disk `StepCache`. Remote ASR, translation, and TTS dispatch therefore cannot find manifests written by the orchestrator.
+
+**Why it matters.** Remote workers that need upstream outputs fail to resolve completed extraction or chunking artifacts, breaking normal multi-step pipelines despite successful earlier steps.
+
+**Recommendation.** Inject one shared `StepCache` instance through the orchestrator, step handler, and HTTP transport, or make the persistence boundary explicit and use the same durable cache root at every layer.
+
+**Verification.** Run a remote-worker pipeline with an upstream extract or chunk step and assert the downstream HTTP worker reads its manifest and submits all expected inputs.
+
+### ARCH-028 — Plan cache and orchestrator data roots can diverge
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/app.py
+    lines: 45-69
+  - path: src/acheron/shell/cache.py
+    lines: 43-48
+  - path: src/acheron/shell/api/routes/job_outputs.py
+    lines: 124-142
+related: [REPRO-007]
+```
+
+**Issue.** Application settings and output serving use `settings.orchestrator.data_dir`, while a caller-supplied `PlanCache` retains its own `data_dir`. The application can therefore save plans under one root while inputs, worker artifacts, and downloads use another.
+
+**Why it matters.** A valid job can become undiscoverable across plan, artifact, and download operations when callers configure mismatched roots.
+
+**Recommendation.** Derive all owned caches from one canonical data root, or reject a caller-supplied cache whose root differs from the orchestrator data directory.
+
+**Verification.** Construct an app with mismatched cache and settings roots and assert construction rejects the mismatch, or verify all plan, artifact, and output paths resolve beneath the single canonical root.

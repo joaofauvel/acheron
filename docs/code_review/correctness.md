@@ -1,10 +1,10 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Correctness
@@ -1216,3 +1216,59 @@ related: [CORR-012, TEST-029, PERF-011]
 **Recommendation.** Reset the timer when the registration identity changes or the worker is removed, or key it by a registration generation.
 
 **Verification.** Expire a BOOTING worker, re-register the same ID with a new endpoint, and assert the new registration receives a fresh timeout.
+
+## CORR (current refresh)
+
+### CORR-045 — Late job-log subscriber can hang forever
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 332-360
+  - path: src/acheron/shell/job_events.py
+    lines: 39-54
+related: [MAINT-024, PERF-012]
+```
+
+**Issue.** `job_logs()` checks terminal status before subscribing. If the job finishes between that check and `subscribe()`, `finish()` finds no subscriber and removes none; the later subscriber receives buffered events but no sentinel.
+
+**Why it matters.** A `follow=true` client can keep an NDJSON connection open indefinitely after the job has already completed.
+
+**Recommendation.** Make subscription and terminal-state handling atomic, or track finished job IDs so a late subscriber receives the terminal event and sentinel.
+
+**Verification.** Insert a scheduling barrier between the route's status check and `events.subscribe()`, finish the job, and assert the stream terminates.
+
+### CORR-046 — Public job responses omit per-artifact metadata
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/core/schemas.py
+    lines: 53-58
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 456-485
+related: [CORR-013]
+```
+
+**Issue.** `OutputFile.metadata` exists, but `OutputSummary` has no metadata field and `_tracked_to_response()` does not serialize it.
+
+**Why it matters.** API consumers cannot recover chapter or sequence metadata needed to order or associate outputs, despite the internal artifact contract.
+
+**Recommendation.** Add a typed metadata field to `OutputSummary` and preserve `output.metadata` in `_tracked_to_response()`.
+
+**Verification.** Create a result with non-empty output metadata, call `GET /jobs/{id}`, and assert that the metadata is present.

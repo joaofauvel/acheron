@@ -1,17 +1,17 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Code quality
 
 ## MAINT — Maintainability
 
-**Grade:** B
+**Grade:** A
 
 MAINT-001, MAINT-003, MAINT-004 remain verified. The 11 carry-over open stories (MAINT-002, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014) were re-resolved against the new HEAD: line numbers mostly held but shifted where the diff touched the file (e.g. `transports/http.py:145→223`, `_edge_http.py:44-55→49-60`, `stubs/_sdk_base` +1 across the board, `cloud.py:132-139→164-168` in the related type story). MAINT-009 caught one new site shift. The pattern is consistent with the prior sweep: the diff is type-and-typing concentrated, so maintainability findings mostly carry through unchanged. One new finding: MAINT-015 (medium) — `inputs.py` is a near-verbatim copy of `artifacts.py` (same Protocol + three-variant shape duplicated 95%); the 8c worker surface is the moment to consolidate before more workers copy the shape. **2026-06-26 refresh**: MAINT-020 (low) — MAINT-009 fix reverted at 4 of 7 sites by 'fix: styling' commit (regression of MAINT-009); the regression touches 5 sites including a 5th new site introduced by the EXC-004 fix. **2026-06-26 (Round 4)**: MAINT-002 verified as a partial fix in `f129ae2` — `WorkerCapabilities` + worker `metadata` ser/de now use `pydantic.TypeAdapter`, but the outer `TrackedJob` / `Plan` / `PlanResult` / `OutputFile` ser/de (including the manual `source_type` match dispatch on `AudioRequest`/`EpubRequest`) remains hand-rolled. A full fix requires a shared `pydantic.BaseModel` for the TrackedJob wire format and a tagged-union discriminator for `JobRequest` — the remaining drift is tracked as a follow-up. **2026-06-26 round 2 refresh**: MAINT-011, MAINT-015 verified; MAINT-021 (medium) added — 4 `except Exception: logger.exception(...); raise` sites in `Orchestrator` duplicate the log+raise pattern and a private `_log_unexpected` helper would centralise the teardown contract (related to the OBS-001 fix's 4 new exception sites); TYPE-012 (medium) added — `cast("_RedisAwaitable", ...)` at the two redis store constructors is an unverified Protocol claim; adding `@runtime_checkable` + `isinstance` would make the typing claim load-bearing at runtime.
 
@@ -1275,3 +1275,88 @@ related: [TYPE-012, TYPE-013, CORR-043, TEST-028]
 **Recommendation.** Retain Protocol-derived member discovery but restore a safe awaitability check for async commands and pipeline execution, without executing network calls during validation.
 
 **Verification.** Add a fake client with all required callable names but synchronous `ping` or `pipeline.execute`, assert `_checked_redis_client` raises `TypeError`, and verify a valid async fake passes.
+
+## MAINT (current refresh)
+
+### MAINT-024 — Completed job event buffers and subscribers are not reclaimed
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/job_events.py
+    lines: 25-54
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 354-360
+related: [CORR-045, PERF-012, TEST-033]
+```
+
+**Issue.** `JobEventBroker` retains a bounded deque for every job indefinitely, and subscriber queues are unbounded. The streaming route also has no disconnect cleanup. Together with the late-subscription race, completed jobs can retain buffers and abandoned queues for the broker's lifetime.
+
+**Why it matters.** Long-running orchestrators accumulate memory proportional to completed jobs and disconnected clients, eventually degrading or destabilizing the monitoring service.
+
+**Recommendation.** Evict completed-job buffers, bound or clean up subscriber queues when streams disconnect, and make terminal subscription handling atomic.
+
+**Verification.** Complete many jobs and disconnect follow streams; assert finished-job buffers and subscriber registrations are removed and memory remains bounded.
+
+## EXC (current refresh)
+
+### EXC-006 — Optional BOOTING warnings swallow unexpected failures
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 84-94
+related: []
+```
+
+**Issue.** `submit_job()` catches bare `Exception` while generating optional BOOTING warnings, logs it, and returns a successful submission without the warning. Store outages and programming errors are silently downgraded to missing warnings.
+
+**Why it matters.** Operators receive a successful response while an important readiness signal has failed, and backend defects are hidden behind an apparently healthy submission path.
+
+**Recommendation.** Catch only expected backend failures or isolate warning collection behind a typed result that distinguishes unavailable warning data from unexpected errors.
+
+**Verification.** Inject an expected store failure and an unexpected programming error separately; verify only the expected failure is downgraded and unexpected errors remain visible.
+
+## TYPE (current refresh)
+
+### TYPE-015 — Health response parsing bypasses the typed boundary
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/api_client.py
+    lines: 164-170
+  - path: src/acheron/cli.py
+    lines: 102-110
+related: []
+```
+
+**Issue.** `AcheronClient.get_health()` casts `resp.json()` directly to `dict[str, str]` without runtime validation, and `_run_sync_generator()` retains an unjustified `# type: ignore[arg-type]`.
+
+**Why it matters.** Malformed or non-string health payloads can bypass the typed API boundary, while the unexplained ignore masks future incompatibilities in CLI streaming.
+
+**Recommendation.** Validate health responses with a typed schema or adapter and remove the ignore by correcting the generator annotation or adding a minimal stub.
+
+**Verification.** Return malformed health JSON and assert validation fails with the client error contract; run basedpyright without the ignore.

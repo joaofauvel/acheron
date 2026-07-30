@@ -1,17 +1,17 @@
 ---
-branch: master
+branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: a749f8f
+last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
 last_staleness_scan:
-  commit: a749f8f
-  date: 2026-07-23
+  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+  date: 2026-07-30
 ---
 
 # Surface
 
 ## DX — Developer experience
 
-**Grade:** A
+**Grade:** B
 
 DX-001 is verified. DX-002 (medium) transitioned to `fixed` in 5b55e6f (README Quick Start replaced `acheron submit` with the canonical `acheron job ...` form). DX-003 (medium) remains open and re-resolved: the new `workers/granite_speech` workspace member widens the gap. No new DX findings at high threshold. **2026-06-26 refresh**: DX-004 added — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members.
 
@@ -221,7 +221,7 @@ related: [DOC-003]
 
 ## DOC — Documentation
 
-**Grade:** B
+**Grade:** A
 
 DOC-001 and DOC-002 remain verified. DOC-003 (medium) remains open and re-resolved: 1 of 4 sub-issues fixed (README Configuration table now describes auto-generation), 3 of 4 still open. DOC-004 (medium) widens with the new translategemma worker still absent from the README. Two new DOC findings in 8c: DOC-005 (medium) — `shell/tls.py` back-compat shim docstring violates the greenfield rule [related: ARCH-017]; DOC-006 (low) — `submit_job` and `validate_chunking_fits_workers` have incomplete Google-style `Raises:` sections. **2026-06-26 refresh**: DOC-004 marked stale (README has been rewritten to include all 3 workers); DOC-007 added — 24 source files have multi-line module docstrings that violate AGENTS.md's 1-line module-docstring rule. **2026-06-26 round 2 refresh**: DOC-007 verified (commit `3a04ece`); DOC-008 (low) regression filed — the brand-new `src/acheron/worker_sdk/_io.py` opens with a 6-line docstring whose 4-line rationale paragraph is exactly the anti-pattern DOC-007 was supposed to eliminate.
 
@@ -715,3 +715,82 @@ related: [DOC-007]
 **Recommendation.** Trim `src/acheron/worker_sdk/_io.py:1-7` to a single line, e.g. `'''Shared stream helpers + Streamable Protocol for the Input/Artifact variants.'''`. The architectural rationale (why the duplication was removed, what the inputs/artifacts shape used to be) belongs in the MAINT-015 story description or a top-level design doc, not in a module docstring that has to track every refactor. Optionally add a `ruff` CI check (e.g. `pydocstyle`'s D400/D210 or a custom `docstring-line-count` rule) that flags any new module whose opening docstring contains a blank line, so future `__init__.py` additions cannot reintroduce the shape silently.
 
 **Verification.** `rg -n '^\"\"\"' src/acheron/worker_sdk/_io.py` returns a single line (no blank line after the opening `'''`); the closing `'''` is on the same line as the summary; `just lint-strict` passes.
+
+## DX (current refresh)
+
+### DX-008 — Dashboard output links may expose an internal orchestrator hostname
+
+```yaml
+status: open
+severity: high
+effort: M
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: dashboard/app.py
+    lines: 43-57
+  - path: dashboard/templates/partials/job_detail.html
+    lines: 26-34
+related: []
+```
+
+**Issue.** The dashboard uses one `orchestrator_url` for server-side API requests and browser-facing output links. Deployments that configure an internal hostname for server-side access render download URLs that the operator's browser cannot resolve.
+
+**Why it matters.** Operators can see a completed output but cannot download it from the dashboard in common reverse-proxy or container-network deployments.
+
+**Recommendation.** Configure a distinct browser-facing orchestrator URL or proxy downloads through the dashboard while keeping internal API access separate.
+
+**Verification.** Configure different internal and public URLs and assert server-side dashboard fetches use the internal URL while rendered output links use the public URL.
+
+### DX-009 — `just validate` omits UX rubric validation
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: Justfile
+    lines: 42-64
+related: []
+```
+
+**Issue.** The advertised `just validate` gate runs linting, type checks, and tests but does not invoke `just ux-validate`; review/schema checks remain a separate command.
+
+**Why it matters.** A green final gate can still leave malformed or stale UX review metadata undetected.
+
+**Recommendation.** Include `ux-validate` in the final validation recipe, or document clearly that it is a required separate gate.
+
+**Verification.** Introduce a malformed UX story and assert the documented final validation workflow fails before merge.
+
+### DX-010 — Dry-run submission persists an uploaded source despite claiming no submission
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 49747dd
+last_verified_at:
+  commit: 49747dd
+  date: 2026-07-30
+fixed_in: []
+files:
+  - path: src/acheron/cli.py
+    lines: 397-413
+related: []
+```
+
+**Issue.** `submit --dry-run` uploads the source before previewing, while the CLI reports that no job was submitted. The uploaded input remains persisted without documented cleanup behavior.
+
+**Why it matters.** Operators can unintentionally consume storage and assume dry-run is side-effect free.
+
+**Recommendation.** Avoid persisting the source during dry-run, or state and clean up the upload side effect explicitly.
+
+**Verification.** Run dry-run with a local source and assert whether the input store changes according to the documented contract, including cleanup of any temporary upload.
