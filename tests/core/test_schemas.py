@@ -22,6 +22,7 @@ from acheron.core.schemas import (
     JobLogEvent,
     JobProgress,
     JobResponse,
+    OutputSummary,
     PlanResponse,
     WorkerCapability,
     WorkerResponse,
@@ -54,6 +55,19 @@ def _job_response_data(**overrides: object) -> dict[str, object]:
     }
     data.update(overrides)
     return data
+
+
+def test_output_summary_exposes_download_url_only() -> None:
+    output = OutputSummary(
+        download_url="/jobs/job-1/outputs/0",
+        filename="result.m4b",
+        size_bytes=5,
+        content_type="audio/mp4",
+    )
+
+    dumped = output.model_dump()
+    assert dumped["download_url"] == "/jobs/job-1/outputs/0"
+    assert "path" not in dumped
 
 
 class TestJobResponseTotalCostBasis:

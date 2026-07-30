@@ -27,7 +27,7 @@
   <ul>
     {% for output in job.outputs %}
     <li>
-      <a href="/outputs/{{ job.job_id }}/{{ output.filename|urlencode }}">
+      <a href="{{ orchestrator_url }}{{ output.download_url }}">
         {{ output.filename }}
       </a>
       ({{ output.size_bytes }} bytes, {{ output.content_type }})

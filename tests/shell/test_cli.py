@@ -233,7 +233,7 @@ def test_job_status_renders_output_and_step_error() -> None:
                 },
                 outputs=[
                     {
-                        "path": "/data/job-1/result.m4b",
+                        "download_url": "/jobs/job-1/outputs/0",
                         "filename": "result.m4b",
                         "size_bytes": 123,
                         "content_type": "audio/mp4",
@@ -270,7 +270,7 @@ def test_job_status_renders_output_and_step_error() -> None:
         "ETA: 12.5s",
         "Cost: $0.00",
         "Duration: 0.0s",
-        "Output: /data/job-1/result.m4b",
+        "Download URL: /jobs/job-1/outputs/0",
         "step=step-3",
         "worker_id=tts-1",
     ):

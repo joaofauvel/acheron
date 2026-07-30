@@ -309,12 +309,13 @@ class TestJobRoutes:
         }
         assert data["outputs"] == [
             {
-                "path": "/data/job-measured/output.m4b",
+                "download_url": "/jobs/job-measured/outputs/0",
                 "filename": "output.m4b",
                 "size_bytes": 1234,
                 "content_type": "audio/mp4",
             }
         ]
+        assert "path" not in data["outputs"][0]
         assert data["errors"][0]["worker_id"] == "packaging-1"
         assert data["created_at"] == "2026-07-29T12:00:00Z"
 

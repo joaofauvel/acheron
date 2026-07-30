@@ -1,4 +1,4 @@
-"""Dashboard job-detail and output proxy tests."""
+"""Dashboard job-detail tests."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def _job_payload() -> dict[str, object]:
         "total_cost_basis": None,
         "outputs": [
             {
-                "path": "/data/jobs/job-1/result.m4b",
+                "download_url": "/jobs/job-1/outputs/0",
                 "filename": "result.m4b",
                 "size_bytes": 5,
                 "content_type": "audio/mp4",
@@ -98,8 +98,8 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
         "4.5s",
     ):
         assert value in response.text
-    assert 'href="/outputs/job-1/result.m4b"' in response.text
-    assert "data-output-url" not in response.text
+    assert f'href="{_ORCH_URL}/jobs/job-1/outputs/0"' in response.text
+    assert "/outputs/job-1/result.m4b" not in response.text
     assert "step-3" in response.text
     assert "tts-1" in response.text
     assert "malformed audio" in response.text
@@ -126,24 +126,6 @@ async def test_job_detail_renders_unknown_progress_values(client: AsyncClient) -
     assert "Current worker type" in response.text
     assert "Current worker ID" in response.text
     assert "Unknown" in response.text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_output_proxy_streams_orchestrator_artifact(client: AsyncClient) -> None:
-    respx.get(f"{_ORCH_URL}/jobs/job-1/outputs/result.m4b").mock(
-        return_value=httpx.Response(
-            200,
-            content=b"audio",
-            headers={"content-type": "audio/mp4", "content-disposition": 'attachment; filename="result.m4b"'},
-        )
-    )
-
-    response = await client.get("/outputs/job-1/result.m4b")
-
-    assert response.status_code == 200
-    assert response.content == b"audio"
-    assert response.headers["content-type"] == "audio/mp4"
 
 
 @respx.mock

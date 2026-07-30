@@ -491,7 +491,7 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     console.print(f"Cost: ${result.total_cost:.2f}")
     console.print(f"Duration: {result.total_duration_seconds:.1f}s")
     for output in result.outputs:
-        console.print(f"Output: {output.path} ({output.size_bytes} bytes, {output.content_type})")
+        console.print(f"Download URL: {output.download_url} ({output.size_bytes} bytes, {output.content_type})")
     if verbose:
         for error in result.errors:
             console.print(

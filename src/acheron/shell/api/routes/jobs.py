@@ -474,12 +474,12 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         outputs=(
             [
                 OutputSummary(
-                    path=output.path,
+                    download_url=f"/jobs/{tracked.job_id}/outputs/{index}",
                     filename=output.filename,
                     size_bytes=output.size_bytes,
                     content_type=output.content_type,
                 )
-                for output in result.outputs
+                for index, output in enumerate(result.outputs)
             ]
             if result
             else []

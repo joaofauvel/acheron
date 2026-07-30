@@ -258,7 +258,7 @@ In `src/acheron/core/schemas.py`, define the public Pydantic models with `dateti
 
 ```python
 class OutputSummary(BaseModel):
-    path: str
+    download_url: str
     filename: str
     size_bytes: int
     content_type: str
@@ -484,7 +484,7 @@ In both `InMemoryJobStore.put()` and `RedisJobStore.put()`, set `job.last_persis
 
 - [ ] **Step 4: Map the record to the public response**
 
-Update `_tracked_to_response()` in `src/acheron/shell/api/routes/jobs.py` to build `JobProgress`, `OutputSummary`, and public `StepError` values. Use `OutputFile.path`, `filename`, `size_bytes`, and `content_type`; do not expose checksum or internal metadata.
+Update `_tracked_to_response()` in `src/acheron/shell/api/routes/jobs.py` to build `JobProgress`, `OutputSummary`, and public `StepError` values. Enumerate persisted outputs to produce `download_url` values of `/jobs/{job_id}/outputs/{index}`; use `filename`, `size_bytes`, and `content_type` while keeping `OutputFile.path` internal and not exposing checksum or internal metadata.
 
 The conversion must map the original request by structural match:
 
@@ -633,7 +633,7 @@ uv run pytest tests/core tests/shell/stores/test_redis_job_store.py \
 
 **Interfaces:**
 - Consumes: `_tracked_to_response()`, `SubmitJobRequest`, `RetryJobRequest`, `JobResponse`, `OutputSummary`, and the configured orchestrator data directory.
-- Produces: `GET /jobs?label={glob}`, `GET /jobs/{job_id}/outputs/{filename}`, `AcheronClient.list_jobs(label: str | None)`, and artifact URL behavior for the dashboard.
+- Produces: `GET /jobs?label={glob}`, `GET /jobs/{job_id}/outputs/{output_index}`, `AcheronClient.list_jobs(label: str | None)`, and canonical orchestrator download URLs for the dashboard.
 
 - [ ] **Step 1: Write failing route/client tests**
 
@@ -650,13 +650,13 @@ Add output security tests:
 
 ```python
 async def test_output_route_serves_listed_artifact(client, job_with_output) -> None:
-    response = await client.get("/jobs/job-1/outputs/result.m4b")
+    response = await client.get("/jobs/job-1/outputs/0")
     assert response.status_code == 200
     assert response.content == b"audio"
 
 
-async def test_output_route_rejects_unlisted_filename(client, job_with_output) -> None:
-    response = await client.get("/jobs/job-1/outputs/../secret.txt")
+async def test_output_route_rejects_out_of_range_index(client, job_with_output) -> None:
+    response = await client.get("/jobs/job-1/outputs/99")
     assert response.status_code in {400, 404}
 ```
 
@@ -677,8 +677,8 @@ In `list_jobs()`, accept `label: str | None = Query(default=None)`, list all tra
 Create `job_outputs.py` with an allowlisted route:
 
 ```python
-@router.get("/{job_id}/outputs/{filename}")
-async def get_job_output(job_id: str, filename: str, orch: OrchestratorDep) -> FileResponse:
+@router.get("/{job_id}/outputs/{output_index:int}")
+async def get_job_output(job_id: str, output_index: int, orch: OrchestratorDep) -> FileResponse:
     tracked = await orch.get_job(job_id)
     if tracked is None:
         raise HTTPException(
@@ -689,28 +689,24 @@ async def get_job_output(job_id: str, filename: str, orch: OrchestratorDep) -> F
                 remediation="acheron jobs",
             ).model_dump(),
         )
-    output = next(
-        (
-            item
-            for item in (tracked.result.outputs if tracked.result is not None else ())
-            if item.filename == filename
-        ),
-        None,
-    )
+    try:
+        output = tracked.result.outputs[output_index] if tracked.result is not None else None
+    except IndexError:
+        output = None
     if output is None:
         raise HTTPException(
             status_code=404,
             detail=ErrorResponse(
                 type="OutputNotFoundError",
-                message=f"Output not found: {filename}",
+                message=f"Output not found: {output_index}",
                 remediation=f"acheron job status {job_id}",
             ).model_dump(),
         )
-    path = safe_output_path(orch.settings.orchestrator.data_dir, job_id, output)
+    path = safe_output_path(orch.settings.orchestrator.data_dir, job_id, output.path)
     return FileResponse(path, media_type=output.content_type, filename=output.filename)
 ```
 
-`safe_output_path()` must reject absolute paths, traversal, a filename mismatch, and a resolved path outside the configured data directory. Register the router under `/jobs` after the existing jobs router without duplicating the `GET /jobs/{job_id}` route.
+`safe_output_path()` accepts the persisted `OutputFile.path` and must reject missing artifacts, traversal, symlinks resolving outside the job directory, and paths outside the configured data directory. Register the router under `/jobs` after the existing jobs router without duplicating the `GET /jobs/{job_id}` route.
 
 Update `AcheronClient.list_jobs()` to:
 
@@ -793,7 +789,7 @@ async def test_job_detail_renders_outputs_and_step_error(client) -> None:
     assert response.status_code == 200
     assert "tts-1" in response.text
     assert "step-3" in response.text
-    assert "/jobs/job-1/outputs/result.m4b" in response.text
+    assert "http://orchestrator:8000/jobs/job-1/outputs/0" in response.text
 ```
 
 - [ ] **Step 2: Run the focused tests and verify they fail**
@@ -818,7 +814,7 @@ console.print(
 )
 for output in job.outputs:
     console.print(
-        f"Output: {output.path} ({output.size_bytes} bytes, {output.content_type})"
+        f"Download URL: {output.download_url} ({output.size_bytes} bytes, {output.content_type})"
     )
 if verbose:
     for error in job.errors:
@@ -845,7 +841,7 @@ async def job_detail_partial(request: Request, job_id: str) -> HTMLResponse:
     )
 ```
 
-Add a dashboard output proxy route that fetches `/jobs/{job_id}/outputs/{filename}` from the orchestrator and streams the response with its content type. Encode the filename as a URL path component before making the upstream request.
+Dashboard output links use `orchestrator_url + output.download_url` to fetch the canonical unauthenticated orchestrator route directly; no dashboard output proxy route is added.
 
 Update `index.html` with a `#job-detail` target. Update `partials/jobs.html` so each job ID is an HTMX link targeting that element and add label/last-error columns. Create `partials/job_detail.html` with metadata, output links, and an error table containing `step_id`, `worker_type`, `worker_id`, `message`, and `timestamp`.
 

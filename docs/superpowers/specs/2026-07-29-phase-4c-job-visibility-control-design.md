@@ -80,12 +80,12 @@ Fields use the existing domain enums where applicable. Lifecycle timestamps are 
 
 `OutputSummary` exposes only operator-relevant artifact data:
 
-- `path`
+- `download_url`: server-relative URL using the output's stable zero-based index
 - `filename`
 - `size_bytes`
 - `content_type`
 
-The output checksum and internal metadata remain internal.
+`OutputFile.path` remains internal persistence data and is never serialized into `JobResponse`. The output checksum and internal metadata remain internal.
 
 `StepError` contains:
 
@@ -162,7 +162,7 @@ Domain failures use a structured response body:
 - `POST /jobs/{job_id}/retry` applies optional request overrides and returns the new job's `JobResponse`.
 - `POST /jobs/{job_id}/resume` resumes an incomplete saved plan with explicit step/chapter invalidation lists.
 - `GET /jobs/{job_id}/logs?follow=true` streams `JobLogEvent` values as newline-delimited JSON.
-- `GET /jobs/{job_id}/outputs/{filename}` serves only an artifact listed for the requested job and only from the configured data directory. Filename/path validation prevents traversal and cross-job access.
+- `GET /jobs/{job_id}/outputs/{output_index}` serves only the persisted artifact at that zero-based output index and only when its resolved `OutputFile.path` remains beneath the configured job directory. Path validation prevents traversal and cross-job access.
 
 ### State transitions
 

@@ -39,10 +39,17 @@ async def client_with_output(
     )
     await app.state.orchestrator.start()
 
-    output_dir = tmp_path / "job-1"
-    output_dir.mkdir()
+    output_dir = tmp_path / "job-1" / "package"
+    output_dir.mkdir(parents=True)
     output_path = output_dir / "result.m4b"
     output_path.write_bytes(b"audio")
+    outside_path = tmp_path / "external" / "outside.m4b"
+    outside_path.parent.mkdir()
+    outside_path.write_bytes(b"secret")
+    symlink_target = tmp_path / "external" / "symlink-target.m4b"
+    symlink_target.write_bytes(b"secret")
+    symlink_path = output_dir / "symlink.m4b"
+    symlink_path.symlink_to(symlink_target)
     await jobs.put(
         TrackedJob(
             job_id="job-1",
@@ -59,9 +66,23 @@ async def client_with_output(
                 total_steps=1,
                 outputs=(
                     OutputFile(
-                        path=str(tmp_path / "external" / "result.m4b"),
+                        path=str(output_path),
                         filename="result.m4b",
                         size_bytes=5,
+                        checksum="checksum",
+                        content_type="audio/mp4",
+                    ),
+                    OutputFile(
+                        path=str(outside_path),
+                        filename="outside.m4b",
+                        size_bytes=6,
+                        checksum="checksum",
+                        content_type="audio/mp4",
+                    ),
+                    OutputFile(
+                        path=str(symlink_path),
+                        filename="symlink.m4b",
+                        size_bytes=6,
                         checksum="checksum",
                         content_type="audio/mp4",
                     ),
@@ -82,7 +103,7 @@ async def client_with_output(
 
 @pytest.mark.asyncio
 async def test_output_route_serves_listed_artifact(client_with_output: AsyncClient) -> None:
-    response = await client_with_output.get("/jobs/job-1/outputs/result.m4b")
+    response = await client_with_output.get("/jobs/job-1/outputs/0")
 
     assert response.status_code == 200
     assert response.content == b"audio"
@@ -90,7 +111,15 @@ async def test_output_route_serves_listed_artifact(client_with_output: AsyncClie
 
 
 @pytest.mark.asyncio
-async def test_output_route_rejects_unlisted_filename(client_with_output: AsyncClient) -> None:
+async def test_output_route_rejects_out_of_range_index(client_with_output: AsyncClient) -> None:
+    response = await client_with_output.get("/jobs/job-1/outputs/99")
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["type"] == "OutputNotFoundError"
+
+
+@pytest.mark.asyncio
+async def test_output_route_rejects_non_integer_index(client_with_output: AsyncClient) -> None:
     response = await client_with_output.get("/jobs/job-1/outputs/secret.txt")
 
     assert response.status_code == 404
@@ -99,48 +128,50 @@ async def test_output_route_rejects_unlisted_filename(client_with_output: AsyncC
 @pytest.mark.asyncio
 async def test_output_route_rejects_artifact_outside_job_directory(
     client_with_output: AsyncClient,
-    tmp_path: Path,
 ) -> None:
-    outside = tmp_path / "outside.m4b"
-    outside.write_bytes(b"secret")
-    response = await client_with_output.get("/jobs/job-1/outputs/outside.m4b")
+    response = await client_with_output.get("/jobs/job-1/outputs/1")
 
     assert response.status_code == 404
     assert not response.content.startswith(b"secret")
 
 
-def test_safe_output_path_rejects_absolute_filename(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_output_route_rejects_symlink_outside_job_directory(client_with_output: AsyncClient) -> None:
+    response = await client_with_output.get("/jobs/job-1/outputs/2")
+
+    assert response.status_code == 404
+    assert not response.content.startswith(b"secret")
+
+
+def test_safe_output_path_rejects_stored_path_outside_job(tmp_path: Path) -> None:
     job_dir = tmp_path / "job-1"
     job_dir.mkdir()
-    (job_dir / "result.m4b").write_bytes(b"audio")
+    outside = tmp_path / "result.m4b"
+    outside.write_bytes(b"secret")
 
     with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "job-1", str(job_dir / "result.m4b"))
+        safe_output_path(tmp_path, "job-1", str(outside))
 
 
-def test_safe_output_path_rejects_traversal_filename(tmp_path: Path) -> None:
+def test_safe_output_path_rejects_traversal_stored_path(tmp_path: Path) -> None:
     job_dir = tmp_path / "job-1"
     job_dir.mkdir()
     (tmp_path / "secret.txt").write_bytes(b"secret")
 
     with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "job-1", "../secret.txt")
+        safe_output_path(tmp_path, "job-1", str(job_dir / ".." / "secret.txt"))
 
 
-def test_safe_output_path_rejects_cross_job_path(tmp_path: Path) -> None:
-    outside = tmp_path / "job-2"
-    outside.mkdir()
-    (outside / "result.m4b").write_bytes(b"secret")
+def test_safe_output_path_rejects_missing_stored_path(tmp_path: Path) -> None:
+    (tmp_path / "job-1").mkdir()
 
     with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "job-1", "result.m4b")
+        safe_output_path(tmp_path, "job-1", str(tmp_path / "job-1" / "missing.m4b"))
 
 
 def test_safe_output_path_rejects_standalone_traversal_components(tmp_path: Path) -> None:
     with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "..", "result.m4b")
-    with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "job-1", "..")
+        safe_output_path(tmp_path, "..", str(tmp_path / "result.m4b"))
 
 
 def test_safe_output_path_rejects_job_root_symlink_outside_data_dir(tmp_path: Path) -> None:
@@ -150,4 +181,4 @@ def test_safe_output_path_rejects_job_root_symlink_outside_data_dir(tmp_path: Pa
     (tmp_path / "job-1").symlink_to(outside, target_is_directory=True)
 
     with pytest.raises(HTTPException):
-        safe_output_path(tmp_path, "job-1", "result.m4b")
+        safe_output_path(tmp_path, "job-1", str(outside / "result.m4b"))

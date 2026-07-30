@@ -5,19 +5,15 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request  # noqa: TC002
 
 from dashboard.booting_progress import clamp_booting_elapsed, format_booting_elapsed
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
 
 _LOGGER = logging.getLogger(__name__)
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -61,35 +57,6 @@ async def _job_detail_partial(orchestrator_url: str, request: Request, job_id: s
     )
 
 
-async def _output_proxy(orchestrator_url: str, job_id: str, filename: str) -> Response:
-    """Stream one allowlisted orchestrator output through the dashboard."""
-    upstream_path = f"/jobs/{quote(job_id, safe='')}/outputs/{quote(filename, safe='')}"
-    client = httpx.AsyncClient(base_url=orchestrator_url)
-    try:
-        request = client.build_request("GET", upstream_path)
-        response = await client.send(request, stream=True)
-        response.raise_for_status()
-    except httpx.HTTPError, OSError:
-        await client.aclose()
-        return HTMLResponse("Output unavailable", status_code=404)
-
-    async def body() -> AsyncIterator[bytes]:
-        try:
-            async for chunk in response.aiter_bytes():
-                yield chunk
-        except httpx.HTTPError, OSError:
-            _LOGGER.warning("Dashboard cannot fetch output at %s%s", orchestrator_url, upstream_path)
-        finally:
-            await response.aclose()
-            await client.aclose()
-
-    return StreamingResponse(
-        body(),
-        media_type=response.headers.get("content-type", "application/octet-stream"),
-        headers={"content-disposition": response.headers.get("content-disposition", "")},
-    )
-
-
 def create_app(orchestrator_url: str | None = None) -> FastAPI:
     """Create the Acheron dashboard FastAPI application.
 
@@ -118,10 +85,6 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
     @app.get("/partials/jobs/{job_id}", response_class=HTMLResponse)
     async def job_detail_partial(request: Request, job_id: str) -> HTMLResponse:
         return await _job_detail_partial(orchestrator_url, request, job_id)
-
-    @app.get("/outputs/{job_id}/{filename:path}", response_model=None)
-    async def output_proxy(job_id: str, filename: str) -> Response:
-        return await _output_proxy(orchestrator_url, job_id, filename)
 
     @app.get("/partials/workers", response_class=HTMLResponse)
     async def workers_partial(request: Request) -> HTMLResponse:

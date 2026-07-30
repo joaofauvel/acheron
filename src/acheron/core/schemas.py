@@ -19,7 +19,7 @@ from acheron.core.models import (
 class OutputSummary(BaseModel):
     """Operator-relevant metadata for a produced artifact."""
 
-    path: str
+    download_url: str
     filename: str
     size_bytes: int
     content_type: str
