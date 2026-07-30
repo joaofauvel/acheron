@@ -877,6 +877,85 @@ class TestJobRoutes:
         resp = await client.get("/jobs/nonexistent/logs")
         assert resp.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_job_logs_follow_true_returns_snapshot_for_terminal_job(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """follow=true on a terminal job returns a snapshot instead of hanging."""
+        from datetime import UTC, datetime
+
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.core.models import PlanStatus
+        from acheron.core.schemas import JobLogEvent
+        from acheron.shell.api.app import create_app
+        from acheron.shell.cache import PlanCache
+        from acheron.shell.job_store import JobProgressState
+        from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+        from tests.shell.conftest import asr_caps, translation_caps, tts_caps
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://tts-1", "http", tts_caps())
+        await registry.register("asr-1", "http://asr-1", "http", asr_caps())
+        await registry.register("trans-1", "http://trans-1", "http", translation_caps())
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
+        jobs = InMemoryJobStore()
+        app = create_app(
+            registry=registry,
+            job_store=jobs,
+            cache=PlanCache(tmp_path),
+            data_dir=tmp_path,
+        )
+        await app.state.orchestrator.start()
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                resp = await c.post(
+                    "/jobs",
+                    json={
+                        "source_type": "epub",
+                        "source_path": "input/book.epub",
+                        "source_language": "en",
+                        "target_language": "es",
+                    },
+                )
+                assert resp.status_code == 201
+                job_id = resp.json()["job_id"]
+
+                # Force the job to a terminal state.
+                tracked = await jobs.get(job_id)
+                assert tracked is not None
+                now = datetime.now(UTC)
+                tracked.status = PlanStatus.COMPLETED
+                tracked.last_persisted_at = now
+                tracked.progress = JobProgressState(
+                    completed_steps=1,
+                    total_steps=1,
+                )
+                await jobs.put(tracked)
+
+                # follow=true must NOT hang on a terminal job.
+                logs_resp = await asyncio.wait_for(
+                    c.get(f"/jobs/{job_id}/logs", params={"follow": "true"}),
+                    timeout=3.0,
+                )
+        finally:
+            await app.state.orchestrator.shutdown()
+            await app.state.orchestrator.close()
+
+        assert logs_resp.status_code == 200
+        lines = [line for line in logs_resp.text.strip().split("\n") if line]
+        assert len(lines) == 1
+        event = JobLogEvent.model_validate_json(lines[0])
+        assert event.job_id == job_id
+        assert event.status is PlanStatus.COMPLETED
+
 
 class TestJobRouteAuth:
     """SEC-005: mutating job routes require auth when no open-registration flag is set."""
