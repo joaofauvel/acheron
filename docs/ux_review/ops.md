@@ -377,7 +377,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-010
 title: "`acheron job status` shows `completed` but no output download URL — operator cannot find the audiobook"
-status: open
+status: verified
 severity: high
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -391,10 +391,12 @@ files:
   - path: src/acheron/core/schemas.py
     lines: 19-25
 related: [OPS-028, OPS-001]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: ["4750302", "1f5514c"]
+verified_in: ["1f5514c"]
+last_verified_at:
+  commit: 1f5514c
+  date: "2026-07-30"
+verified_by: "harness:pytest+just-validate"
 feedback_ref: "TBD-pagerduty"
 ---
 ```
