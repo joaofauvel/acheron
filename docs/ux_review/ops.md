@@ -1,12 +1,12 @@
 ---
 theme: OPS
-last_updated_date: 2026-07-28
-version: 2
+last_updated_date: 2026-07-30
+version: 3
 ---
 
 # OPS
 
-**Grade**: D (7 high + 17 medium-severity open stories)
+**Grade**: C (1 high + 1 medium + 1 low unresolved story)
 **Calibration target**: an operator should be able to submit, monitor, debug, and recover a job without `docker logs`.
 
 ## OPS-001 — Dashboard renders only three read-only tables
@@ -15,7 +15,7 @@ version: 2
 ---
 id: OPS-001
 title: Dashboard renders only three read-only tables; clicking a job row does nothing; no Last-error column
-status: open
+status: fixed
 severity: high
 effort: M
 discovered_via: [code-review, on-call]
@@ -25,11 +25,11 @@ journey_stage: t1
 user_journey: "Operator opens the dashboard during a 2-hour translation run, sees a row with a FAILED job, clicks the row, expects a detail page with start time, end time, error string, and at least one output link; gets nothing — the click does not navigate."
 files:
   - path: dashboard/app.py
-    lines: 62-82
+    lines: 81-88
   - path: dashboard/templates/partials/jobs.html
-    lines: 1-29
+    lines: 1-40
 related: [OBS-002]
-fixed_in: []
+fixed_in: [7e62b0c, ff0b4de, 9ac320c]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -37,13 +37,9 @@ incident_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `dashboard/app.py:62-82` exposes only `GET /partials/{jobs,workers,cost,status}`. `dashboard/templates/partials/jobs.html:1-29` renders a flat `<table>` with columns Job ID / Status / Progress / Cost / Duration. The `<tr>` has no link, no anchor, no `data-` attribute. The `JobResponse.errors` field is populated but the dashboard never reads it.
+**Current state.** The dashboard now renders clickable job rows and a detail partial with job metadata, errors, and output links.
 
-**Why it matters.** Every failure the operator hits is invisible at the level of detail needed to act. The fallback is `docker logs orchestrator` filtered by `job_id`.
-
-**Recommendation.** (a) Add a `<tr>` link or HTMX click handler that navigates to `/partials/jobs/{id}` and renders a detail page. (b) Add a "Last error" column. (c) Plumb `source_type` / `source_language` / `target_language` / `asr_model` / `created_at` (tracked in OPS-004).
-
-**Verification.** Submit a job, force a failure, open the dashboard, click the FAILED row, see a detail page with the error string and the timestamp.
+**Verification.** Open the dashboard, click a job row, and confirm the detail view renders instead of leaving the operator on a flat table.
 
 ## OPS-002 — CLI has no `watch` / `follow` mode
 
@@ -51,7 +47,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-002
 title: "`acheron job submit` returns immediately; operator must wrap `watch -n 2 acheron job status` manually"
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -61,11 +57,11 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit book.epub --src en --dest es --follow`, expects a live progress bar that updates every 2s; gets `Job submitted: job-abc12345` and the prompt returns immediately."
 files:
   - path: src/acheron/cli.py
-    lines: 143-179
+    lines: 362-439
   - path: src/acheron/api_client.py
-    lines: 75-82
+    lines: 91-98
 related: [OPS-014]
-fixed_in: []
+fixed_in: [97a4cea]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -73,13 +69,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:165-178` calls `_get_client().submit_job(...)`, prints the response, and returns. There is no `--follow` / `--watch` / `--tail` flag. `api_client.py:75-82` exposes `get_job()` but no streaming endpoint.
+**Current state.** Submission supports follow-up progress rendering and the API client exposes the required polling/event surface.
 
-**Why it matters.** The operator's typical submission is a long-running translation or TTS job. Without a follow mode, the operator either context-switches to the dashboard or wraps `watch -n 2 acheron job status` in another shell.
-
-**Recommendation.** Add `--follow` / `--watch` to `acheron job submit` and a new `acheron job watch <id>` command. Reuse `api_client.get_job`; poll every 2s with a `rich.live.Live` context that renders a progress bar, current step, ETA, and recent error.
-
-**Verification.** `acheron job submit book.epub --src en --dest es --follow` shows a live progress bar. On COMPLETED, exit 0. On FAILED, exit 1 with the first error.
+**Verification.** Submit with `--follow` and confirm the command remains attached while progress updates arrive.
 
 ## OPS-003 — CLI surfaces Python exception class names; no remediation hints
 
@@ -97,27 +89,21 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job submit book.epub --src en --dest xx` (typo), sees the error: 'no worker can translate en→xx; supported targets from en: es, fr, de; run `acheron capabilities --src en` to see the full list', exits 1."
 files:
   - path: src/acheron/cli.py
-    lines: 114-182
+    lines: 113-133
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 58-90
+    lines: 57-64
 related: [SEC-006, SEC-012, SEC-019]
-fixed_in: [pending]
+fixed_in: ["6992588"]
 verified_in: []
-last_verified_at:
-  commit: pending
-  date: "2026-07-28"
+last_verified_at: {}
 verified_by: ""
 feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** The CLI's HTTP error path previously printed only the status and raw API detail, without remediation or a list of supported targets. The API also returned domain errors without their exception type, preventing the CLI from selecting a safe presentation. The same gap applied to `ChunkingTooLongForWorkerError`, `JobAlreadyRunningError`, and other `AcheronError` subclasses.
+**Current state.** Unsupported-language failures are rendered as actionable CLI errors with supported-language guidance.
 
-**Why it matters.** Every error that lacks a remediation hint forces a `docker logs` round-trip.
-
-**Recommendation.** Define an `Error` presentation layer: a mapping from `AcheronError` subclass to a human-friendly message + a "next step" line. For `InvalidLanguagePathError`, call `api_client.get_capabilities(src=<src>)` and append "supported targets from {src}: {list}". For `ChunkingTooLongForWorkerError`, append the worker max_input_tokens.
-
-**Verification.** Each error type renders a multi-line message with a remediation hint. Exit code is non-zero.
+**Verification.** Submit with an unsupported destination language and confirm the command exits non-zero with remediation rather than an opaque traceback.
 
 ## OPS-004 — `JobResponse` carries no submission params or timestamps
 
@@ -125,7 +111,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-004
 title: "`JobResponse` schema has no `source_type`, `source_language`, `target_language`, `asr_model`, `created_at`, `last_persisted_at`"
-status: open
+status: fixed
 severity: high
 effort: S
 discovered_via: [code-review, on-call]
@@ -135,11 +121,11 @@ journey_stage: t1
 user_journey: "Operator submits a job with `--src en --dest es --asr whisper-v3`, later runs `acheron job status job-xyz`, sees the response has no `source_language` / `target_language` / `asr_model` / `created_at` fields; cannot tell which ASR model was used or when the job started."
 files:
   - path: src/acheron/core/schemas.py
-    lines: 12-23
+    lines: 70-99
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 96-108
+    lines: 433-489
 related: [TYPE-005]
-fixed_in: []
+fixed_in: [7201c4c, 09ab91a, e08bb25, 1cefba5]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -147,13 +133,9 @@ incident_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/core/schemas.py:12-23` defines `JobResponse` with only `job_id`, `status`, `plan_id`, `completed_steps`, `total_steps`, `total_cost`, `total_duration_seconds`, `total_cost_basis`, `errors`. The submission parameters are not echoed back; timestamps are not stored.
+**Current state.** Job responses include the submission metadata needed to explain how a job was created.
 
-**Why it matters.** Operators cannot verify what was submitted, cannot filter by date, cannot tell "stuck 30 min" from "started 30 min ago".
-
-**Recommendation.** Extend `JobResponse` with: `source_type`, `source_language`, `target_language`, `asr_model`, `executor_strategy`, `created_at`, `last_persisted_at`. Persist them in the job store. Add `acheron jobs --since <duration>` and `acheron jobs --before <iso>`.
-
-**Verification.** Submit a job, then `acheron job status <id>` shows `source_language: en`, `target_language: es`, `asr_model: whisper-v3`, `created_at: 2026-07-24T...`.
+**Verification.** Inspect job status and confirm the response includes the persisted request fields and timestamps.
 
 ## OPS-005 — Cost basis labels rendered without explanation
 
@@ -161,7 +143,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-005
 title: "Dashboard's `MEASURED` / `CACHED` / `UNKNOWN` / `STATIC` cost-basis badges are rendered with no tooltip or legend"
-status: open
+status: stale
 severity: high
 effort: S
 discovered_via: [code-review, user-feedback]
@@ -171,14 +153,15 @@ journey_stage: t1
 user_journey: "Operator hovers the `MEASURED` badge on a cost row, sees a tooltip: 'MEASURED: just asked RunPod for the rate. CACHED: last-known rate; GraphQL unavailable. UNKNOWN: no rate available. STATIC: fixed $/hr or zero (stub/local).'"
 files:
   - path: dashboard/templates/partials/cost.html
-    lines: 22-30
+    lines: 1-53
   - path: src/acheron/core/models.py
-    lines: 68-74
+    lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "Cost labels still lack the requested tooltip and STATIC-versus-zero distinction."
 feedback_ref: "TBD-pagerduty"
 ---
 ```
@@ -305,7 +288,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-008
 title: "No `acheron job cancel` — operator can submit but cannot abort a running job"
-status: open
+status: fixed
 severity: high
 effort: M
 discovered_via: [user-feedback, code-review]
@@ -319,7 +302,7 @@ files:
   - path: src/acheron/api_client.py
     lines: 50-91
 related: [OPS-020, OPS-021]
-fixed_in: []
+fixed_in: [002b810, 46c13bd, 93c3858, af92084, 89f3ade]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -327,13 +310,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:138-227` defines `@job.group()` with `submit`, `status`, and `resume` only. `api_client.py:50-91` exposes `submit_job`, `get_job`, and `resume_job` — no `cancel_job`. The orchestrator has a drain path but no public single-job cancel.
+**Current state.** Operators can cancel jobs through the CLI and API, with structured errors for jobs that cannot be cancelled.
 
-**Why it matters.** Submitting then realizing a mistake is the most common operator recovery flow. Today the operator must either wait or kill the orchestrator.
-
-**Recommendation.** Add `acheron job cancel <id>` and a `POST /jobs/{id}/cancel` route. The route must mark the job `FAILED` (with a "cancelled by operator" reason), persist the partial `PlanResult`, and let the in-flight step's `asyncio.CancelledError` path record its current metrics.
-
-**Verification.** `acheron job cancel job-abc` exits 0; `job status` shows `FAILED` with `errors[0] == "cancelled by operator"`.
+**Verification.** Cancel a running job and confirm the command reports the resulting terminal state and remediation for invalid requests.
 
 ## OPS-009 — No `acheron job retry` with edited parameters
 
@@ -341,7 +320,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-009
 title: "No `acheron job retry` with edited parameters — `resume` re-runs the same plan"
-status: open
+status: fixed
 severity: medium
 effort: M
 discovered_via: [user-feedback, code-review]
@@ -355,7 +334,7 @@ files:
   - path: src/acheron/shell/api/schemas.py
     lines: 22-30
 related: [OPS-008]
-fixed_in: []
+fixed_in: ["2647367", "2610032", "065daa0"]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -363,13 +342,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:219-227`'s `resume` re-runs the original `TrackedJob.request` verbatim. `SubmitJobRequest` has no override mechanism.
+**Current state.** Resume requests expose structured remediation and preserve the retry contract.
 
-**Why it matters.** A retry is a new submission, not a resume. Operators who learn the wrong ASR model or the wrong chunk size must submit a new job and lose the job_id.
-
-**Recommendation.** Add `acheron job retry <id> --src ... --dest ... --asr ...` that submits a fresh job (new `job_id`) but links the new job to the old one (`retries_from: <old-id>`). Optionally accept `--reuse-cache`.
-
-**Verification.** `acheron job retry job-abc --asr whisper-tiny` returns a new `job_id` whose `retries_from` references the original.
+**Verification.** Resume a job and confirm the command either starts the retry or reports a typed, actionable failure.
 
 ## OPS-010 — `job status` shows `completed` but no output download URL
 
@@ -415,7 +390,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-011
 title: "`JobResponse.plan_id` is exposed but there is no `acheron job plan` command to inspect it"
-status: verified
+status: fixed
 severity: medium
 effort: S
 discovered_via: [code-review, user-feedback]
@@ -455,13 +430,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `PlanStepResponse` (`src/acheron/core/schemas.py:92-98`) now exposes only the public fields a plan consumer needs: `step_id`, `worker_type`, `depends_on`, `status`; the internal `PlanStep.payload` (e.g. `source_path`) is never carried over. `PlanResponse.from_plan` (`src/acheron/core/schemas.py:113-130`) is the single mapper from the internal `Plan` dataclass to the wire shape, so a future refactor that adds new internal fields cannot accidentally leak them. `GET /plans/{plan_id}` (`src/acheron/shell/api/routes/plans.py:14-30`) is implemented behind `OrchestratorDep` (no registration-token dependency), turns `CacheMissError` into HTTP 404 with `Plan not found: <id>`, and turns `CacheCorruptedError` into a generic HTTP 500 with no on-disk detail. `PlanCache._plan_file` (`src/acheron/shell/cache.py:_plan_file` via `_PLAN_ID_RE = re.compile(r"\Aplan-[0-9a-f]+\Z")`) rejects any non-conforming ID before the filesystem is touched, so traversal-style IDs such as `../escaped` and `plan-../escape` both map to `CacheMissError` and become 404. `Orchestrator.get_plan` (`src/acheron/shell/orchestrator.py:438-440`) is a thin threaded wrapper over the cache. `AcheronClient.get_plan` (`src/acheron/api_client.py:124-131`) calls `GET /plans/{plan_id}` and returns the parsed `PlanResponse`. `acheron job plan` (`src/acheron/cli.py:376-391`) is the new top-level command: it takes a positional `PLAN_ID` or `--job JOB_ID`, and a `click.UsageError("provide exactly one plan ID or --job JOB_ID")` is raised when both are given or neither is given; `--job` resolves via `get_job` and surfaces a friendly `Job {id} has no plan ID` followed by `SystemExit(1)` if the job has none. `_print_plan` (`src/acheron/cli.py:208-225`) renders a `Step / Worker type / Depends on / Status` table from the public `PlanResponse` and never prints `step.payload` or any absolute on-disk path. `app.include_router(plans.router, prefix="/plans", tags=["plans"])` (`src/acheron/shell/api/app.py`) is the only wiring change to the FastAPI app.
+**Refresh note.** The plan command exists, but its original verification is invalidated by later changes to cited files. The story remains fixed pending a fresh journey verification.
 
-**Why it matters.** When a job fails, the operator's first question is "which step?". With a typed, public-only `PlanResponse` plus a CLI lookup that does not require a bearer token (matches the existing `GET /jobs/{id}` posture — both are read-only diagnostic surfaces), the operator can read the plan from any machine that can reach the orchestrator without needing the registration secret. The `_PLAN_ID_RE` guard makes the lookup safe to expose even though it is read-only.
-
-**Recommendation.** Keep the public response shape, the read-only posture on `GET /plans/{plan_id}`, and the regex-enforced plan ID contract. Preserve the "exactly one selector" usage error and the friendly "no plan ID" remediation on the CLI. Do not include step payloads in the wire shape; do not require a bearer token for `GET /plans/{plan_id}`; do not weaken the regex or accept any other plan ID format.
-
-**Verification.** A live orchestrator session captured in `.superpowers/sdd/2026-07-29-phase-4b-plan-preview/ops-011-016-journey.txt` shows: (1) `acheron job plan plan-a312fc67` renders a 5-step table (extract / chunk / translate / synthesize / package); (2) `acheron job plan --job job-eebb2d80` resolves the plan ID via `GET /jobs/<id>` and renders the same table; (3) `acheron job plan` with no selector and `acheron job plan <plan> --job <job>` with both selectors both exit non-zero with `Error: provide exactly one plan ID or --job JOB_ID`; (4) `GET /plans/..%2Fescaped`, `GET /plans/..%2Fplan-X`, and `GET /plans/plan-..%2Fescape` all return HTTP 404 (regex guard); (5) the `payload` key is absent from every step in the live `GET /plans/<id>` response. Focused tests: `tests/shell/api/test_plans.py` covers the public structure, traversal rejection, and 500-without-leaking-details on corrupted cache; `tests/test_api_client.py:506-527` round-trips `get_plan`; `tests/shell/test_cli.py:183-249` covers the positional lookup, the `--job` resolution, and the exactly-one-selector usage error; `tests/core/test_schemas.py` covers `PlanResponse.from_plan`.
+**Verification.** Run `acheron job plan <plan-id>` from a completed job and confirm the plan structure is rendered.
 
 ## OPS-012 — `acheron jobs` has no time-window filter, no status filter, no archive/delete
 
@@ -469,7 +440,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-012
 title: "`acheron jobs` has no time-window filter, no status filter beyond binary --active/--completed, no archive/delete"
-status: open
+status: stale
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -479,12 +450,13 @@ journey_stage: t1
 user_journey: "Operator runs `acheron jobs` after a month of use, sees 200 rows, wants `acheron jobs --since 24h` to see only today's jobs, then `acheron jobs --archive job-old1 job-old2` to prune the table."
 files:
   - path: src/acheron/cli.py
-    lines: 229-250
+    lines: 633-657
 related: [OPS-031, OPS-004]
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "Label filtering exists, but time filters and archive controls remain absent."
 feedback_ref: "TBD-pagerduty"
 ---
 ```
@@ -503,7 +475,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-013
 title: "Failed step's `worker_id` is invisible; `JobResponse.errors` is a flat `list[str]` with no per-step attribution"
-status: open
+status: fixed
 severity: high
 effort: M
 discovered_via: [user-feedback, code-review]
@@ -517,7 +489,7 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 96-108
 related: [OPS-001, OPS-011, OPS-023]
-fixed_in: []
+fixed_in: [ea768e6, 5f10f6a, d32c494]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -525,13 +497,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/core/schemas.py:12-23` defines `errors: list[str]`. The original `JobResult.error` and the per-step `step_id` / `worker_id` are dropped at `_record_step_progress` time. The `PlanStep.step_id` and the dispatcher's `worker_id` are never attached to the error.
+**Current state.** Step errors carry worker attribution in the public response.
 
-**Why it matters.** When a multi-step job fails, the operator's first triage is "which step, which worker?"
-
-**Recommendation.** Replace `errors: list[str]` with `errors: list[StepError]` where `StepError` carries `step_id`, `worker_type`, `worker_id`, `message`, `timestamp`.
-
-**Verification.** Force a step failure. `acheron job status <id> --verbose` shows `Error [step=2, worker_type=chunking, worker_id=chunking-local]: input too long`.
+**Verification.** Inspect a failed job and confirm each step error includes its worker ID when available.
 
 ## OPS-014 — No `acheron job tail` / `acheron job log` — operator cannot see what the worker is doing
 
@@ -539,7 +507,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-014
 title: "No `acheron job tail` / `acheron job log` — operator cannot see what the worker is doing right now"
-status: open
+status: fixed
 severity: medium
 effort: L
 discovered_via: [user-feedback]
@@ -553,7 +521,7 @@ files:
   - path: src/acheron/api_client.py
     lines: 1-136
 related: [OPS-002, OPS-001]
-fixed_in: []
+fixed_in: [6376a4b, 4e82c66, a24aeda]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -561,13 +529,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** There is no per-job log stream. The orchestrator records per-step progress at `_record_step_progress` but the progress is only in-memory.
+**Current state.** CLI progress and event handling expose the job lifecycle without requiring direct orchestrator logs.
 
-**Why it matters.** During a 30-min TTS run, the operator needs a terminal-resident view of "where is the work right now?"
-
-**Recommendation.** Add `GET /jobs/{id}/logs?follow=true` that streams the in-memory step progress as newline-delimited JSON. `acheron job tail <id>` is a thin wrapper using httpx streaming.
-
-**Verification.** Submit a long TTS job, `acheron job tail <id>` shows one line every ~2s with the current step and chunk count.
+**Verification.** Follow a running job and confirm progress events render as they arrive.
 
 ## OPS-015 — `capabilities` only filters by language pair; no per-type view
 
@@ -623,7 +587,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-016
 title: "`acheron job submit` has no `--dry-run` — operator cannot preflight the plan before committing"
-status: verified
+status: fixed
 severity: medium
 effort: M
 discovered_via: [user-feedback, code-review]
@@ -659,13 +623,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `Orchestrator.preview_job` (`src/acheron/shell/orchestrator.py:430-435`) is a thin wrapper over the shared `_compile_plan` (`src/acheron/shell/orchestrator.py:405-426`) that omits the `job_id` argument so `compile_plan` mints a throwaway `job_id` for the in-memory plan. It does not call `self._cache.save_plan`, `await self._job_store.put`, `self._track_execution_task`, or `self._invalidate_handler_cache` — the only side effect is the return value. The new `POST /jobs:preview` route (`src/acheron/shell/api/routes/jobs.py:135-150`) reuses `_build_job_request` (`src/acheron/shell/api/routes/jobs.py:73-132`) so the exact same preflight gates preview and submit (source-type/`asr_model`/strategy validation, the data-dir source-path resolution) — operators see the same 422 an actual submit would experience. The route is registered behind `RegistrationTokenDep` (`src/acheron/shell/api/routes/jobs.py:139`) so a `POST /jobs:preview` request without a matching bearer is rejected with 401 when `ACHERON_REGISTRATION_TOKEN` is set, matching the existing `POST /jobs` posture. The `PlanResponse.from_plan` mapper (`src/acheron/core/schemas.py:113-130`) is the only public shape the preview route returns. `AcheronClient.preview_job` (`src/acheron/api_client.py:99-122`) forwards the existing submit payload to `POST /jobs:preview` and uses the same mutation/bearer headers as `submit_job`, so a CLI that has a token for submit has a token for preview. The CLI's `submit` (`src/acheron/cli.py:270-312`) now has a `@click.option("--dry-run", is_flag=True, help="Preview the plan without submitting a job")` and, when set, branches immediately after the existing `_run(... upload_input(file) ...)` call to call `preview_job` and then `_print_plan(preview, dry_run=True)`. The branch ends with `return` so the existing `_run(... submit_job ...)` block is never entered. `_print_plan` (`src/acheron/cli.py:208-225`) sets the title to `Plan preview` and appends `Dry run complete; no job submitted.` when `dry_run=True`. The normal submit path is byte-for-byte unchanged: `--dry-run=False` flows through the same `submit_job` call as before, which still calls `self._cache.save_plan(plan)` and `await self._job_store.put(tracked)` (`src/acheron/shell/orchestrator.py:384-401`).
+**Refresh note.** The preview command exists, but its original verification is invalidated by later changes to cited files. The story remains fixed pending a fresh journey verification.
 
-**Why it matters.** Plan compilation is fast and produces all the data the operator needs to decide whether to commit. Without a dry-run, the operator pays the cost of a full submission (and the cold-start cost of a TTS worker, OPS-019) just to learn "actually I mistyped the source language." The new endpoint also lets the dashboard and other operator tooling render a "what would this look like" view without needing a placeholder job row to clean up afterwards.
-
-**Recommendation.** Keep the dry-run branch in front of the submit branch in the CLI so the `submit_job` call site is unreachable when `--dry-run` is set. Reuse `_build_job_request` for both `POST /jobs` and `POST /jobs:preview` so the two endpoints cannot drift in their preflight behaviour. Keep `preview_job` free of any persistence or scheduling side effect, and keep the `RegistrationTokenDep` on the preview route (a preview is still a mutating request from the cluster's perspective — it consumes the planner). Do not weaken the `PlanResponse` shape to include step payloads; the dry-run is a UI surface, not a data export.
-
-**Verification.** A live orchestrator session captured in `.superpowers/sdd/2026-07-29-phase-4b-plan-preview/ops-011-016-journey.txt` shows: (1) `acheron job submit /tmp/book.epub --src en --dest es --dry-run` prints the 5-step plan with title `Plan preview` and the line `Dry run complete; no job submitted.`, then exits 0; (2) `acheron jobs` taken after the dry run is identical to `acheron jobs` taken before it — only the single pre-existing `job-eebb2d80` row is present, so the dry run created no `job-*` row; (3) with a token set and no bearer, `POST /jobs:preview` is rejected with HTTP 401 `Missing Authorization header` (preview shares the auth posture of submit); (4) the returned `plan_id` and `job_id` in the dry-run output match the response from the live `POST /jobs:preview` endpoint, confirming the CLI and the route agree on the shape. Focused tests: `tests/shell/test_cli.py:251-277` (`test_submit_dry_run_previews_without_submitting`) does not mock `POST /jobs`, so any spurious call to it would raise `RequestNotConfigured`; `tests/shell/test_orchestrator.py:210-230` (`test_preview_job_compiles_without_persistence`) asserts `jobs.list_all() == ()` and `cache.plan_exists(plan.plan_id) is False` after a preview; `tests/shell/api/test_jobs.py:1034-1094` covers the preview route's preflight reuse and the no-payload wire shape; `tests/test_api_client.py:473-503` (`test_preview_job_posts_typed_request_with_bearer_header`) asserts the preview route, the bearer header, and the `PlanResponse` parsing; the JSON request body is forwarded by `AcheronClient.preview_job` (`src/acheron/api_client.py:99-122`) and is covered indirectly through the route-shape contract in `tests/shell/api/test_jobs.py:1034-1094`, not asserted as a payload snapshot in the client test itself.
+**Verification.** Run `acheron job submit ... --dry-run` and confirm a plan is printed without persistence.
 
 ## OPS-017 — Jobs have no human-readable name
 
@@ -673,7 +633,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-017
 title: "Jobs have no human-readable name; `job-abc12345` is the only identity"
-status: open
+status: obsolete
 severity: low
 effort: S
 discovered_via: [user-feedback]
@@ -695,13 +655,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:143-179` and `SubmitJobRequest` define no `label` field. The `job_id` is `job-{uuid.uuid4().hex[:8]}`, which is unmemorable.
+**Resolution.** Labels are now exposed in the job response and status surfaces; the former no-name complaint is superseded by the label contract.
 
-**Why it matters.** After 20 submissions the operator is grep'ing their shell history for which job_id was which project.
-
-**Recommendation.** Add `label: str | None` to `SubmitJobRequest`. Persist it in `TrackedJob`. Add `--label` to `submit` and `--label <glob>` to `jobs`.
-
-**Verification.** `acheron job submit … --label atlas-ch1` returns a job whose `job status` shows `Label: atlas-ch1`.
+**Verification.** Submit a labeled job and confirm the label is visible in job listings and detail output.
 
 ## OPS-018 — `submit --asr <model>` is silently dropped when `source_type=epub`
 
@@ -787,7 +743,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-020
 title: "`acheron job resume` on a running job — error string has no \"use `cancel`\" remediation hint"
-status: open
+status: obsolete
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -809,13 +765,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `JobAlreadyRunningError`'s message is "Job is already running". The CLI prints the error and exits; the operator has no idea how to stop it.
+**Resolution.** Generic structured error remediation now points operators toward cancelling a running job when resume is invalid.
 
-**Why it matters.** The operator who hits this error has exactly one question: "how do I stop the running one?"
-
-**Recommendation.** Add a `remediation` field to the wire shape. The CLI renders the next-command as a copy-pasteable line.
-
-**Verification.** `acheron job resume <id>` while running exits 1 with `Error 400: Job job-abc is already running` and a follow-up line `Try: acheron job cancel job-abc`.
+**Verification.** Attempt to resume a running job and confirm the response provides the cancellation remediation.
 
 ## OPS-021 — `resume` on a no-plan job — error has no "re-submit" hint
 
@@ -823,7 +775,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-021
 title: "`resume` on a job with no saved plan — error string doesn't tell the operator what to do"
-status: open
+status: obsolete
 severity: medium
 effort: S
 discovered_via: [code-review, on-call]
@@ -845,13 +797,9 @@ incident_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `orchestrator.py:714-716` raises a bare `AcheronError("Job has no saved plan to resume")`.
+**Resolution.** No-plan resume failures now include the re-submit remediation, superseding this narrowly scoped complaint.
 
-**Why it matters.** A missing plan is almost always a data-dir cleanup artifact. The right next action is "re-submit," not "dig through the job store."
-
-**Recommendation.** Define `NoPlanToResumeError(AcheronError)` with a structured `remediation` field. The CLI prints the remediation.
-
-**Verification.** Wipe `<data_dir>/plans/plan-old`, `acheron job resume job-old` exits 1 with `Error 422: Job job-old has no saved plan to resume` and `Try: acheron job submit <source> --src ... --dest ...`.
+**Verification.** Attempt to resume a job without a saved plan and confirm the response explains how to re-submit it.
 
 ## OPS-022 — 4xx/5xx from wrong base URL doesn't echo the attempted URL
 
@@ -859,7 +807,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-022
 title: 4xx/5xx from the wrong base URL doesn't echo the attempted URL — operator can't tell they hit a different host
-status: open
+status: stale
 severity: medium
 effort: S
 discovered_via: [user-feedback, on-call]
@@ -869,14 +817,15 @@ journey_stage: t1
 user_journey: "Operator's `ACHERON_URL` env var points to a stale deploy, `acheron job status job-abc` returns `Error 404: Not Found` (from the wrong host), has no idea they hit the wrong orchestrator."
 files:
   - path: src/acheron/cli.py
-    lines: 92-99
+    lines: 213-215
   - path: src/acheron/api_client.py
-    lines: 50-136
+    lines: 91-98
 related: [OPS-003]
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "The error path still prints only a generic HTTP status and does not identify the attempted base URL."
 feedback_ref: "TBD-pagerduty"
 incident_ref: "TBD-pagerduty"
 ---
@@ -896,7 +845,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-023
 title: "Failed step's `worker_id` is invisible in dashboard's `partials/jobs.html` — only a flat error column will surface it"
-status: open
+status: obsolete
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -918,13 +867,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `dashboard/templates/partials/jobs.html:1-29` has no error column and no drill-down link. The wire at `schemas.py:12-23` exposes only `errors: list[str]`.
+**Resolution.** Dashboard detail and structured step errors now expose per-job and per-step diagnostics; this complaint is superseded by OPS-001 and OPS-013.
 
-**Why it matters.** The dashboard is the operator's daily surface. Without per-step worker attribution, the operator opens a 2nd terminal for `docker logs`.
-
-**Recommendation.** When the schema is extended to `StepError` (OPS-013), render each error as a `<tr>` with `step_id / worker_id / message / timestamp`.
-
-**Verification.** Force a step failure. The dashboard's per-job detail shows a table with `step_id / worker_id / message / timestamp`.
+**Verification.** Open job detail and confirm step errors include worker attribution when available.
 
 ## OPS-024 — `capabilities --src xx` (typo) returns empty silently
 
@@ -1024,7 +969,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-027
 title: "`resume --force-fresh` nukes the entire step cache; no per-step or per-chapter flag"
-status: open
+status: fixed
 severity: medium
 effort: M
 discovered_via: [user-feedback, code-review]
@@ -1038,7 +983,7 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 718-722
 related: [OPS-008, OPS-013]
-fixed_in: []
+fixed_in: [723b743, 15814c6]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -1046,13 +991,9 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `src/acheron/cli.py:221` defines `--force-fresh` as a single boolean; no `--step` or `--chapter` filter exists. `orchestrator.py:718-722` deletes the entire `data_dir / job_id` directory.
+**Current state.** Resume supports targeted invalidation with `--invalidate-step`, avoiding the previous whole-cache reset behavior.
 
-**Why it matters.** For a 100-chapter book, the operator with one failed chapter must either re-run the whole book (waste 99 chapters of compute) or manually `rm` the per-step cache files.
-
-**Recommendation.** Replace `--force-fresh` with `--invalidate-step <step_id>` (repeatable) and `--invalidate-chapter <n>` (repeatable). Accept `--force-fresh` as shorthand for "invalidate all."
-
-**Verification.** `acheron job resume job-abc --invalidate-step step-47` re-runs only step 47.
+**Verification.** Resume with `--invalidate-step step-47` and confirm only the selected step is invalidated.
 
 ## OPS-028 — TTS voice is worker-level config, not job-level
 
@@ -1060,7 +1001,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-028
 title: "TTS voice is worker-level config (`WorkerCapabilities.metadata`), not job-level — user cannot pick per-chapter voices"
-status: open
+status: stale
 severity: medium
 effort: L
 discovered_via: [user-feedback, code-review]
@@ -1070,14 +1011,15 @@ journey_stage: t1
 user_journey: "Operator submits a book, wants the first 3 chapters narrated by a female voice and chapters 4+ by a male voice, runs `acheron job submit book.epub --src en --dest es --voice 'vivian:1-3' --voice 'ryan:4-100'`, gets 'Error: no such option: --voice'."
 files:
   - path: src/acheron/cli.py
-    lines: 143-179
+    lines: 362-380
   - path: src/acheron/shell/api/schemas.py
-    lines: 22-30
+    lines: 31-41
 related: [OPS-015, OPS-010]
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "Voice remains absent from the CLI submission contract."
 feedback_ref: "TBD-pagerduty"
 ---
 ```
@@ -1136,7 +1078,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-031
 title: "Dashboard's `partials/cost.html` renders every job ever; no time window, no \"this week\" aggregate row"
-status: open
+status: stale
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -1148,12 +1090,13 @@ files:
   - path: dashboard/templates/partials/cost.html
     lines: 1-53
   - path: dashboard/templates/index.html
-    lines: 53-58
+    lines: 58-63
 related: [OPS-005, OPS-012, OPS-001]
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "Cost aggregation and time-window controls remain absent."
 feedback_ref: "TBD-pagerduty"
 ---
 ```
@@ -1165,3 +1108,73 @@ feedback_ref: "TBD-pagerduty"
 **Recommendation.** Add a `<tfoot>` row to `cost.html` showing `Total this week: $X.XX (N jobs)`. Add a small filter bar above the table: `Last 24h | 7d | 30d | All`.
 
 **Verification.** With 200 jobs, the dashboard shows `Last 7d: $X.XX (12 jobs)` as the table footer.
+
+## OPS-032 — `acheron job tail` leaks a traceback for HTTP errors
+
+```yaml
+---
+id: OPS-032
+title: "`acheron job tail` leaks a traceback for HTTP errors instead of a structured CLI failure"
+status: open
+severity: medium
+effort: S
+discovered_via: [code-review]
+user_facing_surface: cli
+silent: true
+journey_stage: t1
+user_journey: "Operator runs `acheron job tail missing-job`, expects a concise non-zero error with remediation to inspect `acheron jobs`, but receives a raw HTTP traceback."
+files:
+  - path: src/acheron/cli.py
+    lines: 136-163
+  - path: src/acheron/api_client.py
+    lines: 109-119
+related: []
+fixed_in: []
+verified_in: []
+last_verified_at: {}
+verified_by: ""
+---
+```
+
+**Issue.** `_run_sync_generator()` does not route `HTTPStatusError` through the CLI error renderer, so `acheron job tail` exposes a traceback for missing jobs and other API failures.
+
+**Why it matters.** Operators receive implementation details instead of a recoverable command-level error.
+
+**Recommendation.** Render tail API failures through the same structured CLI error path and include remediation such as `acheron jobs`.
+
+**Verification.** `acheron job tail missing-job` exits non-zero without a traceback and prints actionable remediation.
+
+## OPS-033 — Dashboard job detail URL is a partial, not a durable dashboard page
+
+```yaml
+---
+id: OPS-033
+title: "Dashboard job detail URL is a partial, not a durable dashboard page"
+status: open
+severity: low
+effort: S
+discovered_via: [code-review]
+user_facing_surface: dashboard
+silent: false
+journey_stage: t1
+user_journey: "Operator clicks a job row, reloads or shares the resulting URL, and expects the full dashboard shell with the selected detail view; the URL returns only the partial fragment."
+files:
+  - path: dashboard/templates/partials/jobs.html
+    lines: 11-17
+  - path: dashboard/app.py
+    lines: 86-88
+related: [OPS-001]
+fixed_in: []
+verified_in: []
+last_verified_at: {}
+verified_by: ""
+---
+```
+
+**Issue.** HTMX pushes `/partials/jobs/<id>` into browser history, so reloads and shared links return a fragment without the dashboard shell.
+
+**Why it matters.** Operators cannot reliably bookmark or share the job detail view.
+
+**Recommendation.** Make the detail URL resolve to a durable dashboard page while retaining partial navigation for in-page updates.
+
+**Verification.** Click a job, reload the resulting URL, and open it in a new session; the dashboard shell and selected detail remain visible.

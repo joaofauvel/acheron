@@ -1,7 +1,7 @@
 ---
 theme: MAINT
-last_updated_date: 2026-07-28
-version: 2
+last_updated_date: 2026-07-30
+version: 3
 ---
 
 # MAINT
@@ -15,7 +15,7 @@ version: 2
 ---
 id: MAINT-001
 title: "`shell/api/routes/` has no admin namespace; on-call cannot reap / mark-failed / drain stuck jobs after orchestrator restart"
-status: open
+status: stale
 severity: high
 effort: M
 discovered_via: [on-call, code-review]
@@ -25,9 +25,9 @@ journey_stage: t2
 user_journey: "On-call engineer SSHes in after a 2am page: orchestrator was `kill -9` during a deploy, restarted, finds 7 jobs in `status=RUNNING` with no active task. Engineer runs `acheron admin reap-stuck --older-than 60s --reason orphaned_by_restart`, sees 7 jobs reaped, each marked FAILED with the reason; dashboard shows the per-job FAILED rows within 5s."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 274-340
+    lines: 353-419
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 1-108
+    lines: 273-395
 related: [OBS-001, OBS-014, OBS-015]
 fixed_in: []
 verified_in: []
@@ -37,11 +37,11 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** The orchestrator's recovery paths are in-process. A `kill -9` skips the lifespan. In-flight jobs stay in `RUNNING` state in Redis forever. The shell API at `routes/jobs.py` has only `POST /jobs`, `GET /jobs`, `POST /jobs/{id}/resume` — no DELETE / `POST /jobs/{id}/cancel` / `POST /admin/*`. The on-call's only path is `redis-cli hset job:<id> status failed`.
+**Issue.** The orchestrator's recovery paths are in-process. A `kill -9` skips the lifespan, leaving in-flight jobs in `RUNNING` state in Redis. The shell API now exposes cancellation, retry, preview, logs, resume, and label filtering, but still has no `/admin` namespace for reaping or marking orphaned jobs.
 
-**Why it matters.** 5 of 14 on-call failure modes require this recovery.
+**Why it matters.** On-call still needs a supported recovery path for jobs orphaned by an orchestrator restart.
 
-**Recommendation.** Add a `/admin` namespace: `POST /admin/jobs/{id}/mark-failed`, `POST /admin/jobs/reap-stale?older-than=60s`, `POST /admin/drain`, `POST /admin/rotate-token`. Plumb CLI: `acheron admin reap-stuck --older-than 60s --reason ...`.
+**Recommendation.** Add a `/admin` namespace: `POST /admin/jobs/{id}/mark-failed`, `POST /admin/jobs/reap-stale?older-than=60s`, `POST /admin/drain`, and `POST /admin/rotate-token`.
 
 **Verification.** With 3 stuck jobs, `acheron admin reap-stuck --older-than 60s` returns 200 with `{ reaped: 3, job_ids: [...] }`.
 
@@ -51,7 +51,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-002
 title: "When a job is FAILED with `gpu_seconds` recorded, the cost row doesn't show which GPU the rate was queried for, or how stale it is"
-status: open
+status: stale
 severity: high
 effort: S
 discovered_via: [on-call, code-review]
@@ -63,7 +63,7 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 248-263
   - path: src/acheron/core/models.py
-    lines: 68-74
+    lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
 fixed_in: []
 verified_in: []
@@ -161,7 +161,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-005
 title: "Cert rotation requires orchestrator restart — `uvicorn` does not reload `ssl_certfile` / `ssl_keyfile` after a SIGHUP, and the operator has no `/admin/certs/reload` endpoint"
-status: open
+status: stale
 severity: medium
 effort: M
 discovered_via: [on-call, code-review]
@@ -172,8 +172,8 @@ user_journey: "On-call rotates `orchestrator.crt` and `orchestrator.key` on disk
 files:
   - path: src/acheron/tls.py
     lines: 36-52
-  - path: src/acheron/shell/orchestrator.py
-    lines: 233-253
+  - path: src/acheron/worker_sdk/_server.py
+    lines: 42-50
 related: [MAINT-003]
 fixed_in: []
 verified_in: []
@@ -233,7 +233,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-007
 title: "No `acheron token rotate` command and no audit trail — the on-disk `.registration_token` has no creation timestamp and no rotation history"
-status: open
+status: stale
 severity: high
 effort: M
 discovered_via: [on-call, code-review, audit]
@@ -243,7 +243,7 @@ journey_stage: t2
 user_journey: "On-call at 2am runs `acheron token status` and sees `created_at=2024-01-15 rotations=0 current_token=ab12...`. Engineer runs `acheron token rotate --reason incident-2026-07-24-worker-401`; a new token is generated, persisted to `.registration_token` (mode 0600), the previous token is appended to `.registration_token.history` with `rotated_at` and `reason`."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 255-282
+    lines: 324-351
   - path: src/acheron/worker_sdk/registration.py
     lines: 42-69
 related: [MAINT-006, SEC-008]
@@ -269,7 +269,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-008
 title: "No \"stuck > N minutes\" filter in `list_jobs` — the on-call at 2am cannot find the 3 stuck jobs among 200 in the dashboard's flat list"
-status: open
+status: stale
 severity: high
 effort: S
 discovered_via: [on-call, code-review]
@@ -279,9 +279,9 @@ journey_stage: t2
 user_journey: "On-call at 2am opens the dashboard, sees 200 jobs (190 SUCCESS, 3 FAILED, 7 RUNNING). Engineer clicks the 'Stuck' filter, sets 'Older than 30 min', and the list collapses to the 3 RUNNING jobs whose `submitted_at` is > 30 min ago."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 735-737
+    lines: 1029-1031
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 1-108
+    lines: 386-395
 related: [MAINT-001]
 fixed_in: []
 verified_in: []
@@ -365,7 +365,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-010
 title: "Worker re-registration inherits stale state — `register()` overwrites the worker hash but does not reset `consecutive_failures`, `status`, or `last_error` from the previous lifecycle"
-status: open
+status: obsolete
 severity: medium
 effort: S
 discovered_via: [on-call, code-review]
@@ -387,13 +387,9 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** `RedisWorkerStore.register` overwrites only the keys in `_worker_fields`. The `last_health_check` and any pre-existing fields not in `_worker_fields` survive. Re-registration is silent — the orchestrator logs `Registered worker %s` but no "state was reset" breadcrumb.
+**Resolution.** `_worker_fields()` now resets `consecutive_failures`, `status`, `last_error`, and `booting_since` during worker re-registration. The stale-state complaint is obsolete.
 
-**Why it matters.** Re-registration is the routine on-call action when a worker restarts.
-
-**Recommendation.** `RedisWorkerStore.register` deletes the old hash before re-writing: `pipe.delete(key); pipe.hset(mapping=fields)`. The orchestrator logs `INFO worker %s re-registered, state reset (prev last_health_check=%s, prev consecutive_failures=%d)`.
-
-**Verification.** Worker A registers with `consecutive_failures=2`, `status=BOOTING`. Worker A re-registers 30s later. The Redis hash has `consecutive_failures='0'`, `status=HEALTHY`, `last_health_check=t1+30s`.
+**Verification.** Re-register a worker after failures and confirm its health state starts clean.
 
 ## MAINT-011 — `last_error` is wiped on first successful probe
 
@@ -401,7 +397,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-011
 title: "`last_error` is wiped on the first successful probe — the error trail that caused `record_health_failure` to unregister the worker is gone before the on-call can read it"
-status: open
+status: stale
 severity: high
 effort: M
 discovered_via: [on-call, code-review]
@@ -411,7 +407,7 @@ journey_stage: t2
 user_journey: "Worker fails 3 health checks in a row; `last_error` accumulates to `ConnectError: Connection refused`. Worker recovers; next probe is HEALTHY; `record_health_success` overwrites `last_error` to `''` AND sets `status=HEALTHY`. On-call opens the dashboard to see the recovered worker; the row shows `HEALTHY — last error: (none)`. The 3 failures that just happened are gone."
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 510-518
+    lines: 592-601
 related: [OBS-007]
 fixed_in: []
 verified_in: []
@@ -435,7 +431,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-012
 title: "`ACHERON_DATA_DIR` grows monotonically with no auto-pruning and no `acheron cleanup` command — `_verify_data_dir_writable` checks writability, not capacity"
-status: open
+status: stale
 severity: high
 effort: M
 discovered_via: [on-call, code-review, audit]
@@ -445,9 +441,7 @@ journey_stage: t2
 user_journey: "On-call at 2am gets paged: `POST /jobs` returns 500 with `Data dir /data/jobs is not writable: [Errno 28] No space left on device`. Engineer runs `acheron cleanup --keep-successful 7d --keep-failed 30d --dry-run`; the CLI prints the 23 jobs that would be pruned (8.2G reclaimable) and prompts `--apply`."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 142-158
-  - path: src/acheron/shell/orchestrator.py
-    lines: 233-253
+    lines: 211-227
 related: []
 fixed_in: []
 verified_in: []
@@ -471,7 +465,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-013
 title: "`bind_request_id` injects a UUID into every orchestrator log line but the CLI never echoes the request_id back to the operator — the on-call at 2am has the job_id, not the request_id"
-status: open
+status: stale
 severity: medium
 effort: S
 discovered_via: [on-call, code-review]
@@ -481,7 +475,7 @@ journey_stage: t2
 user_journey: "On-call submits `acheron job submit ...`; the CLI prints `job_id=job-abcd1234` and exits 0. The orchestrator's request handler at `api/app.py:87-90` minted a request_id `req-9f8e7d6c` and bound it to the log context, so every log line for this submission has `request_id=req-9f8e7d6c` — but the CLI never received the `x-request-id` response header."
 files:
   - path: src/acheron/shell/api/app.py
-    lines: 86-90
+    lines: 88-92
 related: [OPS-003]
 fixed_in: []
 verified_in: []
@@ -581,7 +575,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-016
 title: "Dashboard does not surface the running image SHA / version pin — operator at 2am cannot tell which `ghcr.io/...:sha-abc1234` is deployed"
-status: open
+status: stale
 severity: high
 effort: M
 discovered_via: [on-call, audit]
@@ -591,9 +585,9 @@ journey_stage: t2
 user_journey: "On-call at 2am gets paged: 'regression in worker response format — what version are we on?'. Engineer opens the dashboard; the header shows `Acheron v1.4.2 (build sha-abc1234 2026-07-23 14:22 UTC, branch master, dirty=False)`."
 files:
   - path: src/acheron/shell/api/app.py
-    lines: 97-99
-  - path: dashboard/app.py
-    lines: 1-50
+    lines: 102-104
+  - path: dashboard/templates/index.html
+    lines: 39-40
 related: []
 fixed_in: []
 verified_in: []
@@ -617,7 +611,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-017
 title: "`HF_HUB_OFFLINE=1` + stale cache = silent wrong weights — switching `TRANSLATEGEMMA_MODEL_ID` from 12b to 4b leaves the old 12b snapshot on disk and the new worker loads it without a checksum or path validation"
-status: open
+status: obsolete
 severity: high
 effort: M
 discovered_via: [on-call, audit, code-review]
@@ -639,10 +633,76 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** The translategemma handler reads `TRANSLATEGEMMA_MODEL_ID` and resolves weights via Hugging Face's offline cache layout. When the operator changes the env var, the cache directory is not cleaned, and the new `model_id` may or may not exist in the cache.
+**Resolution.** The handler passes the configured model ID directly to Hugging Face loading and has no fallback to another model snapshot. The previously described silent old-model fallback is not present.
 
-**Why it matters.** Model ID changes are routine. The operator's mental model is "I changed the env var, the worker loads the new model". The actual behavior is silent wrong-weights loading.
+**Verification.** Change the configured model ID and confirm loading targets that ID rather than silently selecting another snapshot.
 
-**Recommendation.** Workers emit a structured `startup_log` line: `{model_id, resolved_snapshot_sha, snapshot_path, files_loaded}`. The orchestrator's `POST /workers` includes the loaded `model_id` in `capabilities.metadata`; the dashboard shows it in the worker row.
+## MAINT-018 — Redis job schema has no upgrade path
 
-**Verification.** Worker A starts with `MODEL_ID=12b`. Operator changes env var to `4b`, restarts. Worker B's startup log shows `model_id=4b resolved_snapshot_sha=<4b-snapshot>`. The orchestrator's `GET /workers/<id>` returns the model_id. If the 4b snapshot is missing, the worker fails to start with a clear error.
+```yaml
+---
+id: MAINT-018
+title: "Redis job records have no upgrade path across schema changes"
+status: open
+severity: high
+effort: M
+discovered_via: [code-review]
+user_facing_surface: internal
+silent: true
+journey_stage: t2
+user_journey: "An operator restarts the orchestrator after a schema deployment and lists an older persisted job; deserialization fails because the record lacks newly required fields, blocking recovery and visibility."
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 359-380
+  - path: src/acheron/shell/stores/redis.py
+    lines: 406-503
+related: []
+fixed_in: []
+verified_in: []
+last_verified_at: {}
+verified_by: ""
+---
+```
+
+**Issue.** Redis deserialization directly requires newer label, progress, timestamps, and structured-error fields that older records do not contain.
+
+**Why it matters.** A deployment can make existing jobs unreadable, preventing operators from recovering or inspecting work already in progress.
+
+**Recommendation.** Define an explicit persisted-schema version and migration/defaulting path for older Redis records.
+
+**Verification.** Load a pre-change record after upgrade and confirm it is migrated or safely defaulted without losing job visibility.
+
+## MAINT-019 — Completed job event buffers are never evicted
+
+```yaml
+---
+id: MAINT-019
+title: "Completed job event buffers are retained indefinitely"
+status: open
+severity: medium
+effort: M
+discovered_via: [code-review]
+user_facing_surface: internal
+silent: true
+journey_stage: t2
+user_journey: "A long-running orchestrator completes many jobs; terminal event buffers remain retained after subscribers leave, and memory usage grows until the process is pressured or restarted."
+files:
+  - path: src/acheron/shell/job_events.py
+    lines: 14-35
+  - path: src/acheron/shell/orchestrator.py
+    lines: 762-768
+related: []
+fixed_in: []
+verified_in: []
+last_verified_at: {}
+verified_by: ""
+---
+```
+
+**Issue.** `JobEventBroker.finish()` removes subscribers but does not evict the completed job's buffered events.
+
+**Why it matters.** Long-lived services accumulate terminal-job history in memory even after no client can consume it.
+
+**Recommendation.** Bound or evict completed event buffers after terminal delivery while preserving active subscribers.
+
+**Verification.** Complete jobs and confirm their buffers are released according to the retention policy.

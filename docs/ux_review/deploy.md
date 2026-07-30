@@ -1,12 +1,12 @@
 ---
 theme: DEPLOY
-last_updated_date: 2026-07-24
-version: 2
+last_updated_date: 2026-07-30
+version: 3
 ---
 
 # DEPLOY
 
-**Grade**: C (1 high + 4 medium + 2 low-severity open stories)
+**Grade**: C (1 high + 4 medium + 1 low unresolved story)
 **Calibration target**: a developer who has used Docker but never used RunPod, given 1 day, should succeed without help.
 
 ## DEPLOY-001 — Asymmetric edge env-var defaults across the three worker profiles
@@ -52,7 +52,7 @@ verified_by: ""
 ---
 id: DEPLOY-002
 title: Dev cert CN/SAN list does not match the compose worker hostnames; orchestrator→stub TLS handshakes fail on a fresh clone
-status: open
+status: stale
 severity: high
 effort: S
 discovered_via: [code-review, first-run]
@@ -66,7 +66,7 @@ files:
   - path: scripts/generate_dev_certs.py
     lines: 120-128
   - path: docker-compose.yml
-    lines: 86-156
+    lines: 89-174
 related: []
 fixed_in: []
 verified_in: []
@@ -178,7 +178,7 @@ journey_stage: t0
 user_journey: "Deployer in a GitHub org (e.g., `myorg/acheron-fork`) copies the top-level README's `ghcr.io/<repo>/acheron-qwen3tts-runpod:<tag>` placeholder and substitutes `<repo>` with `acheron-fork`, getting `ghcr.io/acheron-fork/acheron-qwen3tts-runpod:<tag>`. RunPod's template creation rejects the image (404 from ghcr.io) because the org's package path is `ghcr.io/myorg/...`."
 files:
   - path: README.md
-    lines: 209-211
+    lines: 213-217
   - path: workers/qwen3tts/README.md
     lines: 6-9
   - path: workers/granite_speech/README.md
@@ -217,9 +217,9 @@ journey_stage: t0
 user_journey: "Deployer follows the top-level README's 'GPU & VRAM Guidance' (line 205) and provisions an L4 GPU (24GB) for the Qwen3-TTS endpoint. First job submission cold-starts the qwen3tts-runpod worker. The handler loads `Qwen3-TTS-12Hz-1.7B-CustomVoice`; without FlashAttention 2, the inference peak memory exceeds 24GB; the worker OOMs. The RunPod endpoint logs the OOM, retries twice with the same result, and marks the job FAILED."
 files:
   - path: README.md
-    lines: "205"
+    lines: 233-238
   - path: workers/qwen3tts/Dockerfile.runpod
-    lines: 23-34
+    lines: 33-37
 related: [DOC-013]
 fixed_in: []
 verified_in: []
@@ -288,8 +288,8 @@ user_journey: "Deployer provisions Acheron for production with a real CA-signed 
 files:
   - path: docker-compose.yml
     lines: 15-25
-  - path: docker-compose.yml
-    lines: 38-44
+  - path: Justfile
+    lines: 46-48
   - path: scripts/generate_dev_certs.py
     lines: 140-148
 related: [SEC-001]
@@ -314,7 +314,7 @@ verified_by: ""
 ---
 id: DEPLOY-009
 title: "`ACHERON_OPEN_REGISTRATION` env var is read by the orchestrator but is not documented in `.env.example` or the README's Configuration Reference table"
-status: open
+status: obsolete
 severity: low
 effort: S
 discovered_via: [code-review]
@@ -335,13 +335,9 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `src/acheron/shell/api/deps.py:25-35` reads `ACHERON_OPEN_REGISTRATION` directly from `os.environ`. The env var bypasses the token check for worker registration (the dev-only escape hatch). `.env.example:1-36` does not document it; README.md's Configuration Reference table does not list it.
+**Resolution.** The configuration reference now documents `ACHERON_OPEN_REGISTRATION` at `README.md:328`. The `.env.example` omission remains a documentation polish item, but the original operator journey no longer requires source inspection.
 
-**Why it matters.** A deployer who wants to iterate on a custom worker against a compose-orchestrated orchestrator has no documentation for the env-var form.
-
-**Recommendation.** Add `ACHERON_OPEN_REGISTRATION=0` to `.env.example` with a one-line comment. Add the same env var to README.md's Configuration Reference table.
-
-**Verification.** `grep -n 'ACHERON_OPEN_REGISTRATION' .env.example README.md` returns at least one hit in each.
+**Verification.** A deployer can discover the development-only open-registration switch from the README configuration table.
 
 ## DEPLOY-010 — TranslateGemma README's "Switching model variants" contradicts `HF_HUB_OFFLINE=1`
 
@@ -360,8 +356,8 @@ user_journey: "Deployer follows the translategemma/README.md:79-83 'Switching mo
 files:
   - path: workers/translategemma/Dockerfile.runpod
     lines: 11-14
-  - path: workers/translategemma/README.md
-    lines: 79-83
+  - path: README.md
+    lines: 102-106
 related: []
 fixed_in: []
 verified_in: []
@@ -435,7 +431,7 @@ files:
   - path: .env.example
     lines: 4-9
   - path: docker-compose.yml
-    lines: 33-36
+    lines: 36-40
 related: [DX-005]
 fixed_in: []
 verified_in: []
@@ -469,7 +465,7 @@ journey_stage: t0
 user_journey: "Deployer reads translategemma/README.md:14-30 and provisions a RunPod serverless template with `containerDiskInGb: 30` based on the '≥ 30 GB (the snapshot is ~26GB)' hint. If the image layers or runtime artifacts push the total over 30GB (torch 2.5.1 + cu121 + transformers + runpod is ~5GB, the image base is ~1GB, working files during inference can be ~2GB), the first cold start OOMs."
 files:
   - path: workers/translategemma/README.md
-    lines: 14-30
+    lines: 45-49
 related: [DOC-013]
 fixed_in: []
 verified_in: []
@@ -502,13 +498,13 @@ journey_stage: t0
 user_journey: "Deployer follows README.md:177-181 'Network Volume for HF cache' and runs `huggingface-cli download google/translategemma-12b-it` to pre-warm the 26GB weights. The download takes 90+ minutes on a typical 1 Gbps connection (vs. the 20 minutes the worker README implies via `HF_HUB_ENABLE_HF_TRANSFER=1`). The deployer reads the worker README, sees the parallel `hf-transfer` instruction, and switches mid-pre-warm."
 files:
   - path: README.md
-    lines: 192-200
+    lines: 193-207
   - path: workers/qwen3tts/README.md
-    lines: 11-31
+    lines: 24-38
   - path: workers/granite_speech/README.md
-    lines: 11-31
+    lines: 24-41
   - path: workers/translategemma/README.md
-    lines: 11-31
+    lines: 24-43
 related: []
 fixed_in: [a953d4d, 0cb3bc7]
 verified_in: []
