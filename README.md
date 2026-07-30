@@ -13,6 +13,7 @@ Acheron is a distributed asynchronous audio-transformation pipeline that convert
 - [just](https://just.systems/) (command runner)
 - [direnv](https://direnv.net/) (optional, auto-activates the local venv via `.envrc`)
 - Docker and Docker Compose
+- Linux for orchestrator output downloads (descriptor-pinned serving uses `O_DIRECTORY`, `O_NOFOLLOW`, and `/proc/self/fd`)
 
 **CLI:**
 

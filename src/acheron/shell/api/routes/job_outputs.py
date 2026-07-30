@@ -35,8 +35,13 @@ def _is_path_component(value: str) -> bool:
 def _relative_output_parts(data_root: Path, raw_job_root: Path, stored_path: str) -> tuple[str, ...]:
     stored = Path(stored_path)
     if not stored.is_absolute():
-        cwd_relative = Path.cwd() / stored
-        stored = cwd_relative if cwd_relative.is_relative_to(data_root) else data_root / stored
+        stored_parts = stored.parts
+        root_parts = data_root.parts
+        for prefix_length in range(min(len(stored_parts), len(root_parts)), 0, -1):
+            if stored_parts[:prefix_length] == root_parts[-prefix_length:]:
+                stored = Path(*stored_parts[prefix_length:])
+                break
+        stored = data_root / stored
     stored = Path(os.path.normpath(stored))
     try:
         relative = stored.relative_to(raw_job_root)

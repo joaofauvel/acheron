@@ -55,7 +55,10 @@ async def client_with_output(
     symlink_path = output_dir / "symlink.m4b"
     symlink_path.symlink_to(symlink_target)
     fifo_path = output_dir / "output.pipe"
-    os.mkfifo(fifo_path)
+    if hasattr(os, "mkfifo"):
+        os.mkfifo(fifo_path)
+    else:
+        fifo_path.write_bytes(b"")
     await jobs.put(
         TrackedJob(
             job_id="job-1",
@@ -171,6 +174,10 @@ async def test_output_route_rejects_symlink_outside_job_directory(client_with_ou
     assert not response.content.startswith(b"secret")
 
 
+@pytest.mark.skipif(
+    not all(hasattr(os, name) for name in ("mkfifo", "O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    reason="FIFO descriptor safety requires POSIX open flags",
+)
 @pytest.mark.asyncio
 async def test_output_route_rejects_fifo_without_blocking(client_with_output: AsyncClient) -> None:
     response = await client_with_output.get("/jobs/job-1/outputs/4")
@@ -264,6 +271,8 @@ async def test_output_route_serves_relative_stored_path_with_relative_data_dir(
         data_dir=data_dir,
     )
     await app.state.orchestrator.start()
+    (tmp_path / "data" / "working").mkdir()
+    monkeypatch.chdir(tmp_path / "data" / "working")
     await jobs.put(
         TrackedJob(
             job_id="job-relative",

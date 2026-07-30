@@ -164,9 +164,11 @@ class Orchestrator:
     ) -> None:
         if settings is None:
             default = load_settings()
-            self._settings = Settings(orchestrator=default.orchestrator.model_copy(update={"data_dir": cache.data_dir}))
-        else:
-            self._settings = settings
+            settings = Settings(orchestrator=default.orchestrator.model_copy(update={"data_dir": cache.data_dir}))
+        canonical_data_dir = settings.orchestrator.data_dir.resolve()
+        self._settings = settings.model_copy(
+            update={"orchestrator": settings.orchestrator.model_copy(update={"data_dir": canonical_data_dir})}
+        )
         self._registry = registry
         self._cache = cache
         self._step_cache = step_cache if step_cache is not None else InMemoryStepCache()
