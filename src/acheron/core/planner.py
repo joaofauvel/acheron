@@ -122,6 +122,7 @@ def _validate_language_path(request: JobRequest, caps: tuple[WorkerCapabilities,
         selected_voices <= _speaker_names(capability)
         for capability in caps
         if capability.worker_type is WorkerType.TTS
+        and dst in capability.supported_languages_in
         and dst in capability.supported_languages_out
         and isinstance(capability.metadata.get("speakers"), list)
     ):

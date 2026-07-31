@@ -7,7 +7,6 @@ import logging
 import math
 import time
 import zipfile
-from contextlib import suppress
 from datetime import datetime  # noqa: TC003
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -61,11 +60,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _cleanup_temporary_input(orch: Orchestrator, input_id: str | None) -> None:
+async def _cleanup_temporary_input(orch: Orchestrator, input_id: str | None) -> None:
     """Best-effort cleanup for a failed temporary-input submission."""
-    if input_id is not None:
-        with suppress(InputPathError, OSError):
-            InputStore(orch.settings.orchestrator.data_dir).delete(input_id)
+    if input_id is None:
+        return
+    try:
+        await orch.delete_input(input_id)
+    except (InputPathError, OSError) as exc:
+        logger.warning("Temporary input cleanup failed: %s", exc)
+    except Exception:
+        logger.exception("Temporary input cleanup failed")
 
 
 def _error_response(exc: AcheronError) -> ErrorResponse:
@@ -123,7 +127,10 @@ async def _canonicalize_voices(
         capabilities = worker.capabilities
         if capabilities.worker_type is not WorkerType.TTS:
             continue
-        if target_language not in capabilities.supported_languages_out:
+        if (
+            target_language not in capabilities.supported_languages_in
+            or target_language not in capabilities.supported_languages_out
+        ):
             continue
         value = capabilities.metadata.get("speakers")
         if isinstance(value, list):
@@ -148,7 +155,10 @@ def _validate_voice_selection(
     try:
         chapter_count = len(read_epub_chapters(Path(source_path)))
         return VoiceSelection.from_ranges(default_voice, ranges, chapter_count).ranges
-    except (OSError, UnicodeError, ValueError, zipfile.BadZipFile) as exc:
+    except (OSError, UnicodeError, zipfile.BadZipFile) as exc:
+        logger.warning("Unable to inspect EPUB chapters for voice selection at %s: %s", source_path, exc)
+        raise HTTPException(status_code=422, detail="unable to inspect EPUB chapters") from exc
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -171,6 +181,8 @@ async def _build_job_request(  # noqa: C901
 
     normalized_asr_model = body.asr_model.strip() if body.asr_model is not None else None
     normalized_voice = body.voice.strip() if body.voice is not None else None
+    if normalized_voice is not None and not normalized_voice:
+        raise HTTPException(status_code=422, detail="voice must not be empty")
     ranges = _voice_ranges(body)
     job_request: JobRequest
     match body.source_type:
@@ -251,7 +263,7 @@ def _resolve_stored_source(orch: Orchestrator, source_path: str) -> str:
     return _submission_source_identity(orch, str(relative_path))
 
 
-async def _build_retry_request(  # noqa: C901
+async def _build_retry_request(  # noqa: C901, PLR0912, PLR0915
     orch: Orchestrator,
     source: TrackedJob,
     body: RetryJobRequest,
@@ -285,12 +297,27 @@ async def _build_retry_request(  # noqa: C901
                 msg = "asr_model is only valid for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
             selected_voice = body.voice if body.voice is not None else voice
-            selected_map = (
-                tuple(VoiceRange(item.start_chapter, item.end_chapter, item.voice) for item in body.voice_map)
-                if body.voice_map is not None
-                else voice_map
-            )
+            if selected_voice is not None:
+                selected_voice = selected_voice.strip()
+                if not selected_voice:
+                    raise HTTPException(status_code=422, detail="voice override must not be empty")
             if body.voice_map is not None:
+                try:
+                    selected_map = tuple(
+                        VoiceRange(item.start_chapter, item.end_chapter, item.voice) for item in body.voice_map
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+            else:
+                selected_map = voice_map
+            selected_target = body.target_language if body.target_language is not None else target_language
+            if selected_voice is not None or selected_map:
+                selected_voice, selected_map = await _canonicalize_voices(
+                    orch,
+                    selected_target,
+                    selected_voice,
+                    selected_map,
+                )
                 selected_map = _validate_voice_selection(
                     orch.settings.orchestrator.data_dir / path,
                     selected_voice,
@@ -299,7 +326,7 @@ async def _build_retry_request(  # noqa: C901
             request = EpubRequest(
                 source_path=path,
                 source_language=body.source_language if body.source_language is not None else source_language,
-                target_language=body.target_language if body.target_language is not None else target_language,
+                target_language=selected_target,
                 voice=selected_voice,
                 voice_map=selected_map,
             )
@@ -321,12 +348,23 @@ async def _build_retry_request(  # noqa: C901
             if not selected_asr_model:
                 msg = "asr_model is required for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
+            selected_voice = body.voice if body.voice is not None else voice
+            if selected_voice is not None:
+                selected_voice = selected_voice.strip()
+                if not selected_voice:
+                    raise HTTPException(status_code=422, detail="voice override must not be empty")
+                selected_voice, _ = await _canonicalize_voices(
+                    orch,
+                    body.target_language if body.target_language is not None else target_language,
+                    selected_voice,
+                    (),
+                )
             request = AudioRequest(
                 source_path=path,
                 source_language=body.source_language if body.source_language is not None else source_language,
                 target_language=body.target_language if body.target_language is not None else target_language,
                 asr_model=selected_asr_model,
-                voice=body.voice if body.voice is not None else voice,
+                voice=selected_voice,
             )
     return request, strategy, label
 
@@ -338,18 +376,27 @@ async def submit_job(
     _token: RegistrationTokenDep,
 ) -> JobResponse:
     """Submit a new job for processing."""
-    job_request, strategy = await _build_job_request(orch, body)
+    tracked = None
     try:
-        if body.label is None:
-            tracked = await orch.submit_job(job_request, strategy)
+        job_request, strategy = await _build_job_request(orch, body)
+        if body.input_id is None:
+            if body.label is None:
+                tracked = await orch.submit_job(job_request, strategy)
+            else:
+                tracked = await orch.submit_job(job_request, strategy, label=body.label)
+        elif body.label is None:
+            tracked = await orch.submit_job(job_request, strategy, input_id=body.input_id)
         else:
-            tracked = await orch.submit_job(job_request, strategy, label=body.label)
+            tracked = await orch.submit_job(job_request, strategy, label=body.label, input_id=body.input_id)
     except AcheronError as exc:
-        _cleanup_temporary_input(orch, body.input_id)
         raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
-    except BaseException:
-        _cleanup_temporary_input(orch, body.input_id)
+    except InputPathError as exc:
+        raise HTTPException(status_code=422, detail="input identity does not match source_path") from exc
+    except HTTPException:
         raise
+    finally:
+        if tracked is None:
+            await _cleanup_temporary_input(orch, body.input_id)
 
     warnings: list[str] = []
     try:
@@ -391,11 +438,13 @@ async def preview_job(
     ``POST /jobs`` also gates the preview endpoint — operators see exactly
     the validation a real submit would experience.
     """
-    job_request, strategy = await _build_job_request(orch, body)
     try:
+        job_request, strategy = await _build_job_request(orch, body)
         plan = await orch.preview_job(job_request, strategy)
     except AcheronError as exc:
         raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
+    finally:
+        await _cleanup_temporary_input(orch, body.input_id)
     return PlanResponse.from_plan(plan)
 
 

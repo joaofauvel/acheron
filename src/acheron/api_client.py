@@ -286,6 +286,8 @@ class AcheronClient:
         executor_strategy: str | None = None,
         asr_model: str | None = None,
         label: str | None = None,
+        voice: str | None = None,
+        voice_map: Sequence[VoiceRange] | None = None,
     ) -> JobResponse:
         """Create a fresh job from an earlier submission with overrides."""
         payload = {
@@ -297,6 +299,8 @@ class AcheronClient:
                 "executor_strategy": executor_strategy,
                 "asr_model": asr_model,
                 "label": label,
+                "voice": voice,
+                "voice_map": _voice_map_payload(voice_map) if voice_map is not None else None,
             }.items()
             if value is not None
         }

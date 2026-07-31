@@ -51,6 +51,7 @@ from acheron.shell.cost import aggregate_cost_basis, build_cost_breakdown, estim
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.health_providers import create_health_providers
+from acheron.shell.input_store import InputPathError, InputStore
 from acheron.shell.job_events import JobEventBroker
 from acheron.shell.job_store import AdminActionAudit, JobQuery, TrackedJob
 from acheron.shell.local_handlers import (
@@ -453,6 +454,15 @@ class Orchestrator:
             raise unexpected[0]
         logger.info("Drained %d tasks in %.2fs", len(pending), time.monotonic() - start)
 
+    async def delete_input(self, input_id: str) -> None:
+        """Delete an unreferenced uploaded input under its lifecycle lock."""
+        identity = f"inputs/{input_id}"
+        async with self._input_reference_lock(identity):
+            jobs = await self._job_store.list_all()
+            if any(self._input_identity(job.request.source_path).startswith(f"{identity}/") for job in jobs):
+                raise InputPathError("input is referenced by a job")
+            InputStore(self._settings.orchestrator.data_dir).delete(input_id)
+
     async def submit_job(
         self,
         request: JobRequest,
@@ -460,6 +470,7 @@ class Orchestrator:
         *,
         label: str | None = None,
         retries_from: str | None = None,
+        input_id: str | None = None,
     ) -> TrackedJob:
         """Compile a plan and execute it. Returns the tracked job immediately.
 
@@ -493,6 +504,11 @@ class Orchestrator:
 
         input_identity = self._input_identity(request.source_path)
         async with self._input_reference_lock(input_identity):
+            if input_id is not None:
+                InputStore(self._settings.orchestrator.data_dir, create=False).promote(
+                    input_id,
+                    request.source_path,
+                )
             plan = await self._compile_plan(request, strategy, job_id=job_id)
             self._cache.save_plan(plan)
             await self._invalidate_handler_cache()
@@ -984,11 +1000,13 @@ class Orchestrator:
             return f"external:{resolved}"
 
     def _input_reference_lock(self, identity: str) -> asyncio.Lock:
+        parts = Path(identity).parts
+        lock_identity = "/".join(parts[:2]) if parts[:1] == ("inputs",) and parts[1:] else identity
         with self._input_lock_registry_mutex:
-            lock = self._input_locks.get(identity)
+            lock = self._input_locks.get(lock_identity)
             if lock is None:
                 lock = asyncio.Lock()
-                self._input_locks[identity] = lock
+                self._input_locks[lock_identity] = lock
             return lock
 
     async def preview_cleanup(self, policy: RetentionPolicy, *, now: datetime | None = None) -> CleanupReport:

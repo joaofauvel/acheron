@@ -538,6 +538,47 @@ def test_submit_rejects_invalid_voice_map_before_upload(tmp_path: Path) -> None:
     assert "START-END:VOICE" in result.output
 
 
+@pytest.mark.parametrize("voice_map", ["1-3:Vivian", "4-100:Ryan"])
+@respx.mock
+def test_submit_accepts_required_voice_map_examples(tmp_path: Path, voice_map: str) -> None:
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    _mock_upload_success()
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(201, json=_job_payload("job-voice")))
+
+    result = CliRunner().invoke(
+        main,
+        ["job", "submit", str(epub), "--src", "en", "--dest", "es", "--voice-map", voice_map],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert jobs_route.called
+    assert json.loads(jobs_route.calls.last.request.content)["voice_map"] == [
+        {
+            "start_chapter": int(voice_map.split("-", 1)[0]),
+            "end_chapter": int(voice_map.split("-", 1)[1].split(":", 1)[0]),
+            "voice": voice_map.split(":", 1)[1],
+        }
+    ]
+
+
+@respx.mock
+def test_submit_invalid_voice_map_does_not_upload_or_submit(tmp_path: Path) -> None:
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    upload_route = respx.post(f"{_BASE_URL}/inputs").mock(return_value=httpx.Response(500))
+    submit_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(500))
+
+    result = CliRunner().invoke(
+        main,
+        ["job", "submit", str(epub), "--src", "en", "--dest", "es", "--voice-map", "1-3"],
+    )
+
+    assert result.exit_code != 0
+    assert not upload_route.called
+    assert not submit_route.called
+
+
 @respx.mock
 def test_submit_dry_run_previews_without_submitting(tmp_path: Path) -> None:
     """`--dry-run` uploads, calls `/jobs:preview`, and never calls `/jobs`."""

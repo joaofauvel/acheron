@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from acheron.core.schemas import InputResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.input_store import InputStore, InputTooLargeError
+from acheron.shell.input_store import InputPathError, InputStore, InputTooLargeError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -61,6 +64,9 @@ async def delete_input(
 ) -> None:
     """Delete a temporary uploaded input; the operation is idempotent."""
     try:
-        InputStore(orch.settings.orchestrator.data_dir).delete(input_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await orch.delete_input(input_id)
+    except InputPathError as exc:
+        if str(exc) == "input is referenced by a job":
+            raise HTTPException(status_code=409, detail="input is referenced by a job") from exc
+        logger.warning("Rejected input deletion %r: %s", input_id, exc)
+        raise HTTPException(status_code=422, detail="invalid input identity") from exc

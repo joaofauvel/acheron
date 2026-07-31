@@ -509,7 +509,7 @@ def _parse_voice_map(values: tuple[str, ...]) -> tuple[VoiceRange, ...]:
     """Parse strict inclusive ``START-END:VOICE`` CLI values."""
     ranges: list[VoiceRange] = []
     for value in values:
-        match = re.fullmatch(r"([1-9][0-9]*)-([1-9][0-9]*):([^:\\r\\n]+)", value)
+        match = re.fullmatch(r"([1-9][0-9]*)-([1-9][0-9]*):([^:\r\n]+)", value)
         if match is None:
             message = f"invalid voice-map value {value!r}; expected START-END:VOICE"
             raise click.BadParameter(message)

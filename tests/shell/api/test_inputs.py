@@ -66,6 +66,43 @@ class TestUploadRoute:
         assert stored_path.is_file()
         assert stored_path.read_bytes() == b"epub-bytes"
 
+    async def test_delete_is_idempotent_and_protects_referenced_input(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        uploaded = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"epub-bytes", "application/epub+zip")},
+        )
+        assert uploaded.status_code == 201
+        body = uploaded.json()
+
+        submitted = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": body["source_path"],
+                "source_language": "en",
+                "target_language": "es",
+                "input_id": body["input_id"],
+            },
+        )
+        assert submitted.status_code == 201
+
+        protected = await client.delete(f"/inputs/{body['input_id']}")
+        assert protected.status_code == 409
+        assert protected.json() == {"detail": "input is referenced by a job"}
+
+        # A missing input remains an idempotent success after an independent upload.
+        independent = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"epub-bytes", "application/epub+zip")},
+        )
+        independent_id = independent.json()["input_id"]
+        deleted = await client.delete(f"/inputs/{independent_id}")
+        assert deleted.status_code == 204
+        assert (await client.delete(f"/inputs/{independent_id}")).status_code == 204
+
     async def test_post_oversize_stream_returns_413_and_leaves_no_temp_file(
         self,
         client: AsyncClient,
