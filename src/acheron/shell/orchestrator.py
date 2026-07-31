@@ -10,7 +10,7 @@ import time
 import uuid
 import weakref
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import (
@@ -25,6 +25,7 @@ from acheron.core.errors import (
 )
 from acheron.core.models import (
     AudioRequest,
+    CostBasis,
     EpubRequest,
     ExecutorStrategy,
     JobMetrics,
@@ -40,6 +41,7 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.core.planner import ChunkingLimits, compile_plan
+from acheron.core.schemas import CostBreakdownResponse, CostSummaryResponse, JobCostResponse
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
@@ -926,6 +928,75 @@ class Orchestrator:
     async def get_job(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
         return await self._job_store.get(job_id)
+
+    async def get_job_cost(self, job_id: str) -> JobCostResponse | None:
+        """Map persisted per-step cost evidence to the public cost response."""
+        tracked = await self._job_store.get(job_id)
+        if tracked is None:
+            return None
+        result = tracked.result
+        return JobCostResponse(
+            job_id=tracked.job_id,
+            total_cost=result.total_cost if result is not None else 0.0,
+            total_cost_basis=result.total_cost_basis if result is not None else None,
+            cost_breakdown=(
+                [
+                    CostBreakdownResponse(
+                        step_id=item.step_id,
+                        worker_type=item.worker_type,
+                        worker_id=item.worker_id,
+                        gpu_seconds=item.gpu_seconds,
+                        cost=item.estimate.cost,
+                        basis=item.estimate.basis,
+                        rate_per_hour=item.estimate.rate_per_hour,
+                        gpu_type=item.estimate.gpu_type,
+                        secure_cloud=item.estimate.secure_cloud,
+                        queried_at=item.estimate.queried_at,
+                        cache_age_seconds=item.estimate.cache_age_seconds,
+                    )
+                    for item in result.cost_breakdown
+                ]
+                if result is not None
+                else []
+            ),
+        )
+
+    async def get_cost_summary(self, window: str) -> CostSummaryResponse:
+        """Aggregate known estimates for terminal, non-archived jobs."""
+        until = datetime.now(UTC)
+        since: datetime | None = None
+        if window != "all":
+            hours = {"24h": 24, "7d": 24 * 7, "30d": 24 * 30}.get(window)
+            if hours is None:
+                msg = f"Unsupported cost window: {window}"
+                raise ValueError(msg)
+            since = until - timedelta(hours=hours)
+
+        terminal = {PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL}
+        selected = [
+            job
+            for job in await self._job_store.list_all()
+            if job.status in terminal
+            and getattr(job, "archived_at", None) is None
+            and (since is None or job.created_at >= since)
+            and job.created_at <= until
+        ]
+        total_cost = 0.0
+        unknown_cost_jobs = 0
+        for job in selected:
+            result = job.result
+            if result is None or result.total_cost_basis in {None, CostBasis.UNKNOWN}:
+                unknown_cost_jobs += 1
+            if result is not None:
+                total_cost += result.total_cost
+        return CostSummaryResponse(
+            window=window,
+            since=since,
+            until=until,
+            total_cost=total_cost,
+            job_count=len(selected),
+            unknown_cost_jobs=unknown_cost_jobs,
+        )
 
     async def cancel_job(self, job_id: str) -> TrackedJob:
         """Cancel an active job and wait for its failed state to persist."""

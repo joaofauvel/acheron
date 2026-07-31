@@ -24,7 +24,7 @@ from rich.live import Live
 from rich.table import Table
 
 from acheron.api_client import AcheronClient
-from acheron.core.models import PlanStatus
+from acheron.core.models import CostBasis, PlanStatus
 from acheron.tls import resolve_ca_path
 
 if TYPE_CHECKING:
@@ -208,6 +208,13 @@ def _parse_remote_error(detail: str) -> tuple[_RemoteErrorType | None, str]:
     if not separator and error_name.endswith("Error"):
         return None, "The orchestrator returned an unspecified domain error."
     return error_type, message if separator else detail
+
+
+def _format_estimated_cost(cost: float | None, basis: CostBasis | None) -> str:
+    """Render an execution-time estimate without implying invoice precision."""
+    if cost is None or basis is None or basis is CostBasis.UNKNOWN:
+        return "unknown"
+    return f"${cost:.2f}"
 
 
 def _print_http_error(exc: httpx.HTTPStatusError) -> None:
@@ -488,7 +495,10 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     console.print(f"Current worker ID: {progress.current_worker_id or '-'}")
     eta = f"{progress.eta_seconds:.1f}s" if progress.eta_seconds is not None else "Unknown"
     console.print(f"ETA: {eta}")
-    console.print(f"Cost: ${result.total_cost:.2f}")
+    console.print(
+        f"Estimated cost (execution-time estimate): "
+        f"{_format_estimated_cost(result.total_cost, result.total_cost_basis)}"
+    )
     console.print(f"Duration: {result.total_duration_seconds:.1f}s")
     for output in result.outputs:
         console.print(f"Download URL: {output.download_url} ({output.size_bytes} bytes, {output.content_type})")
@@ -500,6 +510,52 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
                 markup=False,
                 style="red",
             )
+
+
+@job.command("cost")
+@click.argument("job_id")
+@click.option("--explain", is_flag=True, help="Show pricing provenance for every cost item")
+def job_cost(job_id: str, explain: bool) -> None:  # noqa: FBT001
+    """Explain a job's execution-time cost estimate."""
+    result = _run(_get_client().get_job_cost(job_id))
+    console.print(f"Job: [bold]{result.job_id}[/bold]")
+    console.print(
+        f"Estimated cost (execution-time estimate): "
+        f"{_format_estimated_cost(result.total_cost, result.total_cost_basis)}"
+    )
+    console.print(f"Cost basis: {result.total_cost_basis.value if result.total_cost_basis else 'unknown'}")
+    if explain:
+        console.print("Estimates are execution-time evidence, not invoice amounts.")
+    table = Table(title="Cost breakdown")
+    table.add_column("Step")
+    table.add_column("Worker")
+    table.add_column("Cost")
+    table.add_column("Basis")
+    table.add_column("GPU")
+    if explain:
+        table.add_column("Rate/hour")
+        table.add_column("Secure cloud")
+        table.add_column("Queried")
+        table.add_column("Cache age")
+    for item in result.cost_breakdown:
+        row = [
+            item.step_id,
+            f"{item.worker_type.value} ({item.worker_id or 'unknown'})",
+            _format_estimated_cost(item.cost, item.basis),
+            item.basis.value,
+            item.gpu_type or "unknown",
+        ]
+        if explain:
+            row.extend(
+                [
+                    f"${item.rate_per_hour:.2f}" if item.rate_per_hour is not None else "unknown",
+                    str(item.secure_cloud).lower() if item.secure_cloud is not None else "unknown",
+                    item.queried_at.isoformat() if item.queried_at is not None else "unknown",
+                    f"{item.cache_age_seconds:.1f}s" if item.cache_age_seconds is not None else "unknown",
+                ]
+            )
+        table.add_row(*row)
+    console.print(table)
 
 
 @job.command("cancel")

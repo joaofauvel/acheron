@@ -18,7 +18,7 @@
     <dt>Current worker type</dt><dd>{{ job.progress.current_worker_type|default("-") or "-" }}</dd>
     <dt>Current worker ID</dt><dd>{{ job.progress.current_worker_id|default("-") or "-" }}</dd>
     <dt>ETA</dt><dd>{% if job.progress.eta_seconds is not none %}{{ "%.1f"|format(job.progress.eta_seconds) }}s{% else %}Unknown{% endif %}</dd>
-    <dt>Cost</dt><dd>${{ "%.2f"|format(job.total_cost|default(0)) }}</dd>
+    <dt>Estimated cost (execution-time estimate)</dt><dd>{% if not job.total_cost_basis or job.total_cost_basis == "unknown" %}<span class="cost-unknown">unknown</span>{% else %}${{ "%.2f"|format(job.total_cost|default(0)) }}{% endif %}</dd>
     <dt>Duration</dt><dd>{{ "%.1f"|format(job.total_duration_seconds|default(0)) }}s</dd>
   </dl>
 

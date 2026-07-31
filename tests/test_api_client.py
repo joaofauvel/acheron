@@ -305,6 +305,59 @@ async def test_get_worker_capabilities_round_trips_preserves_server_order() -> N
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_client_get_job_cost_validates_breakdown() -> None:
+    respx.get("http://test/jobs/job-1/cost").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "job_id": "job-1",
+                "total_cost": 0.34,
+                "total_cost_basis": "measured",
+                "cost_breakdown": [
+                    {
+                        "step_id": "synthesize",
+                        "worker_type": "tts",
+                        "worker_id": "tts-1",
+                        "gpu_seconds": 1800.0,
+                        "cost": 0.34,
+                        "basis": "measured",
+                        "rate_per_hour": 0.69,
+                        "gpu_type": "L4",
+                        "secure_cloud": False,
+                        "queried_at": "2026-07-30T12:00:00Z",
+                        "cache_age_seconds": 0.0,
+                    }
+                ],
+            },
+        )
+    )
+    result = await AcheronClient("http://test").get_job_cost("job-1")
+    assert result.cost_breakdown[0].gpu_type == "L4"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_client_get_cost_summary_uses_query_window() -> None:
+    route = respx.get("http://test/cost", params={"window": "7d"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "window": "7d",
+                "since": "2026-07-24T12:00:00Z",
+                "until": "2026-07-31T12:00:00Z",
+                "total_cost": 0.34,
+                "job_count": 2,
+                "unknown_cost_jobs": 1,
+            },
+        )
+    )
+    result = await AcheronClient("http://test").get_cost_summary()
+    assert route.called
+    assert result.unknown_cost_jobs == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_get_capabilities_raises_on_unknown_source_language() -> None:
     """get_capabilities must raise ``HTTPStatusError`` when the server
     rejects an unknown source language with HTTP 422.

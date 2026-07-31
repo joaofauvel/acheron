@@ -1,14 +1,39 @@
+<nav aria-label="Cost window">
+  {% for option, label in [("24h", "Last 24 hours"), ("7d", "Last 7 days"), ("30d", "Last 30 days"), ("all", "All time")] %}
+  <a href="/partials/cost?window={{ option }}"
+     hx-get="/partials/cost?window={{ option }}"
+     hx-target="#cost"
+     hx-swap="innerHTML"
+     {% if window == option %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<p class="basis-note">Estimated cost is execution-time evidence, not an invoice amount.</p>
+
+{% if summary %}
+<table>
+  <thead><tr><th>Window</th><th>Estimated cost</th><th>Jobs</th><th>Unknown cost jobs</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>{{ summary.window }}</td>
+      <td>{% if summary.unknown_cost_jobs|default(0) == summary.job_count|default(0) and summary.job_count|default(0) > 0 %}<span class="cost-unknown">unknown</span>{% else %}${{ "%.2f"|format(summary.total_cost|default(0)) }}{% endif %}</td>
+      <td>{{ summary.job_count|default(0) }}</td>
+      <td>{{ summary.unknown_cost_jobs|default(0) }}</td>
+    </tr>
+  </tbody>
+</table>
+{% endif %}
+
 {% if jobs %}
 <table>
   <thead>
     <tr>
       <th>Job ID</th>
       <th>Status</th>
-      <th>Cost</th>
+      <th>Estimated cost</th>
       <th>Duration</th>
       <th>Steps</th>
       <th>Cost Basis</th>
-      <th>Note</th>
+      <th>Basis explanation</th>
     </tr>
   </thead>
   <tbody>
@@ -18,36 +43,42 @@
       "measured": "basis-measured",
       "cached": "basis-cached",
       "unknown": "basis-unknown",
-      "static": "basis-static"
+      "static": "basis-static",
+      "stub": "basis-stub"
     }.get(basis, "basis-unknown") %}
     {% set basis_label = {"measured": "Measured", "cached": "Cached",
-                          "unknown": "Unknown", "static": "Static"}.get(basis, "Unknown") %}
+                          "unknown": "Unknown", "static": "Static", "stub": "Stub"}.get(basis, "Unknown") %}
     {% set basis_note = {
-      "measured": "—",
-      "cached": "RunPod pricing API unavailable; serving last-known rate",
-      "unknown": "RunPod pricing API unavailable",
-      "static": "—"
-    }.get(basis, "—") %}
+      "measured": "Observed execution-time estimate; not an invoice amount",
+      "cached": "RunPod pricing API unavailable; serving last-known rate; not an invoice amount",
+      "unknown": "Cost unavailable; not free usage",
+      "static": "Static execution-time estimate; not an invoice amount",
+      "stub": "Stub execution-time estimate; not an invoice amount"
+    }.get(basis, "Cost basis unavailable; not free usage") %}
     <tr>
       <td>{{ j.job_id }}</td>
       <td><span class="badge badge-{{ j.status }}">{{ j.status }}</span></td>
       <td>
         {% if not basis or basis == "unknown" %}
-          <span class="cost-unknown">—</span>
-        {% elif j.total_cost|default(0) > 0 %}
-          ${{ "%.2f"|format(j.total_cost) }}
+          <span class="cost-unknown">unknown</span>
         {% else %}
-          <span class="cost-zero">$0.00</span>
+          ${{ "%.2f"|format(j.total_cost|default(0)) }}
         {% endif %}
       </td>
       <td>{% if j.total_duration_seconds|default(0) > 0 %}{{ "%.1f"|format(j.total_duration_seconds) }}s{% else %}-{% endif %}</td>
       <td>{{ j.completed_steps }}/{{ j.total_steps }}</td>
       <td><span class="badge {{ basis_class }}">{{ basis_label }}</span></td>
-      <td><span class="basis-note">{{ basis_note }}</span></td>
+      <td><span class="basis-note" title="{{ basis_note }}">{{ basis_note }}</span></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
-{% else %}
+{% elif not summary %}
 <p style="color:#8b949e">No cost data available.</p>
+{% endif %}
+
+{% if summary %}
+<tfoot>
+  <tr><td colspan="7">Estimated cost, {{ {"24h": "last 24h", "7d": "last 7d", "30d": "last 30d", "all": "all time"}.get(window, "last 7d") }}: {% if summary.job_count|default(0) > 0 and summary.unknown_cost_jobs|default(0) == summary.job_count|default(0) %}unknown{% else %}${{ "%.2f"|format(summary.total_cost|default(0)) }}{% endif %} ({{ summary.job_count|default(0) }} jobs; {{ summary.unknown_cost_jobs|default(0) }} unknown)</td></tr>
+</tfoot>
 {% endif %}

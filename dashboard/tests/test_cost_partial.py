@@ -16,6 +16,31 @@ def _jobs_response(jobs: list[dict]) -> dict:
 class TestCostPartialBasis:
     @respx.mock
     @pytest.mark.asyncio
+    async def test_summary_window_controls_and_unknown_footer(self, client) -> None:
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "30d"}).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "window": "30d",
+                    "since": "2026-07-01T12:00:00Z",
+                    "until": "2026-07-31T12:00:00Z",
+                    "total_cost": 0.0,
+                    "job_count": 2,
+                    "unknown_cost_jobs": 2,
+                },
+            )
+        )
+        response = await client.get("/partials/cost?window=30d")
+        assert response.status_code == 200
+        for window in ("24h", "7d", "30d", "all"):
+            assert f"window={window}" in response.text
+        assert "Estimated cost, last 30d" in response.text
+        assert "2 unknown" in response.text
+        assert "not an invoice amount" in response.text
+        assert "$0.00" not in response.text
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_measured_basis_renders_measured_badge(self, client) -> None:
         respx.get(f"{_ORCH_URL}/jobs").mock(
             return_value=httpx.Response(

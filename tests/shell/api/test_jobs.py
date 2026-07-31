@@ -1173,8 +1173,8 @@ class TestJobRoutePreflight:
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert "source_path" in detail
-        assert "expected at" in detail
         assert "missing.epub" in detail
+        assert str(tmp_path) not in detail
         assert spy.submit_calls == []
 
     @pytest.mark.asyncio
@@ -1218,9 +1218,9 @@ class TestJobRoutePreflight:
             )
         assert response.status_code == 422
         detail = response.json()["detail"]
-        # relative-path error mentions the source path and the data dir
+        # Public errors retain the requested relative path but never expose the data directory.
         assert "../outside.epub" in detail
-        assert str(tmp_path) in detail
+        assert str(tmp_path) not in detail
         assert spy.submit_calls == []
 
     @pytest.mark.asyncio
@@ -1264,7 +1264,8 @@ class TestJobRoutePreflight:
             )
         assert response.status_code == 422
         detail = response.json()["detail"]
-        assert "/tmp/book.epub" in detail
+        assert "source_path" in detail
+        assert "/tmp/book.epub" not in detail
         assert spy.submit_calls == []
 
     @pytest.mark.asyncio
@@ -1311,8 +1312,8 @@ class TestJobRoutePreflight:
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert "source_path" in detail
-        assert "expected at" in detail
         assert "inputs/a-dir" in detail
+        assert str(tmp_path) not in detail
         assert spy.submit_calls == []
 
     @pytest.mark.asyncio

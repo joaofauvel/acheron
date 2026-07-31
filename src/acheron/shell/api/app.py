@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request
 
 from acheron.shell.api.input_boundary import InputRequestBoundary
-from acheron.shell.api.routes import capabilities, inputs, job_outputs, jobs, partials, plans, workers
+from acheron.shell.api.routes import capabilities, cost, inputs, job_outputs, jobs, partials, plans, workers
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.logging_context import ContextFilter, bind_request_id
@@ -98,6 +98,7 @@ def create_app(
     app.include_router(capabilities.router, tags=["capabilities"])
     app.include_router(partials.router, tags=["partials"])
     app.include_router(plans.router, prefix="/plans", tags=["plans"])
+    app.include_router(cost.router, tags=["cost"])
 
     @app.get("/health")
     async def health() -> dict[str, str]:

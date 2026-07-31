@@ -1,7 +1,7 @@
 {% if jobs %}
 <table>
   <thead>
-    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Progress</th><th>Last error</th><th>Cost</th><th>Duration</th></tr>
+    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Progress</th><th>Last error</th><th>Estimated cost</th><th>Duration</th></tr>
   </thead>
   <tbody>
     {% for j in jobs %}
@@ -29,7 +29,7 @@
         {% else %}-{% endif %}
       </td>
       <td>{{ last_error.message if last_error else "-" }}</td>
-      <td>{% if j.total_cost|default(0) > 0 %}${{ "%.2f"|format(j.total_cost) }}{% else %}-{% endif %}</td>
+      <td>{% if not j.total_cost_basis or j.total_cost_basis == "unknown" %}<span class="cost-unknown">unknown</span>{% else %}${{ "%.2f"|format(j.total_cost|default(0)) }}{% endif %}</td>
       <td>{% if j.total_duration_seconds|default(0) > 0 %}{{ "%.1f"|format(j.total_duration_seconds) }}s{% else %}-{% endif %}</td>
     </tr>
     {% endfor %}

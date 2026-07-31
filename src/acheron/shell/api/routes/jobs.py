@@ -75,7 +75,8 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
     """
     data_dir = orch.settings.orchestrator.data_dir
     if not source_path or Path(source_path).is_absolute():
-        msg = f"Invalid source path {source_path!r}: must be a non-empty relative path under {data_dir}"
+        logger.warning("Rejected source path %r (data directory %s)", source_path, data_dir)
+        msg = "Invalid source_path: provide a non-empty relative path"
         raise HTTPException(status_code=422, detail=msg)
     store = InputStore(data_dir)
     try:
@@ -84,9 +85,11 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
         try:
             (data_dir / source_path).resolve().relative_to(data_dir.resolve())
         except ValueError:
-            msg = f"Invalid source path {source_path!r}: must resolve to a regular file under {data_dir}"
+            logger.warning("Rejected source path %r outside data directory %s", source_path, data_dir)
+            msg = f"Invalid source_path {source_path!r}: must resolve to a regular file"
             raise HTTPException(status_code=422, detail=msg) from exc
-        msg = f"source_path not found: {source_path}; expected at {data_dir}/{source_path}"
+        logger.warning("Source path %r was not readable under data directory %s", source_path, data_dir)
+        msg = f"source_path not found: {source_path}"
         raise HTTPException(status_code=422, detail=msg) from exc
 
 
@@ -145,7 +148,8 @@ def _resolve_stored_source(orch: Orchestrator, source_path: str) -> Path:
         try:
             relative_path = candidate.resolve(strict=False).relative_to(data_dir.resolve())
         except ValueError as exc:
-            msg = f"Invalid source path {source_path!r}: must be under {data_dir}"
+            logger.warning("Stored source path %r is outside data directory %s", source_path, data_dir)
+            msg = "Invalid stored source_path"
             raise HTTPException(status_code=422, detail=msg) from exc
     else:
         relative_path = candidate
@@ -460,6 +464,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         executor_strategy=tracked.strategy,
         created_at=tracked.created_at,
         last_persisted_at=tracked.last_persisted_at,
+        archived_at=getattr(tracked, "archived_at", None),
         progress=JobProgress(
             completed_steps=progress.completed_steps,
             total_steps=progress.total_steps,

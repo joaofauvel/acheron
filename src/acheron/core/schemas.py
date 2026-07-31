@@ -1,6 +1,7 @@
 """Wire-format response schemas shared between the Acheron client and server."""
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -73,6 +74,42 @@ class CostBreakdownResponse(BaseModel):
         return value.astimezone(UTC)
 
 
+class JobCostResponse(BaseModel):
+    """Execution-time cost evidence for one tracked job."""
+
+    job_id: str
+    total_cost: float
+    total_cost_basis: CostBasis | None
+    cost_breakdown: list[CostBreakdownResponse]
+
+
+class CostSummaryResponse(BaseModel):
+    """Aggregated execution-time estimates for a selected window."""
+
+    window: str
+    since: datetime | None
+    until: datetime
+    total_cost: float
+    job_count: int
+    unknown_cost_jobs: int
+
+    @field_validator("since", "until")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "cost summary timestamps must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
+
+
+class CostWindowQuery(BaseModel):
+    """Supported cost summary windows."""
+
+    window: Literal["24h", "7d", "30d", "all"] = "7d"
+
+
 class StepError(BaseModel):
     """Public failure attribution for one execution step."""
 
@@ -130,6 +167,7 @@ class JobResponse(BaseModel):
     executor_strategy: ExecutorStrategy
     created_at: datetime
     last_persisted_at: datetime
+    archived_at: datetime | None = None
     progress: JobProgress
     total_cost: float
     total_duration_seconds: float
@@ -138,9 +176,11 @@ class JobResponse(BaseModel):
     errors: list[StepError]
     warnings: list[str]
 
-    @field_validator("created_at", "last_persisted_at")
+    @field_validator("created_at", "last_persisted_at", "archived_at")
     @classmethod
-    def _require_utc_timestamp(cls, value: datetime) -> datetime:
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
         if value.tzinfo is None or value.utcoffset() is None:
             msg = "lifecycle timestamps must be timezone-aware"
             raise ValueError(msg)
@@ -253,8 +293,11 @@ __all__ = [
     "CapabilitiesResponse",
     "CostBreakdownResponse",
     "CostEstimateResponse",
+    "CostSummaryResponse",
+    "CostWindowQuery",
     "ErrorResponse",
     "InputResponse",
+    "JobCostResponse",
     "JobListResponse",
     "JobLogEvent",
     "JobProgress",

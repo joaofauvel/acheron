@@ -186,6 +186,42 @@ def test_submit_sends_bearer_token_on_upload_and_jobs(tmp_path: Path, monkeypatc
 
 
 @respx.mock
+@respx.mock
+def test_job_cost_explain_renders_execution_estimate_and_gpu_details() -> None:
+    respx.get(f"{_BASE_URL}/jobs/job-1/cost").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "job_id": "job-1",
+                "total_cost": 0.34,
+                "total_cost_basis": "measured",
+                "cost_breakdown": [
+                    {
+                        "step_id": "synthesize",
+                        "worker_type": "tts",
+                        "worker_id": "tts-1",
+                        "gpu_seconds": 1800.0,
+                        "cost": 0.34,
+                        "basis": "measured",
+                        "rate_per_hour": 0.69,
+                        "gpu_type": "L4",
+                        "secure_cloud": False,
+                        "queried_at": "2026-07-30T12:00:00Z",
+                        "cache_age_seconds": 0.0,
+                    }
+                ],
+            },
+        )
+    )
+    result = CliRunner().invoke(main, ["job", "cost", "job-1", "--explain"])
+    assert result.exit_code == 0, result.output
+    assert "execution-time estimate" in result.output
+    assert "not invoice amounts" in result.output
+    assert "L4" in result.output
+    assert "0.69" in result.output
+
+
+@respx.mock
 def test_status() -> None:
     respx.get(f"{_BASE_URL}/jobs/job-abc").mock(
         return_value=httpx.Response(
@@ -268,7 +304,7 @@ def test_job_status_renders_output_and_step_error() -> None:
         "Current worker type: tts",
         "Current worker ID: tts-1",
         "ETA: 12.5s",
-        "Cost: $0.00",
+        "Estimated cost (execution-time estimate): unknown",
         "Duration: 0.0s",
         "Download URL: /jobs/job-1/outputs/0",
         "step=step-3",

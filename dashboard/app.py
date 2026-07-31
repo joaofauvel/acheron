@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote
 
 import httpx
@@ -24,14 +25,15 @@ _TEMPLATES.env.globals.update(
 _TEMPLATES.env.filters["urlencode"] = lambda value: quote(str(value), safe="")
 
 
-async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict:
+async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, object]:
     """GET ``path`` from the orchestrator; return ``{}`` on any fetch failure."""
     try:
         async with httpx.AsyncClient(base_url=orchestrator_url) as client:
             resp = await client.get(path)
             resp.raise_for_status()
-            return resp.json()
-    except httpx.HTTPError, OSError:
+            payload = resp.json()
+            return cast("dict[str, object]", payload)
+    except Exception:  # noqa: BLE001
         _LOGGER.warning("Dashboard cannot reach orchestrator at %s%s", orchestrator_url, path)
         return {}
 
@@ -54,6 +56,23 @@ async def _job_detail_partial(orchestrator_url: str, request: Request, job_id: s
         request,
         "partials/job_detail.html",
         context={"job": data, "orchestrator_url": orchestrator_url},
+    )
+
+
+async def _cost_partial(orchestrator_url: str, request: Request) -> HTMLResponse:
+    """Render cost windows and aggregate execution-time estimates."""
+    window = request.query_params.get("window", "7d")
+    if window not in {"24h", "7d", "30d", "all"}:
+        window = "7d"
+    summary = await _fetch_orchestrator(orchestrator_url, f"/cost?window={window}")
+    jobs: list[dict[str, object]] = []
+    if not summary:
+        legacy = await _fetch_orchestrator(orchestrator_url, "/jobs")
+        jobs = cast("list[dict[str, object]]", legacy.get("jobs", []))
+    return _TEMPLATES.TemplateResponse(
+        request,
+        "partials/cost.html",
+        context={"jobs": jobs, "summary": summary, "window": window},
     )
 
 
@@ -96,8 +115,7 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
 
     @app.get("/partials/cost", response_class=HTMLResponse)
     async def cost_partial(request: Request) -> HTMLResponse:
-        data = await _fetch_orchestrator(orchestrator_url, "/jobs")
-        return _TEMPLATES.TemplateResponse(request, "partials/cost.html", context={"jobs": data.get("jobs", [])})
+        return await _cost_partial(orchestrator_url, request)
 
     @app.get("/partials/status", response_class=HTMLResponse)
     async def status_partial(request: Request) -> HTMLResponse:  # noqa: ARG001

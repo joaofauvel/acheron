@@ -94,7 +94,7 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
         "tts",
         "tts-1",
         "12.5s",
-        "$0.00",
+        "Estimated cost (execution-time estimate)",
         "4.5s",
     ):
         assert value in response.text
@@ -103,6 +103,7 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
     assert "step-3" in response.text
     assert "tts-1" in response.text
     assert "malformed audio" in response.text
+    assert "unknown" in response.text
 
 
 @respx.mock

@@ -6,14 +6,16 @@ import mimetypes
 import secrets
 import ssl
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import aiofiles
 import httpx
 
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    CostSummaryResponse,
     InputResponse,
+    JobCostResponse,
     JobListResponse,
     JobLogEvent,
     JobResponse,
@@ -96,6 +98,24 @@ class AcheronClient:
             resp = await client.get(f"/jobs/{job_id}")
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
+
+    async def get_job_cost(self, job_id: str) -> JobCostResponse:
+        """Get persisted execution-time cost evidence for a job."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.get(f"/jobs/{job_id}/cost")
+            resp.raise_for_status()
+            return JobCostResponse.model_validate(resp.json())
+
+    async def get_cost_summary(self, window: Literal["24h", "7d", "30d", "all"] = "7d") -> CostSummaryResponse:
+        """Get aggregate execution-time estimates for a cost window."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.get("/cost", params={"window": window})
+            resp.raise_for_status()
+            return CostSummaryResponse.model_validate(resp.json())
 
     async def cancel_job(self, job_id: str) -> JobResponse:
         """Cancel an active job and return its persisted terminal result."""
