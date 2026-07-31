@@ -23,5 +23,6 @@ certs/
 .opencode/
 Justfile.overrides
 .local/
+.pi/
 .pi-subagents/
 docs/superpowers/review/
