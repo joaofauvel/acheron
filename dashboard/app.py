@@ -21,6 +21,12 @@ _LOGGER = logging.getLogger(__name__)
 _SECONDS_PER_MINUTE = 60
 _MINUTES_PER_HOUR = 60
 _HOURS_PER_DAY = 24
+_VERSION_MAX_LENGTH = 64
+_SHA_MAX_LENGTH = 64
+_REQUEST_ID_MAX_LENGTH = 128
+_VERSION_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-!")
+_SHA_CHARS = frozenset("0123456789abcdefABCDEF")
+_REQUEST_ID_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-")
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 _TEMPLATES.env.globals.update(
     clamp_booting_elapsed=clamp_booting_elapsed,
@@ -65,13 +71,23 @@ async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, obj
         return {}
 
 
-def _metadata_string(value: object, fallback: str) -> str:
-    """Return a bounded non-empty string for operator-facing metadata."""
+def _metadata_string(
+    value: object,
+    fallback: str,
+    *,
+    max_length: int,
+    allowed_chars: frozenset[str],
+    min_length: int = 1,
+) -> str:
+    """Return a bounded, validated string for operator-facing metadata."""
     match value:
         case str() as text if text.strip():
-            return text.strip()
+            text = text.strip()
+            if min_length <= len(text) <= max_length and all(char in allowed_chars for char in text):
+                return text
         case _:
-            return fallback
+            pass
+    return fallback
 
 
 async def _fetch_version(orchestrator_url: str) -> dict[str, str | None]:
@@ -86,9 +102,28 @@ async def _fetch_version(orchestrator_url: str) -> dict[str, str | None]:
                     pass
                 case _:
                     return {"version": "unknown", "sha": "unknown", "request_id": None}
-            version = _metadata_string(metadata.get("version"), "unknown")
-            sha = _metadata_string(metadata.get("sha"), "unknown")
-            request_id = _metadata_string(resp.headers.get("x-request-id"), "") or None
+            version = _metadata_string(
+                metadata.get("version"),
+                "unknown",
+                max_length=_VERSION_MAX_LENGTH,
+                allowed_chars=_VERSION_CHARS,
+            )
+            sha = _metadata_string(
+                metadata.get("sha"),
+                "unknown",
+                max_length=_SHA_MAX_LENGTH,
+                min_length=7,
+                allowed_chars=_SHA_CHARS,
+            )
+            request_id = (
+                _metadata_string(
+                    resp.headers.get("x-request-id"),
+                    "",
+                    max_length=_REQUEST_ID_MAX_LENGTH,
+                    allowed_chars=_REQUEST_ID_CHARS,
+                )
+                or None
+            )
             return {"version": version, "sha": sha[:7], "request_id": request_id}
     except Exception:  # noqa: BLE001
         _LOGGER.warning("Dashboard cannot reach orchestrator at %s/version", orchestrator_url)

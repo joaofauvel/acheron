@@ -611,11 +611,11 @@ files:
   - path: dashboard/tests/test_dashboard.py
     lines: 116-153
 related: []
-fixed_in: [aedaa54, e29bffc]
-verified_in: [9e86939]
+fixed_in: [e8eca21]
+verified_in: [e8eca21]
 last_verified_at:
-  commit: 9e86939
-  date: "2026-07-30"
+  commit: e8eca2183893f7d9e29ed693c0d09e5c107bef50
+  date: "2026-07-31"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty
 ---

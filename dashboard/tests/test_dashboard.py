@@ -152,6 +152,28 @@ class TestIndexPage:
         assert response.status_code == 200
         assert "vunknown (sha-unknown)" in response.text
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_index_rejects_oversized_identity_and_request_id(self, client):
+        oversized_version = "version-" + "v" * 64
+        oversized_sha = "a" * 65
+        oversized_request_id = "request-" + "r" * 128
+        respx.get(f"{_ORCH_URL}/version").mock(
+            return_value=httpx.Response(
+                200,
+                headers={"x-request-id": oversized_request_id},
+                json={"version": oversized_version, "sha": oversized_sha},
+            )
+        )
+
+        response = await client.get("/")
+
+        assert response.status_code == 200
+        assert "vunknown (sha-unknown)" in response.text
+        assert oversized_version not in response.text
+        assert oversized_sha not in response.text
+        assert oversized_request_id not in response.text
+
     @pytest.mark.asyncio
     async def test_index_includes_yellow_status_style(self, client):
         resp = await client.get("/")
