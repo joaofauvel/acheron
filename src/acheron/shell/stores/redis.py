@@ -530,7 +530,7 @@ def _deserialize_job_unchecked(blob: str) -> TrackedJob:
                         secure_cloud=item["estimate"].get("secure_cloud"),
                         queried_at=(
                             _deserialize_timestamp(item["estimate"]["queried_at"])
-                            if item["estimate"].get("queried_at")
+                            if item["estimate"].get("queried_at") is not None
                             else None
                         ),
                         cache_age_seconds=item["estimate"].get("cache_age_seconds"),

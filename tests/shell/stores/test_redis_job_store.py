@@ -1,5 +1,7 @@
 """Integration tests for the Redis job store."""
 
+import json
+import math
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Self, cast
@@ -123,6 +125,35 @@ async def store(redis_url: str) -> AsyncIterator[RedisJobStore]:
         await s.close()
 
 
+async def _set_breakdown_fields(
+    store: RedisJobStore,
+    redis_url: str,
+    *,
+    item_fields: dict[str, object] | None = None,
+    estimate_fields: dict[str, object] | None = None,
+) -> None:
+    from acheron.shell.stores.redis import _JOB_KEY
+
+    job = _tracked("j-corrupt")
+    job.result = _result()
+    await store.put(job)
+    r = aioredis.Redis.from_url(redis_url, decode_responses=True)
+    try:
+        blob = cast("str", await r.get(_JOB_KEY.format(job_id="j-corrupt")))
+        payload = cast("dict[str, object]", json.loads(blob))
+        result = cast("dict[str, object]", payload["result"])
+        breakdown = cast("list[dict[str, object]]", result["cost_breakdown"])
+        item = breakdown[0]
+        if item_fields is not None:
+            item.update(item_fields)
+        if estimate_fields is not None:
+            estimate = cast("dict[str, object]", item["estimate"])
+            estimate.update(estimate_fields)
+        await r.set(_JOB_KEY.format(job_id="j-corrupt"), json.dumps(payload, allow_nan=True))
+    finally:
+        await r.aclose()
+
+
 class TestPut:
     @pytest.mark.asyncio
     async def test_put_and_get(self, store: RedisJobStore) -> None:
@@ -238,6 +269,71 @@ class TestPlanRoundTrip:
         assert len(loaded.result.outputs) == 1
         assert loaded.result.outputs[0].path == "/out/x.wav"
         assert loaded.result.outputs[0].checksum == "abc"
+
+    @pytest.mark.parametrize("queried_at", ["", 0, False, "not-a-timestamp"])
+    @pytest.mark.asyncio
+    async def test_malformed_queried_at_raises_cache_corrupted(
+        self,
+        store: RedisJobStore,
+        redis_url: str,
+        queried_at: object,
+    ) -> None:
+        from acheron.core.errors import CacheCorruptedError
+
+        await _set_breakdown_fields(store, redis_url, estimate_fields={"queried_at": queried_at})
+        with pytest.raises(CacheCorruptedError):
+            await store.get("j-corrupt")
+
+    @pytest.mark.asyncio
+    async def test_null_queried_at_remains_valid(self, store: RedisJobStore, redis_url: str) -> None:
+        await _set_breakdown_fields(store, redis_url, estimate_fields={"queried_at": None})
+        loaded = await store.get("j-corrupt")
+        assert loaded is not None
+        assert loaded.result is not None
+        assert loaded.result.cost_breakdown[0].estimate.queried_at is None
+
+    @pytest.mark.asyncio
+    async def test_malformed_cost_basis_raises_cache_corrupted(self, store: RedisJobStore, redis_url: str) -> None:
+        from acheron.core.errors import CacheCorruptedError
+
+        await _set_breakdown_fields(store, redis_url, estimate_fields={"basis": "invalid"})
+        with pytest.raises(CacheCorruptedError):
+            await store.get("j-corrupt")
+
+    @pytest.mark.asyncio
+    async def test_negative_cache_age_raises_cache_corrupted(self, store: RedisJobStore, redis_url: str) -> None:
+        from acheron.core.errors import CacheCorruptedError
+
+        await _set_breakdown_fields(store, redis_url, estimate_fields={"cache_age_seconds": -1.0})
+        with pytest.raises(CacheCorruptedError):
+            await store.get("j-corrupt")
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("gpu_seconds", math.nan),
+            ("cost", math.inf),
+            ("rate_per_hour", -math.inf),
+            ("cache_age_seconds", math.nan),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_non_finite_numeric_fields_raise_cache_corrupted(
+        self,
+        store: RedisJobStore,
+        redis_url: str,
+        field: str,
+        value: float,
+    ) -> None:
+        from acheron.core.errors import CacheCorruptedError
+
+        fields: dict[str, object] = {field: value}
+        if field == "gpu_seconds":
+            await _set_breakdown_fields(store, redis_url, item_fields=fields)
+        else:
+            await _set_breakdown_fields(store, redis_url, estimate_fields=fields)
+        with pytest.raises(CacheCorruptedError):
+            await store.get("j-corrupt")
 
     @pytest.mark.asyncio
     async def test_result_with_metadata_round_trips(self, store: RedisJobStore) -> None:
