@@ -154,6 +154,36 @@ async def _set_breakdown_fields(
         await r.aclose()
 
 
+class TestDelete:
+    @pytest.mark.asyncio
+    async def test_delete_returns_record_at_atomic_removal_boundary(
+        self,
+        store: RedisJobStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from acheron.shell.stores.redis import _DELETE_JOB_SCRIPT, _JOB_KEY
+
+        job = _tracked("job-race")
+        job.label = "before-update"
+        await store.put(job)
+        concurrent_update = _tracked("job-race")
+        concurrent_update.label = "concurrent-update"
+
+        original_eval = store._redis.eval  # noqa: SLF001
+
+        async def eval_with_concurrent_update(script: str, numkeys: int, *keys_and_args: str) -> object:
+            if script == _DELETE_JOB_SCRIPT:
+                assert keys_and_args[0] == _JOB_KEY.format(job_id="job-race")
+                await store.put(concurrent_update)
+            return await original_eval(script, numkeys, *keys_and_args)
+
+        monkeypatch.setattr(store._redis, "eval", eval_with_concurrent_update)  # noqa: SLF001
+
+        removed = await store.delete("job-race")
+
+        assert removed == concurrent_update
+
+
 class TestPut:
     @pytest.mark.asyncio
     async def test_put_and_get(self, store: RedisJobStore) -> None:

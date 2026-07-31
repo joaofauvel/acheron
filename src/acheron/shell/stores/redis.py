@@ -155,6 +155,15 @@ _WORKERS_SET = "workers"
 _JOB_KEY = "job:{job_id}"
 _JOBS_SET = "jobs"
 
+_DELETE_JOB_SCRIPT = """
+local job_key = KEYS[1]
+local jobs_set = KEYS[2]
+local job = redis.call("GET", job_key)
+redis.call("SREM", jobs_set, ARGV[1])
+redis.call("DEL", job_key)
+return job
+"""
+
 _SET_WORKER_STATUS_SCRIPT = """
 local key = KEYS[1]
 if redis.call("EXISTS", key) == 0 then
@@ -774,14 +783,19 @@ class RedisJobStore(JobStore):
         return stored
 
     async def delete(self, job_id: str) -> TrackedJob | None:
-        """Delete a job and return its removed record, if present."""
-        job = await self.get(job_id)
+        """Atomically remove a job and return its removed record, if present."""
         try:
-            async with self._redis.pipeline(transaction=True) as pipe:
-                pipe.srem(_JOBS_SET, job_id)
-                pipe.delete(_JOB_KEY.format(job_id=job_id))
-                await pipe.execute()
+            blob = cast(
+                "str | None",
+                await self._redis.eval(
+                    _DELETE_JOB_SCRIPT,
+                    2,
+                    _JOB_KEY.format(job_id=job_id),
+                    _JOBS_SET,
+                    job_id,
+                ),
+            )
         except RedisError as exc:
             msg = f"Failed to delete job {job_id}"
             raise StoreError(msg) from exc
-        return job
+        return _deserialize_job(blob) if blob is not None else None
