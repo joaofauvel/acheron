@@ -35,6 +35,18 @@ The stack comes up with these default services:
 - **Redis** on `localhost:6379`.
 - **Local stub workers** (TTS, ASR, translation, gRPC) auto-register with the orchestrator and return mock data. Replace with real GPU workers for production.
 
+## Deployed Version Identity
+
+The orchestrator exposes `GET /version` for deployment diagnostics. It returns the
+installed package `version` and optional identity metadata: `sha`, `build_time`,
+`branch`, `dirty`, `image`, and `registry`. These values are supplied only by the
+`ACHERON_BUILD_*` variables documented below; they describe the built artifact and
+are not runtime configuration. Unset optional fields are returned as `null`, and
+no environment or secret values are exposed.
+
+Docker and Compose build arguments for these fields are optional. Set them when
+publishing an image, for example `ACHERON_BUILD_SHA` and `ACHERON_BUILD_IMAGE`.
+
 ## Basic CLI Commands
 
 ```bash
@@ -334,6 +346,12 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Orchestrator / TLS | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key. Set with `ACHERON_TLS_CERT_FILE` to enable HTTPS. |
 | Orchestrator / TLS | `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs. Falls back to `SSL_CERT_FILE`, then `./certs/acheron-ca.crt` in the CLI's CWD. |
 | Orchestrator / TLS | `ACHERON_ALLOW_INSECURE` | (unset) | Set to `1` to silence the plain-HTTP / insecure-gRPC WARNINGs emitted by `tls.py` when TLS env vars are unset. |
+| Build identity | `ACHERON_BUILD_SHA` | (unset) | Optional source revision identity returned by `GET /version`; metadata only. |
+| Build identity | `ACHERON_BUILD_TIME` | (unset) | Optional ISO 8601 build timestamp returned by `GET /version`; metadata only. |
+| Build identity | `ACHERON_BUILD_BRANCH` | (unset) | Optional source branch identity returned by `GET /version`; metadata only. |
+| Build identity | `ACHERON_BUILD_DIRTY` | (unset) | Optional exact `true`/`false` source-tree state returned by `GET /version`; metadata only. |
+| Build identity | `ACHERON_BUILD_IMAGE` | (unset) | Optional image name or reference returned by `GET /version`; metadata only. |
+| Build identity | `ACHERON_BUILD_REGISTRY` | (unset) | Optional image registry returned by `GET /version`; metadata only. |
 | Dashboard | `ACHERON_TRUST_REVERSE_PROXY` | `0` | Set to `1` to trust the `X-Forwarded-User` header from a reverse proxy that authenticates and strips the header. Default `0` (unauthenticated). |
 | Worker / Transport | `ACHERON_WORKER__WORKER_ID` | (required) | Stable identifier for this worker instance. |
 | Worker / Transport | `ACHERON_WORKER__ORCHESTRATOR_URL` | (required) | Orchestrator URL the worker registers with and sends `/execute` to. |

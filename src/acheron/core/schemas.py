@@ -266,6 +266,28 @@ class CapabilitiesResponse(BaseModel):
     workers: list[WorkerCapability] = Field(default_factory=list)
 
 
+class VersionResponse(BaseModel):
+    """Public package and deployment identity."""
+
+    version: str
+    sha: str | None = None
+    build_time: datetime | None = None
+    branch: str | None = None
+    dirty: bool | None = None
+    image: str | None = None
+    registry: str | None = None
+
+    @field_validator("build_time")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "build_time must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
+
+
 class InputResponse(BaseModel):
     """Response for a successful upload."""
 
@@ -354,6 +376,7 @@ __all__ = [
     "PlanStepResponse",
     "ReapStaleResponse",
     "StepError",
+    "VersionResponse",
     "WorkerCapability",
     "WorkerErrorEventResponse",
     "WorkerListResponse",

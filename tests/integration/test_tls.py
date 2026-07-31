@@ -177,6 +177,16 @@ def test_orchestrator_health_over_https(tls_stack: dict[str, object]) -> None:
         assert resp.status_code == 200
 
 
+def test_orchestrator_version_over_https(tls_stack: dict[str, object]) -> None:
+    ca = tls_stack["ca"]
+    port = tls_stack["orch_port"]
+    ctx = ssl.create_default_context(cafile=str(ca))
+    with httpx.Client(verify=ctx) as client:
+        resp = client.get(f"https://127.0.0.1:{port}/version")
+        assert resp.status_code == 200
+        assert resp.json()["version"]
+
+
 def test_http_worker_registers_over_https(tls_stack: dict[str, object]) -> None:
     ca = tls_stack["ca"]
     port = tls_stack["orch_port"]

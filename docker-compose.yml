@@ -1,3 +1,11 @@
+x-build-metadata: &build-metadata
+  ACHERON_BUILD_SHA: ${ACHERON_BUILD_SHA:-}
+  ACHERON_BUILD_TIME: ${ACHERON_BUILD_TIME:-}
+  ACHERON_BUILD_BRANCH: ${ACHERON_BUILD_BRANCH:-}
+  ACHERON_BUILD_DIRTY: ${ACHERON_BUILD_DIRTY:-}
+  ACHERON_BUILD_IMAGE: ${ACHERON_BUILD_IMAGE:-}
+  ACHERON_BUILD_REGISTRY: ${ACHERON_BUILD_REGISTRY:-}
+
 services:
   redis:
     image: redis:7-alpine
@@ -29,6 +37,7 @@ services:
     build:
       context: .
       target: orchestrator
+      args: *build-metadata
     ports:
       - "8000:8000"
     group_add:
@@ -177,6 +186,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.edge
+      args: *build-metadata
     expose:
       - "8001"
     environment:
@@ -214,6 +224,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.edge
+      args: *build-metadata
     expose:
       - "8001"
     environment:
@@ -249,6 +260,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.edge
+      args: *build-metadata
     expose:
       - "8001"
     environment:

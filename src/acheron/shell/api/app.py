@@ -15,13 +15,25 @@ from fastapi.responses import JSONResponse
 
 from acheron.shell.api.admin_audit import record_admin_failure
 from acheron.shell.api.input_boundary import InputRequestBoundary
-from acheron.shell.api.routes import admin, capabilities, cost, inputs, job_outputs, jobs, partials, plans, workers
+from acheron.shell.api.routes import (
+    admin,
+    capabilities,
+    cost,
+    inputs,
+    job_outputs,
+    jobs,
+    partials,
+    plans,
+    version,
+    workers,
+)
 from acheron.shell.api.schemas import AdminErrorResponse
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
 from acheron.shell.logging_context import ContextFilter, bind_request_id
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores import create_job_store, create_worker_store
+from acheron.version import build_version
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -59,6 +71,7 @@ def create_app(  # noqa: C901, PLR0915
 
     ``ACHERON_DATA_DIR`` env var is consulted when ``data_dir`` is not provided.
     """
+    version_info = build_version()
     base_settings = settings if settings is not None else load_settings()
     if data_dir is not None:
         effective_data_dir = Path(data_dir)
@@ -87,6 +100,7 @@ def create_app(  # noqa: C901, PLR0915
         lifespan=lifespan,
     )
     app.state.orchestrator = orchestrator
+    app.state.version = version_info
     app.add_middleware(InputRequestBoundary)
     logging.getLogger().addFilter(ContextFilter())
 
@@ -161,6 +175,7 @@ def create_app(  # noqa: C901, PLR0915
     app.include_router(partials.router, tags=["partials"])
     app.include_router(plans.router, prefix="/plans", tags=["plans"])
     app.include_router(cost.router, tags=["cost"])
+    app.include_router(version.router, tags=["version"])
 
     @app.get("/health")
     async def health() -> dict[str, str]:
