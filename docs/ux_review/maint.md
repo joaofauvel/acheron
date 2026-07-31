@@ -65,10 +65,10 @@ files:
   - path: src/acheron/core/models.py
     lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
-fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
-verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
 last_verified_at:
-  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
@@ -517,10 +517,10 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 214-231
 related: [MAINT-002, CORR-040]
-fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
-verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
 last_verified_at:
-  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
   date: "2026-07-31"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
@@ -557,10 +557,10 @@ files:
   - path: docker-compose.yml
     lines: 92-104
 related: [MAINT-002]
-fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
-verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
 last_verified_at:
-  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
