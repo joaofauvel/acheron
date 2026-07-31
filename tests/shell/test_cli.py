@@ -416,6 +416,9 @@ def test_job_archive_renders_preserved_record_metadata(monkeypatch: pytest.Monke
                     "job-old",
                     status="failed",
                     plan_id="plan-old",
+                    source_type="epub",
+                    source_language="en",
+                    target_language="fr",
                     archived_at="2026-07-30T12:34:56Z",
                     outputs=[
                         {
@@ -438,6 +441,11 @@ def test_job_archive_renders_preserved_record_metadata(monkeypatch: pytest.Monke
     assert route.called
     assert "archived at=2026-07-30T12:34:56+00:00" in result.output
     assert "record preserved" in result.output.lower()
+    assert "plan=plan-old" in result.output
+    assert "input=epub en->fr" in result.output
+    assert "result.wav" in result.output
+    assert "10 bytes" in result.output
+    assert "basis=measured" in result.output
 
 
 @respx.mock

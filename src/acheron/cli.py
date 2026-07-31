@@ -437,10 +437,21 @@ def archive_jobs(job_ids: tuple[str, ...]) -> None:
     for job_id in job_ids:
         result = _run(client.archive_job(job_id), on_http_error=_print_http_error)
         archived_at = result.archived_at.isoformat() if result.archived_at is not None else "unknown"
+        input_data = f"{result.source_type} {result.source_language}->{result.target_language}"
+        if result.asr_model:
+            input_data += f" asr={result.asr_model}"
+        output_data = (
+            ", ".join(
+                f"{output.filename} ({output.size_bytes} bytes, {output.content_type})" for output in result.outputs
+            )
+            or "-"
+        )
+        cost_basis = result.total_cost_basis.value if result.total_cost_basis is not None else "unknown"
         console.print(
             f"job={result.job_id} status={result.status.value} archived at={archived_at} "
-            f"record preserved (plan={result.plan_id or '-'}, inputs={result.source_type}, "
-            f"outputs={len(result.outputs)}, cost={_format_estimated_cost(result.total_cost, result.total_cost_basis)})"
+            f"record preserved (plan={result.plan_id or '-'}, input={input_data}, "
+            f"outputs={len(result.outputs)} ({output_data}), "
+            f"cost={_format_estimated_cost(result.total_cost, result.total_cost_basis)} basis={cost_basis})"
         )
 
 

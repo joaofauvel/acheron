@@ -61,7 +61,7 @@
         Include archived
       </label>
     </form>
-    <div id="job-results" hx-get="/partials/jobs" hx-trigger="load, every 2s" hx-swap="innerHTML">
+    <div id="job-results" hx-get="/partials/jobs" hx-include="#job-filters" hx-trigger="load, every 2s" hx-swap="innerHTML">
       <p style="color:#8b949e">Loading jobs...</p>
     </div>
   </div>

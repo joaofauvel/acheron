@@ -121,6 +121,14 @@ class TestIndexPage:
         assert "#d29922" in resp.text
 
     @pytest.mark.asyncio
+    async def test_index_preserves_active_job_filters_during_polling(self, client):
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        job_results = resp.text.split('<div id="job-results"', 1)[1].split("</div>", 1)[0]
+        assert 'hx-get="/partials/jobs"' in job_results
+        assert 'hx-include="#job-filters"' in job_results
+
+    @pytest.mark.asyncio
     async def test_index_wires_one_second_booting_timer(self, client):
         resp = await client.get("/")
         assert "updateBootingProgress" in resp.text
@@ -267,6 +275,9 @@ class TestWorkersPartial:
                             "worker_id": "tts-1",
                             "worker_type": "tts",
                             "transport": "http",
+                            "endpoint": "https://provider.internal/api?credential=raw-secret",
+                            "provider": "raw-provider-name",
+                            "credential": "raw-credential-value",
                             "status": "healthy",
                             "consecutive_failures": 0,
                             "last_error": "latest sanitized error",
@@ -285,6 +296,8 @@ class TestWorkersPartial:
         for message in ("failure-2", "failure-3", "failure-4"):
             assert message in response.text
         assert "http://" not in response.text
+        for raw_value in ("provider.internal", "raw-provider-name", "raw-credential-value"):
+            assert raw_value not in response.text
         assert "Worker history" in response.text
 
     @respx.mock

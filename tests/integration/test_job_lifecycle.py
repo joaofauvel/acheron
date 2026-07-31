@@ -335,8 +335,11 @@ async def test_admin_transitions_preserve_outputs_progress_and_cost(wired_app: F
         EpubRequest,
         ExecutorStrategy,
         OutputFile,
+        Plan,
         PlanResult,
         PlanStatus,
+        PlanStep,
+        StepStatus,
         WorkerType,
     )
     from acheron.shell.job_store import JobProgressState
@@ -355,6 +358,23 @@ async def test_admin_transitions_preserve_outputs_progress_and_cost(wired_app: F
         worker_id="tts-1",
         gpu_seconds=2.0,
         estimate=CostEstimate(cost=0.25, basis=CostBasis.MEASURED),
+    )
+    plan_template = Plan(
+        plan_id="plan-evidence",
+        job_id="placeholder",
+        source_type="epub",
+        source_language="en",
+        target_language="es",
+        executor_strategy=ExecutorStrategy.SEQUENTIAL,
+        steps=(
+            PlanStep(
+                step_id="synthesize",
+                type=WorkerType.TTS,
+                depends_on=(),
+                status=StepStatus.COMPLETE,
+                payload={"voice": "en-US"},
+            ),
+        ),
     )
     result = PlanResult(
         plan_id="plan-evidence",
@@ -375,6 +395,7 @@ async def test_admin_transitions_preserve_outputs_progress_and_cost(wired_app: F
             strategy=ExecutorStrategy.SEQUENTIAL,
             status=status,
             progress=JobProgressState(completed_steps=1, total_steps=2, current_step_id="synthesize"),
+            plan=replace(plan_template, job_id=job_id),
             result=result,
         )
 
@@ -401,8 +422,14 @@ async def test_admin_transitions_preserve_outputs_progress_and_cost(wired_app: F
         assert failed.result.cost_breakdown == (cost,)
         archived = await orch.archive_job(job_id)
         assert archived.archived_at is not None
+        assert archived.request == EpubRequest("input/book.epub", "en", "es")
+        assert archived.plan == replace(plan_template, job_id=job_id)
         assert archived.result is not None
+        assert archived.result.plan_id == "plan-evidence"
         assert archived.result.outputs == (evidence,)
+        assert archived.result.total_cost == 0.25
+        assert archived.result.total_duration_seconds == 2.0
+        assert archived.result.total_cost_basis is CostBasis.MEASURED
         assert archived.result.cost_breakdown == (cost,)
 
 

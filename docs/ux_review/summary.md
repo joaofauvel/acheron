@@ -21,19 +21,19 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Top concerns (open and stale stories)
 
-3. **MAINT-003** — Certificate expiry is silent.
-4. **MAINT-004** — Dev certificate SANs do not cover production hostnames.
-5. **MAINT-007** — No token rotation command or audit trail.
-9. **MAINT-016** — Dashboard does not show the running image identity.
-10. **MAINT-018** — Existing Redis job records have no schema upgrade path.
-11. **OPS-032** — `acheron job tail` exposes raw HTTP tracebacks.
-12. **OPS-033** — Dashboard detail URLs reload as partial fragments.
-13. **DEPLOY-002** — Dev certificate SANs still mismatch compose worker names.
-14. **DEPLOY-006** — Qwen3-TTS image guidance still omits FlashAttention installation.
-15. **DEPLOY-008** — Certificate generation can overwrite an existing CA.
-16. **DEPLOY-010** — TranslateGemma model-switching guidance conflicts with offline mode.
-17. **DEPLOY-012** — The shell-local token and compose token configuration remain easy to confuse.
-18. **DEPLOY-013** — TranslateGemma storage guidance remains ambiguous.
+1. **MAINT-003** — Certificate expiry is silent.
+2. **MAINT-004** — Dev certificate SANs do not cover production hostnames.
+3. **MAINT-007** — No token rotation command or audit trail.
+4. **MAINT-016** — Dashboard does not show the running image identity.
+5. **MAINT-018** — Existing Redis job records have no schema upgrade path.
+6. **OPS-032** — `acheron job tail` exposes raw HTTP tracebacks.
+7. **OPS-033** — Dashboard detail URLs reload as partial fragments.
+8. **DEPLOY-002** — Dev certificate SANs still mismatch compose worker names.
+9. **DEPLOY-006** — Qwen3-TTS image guidance still omits FlashAttention installation.
+10. **DEPLOY-008** — Certificate generation can overwrite an existing CA.
+11. **DEPLOY-010** — TranslateGemma model-switching guidance conflicts with offline mode.
+12. **DEPLOY-012** — The shell-local token and compose token configuration remain easy to confuse.
+13. **DEPLOY-013** — TranslateGemma storage guidance remains ambiguous.
 
 ## Quick wins (S-effort, high-impact)
 
@@ -41,8 +41,8 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 2. **OPS-033** (S, low) — Make job detail URLs resolve to the full dashboard shell.
 3. **DEPLOY-013** (S, low) — Clarify container-disk versus model-cache storage.
 4. **MAINT-013** (S, medium) — Return the request ID to CLI callers.
-6. **DEPLOY-008** (M, medium) — Guard certificate regeneration from overwriting operator material.
-8. **MAINT-019** (M, medium) — Evict completed job event buffers.
+5. **DEPLOY-008** (M, medium) — Guard certificate regeneration from overwriting operator material.
+6. **MAINT-019** (M, medium) — Evict completed job event buffers.
 
 ## Story counts
 
