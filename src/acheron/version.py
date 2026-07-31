@@ -38,12 +38,11 @@ def _build_time(value: str | None) -> datetime | None:
 def _dirty(value: str | None) -> bool | None:
     if not value:
         return None
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    msg = "ACHERON_BUILD_DIRTY must be exactly 'true' or 'false'"
-    raise ValueError(msg)
+    try:
+        return {"true": True, "false": False}[value]
+    except KeyError as exc:
+        msg = "ACHERON_BUILD_DIRTY must be exactly 'true' or 'false'"
+        raise ValueError(msg) from exc
 
 
 def build_version() -> VersionInfo:

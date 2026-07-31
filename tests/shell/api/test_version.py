@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from httpx import AsyncClient
 
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
@@ -25,7 +26,7 @@ def test_version_response_uses_explicit_build_identity(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
-async def test_version_endpoint_omits_environment_dump_and_unset_build_values(client) -> None:  # type: ignore[no-untyped-def]
+async def test_version_endpoint_omits_environment_dump_and_unset_build_values(client: AsyncClient) -> None:
     response = await client.get("/version")
 
     assert response.status_code == 200
@@ -48,10 +49,12 @@ def test_malformed_dirty_value_is_rejected_during_app_construction(
 ) -> None:
     monkeypatch.setenv("ACHERON_BUILD_DIRTY", "yes")
 
-    with pytest.raises(ValueError, match="ACHERON_BUILD_DIRTY"):
+    with pytest.raises(ValueError, match="ACHERON_BUILD_DIRTY") as exc_info:
         create_app(
             registry=InMemoryWorkerStore(),
             job_store=InMemoryJobStore(),
             cache=PlanCache(tmp_path),
             data_dir=tmp_path,
         )
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
