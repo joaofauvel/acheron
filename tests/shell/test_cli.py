@@ -1227,7 +1227,8 @@ def test_http_error_redacts_attempted_url_and_prints_request_id(monkeypatch: pyt
     result = CliRunner().invoke(main, ["jobs"])
     assert result.exit_code != 0
     assert "Error 404: Not Found (from https://wrong.host/jobs/job-abc) — verify ACHERON_URL" in result.output
-    assert "request_id=req-test" in result.output
+    assert "request_id=req-test" not in result.stdout
+    assert result.stderr.count("request_id=req-test") == 1
     assert "user:pass" not in result.output
     assert "query-secret" not in result.output
     assert "#fragment" not in result.output
@@ -1484,8 +1485,23 @@ def test_job_tail_streams_events() -> None:
     ]
     ndjson = ("\n".join(e.model_dump_json() for e in events) + "\n").encode()
 
-    respx.get(f"{_BASE_URL}/jobs/job-1/logs").mock(return_value=httpx.Response(200, content=ndjson))
+    respx.get(f"{_BASE_URL}/jobs/job-1/logs").mock(
+        return_value=httpx.Response(200, content=ndjson, headers={"x-request-id": "req-tail"})
+    )
     result = CliRunner().invoke(main, ["job", "tail", "job-1"])
     assert result.exit_code == 0, result.output
     assert "running" in result.output.lower()
     assert "completed" in result.output.lower()
+    assert "request_id=req-tail" not in result.stdout
+    assert result.stderr.count("request_id=req-tail") == 1
+
+
+@respx.mock
+def test_job_tail_prints_request_id_for_empty_stream() -> None:
+    respx.get(f"{_BASE_URL}/jobs/job-1/logs").mock(
+        return_value=httpx.Response(200, content=b"", headers={"x-request-id": "req-empty"})
+    )
+    result = CliRunner().invoke(main, ["job", "tail", "job-1"])
+    assert result.exit_code == 0, result.output
+    assert "request_id=req-empty" not in result.stdout
+    assert result.stderr.count("request_id=req-empty") == 1

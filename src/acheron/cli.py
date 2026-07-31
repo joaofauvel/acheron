@@ -149,7 +149,7 @@ def _request_id(client: AcheronClient | None) -> str | None:
 def _print_request_id(client: AcheronClient | None) -> None:
     request_id = _request_id(client)
     if request_id is not None:
-        console.print(f"request_id={request_id}")
+        err_console.print(f"request_id={request_id}")
 
 
 def _http_error_suffix(exc: httpx.HTTPStatusError) -> str:
@@ -214,43 +214,75 @@ def _run[T](
         raise SystemExit(1) from None
 
 
-def _run_sync_generator[T](async_gen: AsyncIterator[T], *, client: AcheronClient | None = None) -> Iterator[T]:
+def _drain_sync_generator[T](
+    next_event: Callable[[], T],
+    *,
+    client: AcheronClient | None,
+    on_started: Callable[[], None] | None,
+) -> Iterator[T]:
+    started = False
+
+    def _notify_started() -> None:
+        nonlocal started
+        if not started:
+            started = True
+            if on_started is not None:
+                on_started()
+
+    while True:
+        try:
+            event = next_event()
+        except StopAsyncIteration:
+            _notify_started()
+            return
+        except Exception as exc:  # noqa: BLE001
+            _notify_started()
+            _print_stream_error(exc, client=client, print_request_id=on_started is None)
+            raise SystemExit(1) from None
+        _notify_started()
+        yield event
+
+
+def _run_sync_generator[T](
+    async_gen: AsyncIterator[T],
+    *,
+    client: AcheronClient | None = None,
+    on_started: Callable[[], None] | None = None,
+) -> Iterator[T]:
     """Drain an async generator synchronously via a thread pool."""
 
     def _next(ait: AsyncIterator[T]) -> T:
         coro = ait.__anext__()
         return asyncio.run(coro)  # type: ignore[arg-type]
 
+    async_iter = async_gen.__aiter__()
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         try:
-            async_iter = async_gen.__aiter__()
-            while True:
-                try:
-                    yield loop.run_until_complete(async_iter.__anext__())
-                except StopAsyncIteration:
-                    return
-                except Exception as exc:  # noqa: BLE001
-                    _print_stream_error(exc, client=client)
-                    raise SystemExit(1) from None
+            yield from _drain_sync_generator(
+                lambda: loop.run_until_complete(async_iter.__anext__()),
+                client=client,
+                on_started=on_started,
+            )
         finally:
             loop.close()
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            async_iter = async_gen.__aiter__()
-            while True:
-                try:
-                    yield pool.submit(_next, async_iter).result()
-                except StopAsyncIteration:
-                    return
-                except Exception as exc:  # noqa: BLE001
-                    _print_stream_error(exc, client=client)
-                    raise SystemExit(1) from None
+            yield from _drain_sync_generator(
+                lambda: pool.submit(_next, async_iter).result(),
+                client=client,
+                on_started=on_started,
+            )
 
 
-def _print_stream_error(exc: BaseException, *, client: AcheronClient | None) -> None:
+def _print_stream_error(
+    exc: BaseException,
+    *,
+    client: AcheronClient | None,
+    print_request_id: bool = True,
+) -> None:
     if isinstance(exc, httpx.HTTPStatusError):
         _print_http_error(exc)
     elif isinstance(exc, httpx.ConnectError):
@@ -263,7 +295,8 @@ def _print_stream_error(exc: BaseException, *, client: AcheronClient | None) -> 
         url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
         detail = _sanitize_exception_text(str(exc)) or "stream protocol failure"
         console.print(f"[red]Streaming request failed at {url}: {detail}[/red]")
-    _print_request_id(client)
+    if print_request_id:
+        _print_request_id(client)
 
 
 def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
@@ -950,12 +983,12 @@ def watch(job_id: str) -> None:
 def tail(job_id: str) -> None:
     """Stream live progress events for a job."""
     client = _get_client()
-    printed_request_id = False
     try:
-        for event in _run_sync_generator(client.tail_job(job_id), client=client):
-            if not printed_request_id:
-                _print_request_id(client)
-                printed_request_id = True
+        for event in _run_sync_generator(
+            client.tail_job(job_id),
+            client=client,
+            on_started=lambda: _print_request_id(client),
+        ):
             console.print(f"{event.status.value}: {event.message}", markup=False)
     except KeyboardInterrupt:
         pass
