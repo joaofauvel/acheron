@@ -34,10 +34,12 @@
     .section { margin-bottom: 2rem; }
     .booting-progress { display: grid; gap: 0.25rem; margin-top: 0.35rem; min-width: 10rem; }
     .booting-progress progress { width: 10rem; accent-color: #d29922; }
+    .version-identity { color: #8b949e; font-size: 0.9rem; font-weight: 400; }
+    .request-id { color: #8b949e; font-size: 0.75rem; font-weight: 400; margin-left: 0.5rem; }
   </style>
 </head>
 <body>
-  <h1>Acheron <span id="status" hx-get="/partials/status" hx-trigger="load, every 2s" hx-swap="innerHTML" style="font-size:1rem"><span style="color:#8b949e">…</span></span></h1>
+  <h1>Acheron <span id="status" hx-get="/partials/status" hx-trigger="load, every 2s" hx-swap="innerHTML" style="font-size:1rem"><span style="color:#8b949e">…</span></span> {% include "partials/version.html" %}</h1>
   {% if user %}<p style="color:#8b949e">Signed in as {{ user }}</p>{% endif %}
 
   <div class="section" id="jobs">

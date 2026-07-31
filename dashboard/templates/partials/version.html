@@ -1,0 +1,2 @@
+<span class="version-identity" aria-label="deployed version">v{{ version.version }} (sha-{{ version.sha }})</span>
+{% if version.request_id %}<span class="request-id" title="Orchestrator request correlation ID">request_id={{ version.request_id }}</span>{% endif %}

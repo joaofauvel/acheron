@@ -114,6 +114,44 @@ class TestIndexPage:
         assert 'id="status"' in resp.text
         assert "/partials/status" in resp.text
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_index_renders_safe_deployed_version_and_request_id(self, client):
+        respx.get(f"{_ORCH_URL}/version").mock(
+            return_value=httpx.Response(
+                200,
+                headers={"x-request-id": "req-version-123"},
+                json={
+                    "version": "0.1.0",
+                    "sha": "abc1234",
+                    "build_time": "2026-07-30T12:00:00Z",
+                    "branch": "master",
+                    "dirty": False,
+                    "image": "acheron:dev",
+                    "registry": None,
+                    "secret": "must-not-render",
+                },
+            )
+        )
+
+        response = await client.get("/")
+
+        assert response.status_code == 200
+        assert "v0.1.0 (sha-abc1234)" in response.text
+        assert "req-version-123" in response.text
+        for secret in ("acheron:dev", "master", "must-not-render", _ORCH_URL):
+            assert secret not in response.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_index_renders_unknown_version_when_fetch_fails(self, client):
+        respx.get(f"{_ORCH_URL}/version").mock(side_effect=httpx.ConnectError("refused"))
+
+        response = await client.get("/")
+
+        assert response.status_code == 200
+        assert "vunknown (sha-unknown)" in response.text
+
     @pytest.mark.asyncio
     async def test_index_includes_yellow_status_style(self, client):
         resp = await client.get("/")

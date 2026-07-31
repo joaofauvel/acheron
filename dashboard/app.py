@@ -65,6 +65,36 @@ async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, obj
         return {}
 
 
+def _metadata_string(value: object, fallback: str) -> str:
+    """Return a bounded non-empty string for operator-facing metadata."""
+    match value:
+        case str() as text if text.strip():
+            return text.strip()
+        case _:
+            return fallback
+
+
+async def _fetch_version(orchestrator_url: str) -> dict[str, str | None]:
+    """Fetch the public version identity without exposing other response fields."""
+    try:
+        async with httpx.AsyncClient(base_url=orchestrator_url) as client:
+            resp = await client.get("/version")
+            resp.raise_for_status()
+            payload = resp.json()
+            match payload:
+                case dict() as metadata:
+                    pass
+                case _:
+                    return {"version": "unknown", "sha": "unknown", "request_id": None}
+            version = _metadata_string(metadata.get("version"), "unknown")
+            sha = _metadata_string(metadata.get("sha"), "unknown")
+            request_id = _metadata_string(resp.headers.get("x-request-id"), "") or None
+            return {"version": version, "sha": sha[:7], "request_id": request_id}
+    except Exception:  # noqa: BLE001
+        _LOGGER.warning("Dashboard cannot reach orchestrator at %s/version", orchestrator_url)
+        return {"version": "unknown", "sha": "unknown", "request_id": None}
+
+
 async def _proxy_status_partial(orchestrator_url: str) -> HTMLResponse:
     """Fetch the orchestrator's status partial; render Disconnected on failure."""
     try:
@@ -127,7 +157,8 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
         user = ""
         if os.environ.get("ACHERON_TRUST_REVERSE_PROXY") == "1":
             user = request.headers.get("X-Forwarded-User", "")
-        return _TEMPLATES.TemplateResponse(request, "index.html", context={"user": user})
+        version = await _fetch_version(orchestrator_url)
+        return _TEMPLATES.TemplateResponse(request, "index.html", context={"user": user, "version": version})
 
     @app.get("/partials/jobs", response_class=HTMLResponse)
     async def jobs_partial(request: Request) -> HTMLResponse:

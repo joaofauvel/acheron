@@ -810,7 +810,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-022
 title: 4xx/5xx from the wrong base URL doesn't echo the attempted URL — operator can't tell they hit a different host
-status: stale
+status: verified
 severity: medium
 effort: S
 discovered_via: [user-feedback, on-call]
@@ -824,23 +824,22 @@ files:
   - path: src/acheron/api_client.py
     lines: 91-98
 related: [OPS-003]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
-drift_note: "The error path still prints only a generic HTTP status and does not identify the attempted base URL."
+fixed_in: [185efcb, de85647, 215109c, 8f04f5c, c9b8710, 9e86939]
+verified_in: [9e86939]
+last_verified_at:
+  commit: 9e86939
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-12-correlation"
 feedback_ref: "TBD-pagerduty"
 incident_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** `cli.py:92-99`'s `httpx.HTTPStatusError` handler prints `Error {status_code}: {detail}` and exits. The request URL is available on `exc.request.url` but is not echoed. The connect-error path (lines 82-91) does echo the URL; the status-error path does not.
+**Current state.** HTTP status failures include the attempted URL and an `ACHERON_URL` remediation hint; streamed and regular requests also surface the response correlation ID without exposing credentials.
 
 **Why it matters.** "Is the job gone?" vs "did I hit the wrong host?" is the operator's first triage question.
 
-**Recommendation.** In `cli.py:92-99`, append ` (from {exc.request.url})` to the error line.
-
-**Verification.** With `ACHERON_URL=https://wrong.host`, `acheron job status job-abc` exits 1 with `Error 404: Not Found (from https://wrong.host/jobs/job-abc) — verify ACHERON_URL`.
+**Verification.** Task 12 focused CLI/API tests cover status-error URL diagnostics, URL sanitization, bounded error content, and request-ID output. The dashboard version journey also confirms orchestrator URLs and configuration fields are not rendered.
 
 ## OPS-023 — Dashboard per-job detail lacks per-step worker attribution
 

@@ -477,7 +477,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-013
 title: "`bind_request_id` injects a UUID into every orchestrator log line but the CLI never echoes the request_id back to the operator — the on-call at 2am has the job_id, not the request_id"
-status: stale
+status: verified
 severity: medium
 effort: S
 discovered_via: [on-call, code-review]
@@ -489,21 +489,21 @@ files:
   - path: src/acheron/shell/api/app.py
     lines: 88-92
 related: [OPS-003]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [185efcb, eddbd7e, de85647]
+verified_in: [9e86939]
+last_verified_at:
+  commit: 9e86939
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** The `_request_id_middleware` reads `x-request-id` from the request, generates a UUID if absent, binds it via `bind_request_id(request_id)`, and the `ContextFilter` injects it into every log line. The CLI uses `httpx` without surfacing the `x-request-id` response header.
+**Current state.** The API middleware returns the request ID on every response, and the API client/CLI print the captured ID to stderr for both regular and streaming commands. The dashboard also renders the version-fetch correlation ID when available.
 
 **Why it matters.** Log correlation by `request_id` is the on-call's breadcrumb.
 
-**Recommendation.** The CLI's `httpx` client captures `response.headers['x-request-id']` and prints it to stderr at the end of every command: `request_id=req-9f8e7d6c`.
-
-**Verification.** `acheron job submit ...` exits 0 and prints `request_id=req-...` to stderr alongside `job_id=job-...`.
+**Verification.** Task 12 focused client and CLI tests cover generated and caller-supplied IDs, regular and streaming responses, stderr output, and missing-header behavior. Task 13 dashboard tests cover safe request-ID rendering alongside the deployed version.
 
 ## MAINT-014 — `uninterruptablePrice` is the lowest available rate, not what was paid
 
@@ -591,7 +591,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-016
 title: "Dashboard does not surface the running image SHA / version pin — operator at 2am cannot tell which `ghcr.io/...:sha-abc1234` is deployed"
-status: stale
+status: verified
 severity: high
 effort: M
 discovered_via: [on-call, audit]
@@ -600,26 +600,32 @@ silent: true
 journey_stage: t2
 user_journey: "On-call at 2am gets paged: 'regression in worker response format — what version are we on?'. Engineer opens the dashboard; the header shows `Acheron v1.4.2 (build sha-abc1234 2026-07-23 14:22 UTC, branch master, dirty=False)`."
 files:
-  - path: src/acheron/shell/api/app.py
-    lines: 102-104
+  - path: src/acheron/shell/api/routes/version.py
+    lines: 17-29
+  - path: dashboard/app.py
+    lines: 65-95
   - path: dashboard/templates/index.html
-    lines: 39-40
+    lines: 41-45
+  - path: dashboard/templates/partials/version.html
+    lines: 1-2
+  - path: dashboard/tests/test_dashboard.py
+    lines: 116-153
 related: []
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [aedaa54, e29bffc]
+verified_in: [9e86939]
+last_verified_at:
+  commit: 9e86939
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** The orchestrator's `/health` endpoint returns `{"status": "ok"}` — no version, no build SHA, no image tag. The dashboard's header does not surface any of this.
+**Current state.** `GET /version` returns the explicit build identity, and the dashboard fetches it without proxying configuration fields. The header renders only `vX.Y.Z (sha-abc1234)` plus the response correlation ID; failed fetches render `vunknown (sha-unknown)`.
 
-**Why it matters.** Rollback decisions are made on the live system's identity. Without a `/version` endpoint, the on-call's only path is `docker inspect`.
+**Why it matters.** Rollback decisions are made on the live system's identity. Operators need a safe live version pin without exposing deployment credentials or URLs.
 
-**Recommendation.** Add `GET /version` returning `{image, sha, build_time, branch, dirty, version, registry}`. The dashboard header shows `vX.Y.Z (sha-abc1234)`.
-
-**Verification.** A orchestrator image built with build-arg GIT_SHA=abc1234. `GET /version` returns `{sha:abc1234, ...}`. The dashboard header shows `v1.4.2 (sha-abc1234)`.
+**Verification.** Task 11 version-route tests cover explicit identity fields. Task 13 dashboard tests cover the deployed version/SHA, request ID, unknown fallback, and absence of image, branch, secret, and orchestrator URL values.
 
 ## MAINT-017 — HF cache + `HF_HUB_OFFLINE=1` + model_id change = silent wrong-weights load
 
