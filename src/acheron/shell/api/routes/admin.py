@@ -197,6 +197,7 @@ async def cleanup(
             job_ids=tuple(result.deleted_job_ids),
             affected_count=result.deleted_count,
         ),
+        failure_reason=lambda result: "cleanup completed with per-job failures" if result.failures else None,
     )
 
 

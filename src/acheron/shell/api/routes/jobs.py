@@ -115,9 +115,9 @@ async def _build_job_request(
             if normalized_asr_model is not None:
                 msg = "asr_model is only valid for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
-            resolved_source = _resolve_submission_source(orch, body.source_path)
+            source_identity = _submission_source_identity(orch, body.source_path)
             job_request = EpubRequest(
-                source_path=str(resolved_source),
+                source_path=source_identity,
                 source_language=body.source_language,
                 target_language=body.target_language,
             )
@@ -125,9 +125,9 @@ async def _build_job_request(
             if not normalized_asr_model:
                 msg = "asr_model is required for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
-            resolved_source = _resolve_submission_source(orch, body.source_path)
+            source_identity = _submission_source_identity(orch, body.source_path)
             job_request = AudioRequest(
-                source_path=str(resolved_source),
+                source_path=source_identity,
                 source_language=body.source_language,
                 target_language=body.target_language,
                 asr_model=normalized_asr_model,
@@ -138,8 +138,14 @@ async def _build_job_request(
     return job_request, strategy
 
 
-def _resolve_stored_source(orch: Orchestrator, source_path: str) -> Path:
-    """Revalidate a stored source through the normal input boundary."""
+def _submission_source_identity(orch: Orchestrator, source_path: str) -> str:
+    """Validate a source and return its canonical data-directory-relative identity."""
+    resolved = _resolve_submission_source(orch, source_path)
+    return InputStore(orch.settings.orchestrator.data_dir, create=False).normalize_source_path(str(resolved))
+
+
+def _resolve_stored_source(orch: Orchestrator, source_path: str) -> str:
+    """Revalidate a stored source and return its canonical identity."""
     candidate = Path(source_path)
     data_dir = orch.settings.orchestrator.data_dir
     if candidate.is_absolute():
@@ -151,7 +157,7 @@ def _resolve_stored_source(orch: Orchestrator, source_path: str) -> Path:
             raise HTTPException(status_code=422, detail=msg) from exc
     else:
         relative_path = candidate
-    return _resolve_submission_source(orch, str(relative_path))
+    return _submission_source_identity(orch, str(relative_path))
 
 
 async def _build_retry_request(
@@ -174,9 +180,9 @@ async def _build_retry_request(
     match source.request:
         case EpubRequest(source_path=source_path, source_language=source_language, target_language=target_language):
             if body.source_path is not None:
-                path = str(_resolve_submission_source(orch, body.source_path))
+                path = _submission_source_identity(orch, body.source_path)
             else:
-                path = str(_resolve_stored_source(orch, source_path))
+                path = _resolve_stored_source(orch, source_path)
             if body.asr_model is not None and body.asr_model.strip():
                 msg = "asr_model is only valid for source_type='audio'"
                 raise HTTPException(status_code=422, detail=msg)
@@ -192,9 +198,9 @@ async def _build_retry_request(
             asr_model=asr_model,
         ):
             if body.source_path is not None:
-                path = str(_resolve_submission_source(orch, body.source_path))
+                path = _submission_source_identity(orch, body.source_path)
             else:
-                path = str(_resolve_stored_source(orch, source_path))
+                path = _resolve_stored_source(orch, source_path)
             selected_asr_model = body.asr_model.strip() if body.asr_model is not None else asr_model
             if not selected_asr_model:
                 msg = "asr_model is required for source_type='audio'"

@@ -560,6 +560,7 @@ class Orchestrator:
                 max_chunk_length=self._settings.workers.chunking.max_chunk_length,
                 chars_per_token=self._settings.chars_per_token,
             ),
+            source_root=self._settings.orchestrator.data_dir,
         )
 
     async def preview_job(self, request: JobRequest, strategy: ExecutorStrategy) -> Plan:

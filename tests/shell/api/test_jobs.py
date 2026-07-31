@@ -117,7 +117,7 @@ class TestJobRoutes:
         )
 
         assert isinstance(request, AudioRequest)
-        assert request.source_path == str(source_path)
+        assert request.source_path == "input/book.wav"
         assert request.source_language == "en"
         assert request.target_language == "es"
         assert request.asr_model == "whisper-tiny"
@@ -1502,7 +1502,7 @@ class TestJobRoutePreflight:
         assert spy.submit_calls == []
 
     @pytest.mark.asyncio
-    async def test_valid_relative_path_passes_resolved_absolute_to_submit(
+    async def test_valid_relative_path_passes_canonical_identity_to_submit(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -1546,9 +1546,7 @@ class TestJobRoutePreflight:
         assert response.status_code == 201
         assert len(spy.submit_calls) == 1
         submitted, _ = spy.submit_calls[0]
-        resolved = Path(submitted.source_path).resolve()
-        assert resolved == (tmp_path / "input" / "book.epub").resolve()
-        assert str(resolved).startswith(str(tmp_path.resolve()))
+        assert submitted.source_path == "input/book.epub"
 
 
 class TestUploadToSubmitIntegration:

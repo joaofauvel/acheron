@@ -12,6 +12,7 @@ from acheron.shell.api.admin_audit import execute_admin_action
 from acheron.shell.api.deps import AdminTokenDep
 from acheron.shell.api.schemas import CleanupRequest, ReapStaleRequest
 from acheron.shell.job_store import JobQuery, TrackedJob
+from acheron.shell.retention import CleanupFailure, CleanupReport
 from acheron.shell.stores.memory import InMemoryJobStore
 
 
@@ -105,6 +106,45 @@ async def test_unexpected_admin_error_uses_sanitized_type(
     assert response.status_code == 500
     assert response.json()["detail"]["type"] == "AdminInternalError"
     assert response.json()["detail"]["type"] != "RuntimeError"
+
+
+@pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_cleanup_partial_report_is_audited_as_failure(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+
+    async def partial_cleanup(*_args: object, **_kwargs: object) -> CleanupReport:
+        return _partial_cleanup_report()
+
+    monkeypatch.setattr(orch, "preview_cleanup", partial_cleanup)
+
+    response = await client.post(
+        "/admin/cleanup",
+        json={"keep_successful_seconds": 60, "keep_failed_seconds": 60},
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["failures"]) == 1
+    assert response.json()["deleted_count"] == 1
+    assert orch.admin_audits[-1].result == "failure"
+    assert orch.admin_audits[-1].reason == "cleanup completed with per-job failures"
+
+
+def _partial_cleanup_report() -> CleanupReport:
+    return CleanupReport(
+        apply=False,
+        candidates=(),
+        deleted_job_ids=("job-deleted",),
+        failures=(CleanupFailure("job-failed", ("job-failed",), "retry is safe"),),
+        deleted_count=1,
+        deleted_bytes=4,
+        reclaimable_bytes=8,
+    )
 
 
 @pytest.mark.asyncio

@@ -144,6 +144,8 @@ class ExtractionHandler:
         start_time = time.monotonic()
         source_path_str = str(job.payload.get("source_path", ""))
         source_path = Path(source_path_str)
+        if not source_path.is_absolute():
+            source_path = self.data_dir / source_path
         resolved_source = self._validate_source_path(source_path)
         if not await asyncio.to_thread(resolved_source.exists):
             msg = f"Source file not found: {resolved_source}"

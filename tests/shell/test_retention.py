@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from acheron.core.errors import CacheError
 from acheron.core.models import EpubRequest, ExecutorStrategy, Plan, PlanStatus
-from acheron.shell.cache import PlanCache, StepCache
+from acheron.shell.cache import PlanCache, StepCache, _delete_tree
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.retention import RetentionPolicy, RetentionService
@@ -60,6 +62,82 @@ async def test_preview_is_non_mutating_and_reports_relative_sizes(tmp_path: Path
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_preview_excludes_active_jobs(tmp_path: Path) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    (tmp_path / "job-active").mkdir()
+    service, _ = await _service(
+        tmp_path,
+        [_job("job-active", "plan-abcd1234", "missing.epub", PlanStatus.COMPLETED, now)],
+    )
+    service._active_jobs = lambda: {"job-active"}  # noqa: SLF001
+
+    report = await service.preview(RetentionPolicy(timedelta(days=7), timedelta(days=30)), now=now)
+
+    assert report.candidates == ()
+    assert report.reclaimable_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_preview_does_not_create_missing_data_root(tmp_path: Path) -> None:
+    root = tmp_path / "missing"
+    service, _ = await _service(root, [])
+    assert not root.exists()
+
+    await service.preview(RetentionPolicy(timedelta(days=7), timedelta(days=30)))
+
+    assert not root.exists()
+
+
+@pytest.mark.asyncio
+async def test_preview_skips_malformed_persisted_ids(tmp_path: Path) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    outside = tmp_path.parent / "must-not-inspect"
+    outside.mkdir()
+    (outside / "secret").write_bytes(b"secret")
+    service, _ = await _service(
+        tmp_path,
+        [_job("../must-not-inspect", "plan-abcd1234", "missing.epub", PlanStatus.COMPLETED, now)],
+    )
+
+    report = await service.preview(RetentionPolicy(timedelta(days=7), timedelta(days=30)), now=now)
+
+    assert report.candidates == ()
+    assert (outside / "secret").read_bytes() == b"secret"
+
+
+def test_delete_tree_rejects_intermediate_symlink_swap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    (root / "jobs" / "job-old").mkdir(parents=True)
+    (root / "jobs" / "job-old" / "cache").write_bytes(b"inside")
+    outside.mkdir()
+    (outside / "secret").write_bytes(b"outside")
+    original_open = os.open
+    swapped = False
+
+    def swap_before_target(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        name = path if isinstance(path, str) else ""
+        if name == "job-old" and not swapped:
+            swapped = True
+            (root / "jobs" / "job-old").rename(root / "jobs" / "job-old-real")
+            (root / "jobs" / "job-old").symlink_to(outside, target_is_directory=True)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr("acheron.shell.cache.os.open", swap_before_target)
+    with pytest.raises(CacheError):
+        _delete_tree(root, Path("jobs/job-old"))
+    assert (outside / "secret").exists()
+
+
+@pytest.mark.asyncio
 async def test_apply_preserves_shared_input_and_refuses_active_job(tmp_path: Path) -> None:
     now = datetime(2026, 7, 30, tzinfo=UTC)
     source = str(tmp_path / "inputs/id/book.epub")
@@ -75,7 +153,7 @@ async def test_apply_preserves_shared_input_and_refuses_active_job(tmp_path: Pat
     report = await service.apply(RetentionPolicy(timedelta(days=7), timedelta(days=30)), now=now)
 
     assert report.deleted_count == 0
-    assert report.failures[0].job_id == "job-old"
+    assert report.failures == ()
     assert (tmp_path / "inputs/id/book.epub").exists()
     assert await store.get("job-old") is not None
 

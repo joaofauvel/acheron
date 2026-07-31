@@ -70,7 +70,7 @@ ActiveJobs = Callable[[], Collection[str]]
 
 def _source_identity(data_dir: Path, source_path: str) -> str | None:
     try:
-        return InputStore(data_dir).normalize_source_path(source_path)
+        return InputStore(data_dir, create=False).normalize_source_path(source_path)
     except InputPathError:
         return None
 
@@ -112,7 +112,13 @@ class RetentionService:
         """Select eligible jobs and measure reclaimable data without mutation."""
         effective_now = self._normalise_now(now)
         jobs = await self._job_store.list_all()
-        selected = tuple(sorted((job for job in jobs if _eligible(job, policy, effective_now)), key=lambda j: j.job_id))
+        active = set(self._active_jobs())
+        selected = tuple(
+            sorted(
+                (job for job in jobs if job.job_id not in active and _eligible(job, policy, effective_now)),
+                key=lambda j: j.job_id,
+            )
+        )
         retained_sources = {
             identity
             for job in jobs
@@ -205,24 +211,26 @@ class RetentionService:
         candidates: list[CleanupCandidate] = []
         seen_inputs: set[str] = set()
         for job in jobs:
+            if not self._valid_component(job.job_id):
+                continue
             paths: list[str] = []
             reclaimable = 0
-            job_path = self._data_dir / job.job_id
-            if job_path.exists() or job_path.is_symlink():
+            if self._exists(job.job_id):
                 paths.append(job.job_id)
-                reclaimable += self._size(job_path)
-            if job.plan is not None:
-                plan_path = self._data_dir / job.plan.plan_id
-                if plan_path.exists() or plan_path.is_symlink():
-                    paths.append(job.plan.plan_id)
-                    reclaimable += self._size(plan_path)
+                reclaimable += self._size(job.job_id)
+            if job.plan is not None and self._valid_plan_id(job.plan.plan_id) and self._exists(job.plan.plan_id):
+                paths.append(job.plan.plan_id)
+                reclaimable += self._size(job.plan.plan_id)
             identity = _job_source_identity(self._data_dir, job)
-            if identity is not None and identity not in retained_sources and identity not in seen_inputs:
-                input_path = self._data_dir / identity
-                if input_path.exists() or input_path.is_symlink():
-                    paths.append(identity)
-                    reclaimable += self._size(input_path)
-                    seen_inputs.add(identity)
+            if (
+                identity is not None
+                and identity not in retained_sources
+                and identity not in seen_inputs
+                and self._exists(identity)
+            ):
+                paths.append(identity)
+                reclaimable += self._size(identity)
+                seen_inputs.add(identity)
             candidates.append(
                 CleanupCandidate(
                     job_id=job.job_id,
@@ -234,9 +242,36 @@ class RetentionService:
             )
         return tuple(candidates)
 
-    def _size(self, path: Path) -> int:
+    @staticmethod
+    def _valid_component(value: str) -> bool:
+        return (
+            bool(value)
+            and "\\" not in value
+            and not Path(value).is_absolute()
+            and all(part not in {"", ".", ".."} for part in Path(value).parts)
+        )
+
+    @classmethod
+    def _valid_plan_id(cls, value: str) -> bool:
+        return (
+            cls._valid_component(value)
+            and value.startswith("plan-")
+            and bool(value[5:])
+            and all(char in "0123456789abcdef" for char in value[5:])
+        )
+
+    def _exists(self, relative: str) -> bool:
         try:
-            return _tree_size(path)
+            return (
+                _safe_path(self._data_dir, Path(relative)).exists()
+                or _safe_path(self._data_dir, Path(relative)).is_symlink()
+            )
+        except CacheError:
+            return False
+
+    def _size(self, relative: str) -> int:
+        try:
+            return _tree_size(_safe_path(self._data_dir, Path(relative)))
         except CacheError:
             return 0
 
@@ -264,12 +299,11 @@ class RetentionService:
             if relative == job.job_id:
                 removed += await self._step_cache.delete_job(job.job_id)
                 if isinstance(self._step_cache, InMemoryStepCache):
-                    removed += await asyncio.to_thread(_delete_tree, _safe_path(self._data_dir, Path(relative)))
+                    removed += await asyncio.to_thread(_delete_tree, self._data_dir, Path(relative))
             elif job.plan is not None and relative == job.plan.plan_id:
                 removed += await asyncio.to_thread(self._plan_cache.delete_plan, job.plan.plan_id)
             else:
-                path = _safe_path(self._data_dir, Path(relative))
-                removed += await asyncio.to_thread(_delete_tree, path)
+                removed += await asyncio.to_thread(_delete_tree, self._data_dir, Path(relative))
         return removed
 
 

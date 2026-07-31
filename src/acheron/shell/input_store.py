@@ -61,9 +61,10 @@ def _safe_basename(filename: str) -> str:
 class InputStore:
     """Streams uploads to disk and resolves user-supplied paths against the data directory."""
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, *, create: bool = True) -> None:
         self._data_dir = data_dir.resolve()
-        self._data_dir.mkdir(parents=True, exist_ok=True)
+        if create:
+            self._data_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def data_dir(self) -> Path:

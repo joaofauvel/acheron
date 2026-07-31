@@ -45,6 +45,7 @@ def compile_plan(  # noqa: PLR0913
     job_id: str | None = None,
     *,
     chunking: ChunkingLimits | None = None,
+    source_root: Path | None = None,
 ) -> Plan:
     """Compile a job request into a validated Plan DAG.
 
@@ -69,7 +70,7 @@ def compile_plan(  # noqa: PLR0913
 
     match request:
         case EpubRequest():
-            chapter_ids = _discover_epub_chapter_ids(request.source_path)
+            chapter_ids = _discover_epub_chapter_ids(request.source_path, source_root=source_root)
             steps = _epub_steps(request, chapter_ids)
             source_type = "epub"
         case AudioRequest():
@@ -178,7 +179,7 @@ def _validate_chunking_fits_workers(
     )
 
 
-def _discover_epub_chapter_ids(source_path: str) -> tuple[str, ...]:
+def _discover_epub_chapter_ids(source_path: str, *, source_root: Path | None = None) -> tuple[str, ...]:
     """Discover stable chapter IDs when the source is a readable EPUB.
 
     Planner tests and preview requests may reference a path that is not mounted
@@ -186,6 +187,8 @@ def _discover_epub_chapter_ids(source_path: str) -> tuple[str, ...]:
     reports that limitation instead of guessing chapter identities.
     """
     path = Path(source_path)
+    if source_root is not None and not path.is_absolute():
+        path = source_root / path
     if not path.is_file():
         return ()
     try:
