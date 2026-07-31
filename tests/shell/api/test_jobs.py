@@ -585,6 +585,46 @@ class TestJobRoutes:
         assert len(response.json()["jobs"]) == 1
 
     @pytest.mark.asyncio
+    async def test_list_jobs_archived_query_maps_archived_at(self, client) -> None:  # type: ignore[no-untyped-def]
+        from datetime import UTC, datetime
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        submit = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+        assert submit.status_code == 201
+        job_id = submit.json()["job_id"]
+        archived_at = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+        archived = await app.state.orchestrator._job_store.archive(job_id, archived_at=archived_at)  # noqa: SLF001
+
+        default_response = await client.get("/jobs")
+        archived_response = await client.get("/jobs", params={"include_archived": "true"})
+
+        assert archived.job_id == job_id
+        assert default_response.status_code == 200
+        assert default_response.json()["jobs"] == []
+        assert archived_response.status_code == 200
+        data = archived_response.json()["jobs"]
+        assert len(data) == 1
+        assert data[0]["job_id"] == job_id
+        assert data[0]["archived_at"] == "2026-07-30T12:00:00Z"
+        assert data[0]["source_type"] == submit.json()["source_type"]
+        assert data[0]["source_language"] == submit.json()["source_language"]
+        assert data[0]["target_language"] == submit.json()["target_language"]
+        assert data[0]["total_cost"] == submit.json()["total_cost"]
+        assert data[0]["outputs"] == submit.json()["outputs"]
+
+    @pytest.mark.asyncio
     async def test_list_jobs_filters_by_label(self, client) -> None:  # type: ignore[no-untyped-def]
         for label in ("atlas-ch1", "other-project"):
             response = await client.post(

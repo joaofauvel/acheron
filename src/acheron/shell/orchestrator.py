@@ -968,11 +968,11 @@ class Orchestrator:
         terminal = {PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL}
         selected = [
             job
-            for job in await self._job_store.list_all()
+            for job in await self._job_store.list(
+                JobQuery(since=since, before=until),
+                now=until,
+            )
             if job.status in terminal
-            and getattr(job, "archived_at", None) is None
-            and (since is None or job.created_at >= since)
-            and job.created_at <= until
         ]
         total_cost = 0.0
         unknown_cost_jobs = 0
@@ -1094,8 +1094,8 @@ class Orchestrator:
                 self._track_execution_task(tracked)
             return tracked
 
-    async def list_jobs(self, query: JobQuery | None = None) -> tuple[TrackedJob, ...]:
-        """List tracked jobs using an optional typed query."""
+    async def list_jobs(self, query: JobQuery = JobQuery()) -> tuple[TrackedJob, ...]:  # noqa: B008
+        """List tracked jobs using a typed query."""
         return await self._job_store.list(query)
 
     async def get_capabilities(

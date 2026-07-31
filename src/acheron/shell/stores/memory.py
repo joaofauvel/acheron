@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from acheron.core.models import WorkerStatus
-from acheron.shell.stores.base import JobStore, WorkerStore
+from acheron.shell.job_store import JobQuery
+from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
 
 if TYPE_CHECKING:
     from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
@@ -132,6 +133,34 @@ class InMemoryJobStore(JobStore):
     async def list_all(self) -> tuple[TrackedJob, ...]:
         """Return all tracked jobs."""
         return tuple(copy.deepcopy(job) for job in self._jobs.values())
+
+    async def list(self, query: JobQuery = JobQuery(), *, now: datetime | None = None) -> tuple[TrackedJob, ...]:  # noqa: B008
+        """Return tracked jobs matching a typed query in deterministic order."""
+        jobs = (copy.deepcopy(self._jobs[job_id]) for job_id in sorted(self._jobs))
+        return self._filter_jobs(jobs, query, now=now)
+
+    async def archive(self, job_id: str, *, archived_at: datetime | None = None) -> TrackedJob:
+        """Mark a job archived and return the persisted record."""
+        job = await self.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        if job.archived_at is None:
+            timestamp = archived_at if archived_at is not None else datetime.now(UTC)
+            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                msg = "archived_at must be timezone-aware"
+                raise ValueError(msg)
+            job.archived_at = timestamp.astimezone(UTC)
+        await self.put(job)
+        stored = await self.get(job_id)
+        if stored is None:
+            msg = f"Job {job_id} disappeared after archive"
+            raise StoreError(msg)
+        return stored
+
+    async def delete(self, job_id: str) -> TrackedJob | None:
+        """Delete a job and return its removed record, if present."""
+        job = self._jobs.pop(job_id, None)
+        return copy.deepcopy(job) if job is not None else None
 
     async def close(self) -> None:
         """No-op for the in-memory store."""

@@ -6,6 +6,7 @@ import fnmatch
 import logging
 import math
 import time
+from datetime import datetime  # noqa: TC003
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -42,6 +43,7 @@ from acheron.core.schemas import (
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
+from acheron.shell.job_store import JobQuery
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -388,12 +390,24 @@ async def resume_job(
 
 
 @router.get("", response_model=JobListResponse)
-async def list_jobs(
+async def list_jobs(  # noqa: PLR0913
     orch: OrchestratorDep,
     label: Annotated[str | None, Query()] = None,
+    status: Annotated[PlanStatus | None, Query()] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    before: Annotated[datetime | None, Query()] = None,
+    older_than_seconds: Annotated[float | None, Query(ge=0)] = None,
+    include_archived: Annotated[bool, Query()] = False,  # noqa: FBT002
 ) -> JobListResponse:
-    """List jobs, optionally filtered by label glob."""
-    jobs = await orch.list_jobs()
+    """List jobs using typed lifecycle filters and an optional label glob."""
+    query = JobQuery(
+        status=status,
+        since=since,
+        before=before,
+        older_than_seconds=older_than_seconds,
+        include_archived=include_archived,
+    )
+    jobs = await orch.list_jobs(query)
     if label is not None:
         jobs = tuple(job for job in jobs if fnmatch.fnmatchcase(job.label or "", label))
     return JobListResponse(jobs=[_tracked_to_response(j) for j in jobs])
@@ -464,7 +478,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         executor_strategy=tracked.strategy,
         created_at=tracked.created_at,
         last_persisted_at=tracked.last_persisted_at,
-        archived_at=getattr(tracked, "archived_at", None),
+        archived_at=tracked.archived_at,
         progress=JobProgress(
             completed_steps=progress.completed_steps,
             total_steps=progress.total_steps,

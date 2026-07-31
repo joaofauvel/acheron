@@ -22,6 +22,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerStatus,
 )
+from acheron.shell.job_store import JobQuery
 from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
 
 if TYPE_CHECKING:
@@ -749,3 +750,38 @@ class RedisJobStore(JobStore):
             results = await pipe.execute()
         job_results = cast("list[str | None]", results)
         return tuple(_deserialize_job(blob) for blob in job_results if blob is not None)
+
+    async def list(self, query: JobQuery = JobQuery(), *, now: datetime | None = None) -> tuple[TrackedJob, ...]:  # noqa: B008
+        """Return jobs matching a typed query after deterministic Redis retrieval."""
+        return self._filter_jobs(await self.list_all(), query, now=now)
+
+    async def archive(self, job_id: str, *, archived_at: datetime | None = None) -> TrackedJob:
+        """Mark a job archived and return the persisted record."""
+        job = await self.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        if job.archived_at is None:
+            timestamp = archived_at if archived_at is not None else datetime.now(UTC)
+            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                msg = "archived_at must be timezone-aware"
+                raise ValueError(msg)
+            job.archived_at = timestamp.astimezone(UTC)
+        await self.put(job)
+        stored = await self.get(job_id)
+        if stored is None:
+            msg = f"Job {job_id} disappeared after archive"
+            raise StoreError(msg)
+        return stored
+
+    async def delete(self, job_id: str) -> TrackedJob | None:
+        """Delete a job and return its removed record, if present."""
+        job = await self.get(job_id)
+        try:
+            async with self._redis.pipeline(transaction=True) as pipe:
+                pipe.srem(_JOBS_SET, job_id)
+                pipe.delete(_JOB_KEY.format(job_id=job_id))
+                await pipe.execute()
+        except RedisError as exc:
+            msg = f"Failed to delete job {job_id}"
+            raise StoreError(msg) from exc
+        return job

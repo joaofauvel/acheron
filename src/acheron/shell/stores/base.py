@@ -5,11 +5,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from acheron.shell.job_store import JobQuery
+
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from datetime import datetime
 
     from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
-    from acheron.shell.job_store import JobQuery, TrackedJob
+    from acheron.shell.job_store import TrackedJob
     from acheron.shell.registry import RegisteredWorker
 
 
@@ -119,13 +122,15 @@ class JobStore(ABC):
         """Return all tracked jobs."""
         ...
 
-    async def list(self, query: JobQuery | None = None, *, now: datetime | None = None) -> tuple[TrackedJob, ...]:
-        """Return jobs matching a typed query."""
+    @staticmethod
+    def _filter_jobs(
+        jobs: Iterable[TrackedJob],
+        query: JobQuery,
+        *,
+        now: datetime | None,
+    ) -> tuple[TrackedJob, ...]:
         from datetime import UTC, datetime, timedelta  # noqa: PLC0415
 
-        selected = await self.list_all()
-        if query is None:
-            return selected
         if now is not None and (now.tzinfo is None or now.utcoffset() is None):
             msg = "now must be timezone-aware"
             raise ValueError(msg)
@@ -135,13 +140,27 @@ class JobStore(ABC):
         )
         return tuple(
             job
-            for job in selected
+            for job in jobs
             if (query.status is None or job.status is query.status)
             and (query.since is None or job.created_at >= query.since)
             and (query.before is None or job.created_at <= query.before)
             and (cutoff is None or job.last_persisted_at <= cutoff)
-            and (query.include_archived or getattr(job, "archived_at", None) is None)
+            and (query.include_archived or job.archived_at is None)
         )
+
+    async def list(self, query: JobQuery = JobQuery(), *, now: datetime | None = None) -> tuple[TrackedJob, ...]:  # noqa: B008
+        """Return jobs matching a typed query."""
+        return self._filter_jobs(await self.list_all(), query, now=now)
+
+    @abstractmethod
+    async def archive(self, job_id: str, *, archived_at: datetime | None = None) -> TrackedJob:
+        """Mark a job archived and return the persisted record."""
+        ...
+
+    @abstractmethod
+    async def delete(self, job_id: str) -> TrackedJob | None:
+        """Delete a job and return its removed record, if present."""
+        ...
 
     @abstractmethod
     async def close(self) -> None:
