@@ -23,6 +23,7 @@ from acheron.core.models import (
     WorkerStatus,
     WorkerType,
 )
+from acheron.shell.api.routes import jobs as jobs_module
 from acheron.shell.api.routes.jobs import _booting_tts_warnings, _build_retry_request, _tracked_to_response
 from acheron.shell.registry import RegisteredWorker
 
@@ -1115,6 +1116,97 @@ class _RecordingOrchestrator:
 
 class TestJobRoutePreflight:
     """Submission preflight: source-path resolution + ASR model checks before orchestrator.submit_job()."""
+
+    @pytest.mark.asyncio
+    async def test_incomplete_submission_rolls_back_job_plan_and_input(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        upload = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"epub", "application/epub+zip")},
+        )
+        uploaded = upload.json()
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        orch = app.state.orchestrator
+        store = orch._job_store  # noqa: SLF001
+        original_put = store.put
+
+        async def fail_after_put(job: TrackedJob) -> None:
+            await original_put(job)
+            raise OSError("/private/job-state: injected failure")
+
+        monkeypatch.setattr(store, "put", fail_after_put)
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": uploaded["source_path"],
+                "source_language": "en",
+                "target_language": "es",
+                "input_id": uploaded["input_id"],
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json() == {"detail": "input storage failed"}
+        assert await orch.list_jobs() == ()
+        assert not (app.state.orchestrator.settings.orchestrator.data_dir / "inputs" / uploaded["input_id"]).exists()
+        assert not list(app.state.orchestrator.settings.orchestrator.data_dir.glob("plan-*/plan.json"))
+
+    @pytest.mark.asyncio
+    async def test_source_resolution_oserror_is_sanitized(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_resolve(*_args: object, **_kwargs: object) -> Path:
+            raise OSError("/private/data/book.epub: permission denied")
+
+        monkeypatch.setattr("acheron.shell.input_store.InputStore.resolve_source_path", fail_resolve)
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Invalid source_path: source file is unavailable"
+        assert "/private/data" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_epub_inspection_oserror_is_sanitized(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_inspect(_source: Path) -> list[str]:
+            raise OSError("/private/data/book.epub: permission denied")
+
+        monkeypatch.setattr(jobs_module, "read_epub_chapters", fail_inspect)
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": "input/book.epub",
+                "source_language": "en",
+                "target_language": "es",
+                "voice_map": [{"start_chapter": 1, "end_chapter": 1, "voice": "Vivian"}],
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "unable to inspect EPUB chapters"
+        assert "/private/data" not in response.text
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("asr_model", ["", "   ", "\t\n"])

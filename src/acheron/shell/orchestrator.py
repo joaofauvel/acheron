@@ -461,7 +461,29 @@ class Orchestrator:
             jobs = await self._job_store.list_all()
             if any(self._input_identity(job.request.source_path).startswith(f"{identity}/") for job in jobs):
                 raise InputPathError("input is referenced by a job")
-            InputStore(self._settings.orchestrator.data_dir).delete(input_id)
+            InputStore(self._settings.orchestrator.data_dir, create=False).delete(input_id)
+
+    async def _rollback_submission(self, job_id: str, plan: Plan | None, *, task: asyncio.Task[None] | None) -> None:
+        """Remove all state created by an incomplete submission."""
+        self._active_jobs.discard(job_id)
+        self._operator_cancellation_requested.discard(job_id)
+        execution_task = task or self._execution_tasks.get(job_id)
+        if execution_task is not None and not execution_task.done():
+            execution_task.cancel()
+            with contextlib.suppress(BaseException):
+                await execution_task
+        self._execution_tasks.pop(job_id, None)
+        if execution_task is not None:
+            self._tasks.discard(execution_task)
+        try:
+            await self._job_store.delete(job_id)
+        except Exception as exc:  # noqa: BLE001
+            _log_unexpected(f"Failed to roll back persisted job {job_id}", exc)
+        if plan is not None:
+            try:
+                self._cache.delete_plan(plan.plan_id)
+            except Exception as exc:  # noqa: BLE001
+                _log_unexpected(f"Failed to roll back plan {plan.plan_id}", exc)
 
     async def submit_job(
         self,
@@ -503,35 +525,42 @@ class Orchestrator:
         )
 
         input_identity = self._input_identity(request.source_path)
-        async with self._input_reference_lock(input_identity):
-            if input_id is not None:
-                InputStore(self._settings.orchestrator.data_dir, create=False).promote(
-                    input_id,
-                    request.source_path,
+        plan: Plan | None = None
+        execution_task: asyncio.Task[None] | None = None
+        try:
+            async with self._input_reference_lock(input_identity):
+                if input_id is not None:
+                    InputStore(self._settings.orchestrator.data_dir, create=False).promote(
+                        input_id,
+                        request.source_path,
+                    )
+                plan = await self._compile_plan(request, strategy, job_id=job_id)
+                self._cache.save_plan(plan)
+                await self._invalidate_handler_cache()
+                logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
+
+                tracked = TrackedJob(
+                    job_id=job_id,
+                    request=request,
+                    strategy=strategy,
+                    label=label,
+                    retries_from=retries_from,
+                    plan=plan,
+                    status=PlanStatus.RUNNING,
                 )
-            plan = await self._compile_plan(request, strategy, job_id=job_id)
-            self._cache.save_plan(plan)
-            await self._invalidate_handler_cache()
-            logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
+                async with self._lifecycle_lock:
+                    if self._shutting_down:
+                        msg = "Orchestrator is shutting down; new jobs are not accepted"
+                        raise RuntimeError(msg)  # noqa: TRY301
+                    await self._job_store.put(tracked)
+                    self._active_jobs.add(tracked.job_id)
+                    self._track_execution_task(tracked)
+                    execution_task = self._execution_tasks.get(tracked.job_id)
 
-            tracked = TrackedJob(
-                job_id=job_id,
-                request=request,
-                strategy=strategy,
-                label=label,
-                retries_from=retries_from,
-                plan=plan,
-                status=PlanStatus.RUNNING,
-            )
-            async with self._lifecycle_lock:
-                if self._shutting_down:
-                    msg = "Orchestrator is shutting down; new jobs are not accepted"
-                    raise RuntimeError(msg)
-                await self._job_store.put(tracked)
-                self._active_jobs.add(tracked.job_id)
-                self._track_execution_task(tracked)
-
-            return tracked
+                return tracked
+        except BaseException:
+            await self._rollback_submission(job_id, plan, task=execution_task)
+            raise
 
     async def submit_retry(
         self,

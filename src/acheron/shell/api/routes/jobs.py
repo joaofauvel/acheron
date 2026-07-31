@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import math
+import re
 import time
 import zipfile
 from datetime import datetime  # noqa: TC003
@@ -60,16 +61,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _cleanup_temporary_input(orch: Orchestrator, input_id: str | None) -> None:
-    """Best-effort cleanup for a failed temporary-input submission."""
-    if input_id is None:
-        return
-    try:
-        await orch.delete_input(input_id)
-    except (InputPathError, OSError) as exc:
-        logger.warning("Temporary input cleanup failed: %s", exc)
-    except Exception:
-        logger.exception("Temporary input cleanup failed")
+_INPUT_ID_RE = re.compile(r"[0-9a-f]{32}")
+_INPUT_SOURCE_RE = re.compile(r"^inputs/([0-9a-f]{32})/.+$")
+
+
+async def _cleanup_temporary_inputs(orch: Orchestrator, input_ids: set[str]) -> None:
+    """Best-effort cleanup for failed temporary-input submissions."""
+    for input_id in sorted(input_ids):
+        try:
+            await orch.delete_input(input_id)
+        except (InputPathError, OSError) as exc:
+            logger.warning("Temporary input cleanup failed for %s: %s", input_id, exc)
+        except Exception:
+            logger.exception("Temporary input cleanup failed for %s", input_id)
+
+
+def _temporary_input_ids(body: SubmitJobRequest) -> set[str]:
+    """Extract only canonical temporary-input identities from a request."""
+    identities: set[str] = set()
+    if body.input_id is not None and _INPUT_ID_RE.fullmatch(body.input_id):
+        identities.add(body.input_id)
+    source_match = _INPUT_SOURCE_RE.fullmatch(body.source_path)
+    if source_match is not None:
+        identities.add(source_match.group(1))
+    return identities
 
 
 def _error_response(exc: AcheronError) -> ErrorResponse:
@@ -92,9 +107,12 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
         logger.warning("Rejected source path %r (data directory %s)", source_path, data_dir)
         msg = "Invalid source_path: provide a non-empty relative path"
         raise HTTPException(status_code=422, detail=msg)
-    store = InputStore(data_dir)
     try:
+        store = InputStore(data_dir)
         return store.resolve_source_path(source_path)
+    except OSError as exc:
+        logger.warning("Source path %r could not be resolved under %s: %s", source_path, data_dir, exc)
+        raise HTTPException(status_code=422, detail="Invalid source_path: source file is unavailable") from exc
     except InputPathError as exc:
         try:
             (data_dir / source_path).resolve().relative_to(data_dir.resolve())
@@ -102,6 +120,9 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
             logger.warning("Rejected source path %r outside data directory %s", source_path, data_dir)
             msg = "Invalid source_path: must resolve to a regular file under the configured input directory"
             raise HTTPException(status_code=422, detail=msg) from exc
+        except OSError as resolve_exc:
+            logger.warning("Source path %r could not be inspected under %s: %s", source_path, data_dir, resolve_exc)
+            raise HTTPException(status_code=422, detail="Invalid source_path: source file is unavailable") from exc
         logger.warning("Source path %r was not readable under data directory %s", source_path, data_dir)
         msg = "Invalid source_path: source file is unavailable"
         raise HTTPException(status_code=422, detail=msg) from exc
@@ -162,7 +183,7 @@ def _validate_voice_selection(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-async def _build_job_request(  # noqa: C901
+async def _build_job_request(  # noqa: C901, PLR0912
     orch: Orchestrator,
     body: SubmitJobRequest,
 ) -> tuple[JobRequest, ExecutorStrategy]:
@@ -238,13 +259,20 @@ async def _build_job_request(  # noqa: C901
             )
         except InputPathError as exc:
             raise HTTPException(status_code=422, detail="input identity does not match source_path") from exc
+        except OSError as exc:
+            logger.warning("Input promotion failed for %s: %s", body.input_id, exc)
+            raise HTTPException(status_code=422, detail="input storage failed") from exc
     return job_request, strategy
 
 
 def _submission_source_identity(orch: Orchestrator, source_path: str) -> str:
     """Validate a source and return its canonical data-directory-relative identity."""
     resolved = _resolve_submission_source(orch, source_path)
-    return InputStore(orch.settings.orchestrator.data_dir, create=False).normalize_source_path(str(resolved))
+    try:
+        return InputStore(orch.settings.orchestrator.data_dir, create=False).normalize_source_path(str(resolved))
+    except OSError as exc:
+        logger.warning("Source path %r could not be normalized: %s", source_path, exc)
+        raise HTTPException(status_code=422, detail="Invalid source_path: source file is unavailable") from exc
 
 
 def _resolve_stored_source(orch: Orchestrator, source_path: str) -> str:
@@ -392,11 +420,14 @@ async def submit_job(
         raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
     except InputPathError as exc:
         raise HTTPException(status_code=422, detail="input identity does not match source_path") from exc
+    except OSError as exc:
+        logger.warning("Input promotion failed during submission: %s", exc)
+        raise HTTPException(status_code=422, detail="input storage failed") from exc
     except HTTPException:
         raise
     finally:
         if tracked is None:
-            await _cleanup_temporary_input(orch, body.input_id)
+            await _cleanup_temporary_inputs(orch, _temporary_input_ids(body))
 
     warnings: list[str] = []
     try:
@@ -444,7 +475,7 @@ async def preview_job(
     except AcheronError as exc:
         raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
     finally:
-        await _cleanup_temporary_input(orch, body.input_id)
+        await _cleanup_temporary_inputs(orch, _temporary_input_ids(body))
     return PlanResponse.from_plan(plan)
 
 

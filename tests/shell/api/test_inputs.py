@@ -103,6 +103,109 @@ class TestUploadRoute:
         assert deleted.status_code == 204
         assert (await client.delete(f"/inputs/{independent_id}")).status_code == 204
 
+    async def test_mismatched_input_id_cleans_both_uploaded_inputs(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        first = await client.post(
+            "/inputs",
+            files={"file": ("first.epub", b"first", "application/epub+zip")},
+        )
+        second = await client.post(
+            "/inputs",
+            files={"file": ("second.epub", b"second", "application/epub+zip")},
+        )
+        first_body = first.json()
+        second_body = second.json()
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": first_body["source_path"],
+                "source_language": "en",
+                "target_language": "es",
+                "input_id": second_body["input_id"],
+            },
+        )
+
+        assert response.status_code == 422
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+        assert not (data_dir / "inputs" / first_body["input_id"]).exists()
+        assert not (data_dir / "inputs" / second_body["input_id"]).exists()
+
+    async def test_post_storage_oserror_has_stable_public_message(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def fail_save(*_args: object, **_kwargs: object) -> None:
+            raise OSError("/private/data/input.bin: disk full")
+
+        monkeypatch.setattr("acheron.shell.input_store.InputStore.save", fail_save)
+        response = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"epub-bytes", "application/epub+zip")},
+        )
+
+        assert response.status_code == 503
+        assert response.json() == {"detail": "input storage failed"}
+        assert "/private/data" not in response.text
+
+    async def test_promotion_oserror_has_stable_public_message(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        uploaded = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"epub-bytes", "application/epub+zip")},
+        )
+        body = uploaded.json()
+
+        def fail_promote(*_args: object, **_kwargs: object) -> None:
+            raise OSError("/private/data/inputs: permission denied")
+
+        monkeypatch.setattr("acheron.shell.input_store.InputStore.promote", fail_promote)
+        response = await client.post(
+            "/jobs",
+            json={
+                "source_type": "epub",
+                "source_path": body["source_path"],
+                "source_language": "en",
+                "target_language": "es",
+                "input_id": body["input_id"],
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json() == {"detail": "input storage failed"}
+        assert "/private/data" not in response.text
+
+    async def test_delete_oserror_has_stable_public_message(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        uploaded = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"epub-bytes", "application/epub+zip")},
+        )
+        input_id = uploaded.json()["input_id"]
+
+        async def fail_delete(_input_id: str) -> None:
+            raise OSError("/private/data/inputs: permission denied")
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        monkeypatch.setattr(app.state.orchestrator, "delete_input", fail_delete)
+        response = await client.delete(f"/inputs/{input_id}")
+
+        assert response.status_code == 503
+        assert response.json() == {"detail": "input deletion failed"}
+        assert "/private/data" not in response.text
+
     async def test_post_oversize_stream_returns_413_and_leaves_no_temp_file(
         self,
         client: AsyncClient,

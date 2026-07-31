@@ -37,8 +37,9 @@ async def upload_input(
     _token: RegistrationTokenDep,
 ) -> InputResponse:
     """Stream ``file`` to the orchestrator's input store and return the server-relative source path."""
-    store = InputStore(orch.settings.orchestrator.data_dir)
+    stored = None
     try:
+        store = InputStore(orch.settings.orchestrator.data_dir)
         try:
             stored = await store.save(file.filename or "", file.content_type, _chunks(file))
         finally:
@@ -47,6 +48,16 @@ async def upload_input(
         raise HTTPException(status_code=413, detail="input exceeds the 2 GiB upload limit") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.warning("Input storage failed: %s", exc)
+        if stored is not None:
+            try:
+                InputStore(orch.settings.orchestrator.data_dir, create=False).delete(stored.input_id)
+            except OSError as cleanup_exc:
+                logger.warning("Failed to roll back input storage: %s", cleanup_exc)
+            except InputPathError:
+                logger.exception("Failed to roll back input storage")
+        raise HTTPException(status_code=503, detail="input storage failed") from exc
     return InputResponse(
         input_id=stored.input_id,
         source_path=stored.source_path,
@@ -70,3 +81,6 @@ async def delete_input(
             raise HTTPException(status_code=409, detail="input is referenced by a job") from exc
         logger.warning("Rejected input deletion %r: %s", input_id, exc)
         raise HTTPException(status_code=422, detail="invalid input identity") from exc
+    except OSError as exc:
+        logger.warning("Input deletion failed for %s: %s", input_id, exc)
+        raise HTTPException(status_code=503, detail="input deletion failed") from exc
