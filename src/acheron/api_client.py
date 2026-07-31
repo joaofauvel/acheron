@@ -34,6 +34,31 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 
+_MAX_ERROR_RESPONSE_BYTES = 64 * 1024
+
+
+async def _buffer_error_response(response: httpx.Response) -> None:
+    """Buffer a bounded error body so status diagnostics can parse JSON safely.
+
+    ``httpx.Response.json`` requires a content-backed response. Its public read
+    helpers consume the stream to EOF, so the bounded iteration uses the public
+    byte iterator and assigns only the resulting bytes to the private content
+    slot.
+    """
+    chunks: list[bytes] = []
+    buffered = 0
+    async for chunk in response.aiter_bytes():
+        remaining = _MAX_ERROR_RESPONSE_BYTES - buffered
+        if remaining <= 0:
+            break
+        bounded_chunk = chunk[:remaining]
+        chunks.append(bounded_chunk)
+        buffered += len(bounded_chunk)
+        if buffered >= _MAX_ERROR_RESPONSE_BYTES:
+            break
+    response._content = b"".join(chunks)  # noqa: SLF001
+
+
 def _ssl_context_for(verify: bool | str | Path) -> bool | ssl.SSLContext:  # noqa: FBT001
     """Resolve ``verify`` to an ``ssl.SSLContext`` for httpx.
 
@@ -210,7 +235,7 @@ class AcheronClient:
             params = {"follow": str(follow).lower()}
             async with client.stream("GET", f"/jobs/{job_id}/logs", params=params) as resp:
                 if resp.is_error:
-                    await resp.aread()
+                    await _buffer_error_response(resp)
                 resp.raise_for_status()
                 if on_open is not None:
                     on_open()

@@ -1,5 +1,6 @@
 """Tests for the Acheron HTTP client."""
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -862,6 +863,49 @@ async def test_client_captures_response_request_id() -> None:
     client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
     assert await client.get_health() == {"status": "ok"}
     assert client.last_request_id == "req-test"
+
+
+@pytest.mark.asyncio
+async def test_tail_job_bounds_error_response_buffering() -> None:
+    class EndlessErrorStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"x" * (64 * 1024 * 2)
+            await asyncio.Event().wait()
+
+        async def aclose(self) -> None:
+            return None
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, headers={"content-type": "application/json"}, stream=EndlessErrorStream())
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    stream = client.tail_job("job-1")
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await asyncio.wait_for(stream.__anext__(), timeout=1)
+
+    assert len(exc_info.value.response.content) <= 64 * 1024
+
+
+@pytest.mark.asyncio
+async def test_tail_job_preserves_json_error_details() -> None:
+    body = json.dumps({"detail": {"message": "job failed", "remediation": "retry"}}).encode()
+
+    class JsonErrorStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield body
+
+        async def aclose(self) -> None:
+            return None
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, headers={"content-type": "application/json"}, stream=JsonErrorStream())
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    stream = client.tail_job("job-1")
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await stream.__anext__()
+
+    assert exc_info.value.response.json() == {"detail": {"message": "job failed", "remediation": "retry"}}
 
 
 @pytest.mark.asyncio
