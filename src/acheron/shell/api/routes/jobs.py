@@ -69,11 +69,7 @@ def _error_response(exc: AcheronError) -> ErrorResponse:
 def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
     """Resolve a user-supplied relative source path to an allowlisted regular file.
 
-    Distinguishes two failure modes for the caller to render in HTTP 422 details:
-    - ``relative-path error`` for empty, absolute, or traversal paths.
-    - ``source_path not found: <requested>; expected at <data_dir>/<requested>``
-      when the path resolves inside the data directory but is missing or
-      not a regular file.
+    Rejects invalid paths with stable public messages while logging path details.
     """
     data_dir = orch.settings.orchestrator.data_dir
     if not source_path or Path(source_path).is_absolute():
@@ -91,7 +87,7 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
             msg = "Invalid source_path: must resolve to a regular file under the configured input directory"
             raise HTTPException(status_code=422, detail=msg) from exc
         logger.warning("Source path %r was not readable under data directory %s", source_path, data_dir)
-        msg = f"source_path not found: {source_path}"
+        msg = "Invalid source_path: source file is unavailable"
         raise HTTPException(status_code=422, detail=msg) from exc
 
 

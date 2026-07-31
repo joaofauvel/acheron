@@ -135,6 +135,26 @@ class _DelayedBackgroundPutJobStore(InMemoryJobStore):
         await super().put(snapshot)
 
 
+class _ExecutionStartupRaceJobStore(InMemoryJobStore):
+    """Pauses execution's initial read to make the startup race deterministic."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.initial_get_started = asyncio.Event()
+        self.release_initial_get = asyncio.Event()
+        self.reaper_get_started = asyncio.Event()
+        self._get_count = 0
+
+    async def get(self, job_id: str) -> TrackedJob | None:
+        self._get_count += 1
+        if self._get_count == 1:
+            self.initial_get_started.set()
+            await self.release_initial_get.wait()
+        else:
+            self.reaper_get_started.set()
+        return await super().get(job_id)
+
+
 class _StoreErrorOnReconciliationPutJobStore(InMemoryJobStore):
     """Raises a domain persistence error during cancellation reconciliation."""
 
@@ -194,6 +214,40 @@ def _single_step_plan(job_id: str) -> Plan:
 
 
 class TestOrchestrator:
+    @pytest.mark.asyncio
+    async def test_execution_startup_race_is_serialized_with_reaping(self, tmp_path: Path) -> None:
+        jobs = _ExecutionStartupRaceJobStore()
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        now = datetime(2026, 7, 30, tzinfo=UTC)
+        tracked = TrackedJob(
+            job_id="job-race",
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            plan=_single_step_plan("job-race"),
+            status=PlanStatus.RUNNING,
+            created_at=now - timedelta(minutes=5),
+            last_persisted_at=now - timedelta(seconds=61),
+        )
+        await jobs.put(tracked)
+        jobs._jobs[tracked.job_id].last_persisted_at = now - timedelta(seconds=61)  # noqa: SLF001
+
+        execution = asyncio.create_task(orch._execute(tracked))  # noqa: SLF001
+        await jobs.initial_get_started.wait()
+        reaping = asyncio.create_task(
+            orch.reap_stale_jobs(older_than_seconds=60, reason="orphaned_by_restart", now=now)
+        )
+        await asyncio.sleep(0.01)
+        assert not jobs.reaper_get_started.is_set()
+
+        jobs.release_initial_get.set()
+        reaped = await reaping
+        await execution
+
+        assert reaped.job_ids == ()
+        persisted = await jobs.get("job-race")
+        assert persisted is not None
+        assert persisted.status is PlanStatus.COMPLETED
+
     @pytest.mark.asyncio
     async def test_reap_stale_jobs_excludes_active_and_terminal(self, tmp_path: Path) -> None:
         jobs = InMemoryJobStore()

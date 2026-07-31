@@ -324,6 +324,89 @@ async def test_failed_worker_persists_cost_breakdown(tmp_path: Path, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_admin_transitions_preserve_outputs_progress_and_cost(wired_app: FastAPI, tmp_path: Path) -> None:
+    """Stale and manual admin failures retain evidence through archiving."""
+    from datetime import UTC, datetime, timedelta
+
+    from acheron.core.models import (
+        CostBasis,
+        CostBreakdown,
+        CostEstimate,
+        EpubRequest,
+        ExecutorStrategy,
+        OutputFile,
+        PlanResult,
+        PlanStatus,
+        WorkerType,
+    )
+    from acheron.shell.job_store import JobProgressState
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    evidence = OutputFile(
+        path="outputs/job-evidence/book.wav",
+        filename="book.wav",
+        size_bytes=12,
+        checksum="checksum",
+        content_type="audio/wav",
+    )
+    cost = CostBreakdown(
+        step_id="synthesize",
+        worker_type=WorkerType.TTS,
+        worker_id="tts-1",
+        gpu_seconds=2.0,
+        estimate=CostEstimate(cost=0.25, basis=CostBasis.MEASURED),
+    )
+    result = PlanResult(
+        plan_id="plan-evidence",
+        status=PlanStatus.RUNNING,
+        completed_steps=1,
+        total_steps=2,
+        outputs=(evidence,),
+        total_cost=0.25,
+        total_duration_seconds=2.0,
+        total_cost_basis=CostBasis.MEASURED,
+        cost_breakdown=(cost,),
+    )
+
+    def make_job(job_id: str, status: PlanStatus) -> TrackedJob:
+        return TrackedJob(
+            job_id=job_id,
+            request=EpubRequest("input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            status=status,
+            progress=JobProgressState(completed_steps=1, total_steps=2, current_step_id="synthesize"),
+            result=result,
+        )
+
+    stale = make_job("job-stale-evidence", PlanStatus.RUNNING)
+    manual = make_job("job-manual-evidence", PlanStatus.PENDING)
+    await orch._job_store.put(stale)  # noqa: SLF001
+    await orch._job_store.put(manual)  # noqa: SLF001
+
+    reaped = await orch.reap_stale_jobs(
+        older_than_seconds=60,
+        reason="orphaned_by_restart",
+        now=datetime.now(UTC) + timedelta(hours=1),
+    )
+    assert reaped.job_ids == (stale.job_id,)
+    await orch.mark_failed_by_admin(manual.job_id, reason="operator_review")
+
+    for job_id in (stale.job_id, manual.job_id):
+        failed = await orch.get_job(job_id)
+        assert failed is not None
+        assert failed.status is PlanStatus.FAILED
+        assert failed.progress.completed_steps == 1
+        assert failed.result is not None
+        assert failed.result.outputs == (evidence,)
+        assert failed.result.cost_breakdown == (cost,)
+        archived = await orch.archive_job(job_id)
+        assert archived.archived_at is not None
+        assert archived.result is not None
+        assert archived.result.outputs == (evidence,)
+        assert archived.result.cost_breakdown == (cost,)
+
+
+@pytest.mark.asyncio
 async def test_event_broker_publishes_terminal_event(wired_app: FastAPI, tmp_path: Path) -> None:
     """The event broker publishes a terminal event when a job finishes."""
     from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus

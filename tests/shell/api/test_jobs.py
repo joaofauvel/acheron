@@ -146,7 +146,10 @@ class TestJobRoutes:
         retry = await client.post(f"/jobs/{response.json()['job_id']}/retry", json={})
 
         assert retry.status_code == 422
-        assert retry.json()["detail"].startswith("source_path not found: input/book.epub")
+        detail = retry.json()["detail"]
+        assert detail == "Invalid source_path: source file is unavailable"
+        assert "input/book.epub" not in detail
+        assert str(tmp_path) not in detail
 
     @pytest.mark.asyncio
     async def test_retry_route_accepts_valid_replacement_after_original_deleted(
@@ -1212,8 +1215,8 @@ class TestJobRoutePreflight:
             )
         assert response.status_code == 422
         detail = response.json()["detail"]
-        assert "source_path" in detail
-        assert "missing.epub" in detail
+        assert detail == "Invalid source_path: source file is unavailable"
+        assert "missing.epub" not in detail
         assert str(tmp_path) not in detail
         assert spy.submit_calls == []
 
@@ -1258,8 +1261,7 @@ class TestJobRoutePreflight:
             )
         assert response.status_code == 422
         detail = response.json()["detail"]
-        # Public errors retain the requested relative path but never expose the data directory.
-        assert "../outside.epub" in detail
+        assert "../outside.epub" not in detail
         assert str(tmp_path) not in detail
         assert spy.submit_calls == []
 
@@ -1351,8 +1353,8 @@ class TestJobRoutePreflight:
             )
         assert response.status_code == 422
         detail = response.json()["detail"]
-        assert "source_path" in detail
-        assert "inputs/a-dir" in detail
+        assert detail == "Invalid source_path: source file is unavailable"
+        assert "inputs/a-dir" not in detail
         assert str(tmp_path) not in detail
         assert spy.submit_calls == []
 

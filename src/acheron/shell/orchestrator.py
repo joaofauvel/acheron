@@ -730,17 +730,18 @@ class Orchestrator:
             await invalidate()
 
     async def _run_execution(self, tracked: TrackedJob) -> None:
-        db_job = await self._job_store.get(tracked.job_id)
-        if db_job is None or db_job.status != PlanStatus.RUNNING:
-            logger.warning(
-                "Idempotency guard: job %s has database status %s, skipping execution",
-                tracked.job_id,
-                db_job.status if db_job else "None",
-            )
-            return
+        async with self._job_lifecycle_lock(tracked.job_id):
+            db_job = await self._job_store.get(tracked.job_id)
+            if db_job is None or db_job.status != PlanStatus.RUNNING:
+                logger.warning(
+                    "Idempotency guard: job %s has database status %s, skipping execution",
+                    tracked.job_id,
+                    db_job.status if db_job else "None",
+                )
+                return
+            self._active_jobs.add(tracked.job_id)
 
         logger.info("Executing %s (%s strategy)", tracked.job_id, tracked.strategy.value)
-        self._active_jobs.add(tracked.job_id)
         try:
             try:
                 if tracked.plan is None:
