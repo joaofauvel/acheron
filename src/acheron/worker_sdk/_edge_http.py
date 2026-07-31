@@ -17,6 +17,8 @@ from python_multipart.multipart import MultipartParser, parse_options_header
 
 from acheron.core.errors import WorkerError, sanitise_exc_message
 from acheron.core.models import (
+    CostBasis,
+    CostEstimate,
     Job,
     JobMetrics,
     JobResult,
@@ -246,7 +248,7 @@ async def _build_multipart_response(
     One part per artifact with its own ``Content-Type`` + filename + metadata
     header, plus a trailing ``application/json`` part carrying ``metrics``.
     Uses :meth:`JobMetrics.model_dump_json` so ``None`` values (e.g. an
-    unset ``cost_basis``) are emitted as JSON ``null`` rather than the
+    unset ``cost_estimate``) are emitted as JSON ``null`` rather than the
     string ``"unknown"`` — the latter conflates "no estimate" with
     "the API was down".
 
@@ -355,7 +357,7 @@ class EdgeApp:
                 job_id="<unknown>",
                 status=JobStatus.FAILED,
                 outputs=(),
-                metrics=JobMetrics(duration_seconds=0.0, cost_basis=None),
+                metrics=JobMetrics(duration_seconds=0.0),
                 error=sanitise_exc_message(parser_error),
             )
             return JSONResponse(
@@ -389,6 +391,27 @@ class EdgeApp:
         job = _job_from_request(body)
         return await self._dispatch(job, None)
 
+    async def _estimate_cost(self, gpu_seconds: float, job_id: str) -> CostEstimate | None:
+        """Return structured cost evidence without making pricing fatal."""
+        if self.price_source is None:
+            return None
+        try:
+            estimate = await self.price_source.estimate(gpu_seconds)
+            basis = to_cost_basis(estimate)
+        except Exception as exc:  # noqa: BLE001 — pricing must never fail execution
+            safe_message = sanitise_exc_message(exc)
+            logger.warning("cost estimate unavailable for job %s: %s", job_id, safe_message, exc_info=True)
+            return CostEstimate(cost=None, basis=CostBasis.UNKNOWN)
+        return CostEstimate(
+            cost=estimate.cost,
+            basis=basis,
+            rate_per_hour=estimate.rate_per_hour,
+            gpu_type=estimate.gpu_type,
+            secure_cloud=estimate.secure_cloud,
+            queried_at=estimate.queried_at,
+            cache_age_seconds=estimate.cache_age_seconds,
+        )
+
     async def _dispatch(self, job: Job, input_obj: Input | None) -> Response:
         """Common dispatch path: invoke the handler, build metrics, return multipart response."""
         start = time.monotonic()
@@ -401,7 +424,11 @@ class EdgeApp:
                 job_id=job.job_id,
                 status=JobStatus.FAILED,
                 outputs=(),
-                metrics=JobMetrics(duration_seconds=duration, cost_basis=None),
+                metrics=JobMetrics(
+                    duration_seconds=duration,
+                    gpu_seconds=duration,
+                    cost_estimate=await self._estimate_cost(duration, job.job_id),
+                ),
                 error=sanitise_exc_message(exc),
             )
             return JSONResponse(
@@ -409,19 +436,10 @@ class EdgeApp:
                 content=_jobresult_to_json(result),
             )
         duration = time.monotonic() - start
-        gpu_seconds = duration
-        if self.price_source is not None:
-            est = await self.price_source.estimate(gpu_seconds)
-            cost = est.cost
-            basis = to_cost_basis(est)
-        else:
-            cost = None
-            basis = None
         metrics = JobMetrics(
             duration_seconds=duration,
-            gpu_seconds=gpu_seconds,
-            cost_estimate=cost,
-            cost_basis=basis,
+            gpu_seconds=duration,
+            cost_estimate=await self._estimate_cost(duration, job.job_id),
         )
         return await _build_multipart_response(artifacts, metrics)
 

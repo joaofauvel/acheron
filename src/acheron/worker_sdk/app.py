@@ -15,6 +15,7 @@ from acheron.worker_sdk.pricing import (
     PriceSource,
     RunPodPrice,
     StaticPrice,
+    UnknownPrice,
     ZeroPrice,
 )
 from acheron.worker_sdk.registration import register_with_orchestrator
@@ -36,7 +37,7 @@ def _build_price_source(settings: WorkerSettings) -> PriceSource:
                 logger.warning(
                     "price_source=runpod but RUNPOD_API_KEY/RUNPOD_ENDPOINT_ID not set; prices will be unknown"
                 )
-                return ZeroPrice()
+                return UnknownPrice()
             return RunPodPrice(
                 api_key=settings.runpod_api_key,
                 endpoint_id=settings.runpod_endpoint_id,
@@ -45,8 +46,8 @@ def _build_price_source(settings: WorkerSettings) -> PriceSource:
             )
         case "static":
             if settings.dollars_per_hour is None:
-                logger.warning("price_source=static but dollars_per_hour not set; falling back to ZeroPrice")
-                return ZeroPrice()
+                logger.warning("price_source=static but dollars_per_hour not set; prices will be unknown")
+                return UnknownPrice()
             return StaticPrice(dollars_per_hour=settings.dollars_per_hour)
         case _:
             return ZeroPrice()

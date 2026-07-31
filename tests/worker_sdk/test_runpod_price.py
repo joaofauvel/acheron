@@ -25,7 +25,12 @@ class TestRunPodPrice:
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False, cache_ttl_s=3600.0)
         est = await price.estimate(gpu_seconds=3600.0)
         assert est.cost == 0.69
-        assert est.reason == "runpod:measured"
+        assert est.basis.value == "measured"
+        assert est.rate_per_hour == 0.69
+        assert est.gpu_type == "NVIDIA GeForce RTX 3090"
+        assert est.secure_cloud is False
+        assert est.queried_at is not None
+        assert est.cache_age_seconds == 0.0
         assert to_cost_basis(est).value == "measured"
 
     @respx.mock
@@ -42,10 +47,13 @@ class TestRunPodPrice:
         )
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False, cache_ttl_s=0.0)
         est1 = await price.estimate(gpu_seconds=3600.0)
-        assert est1.reason == "runpod:measured"
+        assert est1.basis.value == "measured"
         est2 = await price.estimate(gpu_seconds=3600.0)
         assert est2.cost == 0.69
-        assert est2.reason == "runpod:cached"
+        assert est2.basis.value == "cached"
+        assert est2.cache_age_seconds is not None
+        assert est2.cache_age_seconds >= 0.0
+        assert est2.gpu_type == "NVIDIA GeForce RTX 3090"
         assert to_cost_basis(est2).value == "cached"
 
     @respx.mock
@@ -55,7 +63,7 @@ class TestRunPodPrice:
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False)
         est = await price.estimate(gpu_seconds=3600.0)
         assert est.cost is None
-        assert "unavailable" in (est.reason or "")
+        assert est.basis.value == "unknown"
         assert to_cost_basis(est).value == "unknown"
 
     @respx.mock
@@ -82,7 +90,7 @@ class TestRunPodPrice:
         price = RunPodPrice(api_key="k", endpoint_id="missing", secure_cloud=False)
         est = await price.estimate(gpu_seconds=10.0)
         assert est.cost is None
-        assert "unavailable" in (est.reason or "")
+        assert est.basis.value == "unknown"
 
     @respx.mock
     @pytest.mark.asyncio

@@ -6,14 +6,37 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
-from acheron.core.models import Job, WorkerCapabilities, WorkerType
+from acheron.core.models import CostBasis, Job, WorkerCapabilities, WorkerType
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 from acheron.worker_sdk.inputs import Input
+from acheron.worker_sdk.pricing import PriceEstimate
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+
+
+class _MeasuredPrice:
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        return PriceEstimate(
+            cost=0.34,
+            basis=CostBasis.MEASURED,
+            rate_per_hour=0.69,
+            gpu_type="L4",
+            secure_cloud=False,
+        )
+
+    async def refresh(self) -> bool:
+        return True
+
+    async def close(self) -> None:
+        return
+
+
+class _BrokenPrice(_MeasuredPrice):
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        raise RuntimeError("price lookup password=secret")
 
 
 class _Stub(WorkerHandler):
@@ -119,8 +142,51 @@ class TestEdgeRoutes:
         assert body["outputs"] == []
         assert body["error"] == "RuntimeError: OOM"
         assert body["metrics"]["duration_seconds"] >= 0.0
-        assert body["metrics"]["cost_basis"] is None
+        assert body["metrics"]["cost_estimate"] is None
         assert any("handler failed" in r.message and "_Stub" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_failed_handler_retains_cost_estimate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        h = _Stub()
+
+        async def _boom(job: Job, input: Input | None = None) -> list[BytesArtifact]:  # noqa: A002
+            raise RuntimeError("OOM")
+
+        monkeypatch.setattr(h, "handle", _boom)
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_MeasuredPrice()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+
+        assert response.status_code == 500
+        estimate = response.json()["metrics"]["cost_estimate"]
+        assert estimate["basis"] == "measured"
+        assert estimate["gpu_type"] == "L4"
+        assert estimate["rate_per_hour"] == 0.69
+
+    @pytest.mark.asyncio
+    async def test_pricing_failure_is_non_blocking_and_sanitised(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_BrokenPrice()).app
+        transport = ASGITransport(app=app)
+        with caplog.at_level("WARNING", logger="acheron.worker_sdk._edge_http"):
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                response = await c.post(
+                    "/execute",
+                    json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+                )
+
+        assert response.status_code == 200
+        estimate = response.content
+        assert b'"basis":"unknown"' in estimate
+        assert b"password=secret" not in estimate
+        assert any("RuntimeError: price lookup password=<redacted>" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_execute_error_sanitises_secrets_in_message(
@@ -176,11 +242,8 @@ class TestEdgeRoutes:
                 )
 
     @pytest.mark.asyncio
-    async def test_execute_metrics_part_emits_null_cost_basis(self, app_handler: tuple[FastAPI, _Stub]) -> None:
-        """When no price source is wired, the metrics part emits ``"cost_basis": null``
-        (not the string ``"unknown"``) — the latter would conflate "no estimate"
-        with "the API was down", breaking the dashboard's cost-confidence render.
-        """
+    async def test_execute_metrics_part_emits_null_cost_estimate(self, app_handler: tuple[FastAPI, _Stub]) -> None:
+        """When no price source is wired, metrics preserve the absence of an estimate."""
         import json
 
         app, _ = app_handler
@@ -204,7 +267,7 @@ class TestEdgeRoutes:
         # The JSON payload begins after the headers (blank line) and ends before \r\n.
         json_bytes = json_part.split(b"\r\n\r\n", 1)[1].rsplit(b"\r\n", 1)[0]
         metrics = json.loads(json_bytes)
-        assert metrics["cost_basis"] is None
+        assert metrics["cost_estimate"] is None
         assert "unknown" not in json_bytes.decode("utf-8")
 
     @pytest.mark.asyncio

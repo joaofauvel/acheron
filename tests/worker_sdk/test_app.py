@@ -175,16 +175,14 @@ class TestBuildPriceSource:
         assert isinstance(source, StaticPrice)
         assert source.dollars_per_hour == 1.25
 
-    def test_build_price_source_runpod_without_api_key_returns_zero_stub(
+    def test_build_price_source_runpod_without_api_key_returns_unknown(
         self,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """``price_source='runpod'`` with no API key/endpoint falls back to :class:`ZeroPrice`
-        and logs a warning — a worker that forgot to set its env vars must not
-        crash the lifespan or break registration."""
+        """Missing RunPod credentials use unknown pricing without blocking registration."""
         from acheron.worker_sdk.app import _build_price_source
-        from acheron.worker_sdk.pricing import ZeroPrice
+        from acheron.worker_sdk.pricing import UnknownPrice
 
         monkeypatch.setenv("ACHERON_WORKER__PRICE_SOURCE", "runpod")
         monkeypatch.delenv("ACHERON_WORKER__RUNPOD_API_KEY", raising=False)
@@ -192,22 +190,22 @@ class TestBuildPriceSource:
         s = _settings(price_source="runpod", runpod_api_key=None, runpod_endpoint_id=None)
         with caplog.at_level("WARNING", logger="acheron.worker_sdk.app"):
             source = _build_price_source(s)
-        assert isinstance(source, ZeroPrice)
+        assert isinstance(source, UnknownPrice)
         assert any("RUNPOD_API_KEY" in r.message and "prices will be unknown" in r.message for r in caplog.records)
 
-    def test_build_price_source_static_without_rate_returns_zero_stub(
+    def test_build_price_source_static_without_rate_returns_unknown(
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         from acheron.worker_sdk.app import _build_price_source
-        from acheron.worker_sdk.pricing import ZeroPrice
+        from acheron.worker_sdk.pricing import UnknownPrice
 
         with caplog.at_level("WARNING", logger="acheron.worker_sdk.app"):
             settings = _settings(price_source="zero").model_copy(
                 update={"price_source": "static", "dollars_per_hour": None}
             )
             source = _build_price_source(settings)
-        assert isinstance(source, ZeroPrice)
+        assert isinstance(source, UnknownPrice)
         assert any("dollars_per_hour not set" in r.message for r in caplog.records)
 
     def test_registration_caps_unchanged_for_non_runpod_source(self) -> None:

@@ -25,6 +25,54 @@ class OutputSummary(BaseModel):
     content_type: str
 
 
+class CostEstimateResponse(BaseModel):
+    """Execution-time cost estimate and pricing provenance."""
+
+    cost: float | None
+    basis: CostBasis
+    rate_per_hour: float | None = None
+    gpu_type: str | None = None
+    secure_cloud: bool | None = None
+    queried_at: datetime | None = None
+    cache_age_seconds: float | None = Field(default=None, ge=0)
+
+    @field_validator("queried_at")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "queried_at must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
+
+
+class CostBreakdownResponse(BaseModel):
+    """Flattened cost evidence for one executed plan step."""
+
+    step_id: str
+    worker_type: WorkerType
+    worker_id: str | None
+    gpu_seconds: float | None
+    cost: float | None
+    basis: CostBasis
+    rate_per_hour: float | None = None
+    gpu_type: str | None = None
+    secure_cloud: bool | None = None
+    queried_at: datetime | None = None
+    cache_age_seconds: float | None = Field(default=None, ge=0)
+
+    @field_validator("queried_at")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "queried_at must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
+
+
 class StepError(BaseModel):
     """Public failure attribution for one execution step."""
 
@@ -203,6 +251,8 @@ class PlanResponse(BaseModel):
 
 __all__ = [
     "CapabilitiesResponse",
+    "CostBreakdownResponse",
+    "CostEstimateResponse",
     "ErrorResponse",
     "InputResponse",
     "JobListResponse",

@@ -1,7 +1,7 @@
 """Core data models and enums for the Acheron pipeline."""
 
 from dataclasses import dataclass, field
-from datetime import datetime  # noqa: TC003
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import TypeAdapter
@@ -72,7 +72,42 @@ class CostBasis(Enum):
     MEASURED = "measured"
     CACHED = "cached"
     STATIC = "static"
+    STUB = "stub"
     UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class CostEstimate:
+    """Execution-time cost estimate with its pricing provenance."""
+
+    cost: float | None
+    basis: CostBasis
+    rate_per_hour: float | None = None
+    gpu_type: str | None = None
+    secure_cloud: bool | None = None
+    queried_at: datetime | None = None
+    cache_age_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.queried_at is not None:
+            if self.queried_at.tzinfo is None or self.queried_at.utcoffset() is None:
+                msg = "queried_at must be timezone-aware"
+                raise ValueError(msg)
+            object.__setattr__(self, "queried_at", self.queried_at.astimezone(UTC))
+        if self.cache_age_seconds is not None and self.cache_age_seconds < 0:
+            msg = "cache_age_seconds must be non-negative"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True)
+class CostBreakdown:
+    """Cost evidence for one executed plan step."""
+
+    step_id: str
+    worker_type: WorkerType
+    worker_id: str | None
+    gpu_seconds: float | None
+    estimate: CostEstimate
 
 
 @dataclass(frozen=True)
@@ -122,8 +157,7 @@ class JobMetrics:
     gpu_seconds: float | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
-    cost_estimate: float | None = None
-    cost_basis: CostBasis | None = None
+    cost_estimate: CostEstimate | None = None
 
     def model_dump_json(self) -> bytes:
         """Pydantic-style JSON serialisation shim for the multipart metrics part.
@@ -205,6 +239,7 @@ class PlanResult:
     total_duration_seconds: float
     errors: tuple[StepError, ...] = ()
     total_cost_basis: CostBasis | None = None
+    cost_breakdown: tuple[CostBreakdown, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ from acheron.worker_sdk.pricing import (
     PriceSource,
     RunPodPrice,
     StaticPrice,
+    UnknownPrice,
     ZeroPrice,
 )
 from acheron.worker_sdk.registration import register_with_orchestrator
@@ -32,6 +33,7 @@ __all__ = [
     "StaticPrice",
     "StreamArtifact",
     "StreamInput",
+    "UnknownPrice",
     "WorkerHandler",
     "WorkerSettings",
     "ZeroPrice",

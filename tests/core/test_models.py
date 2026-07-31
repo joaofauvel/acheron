@@ -5,6 +5,8 @@ from pydantic import TypeAdapter
 
 from acheron.core.models import (
     CostBasis,
+    CostBreakdown,
+    CostEstimate,
     ExecutorStrategy,
     Job,
     JobMetrics,
@@ -231,7 +233,7 @@ class TestJobMetrics:
             gpu_seconds=8.0,
             tokens_in=100,
             tokens_out=120,
-            cost_estimate=0.05,
+            cost_estimate=CostEstimate(cost=0.05, basis=CostBasis.STATIC),
         )
         assert metrics.gpu_seconds == 8.0
 
@@ -327,6 +329,7 @@ class TestCostBasis:
             (CostBasis.MEASURED, "measured"),
             (CostBasis.CACHED, "cached"),
             (CostBasis.STATIC, "static"),
+            (CostBasis.STUB, "stub"),
             (CostBasis.UNKNOWN, "unknown"),
         ],
     )
@@ -334,30 +337,57 @@ class TestCostBasis:
         assert member.value == value
 
 
-class TestJobMetricsCostBasis:
+class TestJobMetricsCostEstimate:
     _adapter = TypeAdapter(JobMetrics)
 
-    def test_default_cost_basis_is_none(self) -> None:
+    def test_default_cost_estimate_is_none(self) -> None:
         m = JobMetrics(duration_seconds=1.0)
-        assert m.cost_basis is None
+        assert m.cost_estimate is None
 
-    def test_explicit_cost_basis_round_trip(self) -> None:
-        m = JobMetrics(
-            duration_seconds=2.0,
-            gpu_seconds=1.5,
-            cost_estimate=0.042,
-            cost_basis=CostBasis.MEASURED,
-        )
+    def test_explicit_cost_estimate_round_trip(self) -> None:
+        estimate = CostEstimate(cost=0.042, basis=CostBasis.MEASURED)
+        m = JobMetrics(duration_seconds=2.0, gpu_seconds=1.5, cost_estimate=estimate)
         dumped = self._adapter.dump_python(m)
-        assert dumped["cost_basis"] == CostBasis.MEASURED
+        assert dumped["cost_estimate"]["cost"] == 0.042
+        assert dumped["cost_estimate"]["basis"] is CostBasis.MEASURED
         round_trip = self._adapter.validate_python(dumped)
-        assert round_trip.cost_basis == CostBasis.MEASURED
+        assert round_trip.cost_estimate == estimate
 
-    def test_none_cost_basis_round_trip(self) -> None:
-        m = JobMetrics(duration_seconds=2.0)
-        dumped = self._adapter.dump_python(m)
-        round_trip = self._adapter.validate_python(dumped)
-        assert round_trip.cost_basis is None
+
+def test_cost_estimate_preserves_rate_for_forensics() -> None:
+    queried_at = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+    estimate = CostEstimate(
+        cost=0.34,
+        basis=CostBasis.MEASURED,
+        rate_per_hour=0.69,
+        gpu_type="L4",
+        secure_cloud=False,
+        queried_at=queried_at,
+        cache_age_seconds=0.0,
+    )
+
+    assert estimate.gpu_type == "L4"
+    assert estimate.secure_cloud is False
+    assert estimate.queried_at == queried_at
+
+
+def test_stub_cost_is_not_static() -> None:
+    estimate = CostEstimate(cost=0.0, basis=CostBasis.STUB)
+
+    assert estimate.basis is CostBasis.STUB
+
+
+def test_cost_breakdown_preserves_step_and_worker_identity() -> None:
+    breakdown = CostBreakdown(
+        step_id="synthesize",
+        worker_type=WorkerType.TTS,
+        worker_id="tts-1",
+        gpu_seconds=1800.0,
+        estimate=CostEstimate(cost=0.34, basis=CostBasis.MEASURED),
+    )
+
+    assert breakdown.step_id == "synthesize"
+    assert breakdown.worker_id == "tts-1"
 
 
 class TestPlanResultCostBasis:

@@ -18,6 +18,8 @@ from acheron.core.models import (
 )
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    CostBreakdownResponse,
+    CostEstimateResponse,
     InputResponse,
     JobLogEvent,
     JobProgress,
@@ -55,6 +57,57 @@ def _job_response_data(**overrides: object) -> dict[str, object]:
     }
     data.update(overrides)
     return data
+
+
+def test_cost_estimate_response_round_trips_utc_metadata() -> None:
+    response = CostEstimateResponse(
+        cost=0.34,
+        basis=CostBasis.MEASURED,
+        rate_per_hour=0.69,
+        gpu_type="L4",
+        secure_cloud=False,
+        queried_at="2026-07-30T12:00:00Z",
+        cache_age_seconds=0.0,
+    )
+
+    assert response.queried_at == datetime(2026, 7, 30, 12, tzinfo=UTC)
+    assert response.model_dump(mode="json")["basis"] == "measured"
+
+
+def test_cost_estimate_response_rejects_naive_timestamp() -> None:
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        CostEstimateResponse(
+            cost=None,
+            basis=CostBasis.UNKNOWN,
+            queried_at=datetime(2026, 7, 30, 12, tzinfo=UTC).replace(tzinfo=None),
+        )
+
+
+def test_cost_estimate_response_rejects_negative_cache_age() -> None:
+    with pytest.raises(ValidationError, match="cache_age_seconds"):
+        CostEstimateResponse(
+            cost=0.34,
+            basis=CostBasis.CACHED,
+            cache_age_seconds=-1.0,
+        )
+
+
+def test_cost_breakdown_response_round_trips_estimate() -> None:
+    response = CostBreakdownResponse(
+        step_id="synthesize",
+        worker_type=WorkerType.TTS,
+        worker_id="tts-1",
+        gpu_seconds=1800.0,
+        cost=0.34,
+        basis=CostBasis.MEASURED,
+        rate_per_hour=0.69,
+        gpu_type="L4",
+        secure_cloud=False,
+        queried_at="2026-07-30T12:00:00Z",
+        cache_age_seconds=0.0,
+    )
+
+    assert response.basis is CostBasis.MEASURED
 
 
 def test_output_summary_exposes_download_url_only() -> None:

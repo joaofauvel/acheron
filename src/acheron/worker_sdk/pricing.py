@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
 import httpx
@@ -20,14 +21,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PriceEstimate:
-    """Outcome of a price query.
-
-    ``cost is None`` means unknown (provider API unavailable and no cache);
-    ``cost == 0.0`` means an actual $0 (stub/local/ZeroPrice).
-    """
+    """Provider estimate plus the evidence supporting its rate."""
 
     cost: float | None
-    reason: str | None = None
+    basis: CostBasis
+    rate_per_hour: float | None = None
+    gpu_type: str | None = None
+    secure_cloud: bool | None = None
+    queried_at: datetime | None = None
+    cache_age_seconds: float | None = None
 
 
 class PriceSource(Protocol):
@@ -74,15 +76,32 @@ class _GraphQLResponse(BaseModel):
 
 @dataclass(frozen=True)
 class ZeroPrice:
-    """Stubs/local — no cost tracking. Reports $0 with STATIC basis."""
+    """Stub/local pricing that is distinct from a configured static rate."""
 
     async def estimate(self, gpu_seconds: float) -> PriceEstimate:  # noqa: ARG002
-        """Return a fixed $0 estimate (GPU is local; not metered)."""
-        return PriceEstimate(cost=0.0, reason="zero (stub/local)")
+        """Return a fixed $0 estimate for an explicitly stubbed worker."""
+        return PriceEstimate(cost=0.0, basis=CostBasis.STUB)
 
     async def refresh(self) -> bool:
         """No-op; returns True so callers can treat this as always-warm."""
         return True
+
+    async def close(self) -> None:
+        """Release no resources."""
+        return
+
+
+@dataclass(frozen=True)
+class UnknownPrice:
+    """Pricing source used when no usable rate configuration exists."""
+
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:  # noqa: ARG002
+        """Return an unknown estimate without implying free execution."""
+        return PriceEstimate(cost=None, basis=CostBasis.UNKNOWN)
+
+    async def refresh(self) -> bool:
+        """Report that no refresh is possible."""
+        return False
 
     async def close(self) -> None:
         """Release no resources."""
@@ -96,9 +115,13 @@ class StaticPrice:
     dollars_per_hour: float
 
     async def estimate(self, gpu_seconds: float) -> PriceEstimate:
-        """Compute ``gpu_seconds * $/hr / 3600`` and return with STATIC reason."""
+        """Compute ``gpu_seconds * $/hr / 3600`` with STATIC provenance."""
         cost = round(gpu_seconds * self.dollars_per_hour / 3600.0, 6)
-        return PriceEstimate(cost=cost, reason="static config")
+        return PriceEstimate(
+            cost=cost,
+            basis=CostBasis.STATIC,
+            rate_per_hour=self.dollars_per_hour,
+        )
 
     async def refresh(self) -> bool:
         """No-op; static rates don't need refreshing."""
@@ -109,36 +132,12 @@ class StaticPrice:
         return
 
 
-_KNOWN_REASONS: frozenset[str] = frozenset(
-    {
-        "runpod:measured",
-        "runpod:cached",
-        "static config",
-        "zero (stub/local)",
-    }
-)
-
-
 def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
-    """Map a :class:`PriceEstimate` to a wire :class:`CostBasis` value.
-
-    RunPodPrice sets ``reason`` to a sentinel string that distinguishes the
-    fresh-measurement case from the cached case; the worker-side mapping
-    preserves the spec's ``MEASURED`` vs ``CACHED`` distinction. Any new
-    ``PriceSource`` must register its ``reason`` in ``_KNOWN_REASONS`` or
-    the safety net below raises — failing loud is better than silently
-    misclassifying an estimate as ``STATIC``.
-    """
-    if estimate.cost is None:
-        return CostBasis.UNKNOWN
-    if estimate.reason == "runpod:measured":
-        return CostBasis.MEASURED
-    if estimate.reason == "runpod:cached":
-        return CostBasis.CACHED
-    if estimate.reason in _KNOWN_REASONS:
-        return CostBasis.STATIC
-    msg = f"Unknown PriceEstimate.reason {estimate.reason!r}; add it to _KNOWN_REASONS"
-    raise ValueError(msg)
+    """Validate and return the explicit basis carried by an estimate."""
+    if not isinstance(estimate.basis, CostBasis):
+        msg = f"Invalid PriceEstimate basis {estimate.basis!r}"
+        raise TypeError(msg)
+    return estimate.basis
 
 
 @dataclass
@@ -159,7 +158,9 @@ class RunPodPrice:
     cache_ttl_s: float = 3600.0
 
     _rate: float | None = field(default=None, init=False)
+    _gpu_type: str | None = field(default=None, init=False)
     _rate_fetched_at: float = field(default=0.0, init=False)
+    _rate_queried_at: datetime | None = field(default=None, init=False)
     _client: httpx.AsyncClient = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -196,7 +197,9 @@ class RunPodPrice:
             )
             return False
         self._rate = rate
+        self._gpu_type = gpu_id
         self._rate_fetched_at = time.monotonic()
+        self._rate_queried_at = datetime.now(UTC)
         return True
 
     async def _fetch_gpu_id(self, client: httpx.AsyncClient) -> str | None:
@@ -253,11 +256,30 @@ class RunPodPrice:
         if stale:
             refreshed = await self._refresh_rate(self._client)
         if self._rate is None:
-            return PriceEstimate(
-                cost=None,
-                reason=f"runpod pricing unavailable for endpoint {self.endpoint_id}",
-            )
+            return PriceEstimate(cost=None, basis=CostBasis.UNKNOWN)
+        cache_age = self._cache_age_seconds()
         cost = round(gpu_seconds * self._rate / 3600.0, 6)
         if refreshed is False:
-            return PriceEstimate(cost=cost, reason="runpod:cached")
-        return PriceEstimate(cost=cost, reason="runpod:measured")
+            return PriceEstimate(
+                cost=cost,
+                basis=CostBasis.CACHED,
+                rate_per_hour=self._rate,
+                gpu_type=self._gpu_type,
+                secure_cloud=self.secure_cloud,
+                queried_at=self._rate_queried_at,
+                cache_age_seconds=cache_age,
+            )
+        return PriceEstimate(
+            cost=cost,
+            basis=CostBasis.MEASURED,
+            rate_per_hour=self._rate,
+            gpu_type=self._gpu_type,
+            secure_cloud=self.secure_cloud,
+            queried_at=self._rate_queried_at,
+            cache_age_seconds=cache_age if refreshed is None else 0.0,
+        )
+
+    def _cache_age_seconds(self) -> float | None:
+        if self._rate_queried_at is None:
+            return None
+        return max(0.0, (datetime.now(UTC) - self._rate_queried_at).total_seconds())
