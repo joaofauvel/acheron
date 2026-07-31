@@ -211,7 +211,7 @@ class RetentionService:
         candidates: list[CleanupCandidate] = []
         seen_inputs: set[str] = set()
         for job in jobs:
-            if not self._valid_component(job.job_id):
+            if not self._valid_job_id(job.job_id):
                 continue
             paths: list[str] = []
             reclaimable = 0
@@ -244,12 +244,18 @@ class RetentionService:
 
     @staticmethod
     def _valid_component(value: str) -> bool:
+        path = Path(value)
         return (
             bool(value)
             and "\\" not in value
-            and not Path(value).is_absolute()
-            and all(part not in {"", ".", ".."} for part in Path(value).parts)
+            and value not in {".", ".."}
+            and not path.is_absolute()
+            and path.name == value
         )
+
+    @classmethod
+    def _valid_job_id(cls, value: str) -> bool:
+        return cls._valid_component(value) and value.startswith("job-") and bool(value[4:])
 
     @classmethod
     def _valid_plan_id(cls, value: str) -> bool:
