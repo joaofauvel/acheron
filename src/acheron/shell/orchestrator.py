@@ -50,7 +50,7 @@ from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.health_providers import create_health_providers
 from acheron.shell.job_events import JobEventBroker
-from acheron.shell.job_store import TrackedJob
+from acheron.shell.job_store import AdminActionAudit, JobQuery, TrackedJob
 from acheron.shell.local_handlers import (
     LocalJobHandler,
     all_languages_caps,
@@ -79,25 +79,29 @@ def _log_unexpected(label: str, exc: BaseException) -> None:
 
 
 _MIN_TOKEN_LENGTH = 32
-_PUBLIC_TOKEN_VALUES = frozenset({"dev-registration-token"})
+_PUBLIC_TOKEN_VALUES = frozenset({"dev-registration-token", "dev-admin-token"})
 
 
-def _validate_registration_token(token: str | None) -> None:
+def _validate_credential_token(token: str | None, *, setting_name: str) -> None:
     if token is None:
         return
+    env_name = f"ACHERON_{setting_name.upper()}"
     if token in _PUBLIC_TOKEN_VALUES:
         msg = (
-            f"ACHERON_REGISTRATION_TOKEN is set to the publicly-known value {token!r}. "
-            f"Generate a fresh token with `openssl rand -hex 32` and set it in your environment."
+            f"{env_name} is set to the publicly-known value {token!r}. "
+            "Generate a fresh token with `openssl rand -hex 32` and set it in your environment."
         )
         raise RuntimeError(msg)
     if len(token) < _MIN_TOKEN_LENGTH:
         msg = (
-            f"ACHERON_REGISTRATION_TOKEN is too short ({len(token)} chars); "
-            f"minimum is {_MIN_TOKEN_LENGTH} characters. "
-            f"Generate a fresh token with `openssl rand -hex 32`."
+            f"{env_name} is too short ({len(token)} chars); minimum is {_MIN_TOKEN_LENGTH} characters. "
+            "Generate a fresh token with `openssl rand -hex 32`."
         )
         raise RuntimeError(msg)
+
+
+def _validate_registration_token(token: str | None) -> None:
+    _validate_credential_token(token, setting_name="registration_token")
 
 
 def _chapter_matches(payload: dict[str, JsonValue], chapter: int) -> bool:
@@ -194,6 +198,7 @@ class Orchestrator:
         self._shutting_down = False
         self._health_providers = create_health_providers(self._settings)
         self._events = JobEventBroker()
+        self._admin_audits: list[AdminActionAudit] = []
         self._health_monitor = HealthMonitor(
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),
@@ -209,6 +214,15 @@ class Orchestrator:
     def events(self) -> JobEventBroker:
         """Event broker for live progress monitoring."""
         return self._events
+
+    @property
+    def admin_audits(self) -> tuple[AdminActionAudit, ...]:
+        """Administrative action audit events recorded for this process."""
+        return tuple(self._admin_audits)
+
+    def record_admin_audit(self, event: AdminActionAudit) -> None:
+        """Record one administrative action event."""
+        self._admin_audits.append(event)
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
@@ -316,6 +330,7 @@ class Orchestrator:
         self._verify_data_dir_writable()
         await self._load_or_create_registration_token()
         _validate_registration_token(self._settings.orchestrator.registration_token)
+        _validate_credential_token(self._settings.orchestrator.admin_token, setting_name="admin_token")
 
         await self._registry.connect()
         await self._job_store.connect()
@@ -1101,9 +1116,9 @@ class Orchestrator:
                 self._track_execution_task(tracked)
             return tracked
 
-    async def list_jobs(self) -> tuple[TrackedJob, ...]:
-        """List all tracked jobs."""
-        return await self._job_store.list_all()
+    async def list_jobs(self, query: JobQuery | None = None) -> tuple[TrackedJob, ...]:
+        """List tracked jobs using an optional typed query."""
+        return await self._job_store.list(query)
 
     async def get_capabilities(
         self,

@@ -8,12 +8,17 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from acheron.shell.api.input_boundary import InputRequestBoundary
-from acheron.shell.api.routes import capabilities, cost, inputs, job_outputs, jobs, partials, plans, workers
+from acheron.shell.api.routes import admin, capabilities, cost, inputs, job_outputs, jobs, partials, plans, workers
+from acheron.shell.api.schemas import AdminErrorResponse
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
+from acheron.shell.job_store import AdminActionAudit
 from acheron.shell.logging_context import ContextFilter, bind_request_id
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores import create_job_store, create_worker_store
@@ -43,7 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await orch.close()
 
 
-def create_app(
+def create_app(  # noqa: C901, PLR0915
     registry: WorkerStore | None = None,
     job_store: JobStore | None = None,
     cache: PlanCache | None = None,
@@ -88,9 +93,74 @@ def create_app(
     @app.middleware("http")
     async def _request_id_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request.state.request_id = request_id
         with bind_request_id(request_id):
             return await call_next(request)
 
+    def _admin_action(path: str) -> str:
+        parts = [part for part in path.split("/") if part]
+        return "/".join(parts[1:]) if parts and parts[0] == "admin" else path
+
+    def _record_admin_failure(request: Request, *, reason: str) -> None:
+        if not request.url.path.startswith("/admin/") or getattr(request.state, "admin_audit_recorded", False):
+            return
+        request.state.admin_audit_recorded = True
+        orchestrator.record_admin_audit(
+            AdminActionAudit(
+                request_id=getattr(request.state, "request_id", ""),
+                action=_admin_action(request.url.path),
+                reason=reason,
+                job_ids=(),
+                affected_count=0,
+                result="failure",
+            )
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _admin_validation_error(request: Request, exc: RequestValidationError) -> Response:
+        if not request.url.path.startswith("/admin/"):
+            from fastapi.exception_handlers import request_validation_exception_handler  # noqa: PLC0415
+
+            return await request_validation_exception_handler(request, exc)
+        _record_admin_failure(request, reason="request validation failed")
+        error = AdminErrorResponse(
+            type="AdminRequestValidationError",
+            message="Administrative request validation failed",
+            remediation="Submit the canonical JSON body with no unknown fields.",
+        )
+        return JSONResponse(status_code=422, content={"detail": error.model_dump()})
+
+    @app.exception_handler(HTTPException)
+    async def _admin_http_error(request: Request, exc: HTTPException) -> Response:
+        if not request.url.path.startswith("/admin/"):
+            return await http_exception_handler(request, exc)
+        raw_detail: object = exc.detail
+        match raw_detail:
+            case dict() as detail:
+                pass
+            case _:
+                detail = {
+                    "type": "AdminRequestError",
+                    "message": str(raw_detail),
+                    "remediation": None,
+                }
+        error = AdminErrorResponse.model_validate(detail)
+        _record_admin_failure(request, reason=error.message)
+        return JSONResponse(status_code=exc.status_code, content={"detail": error.model_dump()})
+
+    @app.exception_handler(Exception)
+    async def _admin_unexpected_error(request: Request, exc: Exception) -> Response:
+        if not request.url.path.startswith("/admin/"):
+            raise exc
+        _record_admin_failure(request, reason="unexpected administrative route failure")
+        error = AdminErrorResponse(
+            type=type(exc).__name__,
+            message="Administrative request failed",
+            remediation="Inspect the service logs and retry the operation.",
+        )
+        return JSONResponse(status_code=500, content={"detail": error.model_dump()})
+
+    app.include_router(admin.router, prefix="/admin", tags=["admin"])
     app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
     app.include_router(job_outputs.router, prefix="/jobs", tags=["job-outputs"])
     app.include_router(workers.router, prefix="/workers", tags=["workers"])

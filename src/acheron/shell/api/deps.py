@@ -7,6 +7,7 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Header, HTTPException, Request
 
+from acheron.shell.api.schemas import AdminErrorResponse
 from acheron.shell.orchestrator import Orchestrator
 
 
@@ -50,6 +51,39 @@ def verify_registration_token(
 
 
 RegistrationTokenDep = Annotated[None, Depends(verify_registration_token)]
+
+
+def verify_admin_token(
+    orch: OrchestratorDep,
+    authorization: str | None = Header(None),
+) -> None:
+    """Require the independently configured administrative bearer token."""
+    token = orch.settings.orchestrator.admin_token
+    if token is None:
+        error = AdminErrorResponse(
+            type="AdminConfigurationUnavailable",
+            message="Administrative authorization is not configured",
+            remediation="Set ACHERON_ADMIN_TOKEN to enable administrative mutations.",
+        )
+        raise HTTPException(status_code=503, detail=error.model_dump())
+    if authorization is None:
+        error = AdminErrorResponse(
+            type="AdminAuthenticationError",
+            message="Missing Authorization header",
+            remediation="Provide Authorization: Bearer <admin-token>.",
+        )
+        raise HTTPException(status_code=401, detail=error.model_dump())
+    scheme, _, provided = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not secrets.compare_digest(provided, token):
+        error = AdminErrorResponse(
+            type="AdminAuthenticationError",
+            message="Invalid administrative credentials",
+            remediation="Provide the configured admin bearer token.",
+        )
+        raise HTTPException(status_code=401, detail=error.model_dump())
+
+
+AdminTokenDep = Annotated[None, Depends(verify_admin_token)]
 
 
 def has_registration_token(

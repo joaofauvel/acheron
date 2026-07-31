@@ -229,6 +229,23 @@ def test_open_registration_env_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.orchestrator.open_registration is True
 
 
+def test_admin_token_env_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "a" * 32)
+    settings = Settings()
+    assert settings.orchestrator.admin_token == "a" * 32
+
+
+def test_admin_token_structured_env_beats_flat_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "a" * 32)
+    monkeypatch.setenv("ACHERON_ORCHESTRATOR__ADMIN_TOKEN", "b" * 32)
+    settings = Settings()
+    assert settings.orchestrator.admin_token == "b" * 32
+
+
+def test_admin_token_is_optional() -> None:
+    assert Settings().orchestrator.admin_token is None
+
+
 def test_open_registration_yaml_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """orchestrator.open_registration can be set directly in YAML."""
     from acheron.shell.config import OrchestratorSettings

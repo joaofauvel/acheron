@@ -53,6 +53,7 @@ class OrchestratorSettings(BaseModel):
 
     data_dir: Path = Field(default=Path("/data/jobs"))
     registration_token: str | None = Field(default=None)
+    admin_token: str | None = Field(default=None)
     open_registration: bool = False
     health_check_interval_seconds: int = Field(default=30)
     shutdown_drain_seconds: float = Field(default=5.0)
@@ -160,6 +161,9 @@ class _EnvAliasSettingsSource(PydanticBaseSettingsSource):
         token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
         if token:
             res.setdefault("orchestrator", {})["registration_token"] = token
+        admin_token = os.environ.get("ACHERON_ADMIN_TOKEN")
+        if admin_token:
+            res.setdefault("orchestrator", {})["admin_token"] = admin_token
         open_reg = os.environ.get("ACHERON_OPEN_REGISTRATION")
         if open_reg == "1":
             res.setdefault("orchestrator", {})["open_registration"] = True

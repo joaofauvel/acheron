@@ -407,6 +407,7 @@ def _serialize_job(job: TrackedJob) -> str:
             "retries_from": job.retries_from,
             "created_at": job.created_at.isoformat(),
             "last_persisted_at": job.last_persisted_at.isoformat(),
+            "archived_at": job.archived_at.isoformat() if job.archived_at else None,
             "progress": {
                 "completed_steps": job.progress.completed_steps,
                 "total_steps": job.progress.total_steps,
@@ -566,6 +567,7 @@ def _deserialize_job_unchecked(blob: str) -> TrackedJob:
         retries_from=data["retries_from"],
         created_at=_deserialize_timestamp(data["created_at"]),
         last_persisted_at=_deserialize_timestamp(data["last_persisted_at"]),
+        archived_at=_deserialize_timestamp(data["archived_at"]) if data.get("archived_at") else None,
         progress=progress,
         plan=plan,
         result=result,

@@ -6,8 +6,10 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
-    from acheron.shell.job_store import TrackedJob
+    from acheron.shell.job_store import JobQuery, TrackedJob
     from acheron.shell.registry import RegisteredWorker
 
 
@@ -116,6 +118,30 @@ class JobStore(ABC):
     async def list_all(self) -> tuple[TrackedJob, ...]:
         """Return all tracked jobs."""
         ...
+
+    async def list(self, query: JobQuery | None = None, *, now: datetime | None = None) -> tuple[TrackedJob, ...]:
+        """Return jobs matching a typed query."""
+        from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+        selected = await self.list_all()
+        if query is None:
+            return selected
+        if now is not None and (now.tzinfo is None or now.utcoffset() is None):
+            msg = "now must be timezone-aware"
+            raise ValueError(msg)
+        reference = now.astimezone(UTC) if now is not None else datetime.now(UTC)
+        cutoff = (
+            reference - timedelta(seconds=query.older_than_seconds) if query.older_than_seconds is not None else None
+        )
+        return tuple(
+            job
+            for job in selected
+            if (query.status is None or job.status is query.status)
+            and (query.since is None or job.created_at >= query.since)
+            and (query.before is None or job.created_at <= query.before)
+            and (cutoff is None or job.last_persisted_at <= cutoff)
+            and (query.include_archived or getattr(job, "archived_at", None) is None)
+        )
 
     @abstractmethod
     async def close(self) -> None:
