@@ -990,6 +990,38 @@ async def test_tail_job_uses_declared_length_as_error_buffer_cap() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tail_job_rejects_huge_content_length_without_reading() -> None:
+    class StallingErrorStream(httpx.AsyncByteStream):
+        def __init__(self) -> None:
+            self.reads = 0
+
+        async def __aiter__(self):
+            self.reads += 1
+            yield b""
+            await asyncio.Event().wait()
+
+        async def aclose(self) -> None:
+            return None
+
+    error_stream = StallingErrorStream()
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            headers={"content-type": "application/json", "content-length": "9" * 5000},
+            stream=error_stream,
+        )
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    stream = client.tail_job("job-1")
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await asyncio.wait_for(stream.__anext__(), timeout=1)
+
+    assert error_stream.reads == 0
+    assert exc_info.value.response.content == b""
+
+
+@pytest.mark.asyncio
 async def test_tail_job_preserves_json_error_details() -> None:
     body = json.dumps({"detail": {"message": "job failed", "remediation": "retry"}}).encode()
 

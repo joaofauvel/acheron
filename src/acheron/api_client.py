@@ -45,7 +45,12 @@ async def _buffer_error_response(response: httpx.Response) -> None:
     the bound permits iteration; all other responses receive empty content.
     """
     content_length = response.headers.get("content-length")
-    if content_length is None or not content_length.isascii() or not content_length.isdecimal():
+    if (
+        content_length is None
+        or len(content_length) > len(str(_MAX_ERROR_RESPONSE_BYTES))
+        or not content_length.isascii()
+        or not content_length.isdecimal()
+    ):
         response._content = b""  # noqa: SLF001
         return
     declared_length = int(content_length)
@@ -55,15 +60,19 @@ async def _buffer_error_response(response: httpx.Response) -> None:
 
     chunks: list[bytes] = []
     buffered = 0
-    async for chunk in response.aiter_bytes():
-        remaining = declared_length - buffered
-        if remaining <= 0:
-            break
-        bounded_chunk = chunk[:remaining]
-        chunks.append(bounded_chunk)
-        buffered += len(bounded_chunk)
-        if buffered >= declared_length:
-            break
+    iterator = cast("AsyncGenerator[bytes]", response.aiter_bytes())
+    try:
+        async for chunk in iterator:
+            remaining = declared_length - buffered
+            if remaining <= 0:
+                break
+            bounded_chunk = chunk[:remaining]
+            chunks.append(bounded_chunk)
+            buffered += len(bounded_chunk)
+            if buffered >= declared_length:
+                break
+    finally:
+        await iterator.aclose()
     response._content = b"".join(chunks)  # noqa: SLF001
 
 
