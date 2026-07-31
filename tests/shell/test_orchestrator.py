@@ -22,6 +22,8 @@ from acheron.core.errors import (
 )
 from acheron.core.models import (
     AudioRequest,
+    CostBasis,
+    CostEstimate,
     EpubRequest,
     ExecutorStrategy,
     JobMetrics,
@@ -811,14 +813,20 @@ class TestOrchestrator:
                         job_id=plan.job_id,
                         status=JobStatus.SUCCESS,
                         outputs=(),
-                        metrics=JobMetrics(duration_seconds=99.0, cost_estimate=99.0),
+                        metrics=JobMetrics(
+                            duration_seconds=99.0,
+                            cost_estimate=CostEstimate(cost=99.0, basis=CostBasis.STUB),
+                        ),
                     )
             steps_completed += 1
             return JobResult(
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(first_output,) if steps_completed == 1 else (),
-                metrics=JobMetrics(duration_seconds=2.0, cost_estimate=3.0),
+                metrics=JobMetrics(
+                    duration_seconds=2.0,
+                    cost_estimate=CostEstimate(cost=3.0, basis=CostBasis.STUB),
+                ),
             )
 
         registry = InMemoryWorkerStore()
@@ -1115,7 +1123,10 @@ class TestOrchestrator:
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(),
-                metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.5),
+                metrics=JobMetrics(
+                    duration_seconds=0.1,
+                    cost_estimate=CostEstimate(cost=0.5, basis=CostBasis.STUB),
+                ),
             )
             steps_done += 1
             if steps_done == 3:
@@ -1660,9 +1671,11 @@ class TestOrchestrator:
         await asyncio.gather(*tasks)
 
         assert handler_calls == 0
-        assert tracked.status == PlanStatus.COMPLETED
-        assert tracked.result is not None
-        assert tracked.result.completed_steps == tracked.result.total_steps
+        completed = await orch.get_job(tracked.job_id)
+        assert completed is not None
+        assert completed.status == PlanStatus.COMPLETED
+        assert completed.result is not None
+        assert completed.result.completed_steps == completed.result.total_steps
         assert progress == list(range(1, len(plan.steps) + 1))
 
     @pytest.mark.asyncio

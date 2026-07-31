@@ -4,6 +4,7 @@ import pytest
 
 from acheron.core.models import (
     CostBasis,
+    CostEstimate,
     ExecutorStrategy,
     JobMetrics,
     JobResult,
@@ -48,7 +49,10 @@ def _success_result(cost: float = 0.01) -> JobResult:
         job_id="j-1",
         status=JobStatus.SUCCESS,
         outputs=(),
-        metrics=JobMetrics(duration_seconds=0.1, cost_estimate=cost),
+        metrics=JobMetrics(
+            duration_seconds=0.1,
+            cost_estimate=CostEstimate(cost=cost, basis=CostBasis.STUB),
+        ),
     )
 
 
@@ -146,6 +150,28 @@ class TestSequentialExecutor:
         result = await SequentialExecutor(handler).run(_plan((_step("a"),)))
         assert result.status == PlanStatus.COMPLETED
         assert result.completed_steps == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_result_retains_cost_breakdown(self) -> None:
+        async def handler(step: PlanStep, _plan: Plan) -> JobResult:
+            return JobResult(
+                job_id="j-1",
+                status=JobStatus.FAILED,
+                outputs=(),
+                metrics=JobMetrics(
+                    duration_seconds=1.0,
+                    gpu_seconds=2.0,
+                    cost_estimate=CostEstimate(cost=None, basis=CostBasis.UNKNOWN),
+                ),
+                error="worker failed",
+                worker_id="worker-1",
+            )
+
+        result = await SequentialExecutor(handler).run(_plan((_step("a"),)))
+        assert result.status == PlanStatus.FAILED
+        assert result.total_cost == 0.0
+        assert result.cost_breakdown[0].worker_id == "worker-1"
+        assert result.cost_breakdown[0].estimate.basis is CostBasis.UNKNOWN
 
     @pytest.mark.asyncio
     async def test_handler_raises_exception_returns_failed_plan(self) -> None:
@@ -374,7 +400,10 @@ class TestAsyncExecutorCostBasis:
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(),
-                metrics=JobMetrics(duration_seconds=0.1, cost_basis=basis),
+                metrics=JobMetrics(
+                    duration_seconds=0.1,
+                    cost_estimate=CostEstimate(cost=0.0, basis=basis),
+                ),
             )
 
         executor = AsyncExecutor(by_id_handler)

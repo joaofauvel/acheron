@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast, runtime_checkable
@@ -14,6 +15,8 @@ from redis.exceptions import RedisError
 
 from acheron.core.models import (
     AudioRequest,
+    CostBreakdown,
+    CostEstimate,
     EpubRequest,
     JsonValue,
     WorkerCapabilities,
@@ -285,6 +288,33 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
     )
 
 
+def _finite_number(value: object, name: str) -> float:
+    if not isinstance(value, int | float) or isinstance(value, bool) or not math.isfinite(value):
+        msg = f"{name} must be finite"
+        raise ValueError(msg)
+    return float(value)
+
+
+def _deserialize_timestamp(value: str) -> datetime:
+    timestamp = datetime.fromisoformat(value)
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        msg = "timestamp must be timezone-aware"
+        raise ValueError(msg)
+    return timestamp.astimezone(UTC)
+
+
+def _serialize_cost_estimate(estimate: CostEstimate) -> dict[str, object]:
+    return {
+        "cost": estimate.cost,
+        "basis": estimate.basis.value,
+        "rate_per_hour": estimate.rate_per_hour,
+        "gpu_type": estimate.gpu_type,
+        "secure_cloud": estimate.secure_cloud,
+        "queried_at": estimate.queried_at.isoformat() if estimate.queried_at else None,
+        "cache_age_seconds": estimate.cache_age_seconds,
+    }
+
+
 def _serialize_job(job: TrackedJob) -> str:
     from acheron.core.models import AudioRequest  # noqa: PLC0415
 
@@ -354,6 +384,16 @@ def _serialize_job(job: TrackedJob) -> str:
                 for error in job.result.errors
             ],
             "total_cost_basis": (job.result.total_cost_basis.value if job.result.total_cost_basis else None),
+            "cost_breakdown": [
+                {
+                    "step_id": item.step_id,
+                    "worker_type": item.worker_type.value,
+                    "worker_id": item.worker_id,
+                    "gpu_seconds": item.gpu_seconds,
+                    "estimate": _serialize_cost_estimate(item.estimate),
+                }
+                for item in job.result.cost_breakdown
+            ],
         }
 
     return json.dumps(
@@ -385,7 +425,7 @@ def _serialize_job(job: TrackedJob) -> str:
     )
 
 
-def _deserialize_job(blob: str) -> TrackedJob:
+def _deserialize_job_unchecked(blob: str) -> TrackedJob:
     from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
     from acheron.core.models import (  # noqa: PLC0415
         AudioRequest,
@@ -461,19 +501,43 @@ def _deserialize_job(blob: str) -> TrackedJob:
                 )
                 for o in rd["outputs"]
             ),
-            total_cost=rd["total_cost"],
-            total_duration_seconds=rd["total_duration_seconds"],
+            total_cost=_finite_number(rd["total_cost"], "total_cost"),
+            total_duration_seconds=_finite_number(rd["total_duration_seconds"], "total_duration_seconds"),
             errors=tuple(
                 StepError(
                     step_id=error["step_id"],
                     worker_type=WorkerType(error["worker_type"]) if error["worker_type"] else None,
                     worker_id=error["worker_id"],
                     message=error["message"],
-                    timestamp=datetime.fromisoformat(error["timestamp"]),
+                    timestamp=_deserialize_timestamp(error["timestamp"]),
                 )
                 for error in rd["errors"]
             ),
             total_cost_basis=CostBasis(basis_value) if basis_value else None,
+            cost_breakdown=tuple(
+                CostBreakdown(
+                    step_id=item["step_id"],
+                    worker_type=WorkerType(item["worker_type"]),
+                    worker_id=item["worker_id"],
+                    gpu_seconds=(
+                        _finite_number(item["gpu_seconds"], "gpu_seconds") if item["gpu_seconds"] is not None else None
+                    ),
+                    estimate=CostEstimate(
+                        cost=item["estimate"]["cost"],
+                        basis=CostBasis(item["estimate"]["basis"]),
+                        rate_per_hour=item["estimate"].get("rate_per_hour"),
+                        gpu_type=item["estimate"].get("gpu_type"),
+                        secure_cloud=item["estimate"].get("secure_cloud"),
+                        queried_at=(
+                            _deserialize_timestamp(item["estimate"]["queried_at"])
+                            if item["estimate"].get("queried_at")
+                            else None
+                        ),
+                        cache_age_seconds=item["estimate"].get("cache_age_seconds"),
+                    ),
+                )
+                for item in rd.get("cost_breakdown", [])
+            ),
         )
 
     progress_data = data["progress"]
@@ -485,8 +549,14 @@ def _deserialize_job(blob: str) -> TrackedJob:
             WorkerType(progress_data["current_worker_type"]) if progress_data["current_worker_type"] else None
         ),
         current_worker_id=progress_data["current_worker_id"],
-        eta_seconds=progress_data["eta_seconds"],
-        successful_duration_seconds=progress_data["successful_duration_seconds"],
+        eta_seconds=(
+            _finite_number(progress_data["eta_seconds"], "eta_seconds")
+            if progress_data["eta_seconds"] is not None
+            else None
+        ),
+        successful_duration_seconds=_finite_number(
+            progress_data["successful_duration_seconds"], "successful_duration_seconds"
+        ),
     )
     return TrackedJob(
         job_id=data["job_id"],
@@ -494,13 +564,25 @@ def _deserialize_job(blob: str) -> TrackedJob:
         strategy=ExecutorStrategy(data["strategy"]),
         label=data["label"],
         retries_from=data["retries_from"],
-        created_at=datetime.fromisoformat(data["created_at"]),
-        last_persisted_at=datetime.fromisoformat(data["last_persisted_at"]),
+        created_at=_deserialize_timestamp(data["created_at"]),
+        last_persisted_at=_deserialize_timestamp(data["last_persisted_at"]),
         progress=progress,
         plan=plan,
         result=result,
         status=PlanStatus(data["status"]),
     )
+
+
+def _deserialize_job(blob: str) -> TrackedJob:
+    from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
+
+    try:
+        return _deserialize_job_unchecked(blob)
+    except CacheCorruptedError:
+        raise
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        msg = f"Job blob has invalid fields: {exc}"
+        raise CacheCorruptedError(msg) from exc
 
 
 class RedisWorkerStore(WorkerStore):

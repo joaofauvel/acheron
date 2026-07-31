@@ -146,7 +146,7 @@ class TestParseMultipartPartsNoMetrics:
             body,
         )
         assert metrics.duration_seconds == 0.0
-        assert metrics.cost_basis is None
+        assert metrics.cost_estimate is None
 
 
 class TestParseMultipartPartsMalformed:

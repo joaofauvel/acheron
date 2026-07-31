@@ -24,7 +24,7 @@ def _multipart_stub_response() -> httpx.Response:
             b"transcribed audio\r\n"
             b"------x\r\n"
             b"Content-Type: application/json\r\n\r\n"
-            b'{"duration_seconds": 1.5, "cost_basis": null}\r\n'
+            b'{"duration_seconds": 1.5, "cost_estimate": null}\r\n'
             b"------x--\r\n"
         ),
     )
@@ -96,7 +96,7 @@ async def test_asr_multipart_success(tmp_path: Path, audio_file: Path) -> None:
                 b"transcribed audio\r\n"
                 b"------x\r\n"
                 b"Content-Type: application/json\r\n\r\n"
-                b'{"duration_seconds": 1.5, "cost_basis": null}\r\n'
+                b'{"duration_seconds": 1.5, "cost_estimate": null}\r\n'
                 b"------x--\r\n"
             ),
         )

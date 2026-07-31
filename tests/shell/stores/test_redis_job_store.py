@@ -13,6 +13,8 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from acheron.core.models import (
     AudioRequest,
     CostBasis,
+    CostBreakdown,
+    CostEstimate,
     EpubRequest,
     ExecutorStrategy,
     OutputFile,
@@ -91,6 +93,23 @@ def _result() -> PlanResult:
             ),
         ),
         total_cost_basis=CostBasis.UNKNOWN,
+        cost_breakdown=(
+            CostBreakdown(
+                step_id="synthesize",
+                worker_type=WorkerType.TTS,
+                worker_id="tts-1",
+                gpu_seconds=1800.0,
+                estimate=CostEstimate(
+                    cost=0.34,
+                    basis=CostBasis.MEASURED,
+                    rate_per_hour=0.69,
+                    gpu_type="L4",
+                    secure_cloud=False,
+                    queried_at=datetime(2026, 7, 30, tzinfo=UTC),
+                    cache_age_seconds=0.0,
+                ),
+            ),
+        ),
     )
 
 
@@ -212,6 +231,10 @@ class TestPlanRoundTrip:
         assert loaded.result.errors[0].message == "GPU down"
         assert loaded.result.errors[0].worker_id == "tts-1"
         assert loaded.result.total_cost_basis == CostBasis.UNKNOWN
+        assert len(loaded.result.cost_breakdown) == 1
+        item = loaded.result.cost_breakdown[0]
+        assert item.worker_id == "tts-1"
+        assert item.estimate == _result().cost_breakdown[0].estimate
         assert len(loaded.result.outputs) == 1
         assert loaded.result.outputs[0].path == "/out/x.wav"
         assert loaded.result.outputs[0].checksum == "abc"

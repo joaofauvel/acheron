@@ -231,7 +231,7 @@ class TestHttpWorkerExecuteMultipart:
         audio = b"\x00\x01\x02\x03" * 100
         metrics = (
             b'{"duration_seconds":1.5,"gpu_seconds":1.0,"tokens_in":null,'
-            b'"tokens_out":null,"cost_estimate":0.042,"cost_basis":"measured"}'
+            b'"tokens_out":null,"cost_estimate":{"cost":0.042,"basis":"measured"}}'
         )
         body = _multipart_body(audio, metrics)
         respx.post(f"{_BASE_URL}/execute").mock(
@@ -258,8 +258,9 @@ class TestHttpWorkerExecuteMultipart:
         assert out.size_bytes == len(audio)
         assert out.checksum == hashlib.sha256(audio).hexdigest()
         assert Path(out.path).read_bytes() == audio
-        assert result.metrics.cost_estimate == 0.042
-        assert result.metrics.cost_basis == CostBasis.MEASURED
+        assert result.metrics.cost_estimate is not None
+        assert result.metrics.cost_estimate.cost == 0.042
+        assert result.metrics.cost_estimate.basis == CostBasis.MEASURED
 
     @respx.mock
     @pytest.mark.asyncio

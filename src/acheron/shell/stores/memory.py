@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -121,15 +122,16 @@ class InMemoryJobStore(JobStore):
     async def put(self, job: TrackedJob) -> None:
         """Store or update a tracked job."""
         job.last_persisted_at = datetime.now(UTC)
-        self._jobs[job.job_id] = job
+        self._jobs[job.job_id] = copy.deepcopy(job)
 
     async def get(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
-        return self._jobs.get(job_id)
+        job = self._jobs.get(job_id)
+        return copy.deepcopy(job) if job is not None else None
 
     async def list_all(self) -> tuple[TrackedJob, ...]:
         """Return all tracked jobs."""
-        return tuple(self._jobs.values())
+        return tuple(copy.deepcopy(job) for job in self._jobs.values())
 
     async def close(self) -> None:
         """No-op for the in-memory store."""

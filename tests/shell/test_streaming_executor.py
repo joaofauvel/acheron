@@ -11,6 +11,7 @@ import pytest_asyncio
 
 from acheron.core.models import (
     CostBasis,
+    CostEstimate,
     ExecutorStrategy,
     JobMetrics,
     JobResult,
@@ -302,14 +303,18 @@ class TestNonSuccessResult:
                     job_id=plan.job_id,
                     status=JobStatus.FAILED,
                     outputs=(),
-                    metrics=JobMetrics(duration_seconds=0.0, cost_estimate=0.42),
+                    metrics=JobMetrics(
+                        duration_seconds=0.0, cost_estimate=CostEstimate(cost=0.42, basis=CostBasis.MEASURED)
+                    ),
                     error="worker reported failure",
                 )
             return JobResult(
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
-                metrics=JobMetrics(duration_seconds=0.0, cost_estimate=0.1),
+                metrics=JobMetrics(
+                    duration_seconds=0.0, cost_estimate=CostEstimate(cost=0.1, basis=CostBasis.MEASURED)
+                ),
             )
 
         executor = StreamingExecutor(handler, step_cache)
@@ -409,7 +414,7 @@ class TestCostAccumulation:
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(_real_output(tmp_path, f"{step.step_id}.out"),),
-                metrics=JobMetrics(duration_seconds=0.0, cost_estimate=0.5),
+                metrics=JobMetrics(duration_seconds=0.0, cost_estimate=CostEstimate(cost=0.5, basis=CostBasis.STUB)),
             )
 
         executor = StreamingExecutor(handler, step_cache)
@@ -587,7 +592,10 @@ class TestTotalCostBasis:
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(_real_output(tmp_path, f"{step.step_id}.wav"),),
-                metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.01, cost_basis=per_step_basis[step.step_id]),
+                metrics=JobMetrics(
+                    duration_seconds=0.1,
+                    cost_estimate=CostEstimate(cost=0.01, basis=per_step_basis[step.step_id]),
+                ),
             )
 
         plan = _linear_plan()
@@ -611,7 +619,10 @@ class TestTotalCostBasis:
                 job_id=plan.job_id,
                 status=JobStatus.SUCCESS,
                 outputs=(_real_output(tmp_path, f"{step.step_id}.wav"),),
-                metrics=JobMetrics(duration_seconds=0.1, cost_estimate=0.01, cost_basis=per_step_basis[step.step_id]),
+                metrics=JobMetrics(
+                    duration_seconds=0.1,
+                    cost_estimate=CostEstimate(cost=0.01, basis=per_step_basis[step.step_id]),
+                ),
             )
 
         plan = _linear_plan()

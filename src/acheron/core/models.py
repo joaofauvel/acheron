@@ -90,6 +90,10 @@ class CostEstimate:
     cache_age_seconds: float | None = None
 
     def __post_init__(self) -> None:
+        for name, value in (("cost", self.cost), ("rate_per_hour", self.rate_per_hour)):
+            if value is not None and not math.isfinite(value):
+                msg = f"{name} must be finite"
+                raise ValueError(msg)
         if self.queried_at is not None:
             if self.queried_at.tzinfo is None or self.queried_at.utcoffset() is None:
                 msg = "queried_at must be timezone-aware"
@@ -111,6 +115,11 @@ class CostBreakdown:
     worker_id: str | None
     gpu_seconds: float | None
     estimate: CostEstimate
+
+    def __post_init__(self) -> None:
+        if self.gpu_seconds is not None and not math.isfinite(self.gpu_seconds):
+            msg = "gpu_seconds must be finite"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)

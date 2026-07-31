@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from acheron.core.errors import WorkerError
-from acheron.core.models import CostBasis, JobMetrics, JobStatus, OutputFile
+from acheron.core.models import CostBasis, CostEstimate, JobMetrics, JobStatus, OutputFile
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
 
@@ -58,8 +58,7 @@ class TestBuildResult:
         metrics = JobMetrics(
             duration_seconds=1.5,
             gpu_seconds=1.0,
-            cost_estimate=0.042,
-            cost_basis=CostBasis.MEASURED,
+            cost_estimate=CostEstimate(cost=0.042, basis=CostBasis.MEASURED),
         )
         result = _build_result(
             job_id="job-xyz-step",
@@ -69,8 +68,9 @@ class TestBuildResult:
         assert result.job_id == "job-xyz-step"
         assert result.status == JobStatus.SUCCESS
         assert len(result.outputs) == 2
-        assert result.metrics.cost_estimate == 0.042
-        assert result.metrics.cost_basis == CostBasis.MEASURED
+        assert result.metrics.cost_estimate is not None
+        assert result.metrics.cost_estimate.cost == 0.042
+        assert result.metrics.cost_estimate.basis == CostBasis.MEASURED
         assert result.error is None
 
 

@@ -124,10 +124,7 @@ class GrpcWorker(Worker):
                 dest_dir=dest_dir,
             )
             outputs.append(out)
-        # Plan 2 doesn't surface trailing-metadata metrics yet; the HTTP path
-        # carries cost_basis. The gRPC path fills a basic metrics envelope; a
-        # future sub-project wires trailing-metadata → JobMetrics.
-        metrics = JobMetrics(duration_seconds=duration)
+        metrics = JobMetrics(duration_seconds=duration, gpu_seconds=duration)
         return _build_result(job_id=job_id, outputs=tuple(outputs), metrics=metrics)
 
     async def _assemble_pcm(self, job_id: str, pcm_chunks: list[bytes], duration: float) -> JobResult:
@@ -140,7 +137,11 @@ class GrpcWorker(Worker):
             content_type="audio/pcm",
             dest_dir=self._data_dir / plan_job_id / step_id,
         )
-        return _build_result(job_id=job_id, outputs=(output,), metrics=JobMetrics(duration_seconds=duration))
+        return _build_result(
+            job_id=job_id,
+            outputs=(output,),
+            metrics=JobMetrics(duration_seconds=duration, gpu_seconds=duration),
+        )
 
     async def health(self) -> bool:  # noqa: D102
         try:

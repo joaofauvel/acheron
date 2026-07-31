@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from acheron.core.errors import sanitise_exc_message
 from acheron.core.interfaces import Executor
 from acheron.core.models import (
-    JobMetrics,
     JobStatus,
     OutputFile,
     Plan,
@@ -14,7 +13,7 @@ from acheron.core.models import (
     PlanStatus,
     StepError,
 )
-from acheron.shell.cost import aggregate_cost_basis
+from acheron.shell.cost import aggregate_cost_basis, build_cost_breakdown, estimate_cost
 from acheron.shell.executors._utils import StepHandler, topological_order
 
 
@@ -33,7 +32,7 @@ class SequentialExecutor(Executor):
         total_cost = 0.0
         failed_steps: set[str] = set()
         errors: list[StepError] = []
-        per_step_metrics: list[JobMetrics | None] = []
+        cost_breakdown = []
 
         for step in topological_order(plan.steps):
             if any(dep in failed_steps for dep in step.depends_on):
@@ -48,7 +47,6 @@ class SequentialExecutor(Executor):
                         timestamp=datetime.now(UTC),
                     )
                 )
-                per_step_metrics.append(None)
                 continue
 
             try:
@@ -65,7 +63,6 @@ class SequentialExecutor(Executor):
                         timestamp=datetime.now(UTC),
                     )
                 )
-                per_step_metrics.append(None)
                 continue
 
             if result.status == JobStatus.SUCCESS:
@@ -83,8 +80,10 @@ class SequentialExecutor(Executor):
                         timestamp=datetime.now(UTC),
                     )
                 )
-            total_cost += result.metrics.cost_estimate or 0.0
-            per_step_metrics.append(result.metrics)
+            item = build_cost_breakdown(step, result)
+            total_cost += estimate_cost(item)
+            if item is not None:
+                cost_breakdown.append(item)
 
         duration = time.monotonic() - start
         status = PlanStatus.COMPLETED if failed == 0 else PlanStatus.FAILED if completed == 0 else PlanStatus.PARTIAL
@@ -98,5 +97,6 @@ class SequentialExecutor(Executor):
             total_cost=total_cost,
             total_duration_seconds=duration,
             errors=tuple(errors),
-            total_cost_basis=aggregate_cost_basis(per_step_metrics),
+            total_cost_basis=aggregate_cost_basis(cost_breakdown),
+            cost_breakdown=tuple(cost_breakdown),
         )

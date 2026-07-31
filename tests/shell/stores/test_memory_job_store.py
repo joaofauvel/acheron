@@ -4,7 +4,16 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+from acheron.core.models import (
+    CostBasis,
+    CostBreakdown,
+    CostEstimate,
+    EpubRequest,
+    ExecutorStrategy,
+    PlanResult,
+    PlanStatus,
+    WorkerType,
+)
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.stores.memory import InMemoryJobStore
 
@@ -23,7 +32,9 @@ class TestJobStore:
         store = InMemoryJobStore()
         job = _tracked()
         await store.put(job)
-        assert await store.get("job-1") is job
+        stored = await store.get("job-1")
+        assert stored is not None
+        assert stored.job_id == job.job_id
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self) -> None:
@@ -50,7 +61,30 @@ class TestJobStore:
         job2 = _tracked("j-1")
         await store.put(job1)
         await store.put(job2)
-        assert await store.get("j-1") is job2
+        stored = await store.get("j-1")
+        assert stored is not None
+        assert stored.job_id == job2.job_id
+
+    @pytest.mark.asyncio
+    async def test_cost_breakdown_round_trips_for_failed_result(self) -> None:
+        store = InMemoryJobStore()
+        job = _tracked()
+        estimate = CostEstimate(cost=None, basis=CostBasis.UNKNOWN, gpu_type="L4")
+        job.result = PlanResult(
+            plan_id="plan-1",
+            status=PlanStatus.FAILED,
+            completed_steps=0,
+            total_steps=1,
+            outputs=(),
+            total_cost=0.0,
+            total_duration_seconds=1.0,
+            cost_breakdown=(CostBreakdown("synthesize", WorkerType.TTS, "tts-1", 1.0, estimate),),
+        )
+        await store.put(job)
+        stored = await store.get("job-1")
+        assert stored is not None
+        assert stored.result is not None
+        assert stored.result.cost_breakdown[0].estimate == estimate
 
     @pytest.mark.asyncio
     async def test_status_update(self) -> None:

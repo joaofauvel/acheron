@@ -43,7 +43,7 @@ from acheron.core.planner import ChunkingLimits, compile_plan
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, load_settings
-from acheron.shell.cost import aggregate_cost_basis
+from acheron.shell.cost import aggregate_cost_basis, build_cost_breakdown, estimate_cost
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
 from acheron.shell.health_providers import create_health_providers
@@ -847,18 +847,16 @@ class Orchestrator:
             else None
         )
         completed_steps = partial.completed_steps + int(result.status is JobStatus.SUCCESS)
+        item = build_cost_breakdown(step, result)
+        cost_breakdown = (*partial.cost_breakdown, *((item,) if item is not None else ()))
         tracked.result = replace(
             partial,
             completed_steps=completed_steps,
             outputs=(*partial.outputs, *result.outputs) if result.status is JobStatus.SUCCESS else partial.outputs,
-            total_cost=partial.total_cost + (result.metrics.cost_estimate or 0.0),
+            total_cost=partial.total_cost + estimate_cost(item),
             total_duration_seconds=partial.total_duration_seconds + result.metrics.duration_seconds,
-            total_cost_basis=aggregate_cost_basis(
-                [
-                    JobMetrics(duration_seconds=0.0, cost_basis=partial.total_cost_basis),
-                    result.metrics,
-                ]
-            ),
+            total_cost_basis=aggregate_cost_basis(cost_breakdown),
+            cost_breakdown=cost_breakdown,
             errors=partial.errors + ((error,) if error is not None else ()),
         )
         tracked.progress.completed_steps = completed_steps
@@ -912,6 +910,8 @@ class Orchestrator:
             outputs=tracked.result.outputs if tracked.result is not None else (),
             total_cost=tracked.result.total_cost if tracked.result is not None else 0.0,
             total_duration_seconds=tracked.result.total_duration_seconds if tracked.result is not None else 0.0,
+            total_cost_basis=tracked.result.total_cost_basis if tracked.result is not None else None,
+            cost_breakdown=tracked.result.cost_breakdown if tracked.result is not None else (),
             errors=(
                 StepError(
                     step_id=tracked.progress.current_step_id,
