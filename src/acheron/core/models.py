@@ -29,28 +29,52 @@ _WORKER_HOST_PORT_RE = re.compile(
     r"(?<![\w.-])(?:localhost|127(?:\.\d{1,3}){3}|[a-z0-9.-]+)(?::\d{2,5})(?!\w)", re.IGNORECASE
 )
 _WORKER_SECRET_RE = re.compile(
-    r"(?:authorization|bearer|token|password|secret|api[_ -]?key|credential)\s*(?:[:=]|is)\s*(?:bearer\s+)?[^\s,;]+",
+    r"(?:authorization|bearer|token|password|secret|api[_ -]?key|credential)"
+    r"\s*(?:[:=]|is)\s*(?:bearer\s+)?(?:\[[^\]]+\]|[^\s,;]+)",
+    re.IGNORECASE,
+)
+_WORKER_JSON_SECRET_RE = re.compile(
+    r"[\"']?(?:authorization|bearer|token|password|secret|api[_ -]?key|credential)"
+    r"[\"']?\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|\[[^\]]+\]|[^,\s}]+)",
     re.IGNORECASE,
 )
 _WORKER_BEARER_RE = re.compile(r"\bbearer\s+[^\s,;]+", re.IGNORECASE)
-_WORKER_TRACE_RE = re.compile(r"(?:traceback|request[_ -]?id|provider request|provider details)", re.IGNORECASE)
+_WORKER_TRACE_START_RE = re.compile(r"^\s*(?:traceback\b|file\s+|during handling|the above exception)", re.IGNORECASE)
+_WORKER_DIAGNOSTIC_RE = re.compile(
+    r"\b(?:request[_ -]?id|request\s+(?:body|details|payload)|"
+    r"provider\s+(?:request|details|body|response)|response\s*(?:body|details|data)?|"
+    r"payload|json)\b",
+    re.IGNORECASE,
+)
+_WORKER_PROVIDER_RE = re.compile(r"\bprovider\b.*\b(?:error|request|details|body|response)\b", re.IGNORECASE)
 
 
 def sanitize_worker_error(message: str) -> str:
-    """Return a bounded worker failure message without sensitive diagnostics."""
-    lines = []
-    for line in str(message).splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.lower().startswith(("traceback", "file ")):
+    """Return a bounded operational summary without sensitive diagnostics."""
+    lines: list[str] = []
+    for raw_line in str(message).splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
             continue
-        if _WORKER_TRACE_RE.search(stripped):
-            continue
+        if _WORKER_TRACE_START_RE.search(stripped):
+            break
+        diagnostic = _WORKER_DIAGNOSTIC_RE.search(stripped)
+        if diagnostic:
+            prefix = stripped[: diagnostic.start()].rstrip(" :;,-")
+            if _WORKER_PROVIDER_RE.search(stripped):
+                prefix = re.split(r"\bprovider\b", prefix, maxsplit=1, flags=re.IGNORECASE)[0].rstrip(" :;,-")
+                prefix = f"{prefix}; " if prefix else ""
+                lines.append(f"{prefix}provider check failed")
+            elif prefix:
+                lines.append(prefix)
+            break
         lines.append(stripped)
     sanitized = " ".join(lines) or "health check failed"
     sanitized = _WORKER_URL_RE.sub("[redacted endpoint]", sanitized)
     sanitized = _WORKER_HOST_PORT_RE.sub("[redacted endpoint]", sanitized)
-    sanitized = _WORKER_SECRET_RE.sub("[redacted credential]", sanitized)
     sanitized = _WORKER_BEARER_RE.sub("[redacted credential]", sanitized)
+    sanitized = _WORKER_JSON_SECRET_RE.sub("[redacted credential]", sanitized)
+    sanitized = _WORKER_SECRET_RE.sub("[redacted credential]", sanitized)
     return sanitized[:_MAX_WORKER_ERROR_LENGTH]
 
 

@@ -195,7 +195,6 @@ redis.call("HSET", worker_key,
   "error_history", history)
 redis.call("SADD", workers_set, ARGV[6])
 redis.call("DEL", tombstone_key)
-redis.call("PERSIST", generation_key)
 return generation
 """
 
@@ -209,7 +208,6 @@ if redis.call("EXISTS", worker_key) == 1 then
   redis.call("SET", tombstone_key, history, "EX", ARGV[1])
   redis.call("SREM", workers_set, ARGV[2])
   redis.call("DEL", worker_key)
-  redis.call("EXPIRE", generation_key, ARGV[1])
 end
 return 1
 """
@@ -233,7 +231,6 @@ if failures >= tonumber(ARGV[5]) then
   redis.call("SET", tombstone_key, cjson.encode(history), "EX", ARGV[6])
   redis.call("SREM", workers_set, ARGV[7])
   redis.call("DEL", worker_key)
-  redis.call("EXPIRE", generation_key, ARGV[6])
   return 1
 end
 return 0

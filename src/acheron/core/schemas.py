@@ -222,6 +222,13 @@ class WorkerErrorEventResponse(BaseModel):
         return value.astimezone(UTC)
 
 
+class WorkerRegistrationResponse(BaseModel):
+    """Minimal response returned after worker registration."""
+
+    worker_id: str
+    status: WorkerStatus = WorkerStatus.HEALTHY
+
+
 class WorkerResponse(BaseModel):
     """Sanitized response for a single worker."""
 
@@ -350,5 +357,6 @@ __all__ = [
     "WorkerCapability",
     "WorkerErrorEventResponse",
     "WorkerListResponse",
+    "WorkerRegistrationResponse",
     "WorkerResponse",
 ]

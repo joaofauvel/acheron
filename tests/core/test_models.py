@@ -22,7 +22,29 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerStatus,
     WorkerType,
+    sanitize_worker_error,
 )
+
+
+class TestWorkerErrorSanitization:
+    @pytest.mark.parametrize(
+        "message",
+        [
+            'provider aws error: request body: {"token":"secret", "url":"https://private.example"}',
+            'Traceback (most recent call last):\n  File "worker.py", line 1\nRuntimeError: bearer secret',
+            'provider details: request_id=req-123\nresponse: {"api_key": "secret"}\nValueError: leaked',
+            "https://worker.example:8443 failed with token=secret",
+        ],
+    )
+    def test_diagnostics_and_traceback_continuations_are_not_retained(self, message: str) -> None:
+        sanitized = sanitize_worker_error(message)
+        assert len(sanitized) <= 512
+        assert all(
+            secret not in sanitized.lower() for secret in ("secret", "token", "api_key", "request_id", "traceback")
+        )
+        assert "https://" not in sanitized
+        assert "worker.py" not in sanitized
+        assert "leaked" not in sanitized
 
 
 class TestEnums:

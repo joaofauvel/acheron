@@ -584,7 +584,11 @@ class TestHealthMonitorProviderIntegration:
     async def test_provider_raises_treated_as_offline(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://down", "http", _tts_caps_with_provider("runpod", "ep-1"))
-        providers = {"runpod": _RaisingProvider(httpx.HTTPError("upstream broken"))}
+        providers = {
+            "runpod": _RaisingProvider(
+                httpx.HTTPError('provider aws error: request body: {"token":"secret"}\nTraceback\nValueError: leaked')
+            )
+        }
         health_check = AsyncMock(return_value=HealthProbeResult(healthy=False, error="conn refused"))
         monitor = HealthMonitor(reg, interval=0.01, health_check=health_check, providers=providers)
         await monitor.start()
@@ -596,7 +600,9 @@ class TestHealthMonitorProviderIntegration:
                 and w.status == WorkerStatus.OFFLINE
                 and w.consecutive_failures == 1
                 and "conn refused" in (w.last_error or "")
-                and "upstream broken" in (w.last_error or "")
+                and "provider check failed" in (w.last_error or "")
+                and "secret" not in (w.last_error or "")
+                and "Traceback" not in (w.last_error or "")
             )
 
         await _poll_for(_offline_with_error)

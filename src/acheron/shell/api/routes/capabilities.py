@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -16,6 +17,11 @@ if TYPE_CHECKING:
 
 router = APIRouter()
 _TYPED_WORKER_TYPES = frozenset({WorkerType.TTS, WorkerType.ASR, WorkerType.TRANSLATION})
+_SPEAKER_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 .'-]{0,63}$")
+_SPEAKER_FORBIDDEN_RE = re.compile(
+    r"(?:https?|grpc|redis|token|secret|password|credential|api[_ -]?key|provider|request|response|body|bearer)",
+    re.IGNORECASE,
+)
 
 
 def _public_speakers(worker: RegisteredWorker) -> list[str]:
@@ -24,7 +30,15 @@ def _public_speakers(worker: RegisteredWorker) -> list[str]:
     value = worker.capabilities.metadata.get("speakers")
     if not isinstance(value, list):
         return []
-    return sorted({speaker.strip() for speaker in value if isinstance(speaker, str) and speaker.strip()})[:100]
+    speakers = {
+        speaker.strip()
+        for speaker in value
+        if isinstance(speaker, str)
+        and speaker.strip()
+        and _SPEAKER_NAME_RE.fullmatch(speaker.strip())
+        and not _SPEAKER_FORBIDDEN_RE.search(speaker.strip())
+    }
+    return sorted(speakers)[:100]
 
 
 def _supported_languages(workers: tuple[RegisteredWorker, ...]) -> list[str]:

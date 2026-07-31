@@ -6,9 +6,10 @@ import asyncio
 from typing import TYPE_CHECKING
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from acheron.cli import main
-from acheron.core.models import WorkerCapabilities, WorkerType
+from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
@@ -18,6 +19,76 @@ if TYPE_CHECKING:
 
     from click.testing import CliRunner
     from fastapi import FastAPI
+
+
+@pytest.mark.asyncio
+async def test_registration_and_discovery_expose_only_safe_projections(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "test-registration-token-must-be-32-chars-or-more")
+    registry = InMemoryWorkerStore()
+    app = create_app(
+        registry=registry,
+        job_store=InMemoryJobStore(),
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
+    await app.state.orchestrator.start()
+    token = "Bearer test-registration-token-must-be-32-chars-or-more"
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            registration = await client.post(
+                "/workers",
+                headers={"Authorization": token},
+                json={
+                    "worker_id": "tts-redaction",
+                    "endpoint": "https://private.example:8443",
+                    "transport": "http",
+                    "capabilities": {
+                        "worker_type": "tts",
+                        "supported_languages_in": ["en"],
+                        "supported_languages_out": ["en"],
+                        "metadata": {
+                            "health_provider": "aws",
+                            "speakers": ["Ryan", "https://provider.example/token=secret", "token=secret"],
+                        },
+                    },
+                },
+            )
+            assert registration.status_code == 201
+            assert registration.json() == {"worker_id": "tts-redaction", "status": "healthy"}
+
+            registry = app.state.orchestrator._registry  # noqa: SLF001
+            await registry.set_worker_status(
+                "tts-redaction",
+                WorkerStatus.OFFLINE,
+                """provider aws error: request body: {"token":"secret"}
+Traceback
+ValueError: leaked""",
+            )
+            anonymous_workers = await client.get("/workers")
+            token_workers = await client.get("/workers", headers={"Authorization": token})
+            assert anonymous_workers.status_code == token_workers.status_code == 200
+            assert anonymous_workers.json() == token_workers.json()
+            body = str(anonymous_workers.json())
+            assert "private.example" not in body
+            assert "secret" not in body
+            assert "Traceback" not in body
+            assert "provider aws" not in body
+
+            anonymous_caps = await client.get("/capabilities", params={"type": "tts"})
+            token_caps = await client.get("/capabilities", params={"type": "tts"}, headers={"Authorization": token})
+            assert anonymous_caps.json() == token_caps.json()
+            caps_body = str(anonymous_caps.json())
+            assert "private.example" not in caps_body
+            assert "secret" not in caps_body
+            assert "https://" not in caps_body
+            assert "speakers" in caps_body
+            assert "Ryan" in caps_body
+    finally:
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
 
 
 @pytest.mark.asyncio

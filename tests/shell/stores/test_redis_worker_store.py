@@ -58,11 +58,34 @@ class TestRegister:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_unregister(self, store: RedisWorkerStore) -> None:
+    async def test_unregister(self, store: RedisWorkerStore, redis_url: str) -> None:
+        from acheron.shell.stores.redis import _WORKER_GENERATION_KEY, _WORKER_HISTORY_TOMBSTONE_KEY
+
         await store.register("w-1", "http://a", "http", _tts_caps())
+        worker = await store.get("w-1")
+        assert worker is not None
         await store.unregister("w-1")
         result = await store.get("w-1")
         assert result is None
+
+        redis_client = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        try:
+            await redis_client.delete(_WORKER_HISTORY_TOMBSTONE_KEY.format(worker_id="w-1"))
+            assert await redis_client.ttl(_WORKER_GENERATION_KEY.format(worker_id="w-1")) == -1
+        finally:
+            await redis_client.aclose()
+
+        await store.register("w-1", "http://new", "http", _tts_caps())
+        current = await store.get("w-1")
+        assert current is not None
+        assert current.registration_generation == worker.registration_generation + 1
+        assert not await store.record_health_failure(
+            "w-1", generation=worker.registration_generation, error="stale generation 1 failure"
+        )
+        current = await store.get("w-1")
+        assert current is not None
+        assert current.consecutive_failures == 0
+        assert current.error_history == ()
 
     @pytest.mark.asyncio
     async def test_reregistration_overwrites(self, store: RedisWorkerStore) -> None:

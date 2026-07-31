@@ -191,7 +191,7 @@ class HealthMonitor:
                     exc,
                 )
                 platform_status = WorkerStatus.OFFLINE
-                message = f"{error}; provider {provider_name} error: {exc}"
+                message = f"{error}; provider check failed"
             if platform_status == WorkerStatus.BOOTING:
                 await self._registry.set_worker_status(
                     worker.worker_id,

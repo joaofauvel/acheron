@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException
 
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType, sanitize_worker_error
-from acheron.core.schemas import WorkerErrorEventResponse, WorkerListResponse, WorkerResponse
+from acheron.core.schemas import (
+    WorkerErrorEventResponse,
+    WorkerListResponse,
+    WorkerRegistrationResponse,
+    WorkerResponse,
+)
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.schemas import WorkerRegistrationRequest  # noqa: TC001
 
@@ -50,12 +55,12 @@ def _public_worker_response(worker: RegisteredWorker, now: float) -> WorkerRespo
     )
 
 
-@router.post("", status_code=201, response_model=WorkerResponse)
+@router.post("", status_code=201, response_model=WorkerRegistrationResponse)
 async def register_worker(
     body: WorkerRegistrationRequest,
     orch: OrchestratorDep,
     _token: RegistrationTokenDep,
-) -> WorkerResponse:
+) -> WorkerRegistrationResponse:
     """Register a new worker."""
     try:
         worker_type = WorkerType(body.capabilities.worker_type)
@@ -80,7 +85,7 @@ async def register_worker(
     worker = await orch._registry.get(body.worker_id)  # noqa: SLF001
     if worker is None:
         raise HTTPException(status_code=500, detail="worker registration did not persist")
-    return _public_worker_response(worker, time.time())
+    return WorkerRegistrationResponse(worker_id=worker.worker_id, status=worker.status)
 
 
 @router.get("", response_model=WorkerListResponse)

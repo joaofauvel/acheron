@@ -28,6 +28,40 @@ class TestCapabilitiesRoute:
 
 class TestTypedCapabilitiesRoute:
     @pytest.mark.asyncio
+    async def test_tts_speakers_drop_unsafe_metadata(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post(
+            "/workers",
+            json={
+                "worker_id": "tts-speakers",
+                "endpoint": "http://secret-worker:8000",
+                "transport": "http",
+                "capabilities": {
+                    "worker_type": "tts",
+                    "supported_languages_in": ["en"],
+                    "supported_languages_out": ["en"],
+                    "metadata": {
+                        "speakers": [
+                            "Ryan",
+                            " https://provider.example/token=secret ",
+                            "token=secret",
+                            "provider/aws",
+                            "A valid name",
+                            "bad:name",
+                            12,
+                        ]
+                    },
+                },
+            },
+        )
+        assert response.status_code == 201
+        response = await client.get("/capabilities", params={"type": "tts"})
+        assert response.status_code == 200
+        speakers = next(
+            worker["speakers"] for worker in response.json()["workers"] if worker["worker_id"] == "tts-speakers"
+        )
+        assert speakers == ["A valid name", "Ryan"]
+
+    @pytest.mark.asyncio
     async def test_type_tts_returns_sorted_allowlisted_inventory(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.get("/capabilities", params={"type": "tts"})
         assert response.status_code == 200

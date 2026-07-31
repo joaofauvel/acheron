@@ -29,8 +29,7 @@ class TestWorkerRoutes:
         response = await client.post("/workers", json=_WORKER_PAYLOAD)
         assert response.status_code == 201
         data = response.json()
-        assert data["worker_id"] == "asr-1"
-        assert data["worker_type"] == "asr"
+        assert data == {"worker_id": "asr-1", "status": "healthy"}
 
     @pytest.mark.asyncio
     async def test_register_worker_invalid_type(self, client) -> None:  # type: ignore[no-untyped-def]
@@ -73,10 +72,7 @@ class TestWorkerRoutes:
         response = await client.post("/workers", json=_WORKER_PAYLOAD)
         assert response.status_code == 201
         data = response.json()
-        assert data["status"] == "healthy"
-        assert data["last_error"] is None
-        assert data["booting_elapsed_seconds"] is None
-        assert data["booting_timeout_seconds"] == 600.0
+        assert data == {"worker_id": "asr-1", "status": "healthy"}
 
     @pytest.mark.asyncio
     async def test_list_workers_reports_booting_elapsed_and_defaults_for_other_statuses(
@@ -273,7 +269,7 @@ class TestMaxInputTokensRoundTrip:
         }
         response = await client.post("/workers", json=payload)
         assert response.status_code == 201
-        assert response.json()["max_input_tokens"] == 4096
+        assert response.json() == {"worker_id": "tts-cfg12", "status": "healthy"}
 
         listed = await client.get("/workers")
         assert listed.status_code == 200
@@ -285,4 +281,4 @@ class TestMaxInputTokensRoundTrip:
         """When the request omits max_input_tokens, the orchestrator's stored value is None."""
         response = await client.post("/workers", json=_WORKER_PAYLOAD)
         assert response.status_code == 201
-        assert response.json()["max_input_tokens"] is None
+        assert response.json() == {"worker_id": "asr-1", "status": "healthy"}
