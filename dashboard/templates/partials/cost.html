@@ -20,6 +20,9 @@
       <td>{{ summary.unknown_cost_jobs|default(0) }}</td>
     </tr>
   </tbody>
+  <tfoot>
+    <tr><td colspan="7">Estimated cost, {{ {"24h": "last 24h", "7d": "last 7d", "30d": "last 30d", "all": "all time"}.get(window, "last 7d") }}: {% if summary.job_count|default(0) > 0 and summary.unknown_cost_jobs|default(0) == summary.job_count|default(0) %}unknown{% else %}${{ "%.2f"|format(summary.total_cost|default(0)) }}{% endif %} ({{ summary.job_count|default(0) }} jobs; {{ summary.unknown_cost_jobs|default(0) }} unknown)</td></tr>
+  </tfoot>
 </table>
 {% endif %}
 
@@ -75,10 +78,4 @@
 </table>
 {% elif not summary %}
 <p style="color:#8b949e">No cost data available.</p>
-{% endif %}
-
-{% if summary %}
-<tfoot>
-  <tr><td colspan="7">Estimated cost, {{ {"24h": "last 24h", "7d": "last 7d", "30d": "last 30d", "all": "all time"}.get(window, "last 7d") }}: {% if summary.job_count|default(0) > 0 and summary.unknown_cost_jobs|default(0) == summary.job_count|default(0) %}unknown{% else %}${{ "%.2f"|format(summary.total_cost|default(0)) }}{% endif %} ({{ summary.job_count|default(0) }} jobs; {{ summary.unknown_cost_jobs|default(0) }} unknown)</td></tr>
-</tfoot>
 {% endif %}

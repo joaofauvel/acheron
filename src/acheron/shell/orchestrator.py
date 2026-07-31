@@ -988,7 +988,11 @@ class Orchestrator:
             if result is None or result.total_cost_basis in {None, CostBasis.UNKNOWN}:
                 unknown_cost_jobs += 1
             if result is not None:
-                total_cost += result.total_cost
+                total_cost += sum(
+                    item.estimate.cost
+                    for item in result.cost_breakdown
+                    if item.estimate.basis is not CostBasis.UNKNOWN and item.estimate.cost is not None
+                )
         return CostSummaryResponse(
             window=window,
             since=since,

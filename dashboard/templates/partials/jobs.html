@@ -1,7 +1,7 @@
 {% if jobs %}
 <table>
   <thead>
-    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Progress</th><th>Last error</th><th>Estimated cost</th><th>Duration</th></tr>
+    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Progress</th><th>Last error</th><th title="Execution-time evidence, not invoice truth">Estimated cost (execution-time evidence)</th><th>Duration</th></tr>
   </thead>
   <tbody>
     {% for j in jobs %}

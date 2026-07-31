@@ -65,10 +65,8 @@ async def _cost_partial(orchestrator_url: str, request: Request) -> HTMLResponse
     if window not in {"24h", "7d", "30d", "all"}:
         window = "7d"
     summary = await _fetch_orchestrator(orchestrator_url, f"/cost?window={window}")
-    jobs: list[dict[str, object]] = []
-    if not summary:
-        legacy = await _fetch_orchestrator(orchestrator_url, "/jobs")
-        jobs = cast("list[dict[str, object]]", legacy.get("jobs", []))
+    jobs_data = await _fetch_orchestrator(orchestrator_url, "/jobs")
+    jobs = cast("list[dict[str, object]]", jobs_data.get("jobs", []))
     return _TEMPLATES.TemplateResponse(
         request,
         "partials/cost.html",

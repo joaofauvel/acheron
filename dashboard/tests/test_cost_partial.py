@@ -38,6 +38,8 @@ class TestCostPartialBasis:
         assert "2 unknown" in response.text
         assert "not an invoice amount" in response.text
         assert "$0.00" not in response.text
+        summary_table_end = response.text.index("</table>")
+        assert response.text.index("<tfoot>") < summary_table_end
 
     @respx.mock
     @pytest.mark.asyncio

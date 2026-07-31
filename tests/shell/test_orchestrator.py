@@ -6,6 +6,7 @@ import asyncio
 import copy
 import hashlib
 from collections.abc import Collection
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from acheron.core.errors import (
 from acheron.core.models import (
     AudioRequest,
     CostBasis,
+    CostBreakdown,
     CostEstimate,
     EpubRequest,
     ExecutorStrategy,
@@ -31,6 +33,7 @@ from acheron.core.models import (
     JobStatus,
     OutputFile,
     Plan,
+    PlanResult,
     PlanStatus,
     PlanStep,
     StepStatus,
@@ -1687,7 +1690,6 @@ class TestOrchestrator:
         """When the executor itself raises, the persisted PlanResult.errors
         must not contain traceback fragments or file paths from the exception."""
         from acheron.core.interfaces import Executor
-        from acheron.core.models import PlanResult
         from acheron.shell import orchestrator as orch_mod
 
         reg = InMemoryWorkerStore()
@@ -1888,6 +1890,91 @@ def test_orchestrator_does_not_mutate_passed_settings(tmp_path: Path) -> None:
     assert orch.settings.orchestrator.data_dir == original_data_dir, (
         "Orchestrator must use the caller's settings when provided"
     )
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_excludes_numeric_unknown_costs(tmp_path: Path) -> None:
+    jobs = InMemoryJobStore()
+    orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), job_store=jobs)
+    now = datetime.now(UTC)
+    await jobs.put(
+        TrackedJob(
+            job_id="unknown-only",
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            created_at=now,
+            result=PlanResult(
+                plan_id="unknown-plan",
+                status=PlanStatus.FAILED,
+                completed_steps=1,
+                total_steps=1,
+                outputs=(),
+                total_cost=7.50,
+                total_duration_seconds=1.0,
+                total_cost_basis=CostBasis.UNKNOWN,
+                cost_breakdown=(
+                    CostBreakdown(
+                        step_id="synthesize",
+                        worker_type=WorkerType.TTS,
+                        worker_id="tts-1",
+                        gpu_seconds=None,
+                        estimate=CostEstimate(cost=7.50, basis=CostBasis.UNKNOWN),
+                    ),
+                ),
+            ),
+            status=PlanStatus.FAILED,
+        )
+    )
+    summary = await orch.get_cost_summary("all")
+    assert summary.total_cost == 0.0
+    assert summary.job_count == 1
+    assert summary.unknown_cost_jobs == 1
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_keeps_known_mixed_breakdown_costs(tmp_path: Path) -> None:
+    jobs = InMemoryJobStore()
+    orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), job_store=jobs)
+    now = datetime.now(UTC)
+    await jobs.put(
+        TrackedJob(
+            job_id="mixed-cost",
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            created_at=now,
+            result=PlanResult(
+                plan_id="mixed-plan",
+                status=PlanStatus.COMPLETED,
+                completed_steps=2,
+                total_steps=2,
+                outputs=(),
+                total_cost=99.99,
+                total_duration_seconds=1.0,
+                total_cost_basis=CostBasis.UNKNOWN,
+                cost_breakdown=(
+                    CostBreakdown(
+                        step_id="translate",
+                        worker_type=WorkerType.TRANSLATION,
+                        worker_id="translation-1",
+                        gpu_seconds=10.0,
+                        estimate=CostEstimate(cost=1.25, basis=CostBasis.MEASURED),
+                    ),
+                    CostBreakdown(
+                        step_id="synthesize",
+                        worker_type=WorkerType.TTS,
+                        worker_id="tts-1",
+                        gpu_seconds=None,
+                        estimate=CostEstimate(cost=98.74, basis=CostBasis.UNKNOWN),
+                    ),
+                ),
+            ),
+            status=PlanStatus.COMPLETED,
+        )
+    )
+    summary = await orch.get_cost_summary("all")
+    assert summary.total_cost == 1.25
+    assert summary.job_count == 1
+    assert summary.unknown_cost_jobs == 1
 
 
 def test_create_app_does_not_mutate_passed_settings(tmp_path: Path) -> None:

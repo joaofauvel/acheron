@@ -155,6 +155,7 @@ class TestJobsPartial:
         assert resp.status_code == 200
         assert "job-1" in resp.text
         assert "running" in resp.text
+        assert "execution-time evidence" in resp.text
 
     @respx.mock
     @pytest.mark.asyncio
@@ -230,7 +231,20 @@ class TestWorkersPartial:
 class TestCostPartial:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_cost_partial_returns_table(self, client):
+    async def test_successful_cost_summary_still_renders_authoritative_job_rows(self, client):
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "window": "7d",
+                    "since": "2026-07-22T12:00:00Z",
+                    "until": "2026-07-29T12:00:00Z",
+                    "total_cost": 0.42,
+                    "job_count": 1,
+                    "unknown_cost_jobs": 0,
+                },
+            )
+        )
         respx.get(f"{_ORCH_URL}/jobs").mock(
             return_value=httpx.Response(
                 200,
@@ -238,6 +252,8 @@ class TestCostPartial:
                     "jobs": [
                         _job_payload(
                             status="completed",
+                            total_cost=0.42,
+                            total_cost_basis="measured",
                             progress={
                                 "completed_steps": 5,
                                 "total_steps": 5,
@@ -253,11 +269,18 @@ class TestCostPartial:
         )
         resp = await client.get("/partials/cost")
         assert resp.status_code == 200
+        assert "Estimated cost, last 7d" in resp.text
         assert "job-1" in resp.text
+        assert "$0.42" in resp.text
+        assert {str(call.request.url) for call in respx.calls} == {
+            f"{_ORCH_URL}/cost?window=7d",
+            f"{_ORCH_URL}/jobs",
+        }
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_cost_partial_empty(self, client):
+        respx.get(f"{_ORCH_URL}/cost").mock(return_value=httpx.Response(200, json={}))
         respx.get(f"{_ORCH_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": []}))
         resp = await client.get("/partials/cost")
         assert resp.status_code == 200
