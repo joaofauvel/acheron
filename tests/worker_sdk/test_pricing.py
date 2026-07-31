@@ -36,6 +36,14 @@ class TestStaticPrice:
         assert est.rate_per_hour == 0.69
         assert to_cost_basis(est) is CostBasis.STATIC
 
+    @pytest.mark.parametrize("rate", [-1.0, float("inf"), float("-inf"), float("nan")])
+    @pytest.mark.asyncio
+    async def test_invalid_rate_is_unknown(self, rate: float) -> None:
+        est = await StaticPrice(dollars_per_hour=rate).estimate(gpu_seconds=3600.0)
+
+        assert est.cost is None
+        assert est.basis is CostBasis.UNKNOWN
+
     @pytest.mark.asyncio
     async def test_zero_gpu_seconds_yields_zero(self) -> None:
         est = await StaticPrice(dollars_per_hour=0.69).estimate(gpu_seconds=0.0)
@@ -101,6 +109,9 @@ class TestToCostBasis:
     )
     def test_explicit_basis_is_preserved(self, cost: float | None, basis: CostBasis, expected: CostBasis) -> None:
         assert to_cost_basis(PriceEstimate(cost=cost, basis=basis)) is expected
+
+    def test_missing_cost_is_always_unknown(self) -> None:
+        assert to_cost_basis(PriceEstimate(cost=None, basis=CostBasis.STATIC)) is CostBasis.UNKNOWN
 
     def test_rejects_invalid_basis(self) -> None:
         with pytest.raises(TypeError, match="basis"):

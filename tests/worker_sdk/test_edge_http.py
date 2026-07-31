@@ -39,6 +39,11 @@ class _BrokenPrice(_MeasuredPrice):
         raise RuntimeError("price lookup password=secret")
 
 
+class _MissingStaticPrice(_MeasuredPrice):
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        return PriceEstimate(cost=None, basis=CostBasis.STATIC)
+
+
 class _Stub(WorkerHandler):
     def __init__(self) -> None:
         self.calls = 0
@@ -166,6 +171,21 @@ class TestEdgeRoutes:
         assert estimate["basis"] == "measured"
         assert estimate["gpu_type"] == "L4"
         assert estimate["rate_per_hour"] == 0.69
+
+    @pytest.mark.asyncio
+    async def test_missing_cost_cannot_expose_static_basis(self) -> None:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_MissingStaticPrice()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+
+        assert response.status_code == 200
+        assert b'"cost":null' in response.content
+        assert b'"basis":"unknown"' in response.content
 
     @pytest.mark.asyncio
     async def test_pricing_failure_is_non_blocking_and_sanitised(

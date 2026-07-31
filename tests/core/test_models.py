@@ -371,6 +371,11 @@ def test_cost_estimate_preserves_rate_for_forensics() -> None:
     assert estimate.queried_at == queried_at
 
 
+def test_cost_estimate_rejects_non_finite_cache_age() -> None:
+    with pytest.raises(ValueError, match="cache_age_seconds"):
+        CostEstimate(cost=0.34, basis=CostBasis.CACHED, cache_age_seconds=float("nan"))
+
+
 def test_stub_cost_is_not_static() -> None:
     estimate = CostEstimate(cost=0.0, basis=CostBasis.STUB)
 

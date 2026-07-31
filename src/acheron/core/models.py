@@ -1,5 +1,6 @@
 """Core data models and enums for the Acheron pipeline."""
 
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -94,8 +95,10 @@ class CostEstimate:
                 msg = "queried_at must be timezone-aware"
                 raise ValueError(msg)
             object.__setattr__(self, "queried_at", self.queried_at.astimezone(UTC))
-        if self.cache_age_seconds is not None and self.cache_age_seconds < 0:
-            msg = "cache_age_seconds must be non-negative"
+        if self.cache_age_seconds is not None and (
+            not math.isfinite(self.cache_age_seconds) or self.cache_age_seconds < 0
+        ):
+            msg = "cache_age_seconds must be finite and non-negative"
             raise ValueError(msg)
 
 

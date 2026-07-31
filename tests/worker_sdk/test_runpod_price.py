@@ -14,7 +14,7 @@ def _graphql_response(data: dict[str, object]) -> httpx.Response:
 class TestRunPodPrice:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_measured_when_fresh_refresh_succeeds(self) -> None:
+    async def test_lowest_price_quote_is_unknown_not_billable_cost(self) -> None:
         routes = respx.post("https://api.runpod.io/graphql")
         routes.mock(
             side_effect=[
@@ -24,14 +24,33 @@ class TestRunPodPrice:
         )
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False, cache_ttl_s=3600.0)
         est = await price.estimate(gpu_seconds=3600.0)
-        assert est.cost == 0.69
-        assert est.basis.value == "measured"
+        assert est.cost is None
+        assert est.basis.value == "unknown"
         assert est.rate_per_hour == 0.69
         assert est.gpu_type == "NVIDIA GeForce RTX 3090"
         assert est.secure_cloud is False
         assert est.queried_at is not None
         assert est.cache_age_seconds == 0.0
-        assert to_cost_basis(est).value == "measured"
+        assert to_cost_basis(est).value == "unknown"
+
+    @pytest.mark.parametrize("rate", [-1.0, float("inf"), float("-inf"), float("nan")])
+    @pytest.mark.asyncio
+    async def test_invalid_lowest_price_is_unknown(self, rate: float, monkeypatch: pytest.MonkeyPatch) -> None:
+        price = RunPodPrice(api_key="k", endpoint_id="eid")
+
+        async def _gpu_id(client: httpx.AsyncClient) -> str:
+            return "L4"
+
+        async def _rate(client: httpx.AsyncClient, gpu_id: str) -> float:
+            return rate
+
+        monkeypatch.setattr(price, "_fetch_gpu_id", _gpu_id)
+        monkeypatch.setattr(price, "_fetch_uninterruptable_price", _rate)
+
+        est = await price.estimate(gpu_seconds=3600.0)
+
+        assert est.cost is None
+        assert est.basis.value == "unknown"
 
     @respx.mock
     @pytest.mark.asyncio
@@ -47,14 +66,14 @@ class TestRunPodPrice:
         )
         price = RunPodPrice(api_key="k", endpoint_id="eid", secure_cloud=False, cache_ttl_s=0.0)
         est1 = await price.estimate(gpu_seconds=3600.0)
-        assert est1.basis.value == "measured"
+        assert est1.basis.value == "unknown"
         est2 = await price.estimate(gpu_seconds=3600.0)
-        assert est2.cost == 0.69
-        assert est2.basis.value == "cached"
+        assert est2.cost is None
+        assert est2.basis.value == "unknown"
         assert est2.cache_age_seconds is not None
         assert est2.cache_age_seconds >= 0.0
         assert est2.gpu_type == "NVIDIA GeForce RTX 3090"
-        assert to_cost_basis(est2).value == "cached"
+        assert to_cost_basis(est2).value == "unknown"
 
     @respx.mock
     @pytest.mark.asyncio

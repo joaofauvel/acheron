@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -17,6 +18,10 @@ if TYPE_CHECKING:
     from acheron.core.models import JsonValue
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_rate(rate: float) -> bool:
+    return math.isfinite(rate) and rate >= 0.0
 
 
 @dataclass(frozen=True)
@@ -116,6 +121,8 @@ class StaticPrice:
 
     async def estimate(self, gpu_seconds: float) -> PriceEstimate:
         """Compute ``gpu_seconds * $/hr / 3600`` with STATIC provenance."""
+        if not _is_valid_rate(self.dollars_per_hour):
+            return PriceEstimate(cost=None, basis=CostBasis.UNKNOWN)
         cost = round(gpu_seconds * self.dollars_per_hour / 3600.0, 6)
         return PriceEstimate(
             cost=cost,
@@ -125,7 +132,7 @@ class StaticPrice:
 
     async def refresh(self) -> bool:
         """No-op; static rates don't need refreshing."""
-        return True
+        return _is_valid_rate(self.dollars_per_hour)
 
     async def close(self) -> None:
         """Release no resources."""
@@ -137,6 +144,8 @@ def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
     if not isinstance(estimate.basis, CostBasis):
         msg = f"Invalid PriceEstimate basis {estimate.basis!r}"
         raise TypeError(msg)
+    if estimate.cost is None:
+        return CostBasis.UNKNOWN
     return estimate.basis
 
 
@@ -188,6 +197,9 @@ class RunPodPrice:
             rate = await self._fetch_uninterruptable_price(client, gpu_id)
             if rate is None:
                 logger.warning("RunPod price refresh found no rate for endpoint %s", self.endpoint_id)
+                return False
+            if not _is_valid_rate(rate):
+                logger.warning("RunPod price refresh found invalid rate for endpoint %s", self.endpoint_id)
                 return False
         except (httpx.HTTPError, OSError, AttributeError, KeyError, ValueError, TypeError) as exc:
             logger.exception(
@@ -248,35 +260,21 @@ class RunPodPrice:
         resp.raise_for_status()
         return _GraphQLResponse.model_validate(resp.json())
 
-    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
-        """Compute cost; refresh the cached rate if stale or unset."""
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:  # noqa: ARG002
+        """Return quote metadata; refresh the cached rate if stale or unset."""
         now = time.monotonic()
         stale = self._rate is None or (now - self._rate_fetched_at) > self.cache_ttl_s
-        refreshed: bool | None = None
-        if stale:
-            refreshed = await self._refresh_rate(self._client)
-        if self._rate is None:
+        refreshed = await self._refresh_rate(self._client) if stale else None
+        if self._rate is None or not _is_valid_rate(self._rate):
             return PriceEstimate(cost=None, basis=CostBasis.UNKNOWN)
-        cache_age = self._cache_age_seconds()
-        cost = round(gpu_seconds * self._rate / 3600.0, 6)
-        if refreshed is False:
-            return PriceEstimate(
-                cost=cost,
-                basis=CostBasis.CACHED,
-                rate_per_hour=self._rate,
-                gpu_type=self._gpu_type,
-                secure_cloud=self.secure_cloud,
-                queried_at=self._rate_queried_at,
-                cache_age_seconds=cache_age,
-            )
         return PriceEstimate(
-            cost=cost,
-            basis=CostBasis.MEASURED,
+            cost=None,
+            basis=CostBasis.UNKNOWN,
             rate_per_hour=self._rate,
             gpu_type=self._gpu_type,
             secure_cloud=self.secure_cloud,
             queried_at=self._rate_queried_at,
-            cache_age_seconds=cache_age if refreshed is None else 0.0,
+            cache_age_seconds=0.0 if refreshed is True else self._cache_age_seconds(),
         )
 
     def _cache_age_seconds(self) -> float | None:
