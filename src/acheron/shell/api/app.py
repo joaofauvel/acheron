@@ -110,7 +110,7 @@ def create_app(  # noqa: C901, PLR0915
         request.state.request_id = request_id
         with bind_request_id(request_id):
             try:
-                return await call_next(request)
+                response = await call_next(request)
             except Exception:
                 if not request.url.path.startswith("/admin/"):
                     raise
@@ -120,7 +120,9 @@ def create_app(  # noqa: C901, PLR0915
                     message="Administrative request failed",
                     remediation="Inspect the service logs and retry the operation.",
                 )
-                return JSONResponse(status_code=500, content={"detail": error.model_dump()})
+                response = JSONResponse(status_code=500, content={"detail": error.model_dump()})
+            response.headers["x-request-id"] = request_id
+            return response
 
     @app.exception_handler(RequestValidationError)
     async def _admin_validation_error(request: Request, exc: RequestValidationError) -> Response:

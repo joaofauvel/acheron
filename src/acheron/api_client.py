@@ -64,6 +64,19 @@ class AcheronClient:
         self._ssl_verify: bool | ssl.SSLContext = _ssl_context_for(verify)
         self._registration_token: str | None = registration_token
         self._admin_token: str | None = admin_token
+        self.last_request_id: str | None = None
+
+    async def _remember_response(self, response: httpx.Response) -> None:
+        """Remember the correlation ID returned by the orchestrator."""
+        self.last_request_id = response.headers.get("x-request-id")
+
+    def _http_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self._base_url,
+            transport=self._transport,
+            verify=self._ssl_verify,
+            event_hooks={"response": [self._remember_response]},
+        )
 
     def _admin_headers(self) -> dict[str, str]:
         """Headers applied only to operator administrative mutations."""
@@ -95,45 +108,35 @@ class AcheronClient:
             "executor_strategy": executor_strategy,
             "asr_model": asr_model,
         }
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post("/jobs", json=payload, headers=self._mutation_headers())
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
     async def get_job(self, job_id: str) -> JobResponse:
         """Get job status and result."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get(f"/jobs/{job_id}")
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
     async def get_job_cost(self, job_id: str) -> JobCostResponse:
         """Get persisted execution-time cost evidence for a job."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get(f"/jobs/{job_id}/cost")
             resp.raise_for_status()
             return JobCostResponse.model_validate(resp.json())
 
     async def get_cost_summary(self, window: Literal["24h", "7d", "30d", "all"] = "7d") -> CostSummaryResponse:
         """Get aggregate execution-time estimates for a cost window."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get("/cost", params={"window": window})
             resp.raise_for_status()
             return CostSummaryResponse.model_validate(resp.json())
 
     async def reap_stale_jobs(self, *, older_than_seconds: float, reason: str) -> ReapStaleResponse:
         """Reap persisted running jobs that have exceeded the requested age."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post(
                 "/admin/jobs/reap-stale",
                 json={"older_than_seconds": older_than_seconds, "reason": reason},
@@ -144,9 +147,7 @@ class AcheronClient:
 
     async def mark_job_failed(self, job_id: str, *, reason: str) -> JobResponse:
         """Mark one persisted job failed through the administrative API."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post(
                 f"/admin/jobs/{job_id}/mark-failed",
                 json={"reason": reason},
@@ -160,9 +161,7 @@ class AcheronClient:
         payload: dict[str, bool | str] = {"apply": True}
         if reason is not None:
             payload["reason"] = reason
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post(
                 f"/admin/jobs/{job_id}/archive",
                 json=payload,
@@ -187,27 +186,21 @@ class AcheronClient:
         }
         if reason is not None:
             payload["reason"] = reason
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post("/admin/cleanup", json=payload, headers=self._admin_headers())
             resp.raise_for_status()
             return CleanupResponse.model_validate(resp.json())
 
     async def cancel_job(self, job_id: str) -> JobResponse:
         """Cancel an active job and return its persisted terminal result."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post(f"/jobs/{job_id}/cancel", headers=self._mutation_headers())
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
     async def tail_job(self, job_id: str, *, follow: bool = True) -> AsyncGenerator[JobLogEvent]:
         """Stream job progress events as NDJSON."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             params = {"follow": str(follow).lower()}
             async with client.stream("GET", f"/jobs/{job_id}/logs", params=params) as resp:
                 resp.raise_for_status()
@@ -239,9 +232,7 @@ class AcheronClient:
             }.items()
             if value is not None
         }
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post(
                 f"/jobs/{job_id}/retry",
                 json=payload,
@@ -268,18 +259,14 @@ class AcheronClient:
             "executor_strategy": executor_strategy,
             "asr_model": asr_model,
         }
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post("/jobs:preview", json=payload, headers=self._mutation_headers())
             resp.raise_for_status()
             return PlanResponse.model_validate(resp.json())
 
     async def get_plan(self, plan_id: str) -> PlanResponse:
         """Retrieve a persisted plan by ID."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get(f"/plans/{plan_id}")
             resp.raise_for_status()
             return PlanResponse.model_validate(resp.json())
@@ -292,9 +279,7 @@ class AcheronClient:
         invalidate_chapters: Sequence[int] = (),
     ) -> JobResponse:
         """Resume a saved job with selected cache invalidation."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.post(
                 f"/jobs/{job_id}/resume",
                 json={
@@ -314,9 +299,7 @@ class AcheronClient:
             content_type = "application/octet-stream"
         body, boundary = _stream_file_multipart(source=source, content_type=content_type)
         try:
-            async with httpx.AsyncClient(
-                base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-            ) as client:
+            async with self._http_client() as client:
                 resp = await client.post(
                     "/inputs",
                     content=body,
@@ -336,9 +319,7 @@ class AcheronClient:
 
     async def get_health(self) -> dict[str, str]:
         """Get orchestrator health."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get("/health")
             resp.raise_for_status()
             return cast("dict[str, str]", resp.json())
@@ -368,18 +349,14 @@ class AcheronClient:
         if include_archived:
             params["include_archived"] = "true"
         query = params or None
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get("/jobs", params=query)
             resp.raise_for_status()
             return JobListResponse.model_validate(resp.json()).jobs
 
     async def list_workers(self) -> list[WorkerResponse]:
         """List all registered workers."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get("/workers")
             resp.raise_for_status()
             return WorkerListResponse.model_validate(resp.json()).workers
@@ -395,18 +372,14 @@ class AcheronClient:
             params["src"] = src
         if dest is not None:
             params["dest"] = dest
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get("/capabilities", params=params)
             resp.raise_for_status()
             return CapabilitiesResponse.model_validate(resp.json()).language_pairs
 
     async def get_worker_capabilities(self, worker_type: str) -> list[WorkerCapability]:
         """Get registered workers of a given type as a typed list."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
-        ) as client:
+        async with self._http_client() as client:
             resp = await client.get("/capabilities", params={"type": worker_type})
             resp.raise_for_status()
             return CapabilitiesResponse.model_validate(resp.json()).workers

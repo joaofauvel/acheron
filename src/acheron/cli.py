@@ -7,6 +7,7 @@ import concurrent.futures
 import logging
 import math
 import os
+import re
 import ssl
 import sys
 import time
@@ -98,9 +99,73 @@ def _get_client() -> AcheronClient:
     )
 
 
+def _sanitize_attempted_url(url: str | httpx.URL | None) -> str:
+    """Return a display-safe URL containing only scheme, authority, and path."""
+    if url is None:
+        return "<unknown>"
+    try:
+        parsed = httpx.URL(str(url))
+    except TypeError, ValueError:
+        return "<unknown>"
+    if not parsed.scheme or not parsed.host:
+        return "<unknown>"
+    authority = parsed.host
+    if parsed.port is not None:
+        authority = f"{authority}:{parsed.port}"
+    return f"{parsed.scheme}://{authority}{parsed.path or '/'}"
+
+
+_URL_PATTERN = re.compile(r"""https?://[^\s'"]+""")
+
+
+def _sanitize_exception_text(text: str) -> str:
+    return _URL_PATTERN.sub(lambda match: _sanitize_attempted_url(match.group(0)), text)
+
+
+def _client_base_url(client: AcheronClient | None) -> str:
+    candidate = getattr(client, "_base_url", None)
+    if isinstance(candidate, str):
+        return candidate
+    return os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
+
+
+def _exception_url(exc: BaseException) -> str | httpx.URL | None:
+    try:
+        request = object.__getattribute__(exc, "request")
+    except AttributeError, RuntimeError:
+        return None
+    try:
+        url = request.url
+    except AttributeError, RuntimeError:
+        return None
+    return url if isinstance(url, (str, httpx.URL)) else None
+
+
+def _request_id(client: AcheronClient | None) -> str | None:
+    value = getattr(client, "last_request_id", None)
+    return value if isinstance(value, str) else None
+
+
+def _print_request_id(client: AcheronClient | None) -> None:
+    request_id = _request_id(client)
+    if request_id is not None:
+        console.print(f"request_id={request_id}")
+
+
+def _http_error_suffix(exc: httpx.HTTPStatusError) -> str:
+    attempted = _exception_url(exc)
+    if attempted is None:
+        try:
+            attempted = exc.response.url
+        except RuntimeError:
+            attempted = None
+    return f" (from {_sanitize_attempted_url(attempted)}) — verify ACHERON_URL"
+
+
 def _run[T](
     coro: Coroutine[Any, Any, T],
     *,
+    client: AcheronClient | None = None,
     on_http_error: Callable[[httpx.HTTPStatusError], None] | None = None,
 ) -> T:
     # When called from an async test (a loop is already running), ``asyncio.run``
@@ -118,7 +183,7 @@ def _run[T](
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
     except httpx.ConnectError as exc:
-        url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
+        url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
         if _is_ssl_error(exc):
             console.print(f"[red]TLS verification failed connecting to {url}[/red]")
             console.print("Trust the dev CA via SSL_CERT_FILE=$PWD/certs/acheron-ca.crt")
@@ -126,21 +191,30 @@ def _run[T](
         else:
             console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
             console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
+        _print_request_id(client)
         raise SystemExit(1) from None
-    except httpx.TimeoutException:
-        url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
+    except httpx.TimeoutException as exc:
+        url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
         console.print(f"[red]Request to Acheron timed out at {url}[/red]")
         console.print("Is the server running? Check with: [bold]docker compose ps[/bold]")
+        _print_request_id(client)
         raise SystemExit(1) from None
     except httpx.HTTPStatusError as exc:
         if on_http_error is None:
             _print_http_error(exc)
         else:
             on_http_error(exc)
+        _print_request_id(client)
         raise SystemExit(1) from exc
+    except Exception as exc:  # noqa: BLE001
+        url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
+        detail = _sanitize_exception_text(str(exc)) or "request failed"
+        console.print(f"[red]Request failed at {url}: {detail}[/red]")
+        _print_request_id(client)
+        raise SystemExit(1) from None
 
 
-def _run_sync_generator[T](async_gen: AsyncIterator[T]) -> Iterator[T]:
+def _run_sync_generator[T](async_gen: AsyncIterator[T], *, client: AcheronClient | None = None) -> Iterator[T]:
     """Drain an async generator synchronously via a thread pool."""
 
     def _next(ait: AsyncIterator[T]) -> T:
@@ -158,6 +232,9 @@ def _run_sync_generator[T](async_gen: AsyncIterator[T]) -> Iterator[T]:
                     yield loop.run_until_complete(async_iter.__anext__())
                 except StopAsyncIteration:
                     return
+                except Exception as exc:  # noqa: BLE001
+                    _print_stream_error(exc, client=client)
+                    raise SystemExit(1) from None
         finally:
             loop.close()
     else:
@@ -168,26 +245,46 @@ def _run_sync_generator[T](async_gen: AsyncIterator[T]) -> Iterator[T]:
                     yield pool.submit(_next, async_iter).result()
                 except StopAsyncIteration:
                     return
+                except Exception as exc:  # noqa: BLE001
+                    _print_stream_error(exc, client=client)
+                    raise SystemExit(1) from None
+
+
+def _print_stream_error(exc: BaseException, *, client: AcheronClient | None) -> None:
+    if isinstance(exc, httpx.HTTPStatusError):
+        _print_http_error(exc)
+    elif isinstance(exc, httpx.ConnectError):
+        url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
+        console.print(f"[red]Cannot connect to Acheron at {url}[/red]")
+    elif isinstance(exc, httpx.TimeoutException):
+        url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
+        console.print(f"[red]Request to Acheron timed out at {url}[/red]")
+    else:
+        url = _sanitize_attempted_url(_exception_url(exc) or _client_base_url(client))
+        detail = _sanitize_exception_text(str(exc)) or "stream protocol failure"
+        console.print(f"[red]Streaming request failed at {url}: {detail}[/red]")
+    _print_request_id(client)
 
 
 def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
+    fallback = _sanitize_exception_text(str(exc))
     if not exc.response.headers.get("content-type", "").startswith("application/json"):
-        return str(exc)
+        return fallback
     try:
         payload = exc.response.json()
     except ValueError:
-        return str(exc)
+        return fallback
     if not isinstance(payload, dict):
-        return str(exc)
-    detail = payload.get("detail", str(exc))
+        return fallback
+    detail = payload.get("detail", fallback)
     if isinstance(detail, dict):
         error_type = detail.get("type")
         message = detail.get("message")
         if isinstance(error_type, str) and isinstance(message, str):
-            return f"{error_type}: {message}"
+            return _sanitize_exception_text(f"{error_type}: {message}")
         if isinstance(message, str):
-            return message
-    return detail if isinstance(detail, str) else str(detail)
+            return _sanitize_exception_text(message)
+    return _sanitize_exception_text(detail if isinstance(detail, str) else str(detail))
 
 
 def _http_error_remediation(exc: httpx.HTTPStatusError) -> str | None:
@@ -199,7 +296,7 @@ def _http_error_remediation(exc: httpx.HTTPStatusError) -> str | None:
     if not isinstance(payload, dict) or not isinstance(payload.get("detail"), dict):
         return None
     remediation = payload["detail"].get("remediation")
-    return remediation if isinstance(remediation, str) else None
+    return _sanitize_exception_text(remediation) if isinstance(remediation, str) else None
 
 
 def _parse_remote_error(detail: str) -> tuple[_RemoteErrorType | None, str]:
@@ -225,12 +322,13 @@ def _format_estimated_cost(cost: float | None, basis: CostBasis | None) -> str:
 
 
 def _print_http_error(exc: httpx.HTTPStatusError) -> None:
-    console.print(f"[red]Error {exc.response.status_code}: {_http_error_detail(exc)}[/red]")
+    console.print(f"[red]Error {exc.response.status_code}: {_http_error_detail(exc)}{_http_error_suffix(exc)}[/red]")
 
 
 def _print_submit_http_error(
     exc: httpx.HTTPStatusError,
     *,
+    client: AcheronClient,
     source_language: str,
     target_language: str,
 ) -> None:
@@ -238,9 +336,11 @@ def _print_submit_http_error(
 
     match error_type:
         case _RemoteErrorType.INVALID_LANGUAGE_PATH:
-            console.print(f"[red]No worker can translate {source_language}→{target_language}[/red]")
+            console.print(
+                f"[red]No worker can translate {source_language}→{target_language}{_http_error_suffix(exc)}[/red]"
+            )
             try:
-                pairs = _run(_get_client().get_capabilities(src=source_language))
+                pairs = _run(client.get_capabilities(src=source_language), client=client)
             except SystemExit, ValueError:
                 console.print(f"Run [bold]acheron capabilities --src {source_language}[/bold] to see the full list.")
                 return
@@ -249,10 +349,13 @@ def _print_submit_http_error(
             console.print(f"Supported targets from {source_language}: {supported}")
             console.print(f"Run [bold]acheron capabilities --src {source_language}[/bold] to see the full list.")
         case _RemoteErrorType.CHUNKING_TOO_LONG:
-            console.print(f"[red]Job cannot be submitted: {message}[/red]")
+            console.print(f"[red]Job cannot be submitted: {message}{_http_error_suffix(exc)}[/red]")
             console.print("Reduce the input size or configure a worker with a larger token limit.")
         case _:
-            console.print(f"[red]Error {exc.response.status_code}: Job submission failed: {message}[/red]")
+            console.print(
+                f"[red]Error {exc.response.status_code}: Job submission failed: {message}"
+                f"{_http_error_suffix(exc)}[/red]"
+            )
             console.print("Check the input and worker capabilities, then retry.")
 
 
@@ -262,11 +365,13 @@ def _print_resume_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None
 
     match error_type:
         case _RemoteErrorType.JOB_ALREADY_RUNNING:
-            console.print(f"[red]Job {job_id} is already running.[/red]")
+            console.print(f"[red]Job {job_id} is already running.{_http_error_suffix(exc)}[/red]")
         case _RemoteErrorType.JOB_NOT_FOUND:
-            console.print(f"[red]Job {job_id} was not found.[/red]")
+            console.print(f"[red]Job {job_id} was not found.{_http_error_suffix(exc)}[/red]")
         case _:
-            console.print(f"[red]Error {exc.response.status_code}: Job resume failed: {message}[/red]")
+            console.print(
+                f"[red]Error {exc.response.status_code}: Job resume failed: {message}{_http_error_suffix(exc)}[/red]"
+            )
     if remediation:
         console.print(f"Try: {remediation}")
     elif error_type is _RemoteErrorType.JOB_ALREADY_RUNNING:
@@ -287,10 +392,13 @@ def _print_cancel_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None
         payload = None
     if isinstance(payload, dict) and isinstance(payload.get("detail"), dict):
         detail = payload["detail"]
-        message = str(detail.get("message", message))
+        message = _sanitize_exception_text(str(detail.get("message", message)))
         candidate = detail.get("remediation")
-        remediation = candidate if isinstance(candidate, str) else None
-    console.print(f"[red]Error {exc.response.status_code}: Job cancellation failed for {job_id}: {message}[/red]")
+        remediation = _sanitize_exception_text(candidate) if isinstance(candidate, str) else None
+    console.print(
+        f"[red]Error {exc.response.status_code}: Job cancellation failed for {job_id}: "
+        f"{message}{_http_error_suffix(exc)}[/red]"
+    )
     if remediation:
         console.print(f"Try: {remediation}")
 
@@ -305,10 +413,13 @@ def _print_retry_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
         payload = None
     if isinstance(payload, dict) and isinstance(payload.get("detail"), dict):
         detail = payload["detail"]
-        message = str(detail.get("message", message))
+        message = _sanitize_exception_text(str(detail.get("message", message)))
         candidate = detail.get("remediation")
-        remediation = candidate if isinstance(candidate, str) else None
-    console.print(f"[red]Error {exc.response.status_code}: Job retry failed for {job_id}: {message}[/red]")
+        remediation = _sanitize_exception_text(candidate) if isinstance(candidate, str) else None
+    console.print(
+        f"[red]Error {exc.response.status_code}: Job retry failed for {job_id}: "
+        f"{message}{_http_error_suffix(exc)}[/red]"
+    )
     if remediation:
         console.print(f"Try: {remediation}")
 
@@ -435,7 +546,7 @@ def archive_jobs(job_ids: tuple[str, ...]) -> None:
     _require_admin_token()
     client = _get_client()
     for job_id in job_ids:
-        result = _run(client.archive_job(job_id), on_http_error=_print_http_error)
+        result = _run(client.archive_job(job_id), client=client, on_http_error=_print_http_error)
         archived_at = result.archived_at.isoformat() if result.archived_at is not None else "unknown"
         input_data = f"{result.source_type} {result.source_language}->{result.target_language}"
         if result.asr_model:
@@ -462,12 +573,14 @@ def archive_jobs(job_ids: tuple[str, ...]) -> None:
 def cleanup(keep_successful: str, keep_failed: str, apply: bool) -> None:  # noqa: FBT001
     """Preview or apply terminal-job retention cleanup."""
     _require_admin_token()
+    client = _get_client()
     result = _run(
-        _get_client().cleanup(
+        client.cleanup(
             keep_successful_seconds=_parse_duration_seconds(keep_successful),
             keep_failed_seconds=_parse_duration_seconds(keep_failed),
             apply=apply,
         ),
+        client=client,
         on_http_error=_print_http_error,
     )
     mode = "applied" if result.apply else "preview"
@@ -496,8 +609,10 @@ def reap_stuck(older_than: str, reason: str) -> None:
     """Mark persisted running jobs stale and failed."""
     _require_admin_token()
     seconds = _parse_duration_seconds(older_than)
+    client = _get_client()
     result = _run(
-        _get_client().reap_stale_jobs(older_than_seconds=seconds, reason=reason),
+        client.reap_stale_jobs(older_than_seconds=seconds, reason=reason),
+        client=client,
         on_http_error=_print_http_error,
     )
     console.print(f"reaped={result.reaped}")
@@ -535,14 +650,16 @@ def submit(  # noqa: PLR0913
     # Upload the local source first; the orchestrator only knows about
     # server-relative paths. The original filename is preserved by the
     # upload so the orchestrator picks the right content type / suffix.
+    client = _get_client()
     uploaded = _run(
-        _get_client().upload_input(file),
+        client.upload_input(file),
+        client=client,
         on_http_error=_print_http_error,
     )
 
     if dry_run:
         preview = _run(
-            _get_client().preview_job(
+            client.preview_job(
                 source_type=source_type,
                 source_path=uploaded.source_path,
                 source_language=src,
@@ -550,8 +667,10 @@ def submit(  # noqa: PLR0913
                 executor_strategy=executor,
                 asr_model=asr_model,
             ),
+            client=client,
             on_http_error=lambda exc: _print_submit_http_error(
                 exc,
+                client=client,
                 source_language=src,
                 target_language=dest,
             ),
@@ -560,7 +679,7 @@ def submit(  # noqa: PLR0913
         return
 
     result = _run(
-        _get_client().submit_job(
+        client.submit_job(
             source_type=source_type,
             source_path=uploaded.source_path,
             source_language=src,
@@ -568,8 +687,10 @@ def submit(  # noqa: PLR0913
             executor_strategy=executor,
             asr_model=asr_model,
         ),
+        client=client,
         on_http_error=lambda exc: _print_submit_http_error(
             exc,
+            client=client,
             source_language=src,
             target_language=dest,
         ),
@@ -581,16 +702,17 @@ def submit(  # noqa: PLR0913
     for warning in result.warnings:
         console.print(f"[yellow]Warning: {warning}[/yellow]")
     if follow:
-        exit_code = _watch_job(_get_client(), result.job_id)
+        exit_code = _watch_job(client, result.job_id)
         raise SystemExit(exit_code)
 
 
 @main.command()
 def status() -> None:
     """Show orchestrator service status."""
-    health = _run(_get_client().get_health())
-    workers_list = _run(_get_client().list_workers())
-    pairs = _run(_get_client().get_capabilities())
+    client = _get_client()
+    health = _run(client.get_health(), client=client)
+    workers_list = _run(client.list_workers(), client=client)
+    pairs = _run(client.get_capabilities(), client=client)
     active_workers: dict[str, int] = {}
     for worker in workers_list:
         worker_type = str(worker.worker_type)
@@ -611,7 +733,8 @@ def status() -> None:
 @click.option("--verbose", "-v", is_flag=True, help="Show step details")
 def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
     """Check job status."""
-    result = _run(_get_client().get_job(job_id))
+    client = _get_client()
+    result = _run(client.get_job(job_id), client=client)
     console.print(f"Job: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
     console.print(f"Label: {result.label or '-'}")
@@ -656,7 +779,8 @@ def job_status(job_id: str, verbose: bool) -> None:  # noqa: FBT001
 @click.option("--explain", is_flag=True, help="Show pricing provenance for every cost item")
 def job_cost(job_id: str, explain: bool) -> None:  # noqa: FBT001
     """Explain a job's execution-time cost estimate."""
-    result = _run(_get_client().get_job_cost(job_id))
+    client = _get_client()
+    result = _run(client.get_job_cost(job_id), client=client)
     console.print(f"Job: [bold]{result.job_id}[/bold]")
     console.print(
         f"Estimated cost (execution-time estimate): "
@@ -701,8 +825,10 @@ def job_cost(job_id: str, explain: bool) -> None:  # noqa: FBT001
 @click.argument("job_id")
 def cancel(job_id: str) -> None:
     """Cancel an active job."""
+    client = _get_client()
     result = _run(
-        _get_client().cancel_job(job_id),
+        client.cancel_job(job_id),
+        client=client,
         on_http_error=lambda exc: _print_cancel_http_error(exc, job_id=job_id),
     )
     console.print(f"Job cancelled: [bold]{result.job_id}[/bold]")
@@ -723,14 +849,16 @@ def retry(
     label: str | None,
 ) -> None:
     """Create a fresh job from an earlier submission."""
+    client = _get_client()
     result = _run(
-        _get_client().retry_job(
+        client.retry_job(
             job_id,
             source_language=src,
             target_language=dest,
             asr_model=asr_model,
             label=label,
         ),
+        client=client,
         on_http_error=lambda exc: _print_retry_http_error(exc, job_id=job_id),
     )
     console.print(f"Job retried: [bold]{result.job_id}[/bold]")
@@ -743,17 +871,18 @@ def retry(
 @click.option("--job", "job_id", default=None, help="Resolve the plan ID from a job")
 def show_plan(plan_id: str | None, job_id: str | None) -> None:
     """Show a compiled plan."""
+    client = _get_client()
     if plan_id is not None and job_id is None:
         resolved: str = plan_id
     elif plan_id is None and job_id is not None:
-        job_response = _run(_get_client().get_job(job_id))
+        job_response = _run(client.get_job(job_id), client=client)
         if job_response.plan_id is None:
             console.print(f"[red]Job {job_id} has no plan ID.[/red]")
             raise SystemExit(1)
         resolved = job_response.plan_id
     else:
         raise click.UsageError("provide exactly one plan ID or --job JOB_ID")
-    _print_plan(_run(_get_client().get_plan(resolved)))
+    _print_plan(_run(client.get_plan(resolved), client=client))
 
 
 @job.command()
@@ -768,12 +897,14 @@ def show_plan(plan_id: str | None, job_id: str | None) -> None:
 )
 def resume(job_id: str, invalidate_steps: tuple[str, ...], invalidate_chapters: tuple[int, ...]) -> None:
     """Resume a job with selected cache invalidation."""
+    client = _get_client()
     result = _run(
-        _get_client().resume_job(
+        client.resume_job(
             job_id,
             invalidate_steps=invalidate_steps,
             invalidate_chapters=invalidate_chapters,
         ),
+        client=client,
         on_http_error=lambda exc: _print_resume_http_error(exc, job_id=job_id),
     )
     console.print(f"Job resumed: [bold]{result.job_id}[/bold]")
@@ -784,7 +915,7 @@ def _watch_job(client: AcheronClient, job_id: str, *, poll_interval: float = 2.0
     """Poll job status and render progress until terminal. Returns exit code."""
     with Live(console=console, refresh_per_second=4) as live:
         while True:
-            job = _run(client.get_job(job_id))
+            job = _run(client.get_job(job_id), client=client)
             progress = job.progress
             parts = [
                 f"[bold]{job.job_id}[/bold]",
@@ -809,7 +940,8 @@ def _watch_job(client: AcheronClient, job_id: str, *, poll_interval: float = 2.0
 @click.argument("job_id")
 def watch(job_id: str) -> None:
     """Watch a job's progress until completion."""
-    exit_code = _watch_job(_get_client(), job_id)
+    client = _get_client()
+    exit_code = _watch_job(client, job_id)
     raise SystemExit(exit_code)
 
 
@@ -817,8 +949,13 @@ def watch(job_id: str) -> None:
 @click.argument("job_id")
 def tail(job_id: str) -> None:
     """Stream live progress events for a job."""
+    client = _get_client()
+    printed_request_id = False
     try:
-        for event in _run_sync_generator(_get_client().tail_job(job_id)):
+        for event in _run_sync_generator(client.tail_job(job_id), client=client):
+            if not printed_request_id:
+                _print_request_id(client)
+                printed_request_id = True
             console.print(f"{event.status.value}: {event.message}", markup=False)
     except KeyboardInterrupt:
         pass
@@ -861,7 +998,7 @@ def list_jobs(  # noqa: PLR0913
         and stale_after is None
         and not include_archived
     ):
-        jobs = _run(client.list_jobs(label=label))
+        jobs = _run(client.list_jobs(label=label), client=client)
     else:
         jobs = _run(
             client.list_jobs(
@@ -871,7 +1008,8 @@ def list_jobs(  # noqa: PLR0913
                 before=before_at,
                 older_than_seconds=stale_after,
                 include_archived=include_archived,
-            )
+            ),
+            client=client,
         )
     if active:
         jobs = [j for j in jobs if j.status.value == "running"]
@@ -914,7 +1052,8 @@ def list_jobs(  # noqa: PLR0913
 @main.command()
 def workers() -> None:
     """List registered workers."""
-    workers_list = _run(_get_client().list_workers())
+    client = _get_client()
+    workers_list = _run(client.list_workers(), client=client)
     if not workers_list:
         console.print("No workers registered.")
         return
@@ -950,8 +1089,9 @@ def capabilities(src: str | None, dest: str | None, worker_type: str | None) -> 
     if worker_type is not None and (src is not None or dest is not None):
         raise click.UsageError("--type cannot be combined with --src/--dest")
 
+    client = _get_client()
     if worker_type is not None:
-        workers = _run(_get_client().get_worker_capabilities(worker_type))
+        workers = _run(client.get_worker_capabilities(worker_type), client=client)
         if not workers:
             console.print(f"No {worker_type} workers available.")
             return
@@ -967,7 +1107,7 @@ def capabilities(src: str | None, dest: str | None, worker_type: str | None) -> 
         console.print(table)
         return
 
-    pairs = _run(_get_client().get_capabilities(src=src, dest=dest))
+    pairs = _run(client.get_capabilities(src=src, dest=dest), client=client)
     if not pairs:
         console.print("No language pairs available.")
         return

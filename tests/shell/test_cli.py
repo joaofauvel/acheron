@@ -1144,6 +1144,15 @@ def test_submit_chunking_error_shows_remediation(tmp_path: Path) -> None:
     assert "larger token limit" in result.output
 
 
+def test_sanitize_attempted_url_removes_credentials_query_and_fragment() -> None:
+    assert (
+        cli_module._sanitize_attempted_url(  # noqa: SLF001
+            "https://user:pass@wrong.host:8443/jobs/job-abc?token=secret#frag"
+        )
+        == "https://wrong.host:8443/jobs/job-abc"
+    )
+
+
 @pytest.mark.parametrize("body", [b"{", b"[]"])
 @respx.mock
 def test_generic_http_error_handles_non_object_json(body: bytes) -> None:
@@ -1199,6 +1208,29 @@ def test_job_resume_no_plan_shows_resubmit_remediation() -> None:
     assert "Job resume failed: Job job-abc has no saved plan to resume" in result.output
     assert "NoPlanToResumeError" not in result.output
     assert "Try: acheron job submit" in result.output
+
+
+def test_http_error_redacts_attempted_url_and_prints_request_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    raw_url = "https://user:pass@wrong.host/jobs/job-abc?token=query-secret#fragment"
+    monkeypatch.setenv("ACHERON_URL", raw_url)
+
+    class _FailingClient:
+        _base_url = raw_url
+        last_request_id = "req-test"
+
+        async def list_jobs(self, *, label: str | None = None) -> list[dict[str, Any]]:
+            request = httpx.Request("GET", raw_url)
+            response = httpx.Response(404, json={"detail": "Not Found"}, request=request)
+            raise httpx.HTTPStatusError("Not Found", request=request, response=response)
+
+    monkeypatch.setattr(cli_module, "_get_client", _FailingClient)
+    result = CliRunner().invoke(main, ["jobs"])
+    assert result.exit_code != 0
+    assert "Error 404: Not Found (from https://wrong.host/jobs/job-abc) — verify ACHERON_URL" in result.output
+    assert "request_id=req-test" in result.output
+    assert "user:pass" not in result.output
+    assert "query-secret" not in result.output
+    assert "#fragment" not in result.output
 
 
 @respx.mock

@@ -58,5 +58,23 @@ async def test_conftest_make_app_is_env_independent(
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             r = await c.get("/health")
             assert r.status_code == 200
+            assert r.headers["x-request-id"]
+    finally:
+        await app.state.orchestrator.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_request_id_header_preserves_client_id(tmp_path: Path) -> None:
+    app = create_app(
+        registry=InMemoryWorkerStore(),
+        job_store=InMemoryJobStore(),
+        data_dir=tmp_path,
+    )
+    await app.state.orchestrator.start()
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/health", headers={"x-request-id": "req-test"})
+            assert response.headers["x-request-id"] == "req-test"
     finally:
         await app.state.orchestrator.shutdown()

@@ -855,6 +855,38 @@ async def test_upload_input_sanitizes_crlf_in_filename(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_client_captures_response_request_id() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "ok"}, headers={"x-request-id": "req-test"})
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    assert await client.get_health() == {"status": "ok"}
+    assert client.last_request_id == "req-test"
+
+
+@pytest.mark.asyncio
+async def test_client_captures_initial_stream_request_id() -> None:
+    from acheron.core.schemas import JobLogEvent, JobProgress
+
+    event = JobLogEvent(
+        job_id="job-1",
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+        status=PlanStatus.RUNNING,
+        progress=JobProgress(),
+        message="step started",
+    )
+    ndjson = (event.model_dump_json() + "\n").encode()
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=ndjson, headers={"x-request-id": "req-stream"})
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    events = [item async for item in client.tail_job("job-1")]
+    assert len(events) == 1
+    assert client.last_request_id == "req-stream"
+
+
+@pytest.mark.asyncio
 async def test_tail_job_streams_ndjson_events() -> None:
     """tail_job yields typed JobLogEvent objects from NDJSON stream."""
     from acheron.core.schemas import JobLogEvent, JobProgress
