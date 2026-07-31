@@ -881,8 +881,10 @@ async def test_client_captures_initial_stream_request_id() -> None:
         return httpx.Response(200, content=ndjson, headers={"x-request-id": "req-stream"})
 
     client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
-    events = [item async for item in client.tail_job("job-1")]
+    opened: list[str] = []
+    events = [item async for item in client.tail_job("job-1", on_open=lambda: opened.append("opened"))]
     assert len(events) == 1
+    assert opened == ["opened"]
     assert client.last_request_id == "req-stream"
 
 

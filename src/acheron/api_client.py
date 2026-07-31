@@ -30,7 +30,7 @@ from acheron.core.schemas import (
 from acheron.shell.api.schemas import CleanupResponse
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Sequence
+    from collections.abc import AsyncGenerator, Callable, Sequence
     from datetime import datetime
 
 
@@ -198,12 +198,22 @@ class AcheronClient:
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
-    async def tail_job(self, job_id: str, *, follow: bool = True) -> AsyncGenerator[JobLogEvent]:
+    async def tail_job(
+        self,
+        job_id: str,
+        *,
+        follow: bool = True,
+        on_open: Callable[[], None] | None = None,
+    ) -> AsyncGenerator[JobLogEvent]:
         """Stream job progress events as NDJSON."""
         async with self._http_client() as client:
             params = {"follow": str(follow).lower()}
             async with client.stream("GET", f"/jobs/{job_id}/logs", params=params) as resp:
+                if resp.is_error:
+                    await resp.aread()
                 resp.raise_for_status()
+                if on_open is not None:
+                    on_open()
                 async for line in resp.aiter_lines():
                     if line.strip():
                         yield JobLogEvent.model_validate_json(line)

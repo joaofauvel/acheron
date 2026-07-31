@@ -218,28 +218,20 @@ def _drain_sync_generator[T](
     next_event: Callable[[], T],
     *,
     client: AcheronClient | None,
-    on_started: Callable[[], None] | None,
+    request_id_printed: Callable[[], bool] | None,
 ) -> Iterator[T]:
-    started = False
-
-    def _notify_started() -> None:
-        nonlocal started
-        if not started:
-            started = True
-            if on_started is not None:
-                on_started()
-
     while True:
         try:
             event = next_event()
         except StopAsyncIteration:
-            _notify_started()
             return
         except Exception as exc:  # noqa: BLE001
-            _notify_started()
-            _print_stream_error(exc, client=client, print_request_id=on_started is None)
+            _print_stream_error(
+                exc,
+                client=client,
+                print_request_id=request_id_printed is None or not request_id_printed(),
+            )
             raise SystemExit(1) from None
-        _notify_started()
         yield event
 
 
@@ -247,7 +239,7 @@ def _run_sync_generator[T](
     async_gen: AsyncIterator[T],
     *,
     client: AcheronClient | None = None,
-    on_started: Callable[[], None] | None = None,
+    request_id_printed: Callable[[], bool] | None = None,
 ) -> Iterator[T]:
     """Drain an async generator synchronously via a thread pool."""
 
@@ -264,7 +256,7 @@ def _run_sync_generator[T](
             yield from _drain_sync_generator(
                 lambda: loop.run_until_complete(async_iter.__anext__()),
                 client=client,
-                on_started=on_started,
+                request_id_printed=request_id_printed,
             )
         finally:
             loop.close()
@@ -273,7 +265,7 @@ def _run_sync_generator[T](
             yield from _drain_sync_generator(
                 lambda: pool.submit(_next, async_iter).result(),
                 client=client,
-                on_started=on_started,
+                request_id_printed=request_id_printed,
             )
 
 
@@ -983,11 +975,18 @@ def watch(job_id: str) -> None:
 def tail(job_id: str) -> None:
     """Stream live progress events for a job."""
     client = _get_client()
+    request_id_printed = False
+
+    def _on_open() -> None:
+        nonlocal request_id_printed
+        request_id_printed = True
+        _print_request_id(client)
+
     try:
         for event in _run_sync_generator(
-            client.tail_job(job_id),
+            client.tail_job(job_id, on_open=_on_open),
             client=client,
-            on_started=lambda: _print_request_id(client),
+            request_id_printed=lambda: request_id_printed,
         ):
             console.print(f"{event.status.value}: {event.message}", markup=False)
     except KeyboardInterrupt:

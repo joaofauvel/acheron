@@ -1505,3 +1505,68 @@ def test_job_tail_prints_request_id_for_empty_stream() -> None:
     assert result.exit_code == 0, result.output
     assert "request_id=req-empty" not in result.stdout
     assert result.stderr.count("request_id=req-empty") == 1
+
+
+def test_job_tail_prints_request_id_before_first_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Correlation output must not wait for the first stream event."""
+    from datetime import UTC, datetime
+
+    from acheron.api_client import AcheronClient
+    from acheron.core.models import PlanStatus
+    from acheron.core.schemas import JobLogEvent, JobProgress
+
+    trace: list[str] = []
+    event = JobLogEvent(
+        job_id="job-1",
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+        status=PlanStatus.RUNNING,
+        progress=JobProgress(),
+        message="step started",
+    )
+
+    class _DelayedStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            trace.append("yielded")
+            yield (event.model_dump_json() + "\n").encode()
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"x-request-id": "req-immediate"}, stream=_DelayedStream())
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(cli_module, "_get_client", lambda: client)
+    monkeypatch.setattr(cli_module, "_print_request_id", lambda _client: trace.append("printed"))
+
+    result = CliRunner().invoke(main, ["job", "tail", "job-1"])
+
+    assert result.exit_code == 0, result.output
+    assert trace[:2] == ["printed", "yielded"]
+
+
+@respx.mock
+def test_job_tail_http_error_prints_request_id_once() -> None:
+    respx.get(f"{_BASE_URL}/jobs/job-1/logs").mock(
+        return_value=httpx.Response(503, json={"detail": "unavailable"}, headers={"x-request-id": "req-tail-error"})
+    )
+    result = CliRunner().invoke(main, ["job", "tail", "job-1"])
+
+    assert result.exit_code != 0
+    assert result.stderr.count("request_id=req-tail-error") == 1
+
+
+def test_job_tail_stream_error_prints_request_id_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from acheron.api_client import AcheronClient
+
+    class _FailingStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            raise RuntimeError("stream broke")
+            yield b"unreachable"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"x-request-id": "req-stream-error"}, stream=_FailingStream())
+
+    client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(cli_module, "_get_client", lambda: client)
+    result = CliRunner().invoke(main, ["job", "tail", "job-1"])
+
+    assert result.exit_code != 0
+    assert result.stderr.count("request_id=req-stream-error") == 1
