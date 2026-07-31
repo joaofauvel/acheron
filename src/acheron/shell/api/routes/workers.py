@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 
-from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
-from acheron.core.schemas import WorkerListResponse, WorkerResponse
-from acheron.shell.api.deps import AuthorizedDep, OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.schemas import (
-    WorkerRegistrationRequest,  # noqa: TC001
-)
+from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType, sanitize_worker_error
+from acheron.core.schemas import WorkerErrorEventResponse, WorkerListResponse, WorkerResponse
+from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
+from acheron.shell.api.schemas import WorkerRegistrationRequest  # noqa: TC001
 
 if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
@@ -27,6 +25,29 @@ def _booting_elapsed_seconds(worker: RegisteredWorker, now: float) -> float | No
     if worker.status is not WorkerStatus.BOOTING or worker.booting_since is None:
         return None
     return max(0.0, now - worker.booting_since)
+
+
+def _public_worker_response(worker: RegisteredWorker, now: float) -> WorkerResponse:
+    return WorkerResponse(
+        worker_id=worker.worker_id,
+        endpoint=None,
+        transport=worker.transport,
+        worker_type=worker.capabilities.worker_type.value,
+        consecutive_failures=worker.consecutive_failures,
+        status=worker.status,
+        last_error=sanitize_worker_error(worker.last_error) if worker.last_error else None,
+        error_history=[
+            WorkerErrorEventResponse(
+                timestamp=event.timestamp,
+                message=sanitize_worker_error(event.message),
+                consecutive_failures=event.consecutive_failures,
+            )
+            for event in worker.error_history[-10:]
+        ],
+        max_input_tokens=worker.capabilities.max_input_tokens,
+        booting_elapsed_seconds=_booting_elapsed_seconds(worker, now),
+        booting_timeout_seconds=_BOOTING_TIMEOUT_SECONDS,
+    )
 
 
 @router.post("", status_code=201, response_model=WorkerResponse)
@@ -56,46 +77,15 @@ async def register_worker(
     )
 
     await orch.register_worker(body.worker_id, body.endpoint, body.transport, capabilities)
-
-    return WorkerResponse(
-        worker_id=body.worker_id,
-        endpoint=body.endpoint,
-        transport=body.transport,
-        worker_type=body.capabilities.worker_type,
-        consecutive_failures=0,
-        status=WorkerStatus.HEALTHY,
-        last_error=None,
-        max_input_tokens=body.capabilities.max_input_tokens,
-        booting_elapsed_seconds=None,
-        booting_timeout_seconds=_BOOTING_TIMEOUT_SECONDS,
-    )
+    worker = await orch._registry.get(body.worker_id)  # noqa: SLF001
+    if worker is None:
+        raise HTTPException(status_code=500, detail="worker registration did not persist")
+    return _public_worker_response(worker, time.time())
 
 
 @router.get("", response_model=WorkerListResponse)
-async def list_workers(orch: OrchestratorDep, authorized: AuthorizedDep) -> WorkerListResponse:
-    """List all registered workers.
-
-    ``last_error`` is the raw health-probe failure message; it can embed
-    internal IPs / ports / DNS detail (see SEC-010). It is only returned to
-    callers that prove authority over the registration token; unauthenticated
-    callers see ``last_error=None``.
-    """
+async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
+    """List sanitized worker lifecycle state without registration auth."""
     workers = await orch.list_workers()
     now = time.time()
-    return WorkerListResponse(
-        workers=[
-            WorkerResponse(
-                worker_id=w.worker_id,
-                endpoint=w.endpoint,
-                transport=w.transport,
-                worker_type=w.capabilities.worker_type.value,
-                consecutive_failures=w.consecutive_failures,
-                status=w.status,
-                last_error=w.last_error if authorized else None,
-                max_input_tokens=w.capabilities.max_input_tokens,
-                booting_elapsed_seconds=_booting_elapsed_seconds(w, now),
-                booting_timeout_seconds=_BOOTING_TIMEOUT_SECONDS,
-            )
-            for w in workers
-        ]
-    )
+    return WorkerListResponse(workers=[_public_worker_response(worker, now) for worker in workers])

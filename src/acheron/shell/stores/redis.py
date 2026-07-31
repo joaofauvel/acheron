@@ -20,7 +20,9 @@ from acheron.core.models import (
     EpubRequest,
     JsonValue,
     WorkerCapabilities,
+    WorkerErrorEvent,
     WorkerStatus,
+    sanitize_worker_error,
 )
 from acheron.shell.job_store import JobQuery
 from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
@@ -151,6 +153,10 @@ _PIPELINE_AWAITABLE_PROBES: tuple[_AwaitableProbe, ...] = (
 
 
 _WORKER_KEY = "worker:{worker_id}"
+_WORKER_HISTORY_TOMBSTONE_KEY = "worker-history:{worker_id}"
+_WORKER_GENERATION_KEY = "worker-generation:{worker_id}"
+_WORKER_TOMBSTONE_TTL_SECONDS = 3600
+_WORKER_MAX_HISTORY = 10
 _WORKERS_SET = "workers"
 _JOB_KEY = "job:{job_id}"
 _JOBS_SET = "jobs"
@@ -164,11 +170,92 @@ redis.call("DEL", job_key)
 return job
 """
 
+_REGISTER_WORKER_SCRIPT = """
+local worker_key = KEYS[1]
+local tombstone_key = KEYS[2]
+local generation_key = KEYS[3]
+local workers_set = KEYS[4]
+local history = redis.call("HGET", worker_key, "error_history")
+if not history then
+  history = redis.call("GET", tombstone_key) or "[]"
+end
+local generation = redis.call("INCR", generation_key)
+redis.call("DEL", worker_key)
+redis.call("HSET", worker_key,
+  "endpoint", ARGV[1],
+  "transport", ARGV[2],
+  "consecutive_failures", "0",
+  "last_health_check", ARGV[3],
+  "capabilities_json", ARGV[4],
+  "metadata_json", ARGV[5],
+  "status", "healthy",
+  "last_error", "",
+  "booting_since", "",
+  "registration_generation", generation,
+  "error_history", history)
+redis.call("SADD", workers_set, ARGV[6])
+redis.call("DEL", tombstone_key)
+redis.call("PERSIST", generation_key)
+return generation
+"""
+
+_UNREGISTER_WORKER_SCRIPT = """
+local worker_key = KEYS[1]
+local tombstone_key = KEYS[2]
+local generation_key = KEYS[3]
+local workers_set = KEYS[4]
+local history = redis.call("HGET", worker_key, "error_history") or "[]"
+if redis.call("EXISTS", worker_key) == 1 then
+  redis.call("SET", tombstone_key, history, "EX", ARGV[1])
+  redis.call("SREM", workers_set, ARGV[2])
+  redis.call("DEL", worker_key)
+  redis.call("EXPIRE", generation_key, ARGV[1])
+end
+return 1
+"""
+
+_RECORD_HEALTH_FAILURE_SCRIPT = """
+local worker_key = KEYS[1]
+local tombstone_key = KEYS[2]
+local generation_key = KEYS[3]
+local workers_set = KEYS[4]
+if redis.call("EXISTS", worker_key) == 0 then return 0 end
+if tostring(redis.call("HGET", worker_key, "registration_generation") or "1") ~= ARGV[1] then return 0 end
+local failures = redis.call("HINCRBY", worker_key, "consecutive_failures", 1)
+local history = cjson.decode(redis.call("HGET", worker_key, "error_history") or "[]")
+table.insert(history, {timestamp=ARGV[2], message=ARGV[3], consecutive_failures=failures})
+while #history > 10 do table.remove(history, 1) end
+redis.call("HSET", worker_key,
+  "last_health_check", ARGV[4],
+  "last_error", ARGV[3],
+  "error_history", cjson.encode(history))
+if failures >= tonumber(ARGV[5]) then
+  redis.call("SET", tombstone_key, cjson.encode(history), "EX", ARGV[6])
+  redis.call("SREM", workers_set, ARGV[7])
+  redis.call("DEL", worker_key)
+  redis.call("EXPIRE", generation_key, ARGV[6])
+  return 1
+end
+return 0
+"""
+
+_RECORD_HEALTH_SUCCESS_SCRIPT = """
+local key = KEYS[1]
+if redis.call("EXISTS", key) == 0 then return 0 end
+if tostring(redis.call("HGET", key, "registration_generation") or "1") ~= ARGV[1] then return 0 end
+redis.call("HSET", key,
+  "consecutive_failures", "0",
+  "last_health_check", ARGV[2],
+  "status", "healthy",
+  "last_error", "",
+  "booting_since", "")
+return 1
+"""
+
 _SET_WORKER_STATUS_SCRIPT = """
 local key = KEYS[1]
-if redis.call("EXISTS", key) == 0 then
-  return 0
-end
+if redis.call("EXISTS", key) == 0 then return 0 end
+if ARGV[4] ~= "" and tostring(redis.call("HGET", key, "registration_generation") or "1") ~= ARGV[4] then return 0 end
 local current_status = redis.call("HGET", key, "status") or "healthy"
 local current_since = redis.call("HGET", key, "booting_since") or ""
 local next_since = ""
@@ -179,10 +266,7 @@ if ARGV[1] == "booting" then
     next_since = ARGV[3]
   end
 end
-redis.call("HSET", key,
-  "status", ARGV[1],
-  "last_error", ARGV[2],
-  "booting_since", next_since)
+redis.call("HSET", key, "status", ARGV[1], "last_error", ARGV[2], "booting_since", next_since)
 return 1
 """
 
@@ -247,6 +331,43 @@ def _deserialize_metadata(blob: str) -> dict[str, JsonValue]:
         raise CacheCorruptedError(msg) from exc
 
 
+def _serialize_worker_history(history: tuple[WorkerErrorEvent, ...]) -> str:
+    return json.dumps(
+        [
+            {
+                "timestamp": event.timestamp.astimezone(UTC).isoformat(),
+                "message": event.message,
+                "consecutive_failures": event.consecutive_failures,
+            }
+            for event in history[-_WORKER_MAX_HISTORY:]
+        ],
+        separators=(",", ":"),
+    )
+
+
+def _deserialize_worker_history(blob: str) -> tuple[WorkerErrorEvent, ...]:
+    from acheron.core.errors import CacheCorruptedError  # noqa: PLC0415
+
+    def _invalid_history() -> None:
+        raise ValueError("history must contain at most 10 entries")
+
+    try:
+        values = json.loads(blob)
+        if not isinstance(values, list) or len(values) > _WORKER_MAX_HISTORY:
+            _invalid_history()
+        return tuple(
+            WorkerErrorEvent(
+                timestamp=_deserialize_timestamp(value["timestamp"]),
+                message=str(value["message"]),
+                consecutive_failures=int(value["consecutive_failures"]),
+            )
+            for value in values
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        msg = f"worker error history has invalid fields: {exc}"
+        raise CacheCorruptedError(msg) from exc
+
+
 def _worker_fields(
     endpoint: str,
     transport: str,
@@ -263,6 +384,8 @@ def _worker_fields(
         "status": WorkerStatus.HEALTHY.value,
         "last_error": "",
         "booting_since": "",
+        "registration_generation": "1",
+        "error_history": "[]",
     }
 
 
@@ -281,6 +404,15 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
         raise CacheCorruptedError(msg) from exc
     last_error = fields.get("last_error") or None
     booting_since_blob = fields.get("booting_since") or ""
+    history = _deserialize_worker_history(fields.get("error_history", "[]"))
+    try:
+        registration_generation = int(fields.get("registration_generation", "1"))
+    except ValueError as exc:
+        msg = f"Worker {worker_id} has invalid registration generation"
+        raise CacheCorruptedError(msg) from exc
+    if registration_generation < 1:
+        msg = f"Worker {worker_id} has invalid registration generation"
+        raise CacheCorruptedError(msg) from ValueError(registration_generation)
     if status == WorkerStatus.BOOTING and not booting_since_blob:
         msg = f"Worker {worker_id} has missing booting_since for BOOTING status"
         raise CacheCorruptedError(msg) from ValueError("missing booting_since")
@@ -295,6 +427,8 @@ def _deserialize_worker(worker_id: str, fields: dict[str, str]) -> RegisteredWor
         status=status,
         last_error=last_error,
         booting_since=float(booting_since_blob) if booting_since_blob else None,
+        registration_generation=registration_generation,
+        error_history=history,
     )
 
 
@@ -622,20 +756,35 @@ class RedisWorkerStore(WorkerStore):
         capabilities: WorkerCapabilities,
         metadata: dict[str, JsonValue] | None = None,
     ) -> None:
-        """Register a new worker or re-register an existing one."""
+        """Register a worker with a fresh lifecycle and retained history."""
         fields = _worker_fields(endpoint, transport, capabilities, dict(metadata or {}))
-        # Per-command pipe methods buffer synchronously; only execute() awaits.
-        async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.hset(_WORKER_KEY.format(worker_id=worker_id), mapping=fields)
-            pipe.sadd(_WORKERS_SET, worker_id)
-            await pipe.execute()
+        await self._redis.eval(
+            _REGISTER_WORKER_SCRIPT,
+            4,
+            _WORKER_KEY.format(worker_id=worker_id),
+            _WORKER_HISTORY_TOMBSTONE_KEY.format(worker_id=worker_id),
+            _WORKER_GENERATION_KEY.format(worker_id=worker_id),
+            _WORKERS_SET,
+            fields["endpoint"],
+            fields["transport"],
+            fields["last_health_check"],
+            fields["capabilities_json"],
+            fields["metadata_json"],
+            worker_id,
+        )
 
     async def unregister(self, worker_id: str) -> None:
-        """Remove a worker from the store."""
-        async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.srem(_WORKERS_SET, worker_id)
-            pipe.delete(_WORKER_KEY.format(worker_id=worker_id))
-            await pipe.execute()
+        """Remove a worker while retaining bounded history for re-registration."""
+        await self._redis.eval(
+            _UNREGISTER_WORKER_SCRIPT,
+            4,
+            _WORKER_KEY.format(worker_id=worker_id),
+            _WORKER_HISTORY_TOMBSTONE_KEY.format(worker_id=worker_id),
+            _WORKER_GENERATION_KEY.format(worker_id=worker_id),
+            _WORKERS_SET,
+            str(_WORKER_TOMBSTONE_TTL_SECONDS),
+            worker_id,
+        )
 
     async def get(self, worker_id: str) -> RegisteredWorker | None:
         """Look up a worker by ID."""
@@ -671,44 +820,70 @@ class RedisWorkerStore(WorkerStore):
             if src in w.capabilities.supported_languages_in and dst in w.capabilities.supported_languages_out
         )
 
-    async def record_health_failure(self, worker_id: str) -> bool:
-        """Record a failed health check. Returns True if the worker was removed."""
-        key = _WORKER_KEY.format(worker_id=worker_id)
-        if not await self._redis.exists(key):
-            return False
-        new_count: int = await self._redis.hincrby(key, "consecutive_failures", 1)
-        await self._redis.hset(key, "last_health_check", str(time.time()))
-        if new_count >= self.max_failures:
-            await self.unregister(worker_id)
-            return True
-        return False
+    async def record_health_failure(
+        self,
+        worker_id: str,
+        *,
+        generation: int | None = None,
+        error: str = "health check failed",
+    ) -> bool:
+        """Record a sanitized failure atomically for the current lifecycle."""
+        if generation is None:
+            worker = await self.get(worker_id)
+            if worker is None:
+                return False
+            generation = worker.registration_generation
+        message = sanitize_worker_error(error)
+        result = await self._redis.eval(
+            _RECORD_HEALTH_FAILURE_SCRIPT,
+            4,
+            _WORKER_KEY.format(worker_id=worker_id),
+            _WORKER_HISTORY_TOMBSTONE_KEY.format(worker_id=worker_id),
+            _WORKER_GENERATION_KEY.format(worker_id=worker_id),
+            _WORKERS_SET,
+            str(generation),
+            datetime.now(UTC).isoformat(),
+            message,
+            str(time.time()),
+            str(self.max_failures),
+            str(_WORKER_TOMBSTONE_TTL_SECONDS),
+            worker_id,
+        )
+        return bool(result)
 
-    async def record_health_success(self, worker_id: str) -> None:
-        """Record a successful health check, resetting status and clearing last_error."""
-        key = _WORKER_KEY.format(worker_id=worker_id)
-        async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.hset(key, "consecutive_failures", "0")
-            pipe.hset(key, "last_health_check", str(time.time()))
-            pipe.hset(key, "status", WorkerStatus.HEALTHY.value)
-            pipe.hset(key, "last_error", "")
-            pipe.hset(key, "booting_since", "")
-            await pipe.execute()
+    async def record_health_success(self, worker_id: str, *, generation: int | None = None) -> None:
+        """Reset current health state without deleting retained history."""
+        if generation is None:
+            worker = await self.get(worker_id)
+            if worker is None:
+                return
+            generation = worker.registration_generation
+        await self._redis.eval(
+            _RECORD_HEALTH_SUCCESS_SCRIPT,
+            1,
+            _WORKER_KEY.format(worker_id=worker_id),
+            str(generation),
+            str(time.time()),
+        )
 
     async def set_worker_status(
         self,
         worker_id: str,
         status: WorkerStatus,
         last_error: str | None,
+        *,
+        generation: int | None = None,
     ) -> None:
-        """Update the worker's status and last_error without touching the failure counter."""
+        """Update status only when the captured lifecycle is still current."""
         key = _WORKER_KEY.format(worker_id=worker_id)
         await self._redis.eval(
             _SET_WORKER_STATUS_SCRIPT,
             1,
             key,
             status.value,
-            last_error or "",
+            sanitize_worker_error(last_error) if last_error else "",
             str(time.time()),
+            str(generation) if generation is not None else "",
         )
 
 

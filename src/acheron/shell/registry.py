@@ -5,10 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from acheron.core.models import WorkerStatus
+from acheron.core.models import WorkerErrorEvent, WorkerStatus
 
 if TYPE_CHECKING:
     from acheron.core.models import JsonValue, WorkerCapabilities
+
+
+_MAX_WORKER_ERROR_HISTORY = 10
 
 
 @dataclass
@@ -30,3 +33,13 @@ class RegisteredWorker:
     last_error: str | None = None
     status: WorkerStatus = WorkerStatus.HEALTHY
     booting_since: float | None = None
+    registration_generation: int = 1
+    error_history: tuple[WorkerErrorEvent, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.registration_generation < 1:
+            msg = "registration_generation must be positive"
+            raise ValueError(msg)
+        if len(self.error_history) > _MAX_WORKER_ERROR_HISTORY:
+            msg = "error_history must contain at most 10 entries"
+            raise ValueError(msg)

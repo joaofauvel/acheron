@@ -1,6 +1,7 @@
 """Core data models and enums for the Acheron pipeline."""
 
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -22,6 +23,35 @@ class WorkerType(Enum):
 
 
 SUPPORTED_LANGUAGES = frozenset({"en", "es", "fr", "de"})
+_MAX_WORKER_ERROR_LENGTH = 512
+_WORKER_URL_RE = re.compile(r"(?:https?|grpc|grpcs|redis|rediss)://[^\s,;]+", re.IGNORECASE)
+_WORKER_HOST_PORT_RE = re.compile(
+    r"(?<![\w.-])(?:localhost|127(?:\.\d{1,3}){3}|[a-z0-9.-]+)(?::\d{2,5})(?!\w)", re.IGNORECASE
+)
+_WORKER_SECRET_RE = re.compile(
+    r"(?:authorization|bearer|token|password|secret|api[_ -]?key|credential)\s*(?:[:=]|is)\s*(?:bearer\s+)?[^\s,;]+",
+    re.IGNORECASE,
+)
+_WORKER_BEARER_RE = re.compile(r"\bbearer\s+[^\s,;]+", re.IGNORECASE)
+_WORKER_TRACE_RE = re.compile(r"(?:traceback|request[_ -]?id|provider request|provider details)", re.IGNORECASE)
+
+
+def sanitize_worker_error(message: str) -> str:
+    """Return a bounded worker failure message without sensitive diagnostics."""
+    lines = []
+    for line in str(message).splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.lower().startswith(("traceback", "file ")):
+            continue
+        if _WORKER_TRACE_RE.search(stripped):
+            continue
+        lines.append(stripped)
+    sanitized = " ".join(lines) or "health check failed"
+    sanitized = _WORKER_URL_RE.sub("[redacted endpoint]", sanitized)
+    sanitized = _WORKER_HOST_PORT_RE.sub("[redacted endpoint]", sanitized)
+    sanitized = _WORKER_SECRET_RE.sub("[redacted credential]", sanitized)
+    sanitized = _WORKER_BEARER_RE.sub("[redacted credential]", sanitized)
+    return sanitized[:_MAX_WORKER_ERROR_LENGTH]
 
 
 class JobStatus(Enum):
@@ -180,6 +210,24 @@ class JobMetrics:
         gives us a single source of truth without converting the in-memory type.
         """
         return TypeAdapter(JobMetrics).dump_json(self)
+
+
+@dataclass(frozen=True)
+class WorkerErrorEvent:
+    """Sanitized health failure retained for worker recovery history."""
+
+    timestamp: datetime
+    message: str
+    consecutive_failures: int
+
+    def __post_init__(self) -> None:
+        if self.timestamp.tzinfo is None or self.timestamp.utcoffset() is None:
+            msg = "timestamp must be timezone-aware"
+            raise ValueError(msg)
+        object.__setattr__(self, "timestamp", self.timestamp.astimezone(UTC))
+        if self.consecutive_failures < 1:
+            msg = "consecutive_failures must be positive"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)

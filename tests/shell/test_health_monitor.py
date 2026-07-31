@@ -132,6 +132,30 @@ class TestHealthMonitor:
         assert w.consecutive_failures == 0
 
     @pytest.mark.asyncio
+    async def test_delayed_probe_cannot_mutate_reregistered_worker(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w1", "http://old", "http", _tts_caps())
+        probe_started = asyncio.Event()
+        release_probe = asyncio.Event()
+
+        async def delayed_probe(_endpoint: str, _transport: str) -> HealthProbeResult:
+            probe_started.set()
+            await release_probe.wait()
+            return HealthProbeResult(healthy=False, error="stale failure")
+
+        monitor = HealthMonitor(reg, health_check=delayed_probe)
+        checking = asyncio.create_task(monitor._check_all())  # noqa: SLF001
+        await probe_started.wait()
+        await reg.register("w1", "http://new", "http", _tts_caps())
+        release_probe.set()
+        await checking
+        worker = await reg.get("w1")
+        assert worker is not None
+        assert worker.registration_generation == 2
+        assert worker.consecutive_failures == 0
+        assert worker.error_history == ()
+
+    @pytest.mark.asyncio
     async def test_records_failure_for_unhealthy_worker(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w1", "http://worker", "http", _tts_caps())
@@ -616,7 +640,7 @@ class TestHealthMonitorProviderIntegration:
         entered: list[str] = []
         all_entered = asyncio.Event()
 
-        async def record_success(worker_id: str) -> None:
+        async def record_success(worker_id: str, *, generation: int | None = None) -> None:
             entered.append(worker_id)
             if len(entered) == 2:
                 all_entered.set()

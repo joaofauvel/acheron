@@ -18,6 +18,15 @@ router = APIRouter()
 _TYPED_WORKER_TYPES = frozenset({WorkerType.TTS, WorkerType.ASR, WorkerType.TRANSLATION})
 
 
+def _public_speakers(worker: RegisteredWorker) -> list[str]:
+    if worker.capabilities.worker_type is not WorkerType.TTS:
+        return []
+    value = worker.capabilities.metadata.get("speakers")
+    if not isinstance(value, list):
+        return []
+    return sorted({speaker.strip() for speaker in value if isinstance(speaker, str) and speaker.strip()})[:100]
+
+
 def _supported_languages(workers: tuple[RegisteredWorker, ...]) -> list[str]:
     """Return all worker input and output languages in sorted order."""
     supported = {
@@ -56,8 +65,14 @@ async def get_capabilities(
                 WorkerCapability(
                     worker_id=worker.worker_id,
                     worker_type=worker.capabilities.worker_type.value,
-                    model_source=worker.capabilities.model_source,
-                    metadata=dict(worker.capabilities.metadata),
+                    supported_languages_in=sorted(worker.capabilities.supported_languages_in),
+                    supported_languages_out=sorted(worker.capabilities.supported_languages_out),
+                    supported_formats_in=sorted(worker.capabilities.supported_formats_in),
+                    supported_formats_out=sorted(worker.capabilities.supported_formats_out),
+                    max_payload_bytes=worker.capabilities.max_payload_bytes,
+                    max_input_tokens=worker.capabilities.max_input_tokens,
+                    batch_capable=worker.capabilities.batch_capable,
+                    speakers=_public_speakers(worker),
                 )
                 for worker in sorted(workers, key=lambda item: item.worker_id)
                 if worker.capabilities.worker_type is matching_type

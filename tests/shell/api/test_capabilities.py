@@ -28,16 +28,27 @@ class TestCapabilitiesRoute:
 
 class TestTypedCapabilitiesRoute:
     @pytest.mark.asyncio
-    async def test_type_tts_returns_sorted_inventory_with_metadata(self, client) -> None:  # type: ignore[no-untyped-def]
+    async def test_type_tts_returns_sorted_allowlisted_inventory(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.get("/capabilities", params={"type": "tts"})
         assert response.status_code == 200
         data = response.json()
         assert data["language_pairs"] == []
         assert [worker["worker_id"] for worker in data["workers"]] == ["tts-1", "tts-2"]
         assert data["workers"][0]["worker_type"] == "tts"
-        assert data["workers"][0]["model_source"] == "Qwen/Qwen3-TTS"
-        assert data["workers"][0]["metadata"] == {"voice": "vivian"}
-        assert data["workers"][1]["metadata"] == {"voice": "aria"}
+        assert set(data["workers"][0]) == {
+            "worker_id",
+            "worker_type",
+            "supported_languages_in",
+            "supported_languages_out",
+            "supported_formats_in",
+            "supported_formats_out",
+            "max_payload_bytes",
+            "max_input_tokens",
+            "batch_capable",
+            "speakers",
+        }
+        assert "metadata" not in data["workers"][0]
+        assert "model_source" not in data["workers"][0]
 
     @pytest.mark.asyncio
     async def test_type_asr_returns_inventory(self, client) -> None:  # type: ignore[no-untyped-def]
@@ -47,7 +58,7 @@ class TestTypedCapabilitiesRoute:
         assert data["language_pairs"] == []
         assert [worker["worker_id"] for worker in data["workers"]] == ["asr-capability-1"]
         assert data["workers"][0]["worker_type"] == "asr"
-        assert data["workers"][0]["model_source"] == "ibm-granite/granite-speech-3.3-2b"
+        assert "model_source" not in data["workers"][0]
 
     @pytest.mark.asyncio
     async def test_type_translation_returns_sorted_inventory(self, client) -> None:  # type: ignore[no-untyped-def]
@@ -58,7 +69,7 @@ class TestTypedCapabilitiesRoute:
         assert [worker["worker_id"] for worker in data["workers"]] == ["trans-1", "trans-2"]
         for worker in data["workers"]:
             assert worker["worker_type"] == "translation"
-            assert worker["model_source"] == "google/translategemma-4b"
+            assert "model_source" not in worker
 
     @pytest.mark.asyncio
     async def test_invalid_type_returns_422(self, client) -> None:  # type: ignore[no-untyped-def]

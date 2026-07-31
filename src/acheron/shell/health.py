@@ -167,7 +167,10 @@ class HealthMonitor:
             outcome = result
         if outcome.healthy:
             self._clear_booting_state(worker.worker_id)
-            await self._registry.record_health_success(worker.worker_id)
+            await self._registry.record_health_success(
+                worker.worker_id,
+                generation=worker.registration_generation,
+            )
         else:
             await self._handle_failure(worker, outcome.error or "health check failed")
 
@@ -190,7 +193,12 @@ class HealthMonitor:
                 platform_status = WorkerStatus.OFFLINE
                 message = f"{error}; provider {provider_name} error: {exc}"
             if platform_status == WorkerStatus.BOOTING:
-                await self._registry.set_worker_status(worker.worker_id, WorkerStatus.BOOTING, message)
+                await self._registry.set_worker_status(
+                    worker.worker_id,
+                    WorkerStatus.BOOTING,
+                    message,
+                    generation=worker.registration_generation,
+                )
                 persisted = await self._registry.get(worker.worker_id)
                 since = persisted.booting_since if persisted is not None else None
                 if since is not None:
@@ -219,8 +227,17 @@ class HealthMonitor:
                 self._clear_booting_state(worker.worker_id)
         else:
             self._clear_booting_state(worker.worker_id)
-        await self._registry.set_worker_status(worker.worker_id, WorkerStatus.OFFLINE, message)
-        removed = await self._registry.record_health_failure(worker.worker_id)
+        await self._registry.set_worker_status(
+            worker.worker_id,
+            WorkerStatus.OFFLINE,
+            message,
+            generation=worker.registration_generation,
+        )
+        removed = await self._registry.record_health_failure(
+            worker.worker_id,
+            generation=worker.registration_generation,
+            error=message,
+        )
         if removed:
             self._clear_booting_state(worker.worker_id)
             logger.warning("Removed unhealthy worker %s after 3 failures", worker.worker_id)

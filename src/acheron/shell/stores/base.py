@@ -67,12 +67,18 @@ class WorkerStore(ABC):
         ...
 
     @abstractmethod
-    async def record_health_failure(self, worker_id: str) -> bool:
-        """Record a failed health check. Returns True if the worker was removed."""
+    async def record_health_failure(
+        self,
+        worker_id: str,
+        *,
+        generation: int | None = None,
+        error: str = "health check failed",
+    ) -> bool:
+        """Record a failed health check if it belongs to the current lifecycle."""
         ...
 
     @abstractmethod
-    async def record_health_success(self, worker_id: str) -> None:
+    async def record_health_success(self, worker_id: str, *, generation: int | None = None) -> None:
         """Record a successful health check.
 
         Resets the failure counter to 0, sets status to HEALTHY, and clears
@@ -86,6 +92,8 @@ class WorkerStore(ABC):
         worker_id: str,
         status: WorkerStatus,
         last_error: str | None,
+        *,
+        generation: int | None = None,
     ) -> None:
         """Update status and error without touching failures.
 

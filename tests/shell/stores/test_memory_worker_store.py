@@ -119,24 +119,56 @@ class TestInMemoryWorkerStore:
 
 class TestHealthTracking:
     @pytest.mark.asyncio
-    async def test_health_success_resets_counter(self) -> None:
+    @pytest.mark.parametrize(
+        "error",
+        [
+            "https://user:password@example.internal:8443/health",
+            "worker.internal:443 connection refused",
+            'Traceback (most recent call last):\\n  File \\"/srv/worker.py\\", line 1',
+            "Authorization: Bearer super-secret-token",
+            "provider request_id=req-123 body=private",
+        ],
+    )
+    async def test_failure_history_redacts_sensitive_diagnostics(self, error: str) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w-1", "http://a", "http", _tts_caps())
-        await reg.record_health_failure("w-1")
-        await reg.record_health_failure("w-1")
+        worker = await reg.get("w-1")
+        assert worker is not None
+        await reg.record_health_failure("w-1", generation=worker.registration_generation, error=error)
+        stored = await reg.get("w-1")
+        assert stored is not None
+        message = stored.error_history[-1].message
+        assert all(
+            secret not in message for secret in ("password", "example.internal", "super-secret-token", "req-123")
+        )
+        assert "Traceback" not in message
+
+    @pytest.mark.asyncio
+    async def test_health_success_resets_counter_and_preserves_history(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w-1", "http://a", "http", _tts_caps())
+        worker = await reg.get("w-1")
+        assert worker is not None
+        await reg.record_health_failure("w-1", generation=worker.registration_generation, error="connection refused")
+        await reg.record_health_failure("w-1", generation=worker.registration_generation, error="Bearer secret")
         w = await reg.get("w-1")
         assert w is not None
         assert w.consecutive_failures == 2
-        await reg.record_health_success("w-1")
+        await reg.record_health_success("w-1", generation=w.registration_generation)
         w = await reg.get("w-1")
         assert w is not None
         assert w.consecutive_failures == 0
+        assert w.last_error is None
+        assert len(w.error_history) == 2
+        assert "secret" not in w.error_history[-1].message
 
     @pytest.mark.asyncio
     async def test_health_failure_increments(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w-1", "http://a", "http", _tts_caps())
-        removed = await reg.record_health_failure("w-1")
+        worker = await reg.get("w-1")
+        assert worker is not None
+        removed = await reg.record_health_failure("w-1", generation=worker.registration_generation, error="down")
         assert not removed
         w = await reg.get("w-1")
         assert w is not None
@@ -146,11 +178,30 @@ class TestHealthTracking:
     async def test_removed_after_max_failures(self) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("w-1", "http://a", "http", _tts_caps())
-        await reg.record_health_failure("w-1")
-        await reg.record_health_failure("w-1")
-        removed = await reg.record_health_failure("w-1")
+        worker = await reg.get("w-1")
+        assert worker is not None
+        for _ in range(3):
+            removed = await reg.record_health_failure("w-1", generation=worker.registration_generation, error="down")
         assert removed
         assert await reg.get("w-1") is None
+        await reg.register("w-1", "http://b", "http", _tts_caps())
+        restored = await reg.get("w-1")
+        assert restored is not None
+        assert restored.consecutive_failures == 0
+        assert len(restored.error_history) == 3
+
+    @pytest.mark.asyncio
+    async def test_stale_generation_is_ignored_after_reregistration(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("w-1", "http://a", "http", _tts_caps())
+        old = await reg.get("w-1")
+        assert old is not None
+        await reg.register("w-1", "http://b", "http", _tts_caps())
+        current = await reg.get("w-1")
+        assert current is not None
+        assert not await reg.record_health_failure("w-1", generation=old.registration_generation, error="stale")
+        assert current.consecutive_failures == 0
+        assert current.error_history == ()
 
     @pytest.mark.asyncio
     async def test_health_failure_nonexistent(self) -> None:

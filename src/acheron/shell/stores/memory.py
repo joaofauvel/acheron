@@ -7,7 +7,7 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from acheron.core.models import WorkerStatus
+from acheron.core.models import WorkerErrorEvent, WorkerStatus, sanitize_worker_error
 from acheron.shell.job_store import JobQuery
 from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
 
@@ -20,8 +20,26 @@ if TYPE_CHECKING:
 class InMemoryWorkerStore(WorkerStore):
     """In-memory store of registered workers. State is lost on process restart."""
 
+    _tombstone_ttl_seconds = 3600.0
+    _max_history = 10
+
     def __init__(self) -> None:
         self._workers: dict[str, RegisteredWorker] = {}
+        self._worker_history_tombstones: dict[str, tuple[float, tuple[WorkerErrorEvent, ...]]] = {}
+        self._generations: dict[str, int] = {}
+
+    def _purge_expired_tombstones(self) -> None:
+        now = time.time()
+        for worker_id, (expires_at, _) in tuple(self._worker_history_tombstones.items()):
+            if expires_at <= now:
+                del self._worker_history_tombstones[worker_id]
+
+    def _history_for(self, worker_id: str) -> tuple[WorkerErrorEvent, ...]:
+        worker = self._workers.get(worker_id)
+        if worker is not None:
+            return worker.error_history[-self._max_history :]
+        tombstone = self._worker_history_tombstones.get(worker_id)
+        return tombstone[1] if tombstone is not None else ()
 
     async def register(
         self,
@@ -34,6 +52,10 @@ class InMemoryWorkerStore(WorkerStore):
         """Register a new worker or re-register an existing one."""
         from acheron.shell.registry import RegisteredWorker  # noqa: PLC0415
 
+        self._purge_expired_tombstones()
+        history = self._history_for(worker_id)
+        generation = self._generations.get(worker_id, 0) + 1
+        self._generations[worker_id] = generation
         self._workers[worker_id] = RegisteredWorker(
             worker_id=worker_id,
             endpoint=endpoint,
@@ -43,11 +65,20 @@ class InMemoryWorkerStore(WorkerStore):
             last_health_check=time.time(),
             metadata=metadata or {},
             booting_since=None,
+            registration_generation=generation,
+            error_history=history,
         )
+        self._worker_history_tombstones.pop(worker_id, None)
 
     async def unregister(self, worker_id: str) -> None:
-        """Remove a worker from the store."""
-        self._workers.pop(worker_id, None)
+        """Remove a worker while retaining bounded history for re-registration."""
+        self._purge_expired_tombstones()
+        worker = self._workers.pop(worker_id, None)
+        if worker is not None:
+            self._worker_history_tombstones[worker_id] = (
+                time.time() + self._tombstone_ttl_seconds,
+                worker.error_history[-self._max_history :],
+            )
 
     async def get(self, worker_id: str) -> RegisteredWorker | None:
         """Look up a worker by ID."""
@@ -70,22 +101,35 @@ class InMemoryWorkerStore(WorkerStore):
             if src in w.capabilities.supported_languages_in and dst in w.capabilities.supported_languages_out
         )
 
-    async def record_health_failure(self, worker_id: str) -> bool:
-        """Record a failed health check. Returns True if the worker was removed."""
+    async def record_health_failure(
+        self,
+        worker_id: str,
+        *,
+        generation: int | None = None,
+        error: str = "health check failed",
+    ) -> bool:
+        """Record a failed health check and retain its sanitized history."""
+        self._purge_expired_tombstones()
         worker = self._workers.get(worker_id)
-        if worker is None:
+        if worker is None or (generation is not None and worker.registration_generation != generation):
             return False
         worker.consecutive_failures += 1
         worker.last_health_check = time.time()
+        message = sanitize_worker_error(error)
+        worker.last_error = message
+        worker.status = WorkerStatus.OFFLINE
+        event = WorkerErrorEvent(datetime.now(UTC), message, worker.consecutive_failures)
+        worker.error_history = (*worker.error_history, event)[-self._max_history :]
         if worker.consecutive_failures >= self.max_failures:
             await self.unregister(worker_id)
             return True
         return False
 
-    async def record_health_success(self, worker_id: str) -> None:
+    async def record_health_success(self, worker_id: str, *, generation: int | None = None) -> None:
         """Record a successful health check, resetting the failure counter and status."""
+        self._purge_expired_tombstones()
         worker = self._workers.get(worker_id)
-        if worker is not None:
+        if worker is not None and (generation is None or worker.registration_generation == generation):
             worker.consecutive_failures = 0
             worker.last_health_check = time.time()
             worker.status = WorkerStatus.HEALTHY
@@ -97,10 +141,14 @@ class InMemoryWorkerStore(WorkerStore):
         worker_id: str,
         status: WorkerStatus,
         last_error: str | None,
+        *,
+        generation: int | None = None,
     ) -> None:
         """Update the worker's status and last_error."""
+        self._purge_expired_tombstones()
         worker = self._workers.get(worker_id)
-        if worker is not None:
+        if worker is not None and (generation is None or worker.registration_generation == generation):
+            last_error = sanitize_worker_error(last_error) if last_error else None
             if status == WorkerStatus.BOOTING:
                 if worker.status != WorkerStatus.BOOTING or worker.booting_since is None:
                     worker.booting_since = time.time()

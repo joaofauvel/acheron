@@ -206,18 +206,35 @@ class AdminJobResponse(BaseModel):
     job: JobResponse
 
 
+class WorkerErrorEventResponse(BaseModel):
+    """Public projection of one worker health failure."""
+
+    timestamp: datetime
+    message: str
+    consecutive_failures: int
+
+    @field_validator("timestamp")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "worker error timestamps must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
+
+
 class WorkerResponse(BaseModel):
-    """Response for a single worker."""
+    """Sanitized response for a single worker."""
 
     worker_id: str
-    endpoint: str
-    transport: str
+    endpoint: str | None = None
+    transport: str = ""
     worker_type: str
     consecutive_failures: int
     status: WorkerStatus = WorkerStatus.HEALTHY
     booting_elapsed_seconds: float | None = None
     booting_timeout_seconds: float = 600.0
     last_error: str | None = None
+    error_history: list[WorkerErrorEventResponse] = Field(default_factory=list, max_length=10)
     max_input_tokens: int | None = None
 
 
@@ -252,12 +269,20 @@ class InputResponse(BaseModel):
 
 
 class WorkerCapability(BaseModel):
-    """Capability descriptor for a registered worker."""
+    """Allowlisted capability descriptor for a registered worker."""
 
     worker_id: str
     worker_type: str
-    model_source: str | None = None
-    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    supported_languages_in: list[str] = Field(default_factory=list)
+    supported_languages_out: list[str] = Field(default_factory=list)
+    supported_formats_in: list[str] = Field(default_factory=list)
+    supported_formats_out: list[str] = Field(default_factory=list)
+    max_payload_bytes: int | None = None
+    max_input_tokens: int | None = None
+    batch_capable: bool = False
+    speakers: list[str] = Field(default_factory=list)
+    model_source: str | None = Field(default=None, exclude=True)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict, exclude=True)
 
 
 class PlanStepResponse(BaseModel):
@@ -323,6 +348,7 @@ __all__ = [
     "ReapStaleResponse",
     "StepError",
     "WorkerCapability",
+    "WorkerErrorEventResponse",
     "WorkerListResponse",
     "WorkerResponse",
 ]

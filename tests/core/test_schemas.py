@@ -307,21 +307,19 @@ def test_capabilities_response_defaults_worker_inventory_to_empty() -> None:
     assert response.workers == []
 
 
-def test_worker_capability_preserves_model_and_metadata() -> None:
+def test_worker_capability_excludes_internal_model_and_metadata() -> None:
     response = WorkerCapability(
         worker_id="tts-1",
         worker_type="tts",
         model_source="Qwen/Qwen3-TTS",
         metadata={"voice": "vivian"},
     )
-    assert response.model_dump()["metadata"] == {"voice": "vivian"}
+    assert "metadata" not in response.model_dump()
+    assert "model_source" not in response.model_dump()
 
 
 def test_capabilities_response_typed_mode_round_trips() -> None:
-    """CapabilitiesResponse must round-trip a typed-mode payload
-    (``language_pairs=[]`` + workers with model_source and metadata)
-    without losing ordering or nested metadata.
-    """
+    """CapabilitiesResponse accepts typed-mode payloads but redacts internal fields on output."""
     payload = {
         "language_pairs": [],
         "workers": [
@@ -345,8 +343,8 @@ def test_capabilities_response_typed_mode_round_trips() -> None:
     assert response.workers[0].metadata == {"voice": "vivian"}
     assert response.workers[1].metadata == {"voice": "aria"}
     dumped = response.model_dump(mode="json")
-    assert dumped["workers"][0]["metadata"] == {"voice": "vivian"}
-    assert dumped["workers"][1]["model_source"] == "Qwen/Qwen3-TTS"
+    assert "metadata" not in dumped["workers"][0]
+    assert "model_source" not in dumped["workers"][1]
 
 
 def test_plan_response_exposes_structure_without_internal_payload() -> None:

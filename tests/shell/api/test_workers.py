@@ -126,14 +126,14 @@ class TestWorkerRoutes:
         monkeypatch.setattr(time, "time", lambda: 2100.0)
 
         unauthenticated = await client_with_token.get("/workers")
-        worker = {w["worker_id"]: w for w in unauthenticated.json()["workers"]}["asr-1"]
-        assert worker["booting_elapsed_seconds"] == 100.0
-        assert worker["last_error"] is None
+        anonymous_worker = {w["worker_id"]: w for w in unauthenticated.json()["workers"]}["asr-1"]
+        assert anonymous_worker["booting_elapsed_seconds"] == 100.0
+        assert anonymous_worker["last_error"] == "secret internal error"
+        assert anonymous_worker["endpoint"] is None
 
         authenticated = await client_with_token.get("/workers", headers={"Authorization": token})
-        worker = {w["worker_id"]: w for w in authenticated.json()["workers"]}["asr-1"]
-        assert worker["booting_elapsed_seconds"] == 100.0
-        assert worker["last_error"] == "secret internal error"
+        authenticated_worker = {w["worker_id"]: w for w in authenticated.json()["workers"]}["asr-1"]
+        assert authenticated_worker == anonymous_worker
 
     @pytest.mark.asyncio
     async def test_list_workers_unauthenticated_scrubs_last_error(self, client_with_token: AsyncClient) -> None:
@@ -147,11 +147,12 @@ class TestWorkerRoutes:
         response = await client_with_token.get("/workers")
         assert response.status_code == 200
         for w in response.json()["workers"]:
-            assert w["last_error"] is None
+            assert w["endpoint"] is None
+            assert "http://" not in str(w)
 
     @pytest.mark.asyncio
     async def test_list_workers_authenticated_includes_last_error(self, client_with_token: AsyncClient) -> None:
-        """SEC-010: with a valid registration token, ``last_error`` is returned."""
+        """Registration tokens receive the same sanitized public projection."""
         await client_with_token.post(
             "/workers",
             json=_WORKER_PAYLOAD,

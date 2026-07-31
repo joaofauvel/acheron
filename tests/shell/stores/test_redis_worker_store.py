@@ -244,14 +244,36 @@ class TestHealthTracking:
         assert await store.get("w-1") is None
 
     @pytest.mark.asyncio
-    async def test_success_resets_counter(self, store: RedisWorkerStore) -> None:
+    async def test_success_resets_counter_and_preserves_history(self, store: RedisWorkerStore) -> None:
         await store.register("w-1", "http://a", "http", _tts_caps())
-        await store.record_health_failure("w-1")
-        await store.record_health_failure("w-1")
-        await store.record_health_success("w-1")
+        worker = await store.get("w-1")
+        assert worker is not None
+        await store.record_health_failure("w-1", generation=worker.registration_generation, error="connection refused")
+        await store.record_health_failure("w-1", generation=worker.registration_generation, error="Bearer secret")
+        await store.record_health_success("w-1", generation=worker.registration_generation)
         w = await store.get("w-1")
         assert w is not None
         assert w.consecutive_failures == 0
+        assert w.last_error is None
+        assert len(w.error_history) == 2
+        assert "secret" not in w.error_history[-1].message
+
+    @pytest.mark.asyncio
+    async def test_removal_tombstone_preserves_history_for_reregistration(self, store: RedisWorkerStore) -> None:
+        await store.register("w-tombstone", "http://a", "http", _tts_caps())
+        worker = await store.get("w-tombstone")
+        assert worker is not None
+        for _ in range(3):
+            removed = await store.record_health_failure(
+                "w-tombstone", generation=worker.registration_generation, error="down"
+            )
+        assert removed
+        await store.register("w-tombstone", "http://b", "http", _tts_caps())
+        restored = await store.get("w-tombstone")
+        assert restored is not None
+        assert restored.registration_generation == worker.registration_generation + 1
+        assert restored.consecutive_failures == 0
+        assert len(restored.error_history) == 3
 
 
 class TestConcurrentStatusTransitions:
