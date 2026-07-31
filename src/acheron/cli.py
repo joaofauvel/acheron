@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+import math
 import os
 import ssl
 import sys
@@ -79,15 +80,17 @@ def _get_client() -> AcheronClient:
     The default scheme is HTTPS to match the dev/HTTPS orchestrator (compose
     sets ``ACHERON_TLS_CERT_FILE``). Callers can override the URL with
     ``ACHERON_URL``. Trust store resolution lives in :func:`_resolve_trust_store`.
-    The registration token from ``ACHERON_REGISTRATION_TOKEN`` is forwarded
-    as a bearer header on mutating requests (uploads, job submission, resume).
+    ``ACHERON_REGISTRATION_TOKEN`` authorizes normal mutating requests, while
+    ``ACHERON_ADMIN_TOKEN`` authorizes operator-only administrative requests.
     """
     base_url = os.environ.get("ACHERON_URL", _DEFAULT_BASE_URL)
     registration_token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
+    admin_token = os.environ.get("ACHERON_ADMIN_TOKEN")
     return AcheronClient(
         base_url,
         verify=_resolve_trust_store(),
         registration_token=registration_token,
+        admin_token=admin_token,
     )
 
 
@@ -306,6 +309,31 @@ def _print_retry_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
         console.print(f"Try: {remediation}")
 
 
+def _parse_duration_seconds(value: str) -> float:
+    """Parse an operator duration such as ``60s`` or ``5m``."""
+    text = value.strip().lower()
+    if not text:
+        raise click.BadParameter("duration must not be empty")
+    multiplier = 1.0
+    if text[-1] in {"s", "m", "h", "d"}:
+        multiplier = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}[text[-1]]
+        text = text[:-1]
+    try:
+        seconds = float(text) * multiplier
+    except ValueError as exc:
+        raise click.BadParameter("duration must be a number with optional s/m/h/d suffix") from exc
+    if seconds < 0 or not math.isfinite(seconds):
+        raise click.BadParameter("duration must be finite and non-negative")
+    return seconds
+
+
+def _require_admin_token() -> None:
+    if not os.environ.get("ACHERON_ADMIN_TOKEN"):
+        raise click.ClickException(
+            "ACHERON_ADMIN_TOKEN is required for this command; set it to the configured operator token."
+        )
+
+
 def _detect_source_type(path: str) -> str | None:
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
     return _SOURCE_TYPE_MAP.get(ext)
@@ -364,6 +392,38 @@ def main(verbose: bool) -> None:  # noqa: FBT001
 @main.group()
 def job() -> None:
     """Manage jobs."""
+
+
+@job.command("archive")
+@click.argument("job_ids", nargs=-1, required=True)
+def archive_jobs(job_ids: tuple[str, ...]) -> None:
+    """Archive terminal jobs without deleting their records."""
+    _require_admin_token()
+    client = _get_client()
+    for job_id in job_ids:
+        result = _run(client.archive_job(job_id), on_http_error=_print_http_error)
+        console.print(f"job={result.job_id} status={result.status.value} archived={result.archived_at is not None}")
+
+
+@main.group()
+def admin() -> None:
+    """Perform operator-only recovery actions."""
+
+
+@admin.command("reap-stuck")
+@click.option("--older-than", required=True)
+@click.option("--reason", required=True)
+def reap_stuck(older_than: str, reason: str) -> None:
+    """Mark persisted running jobs stale and failed."""
+    _require_admin_token()
+    seconds = _parse_duration_seconds(older_than)
+    result = _run(
+        _get_client().reap_stale_jobs(older_than_seconds=seconds, reason=reason),
+        on_http_error=_print_http_error,
+    )
+    console.print(f"reaped={result.reaped}")
+    for job_id in result.job_ids:
+        console.print(job_id)
 
 
 @job.command()

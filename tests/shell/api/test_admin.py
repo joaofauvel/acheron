@@ -97,8 +97,8 @@ async def test_unexpected_admin_error_uses_sanitized_type(
     monkeypatch.setattr(admin_routes, "_not_implemented", lambda _action: RuntimeError("internal details"))
     app.state.orchestrator.settings.orchestrator.admin_token = "a" * 32
     response = await client.post(
-        "/admin/jobs/reap-stale",
-        json={"older_than_seconds": 60, "reason": "restart"},
+        "/admin/jobs/cleanup",
+        json={"retention_seconds": 60, "apply": True},
         headers={"Authorization": "Bearer " + "a" * 32},
     )
 
@@ -136,7 +136,6 @@ def test_admin_request_models_are_strict_and_validate_durations() -> None:
 @pytest.mark.parametrize(
     ("path", "body"),
     [
-        ("/admin/jobs/reap-stale", {"older_than_seconds": 60, "reason": "restart"}),
         ("/admin/jobs/missing/mark-failed", {"reason": "operator"}),
         ("/admin/jobs/missing/archive", {"apply": True}),
         ("/admin/jobs/cleanup", {"retention_seconds": 60, "apply": True}),
@@ -188,6 +187,79 @@ def test_job_query_requires_utc_and_finite_non_negative_age() -> None:
         )
     query = JobQuery(since=datetime(2026, 1, 1, tzinfo=UTC), include_archived=True)
     assert query.since == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_reap_stale_route_marks_orphan_and_audits_once(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    now = datetime.now(UTC)
+    orphan = TrackedJob(
+        job_id="orphan",
+        request=EpubRequest("/input/book.epub", "en", "es"),
+        strategy=ExecutorStrategy.SEQUENTIAL,
+        status=PlanStatus.RUNNING,
+        created_at=now - timedelta(minutes=5),
+        last_persisted_at=now - timedelta(minutes=5),
+    )
+    await orch._job_store.put(orphan)  # noqa: SLF001
+    orch._job_store._jobs["orphan"].last_persisted_at = now - timedelta(minutes=5)  # noqa: SLF001
+    orch.settings.orchestrator.admin_token = "a" * 32
+
+    response = await client.post(
+        "/admin/jobs/reap-stale",
+        json={"older_than_seconds": 60, "reason": " orphaned_by_restart\nprivate detail"},
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"reaped": 1, "job_ids": ["orphan"]}
+    stored = await orch.get_job("orphan")
+    assert stored is not None
+    assert stored.status is PlanStatus.FAILED
+    assert stored.result is not None
+    assert stored.result.errors[-1].message == "orphaned_by_restart"
+    assert len(orch.admin_audits) == 1
+    assert orch.admin_audits[0].affected_count == 1
+
+
+@pytest.mark.asyncio
+async def test_archive_route_is_idempotent_and_preserves_job(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    job = TrackedJob(
+        job_id="archive-me",
+        request=EpubRequest("/input/book.epub", "en", "es"),
+        strategy=ExecutorStrategy.SEQUENTIAL,
+        status=PlanStatus.COMPLETED,
+    )
+    await orch._job_store.put(job)  # noqa: SLF001
+    orch.settings.orchestrator.admin_token = "a" * 32
+    headers = {"Authorization": "Bearer " + "a" * 32}
+
+    first = await client.post("/admin/jobs/archive-me/archive", json={}, headers=headers)
+    second = await client.post("/admin/jobs/archive-me/archive", json={}, headers=headers)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json()["job"]["archived_at"] is not None
+    assert second.json()["job"]["archived_at"] == first.json()["job"]["archived_at"]
+    assert len(orch.admin_audits) == 2
+
+
+@pytest.mark.asyncio
+async def test_admin_mark_failed_missing_job_is_structured(client: AsyncClient) -> None:
+    app = _app(client)
+    app.state.orchestrator.settings.orchestrator.admin_token = "a" * 32
+    response = await client.post(
+        "/admin/jobs/missing/mark-failed",
+        json={"reason": "operator"},
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["type"] == "JobNotFoundError"
+    assert len(app.state.orchestrator.admin_audits) == 1
 
 
 @pytest.mark.asyncio

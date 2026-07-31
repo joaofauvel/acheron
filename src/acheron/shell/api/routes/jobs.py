@@ -88,7 +88,7 @@ def _resolve_submission_source(orch: Orchestrator, source_path: str) -> Path:
             (data_dir / source_path).resolve().relative_to(data_dir.resolve())
         except ValueError:
             logger.warning("Rejected source path %r outside data directory %s", source_path, data_dir)
-            msg = f"Invalid source_path {source_path!r}: must resolve to a regular file"
+            msg = "Invalid source_path: must resolve to a regular file under the configured input directory"
             raise HTTPException(status_code=422, detail=msg) from exc
         logger.warning("Source path %r was not readable under data directory %s", source_path, data_dir)
         msg = f"source_path not found: {source_path}"

@@ -6,7 +6,7 @@ import asyncio
 import copy
 import hashlib
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -194,6 +194,44 @@ def _single_step_plan(job_id: str) -> Plan:
 
 
 class TestOrchestrator:
+    @pytest.mark.asyncio
+    async def test_reap_stale_jobs_excludes_active_and_terminal(self, tmp_path: Path) -> None:
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        now = datetime(2026, 7, 30, tzinfo=UTC)
+        for job_id, status in (
+            ("job-orphaned", PlanStatus.RUNNING),
+            ("job-active", PlanStatus.RUNNING),
+            ("job-terminal", PlanStatus.COMPLETED),
+        ):
+            await jobs.put(
+                TrackedJob(
+                    job_id=job_id,
+                    request=EpubRequest("/input/book.epub", "en", "es"),
+                    strategy=ExecutorStrategy.SEQUENTIAL,
+                    status=status,
+                    created_at=now - timedelta(minutes=5),
+                    last_persisted_at=now - timedelta(minutes=5),
+                )
+            )
+            jobs._jobs[job_id].last_persisted_at = now - timedelta(seconds=61)  # noqa: SLF001
+        orch._active_jobs.add("job-active")  # noqa: SLF001
+
+        reaped = await orch.reap_stale_jobs(older_than_seconds=60, reason=" orphaned_by_restart\nsecret", now=now)
+
+        assert reaped.job_ids == ("job-orphaned",)
+        orphan = await jobs.get("job-orphaned")
+        assert orphan is not None
+        assert orphan.status is PlanStatus.FAILED
+        assert orphan.result is not None
+        assert orphan.result.errors[-1].message == "orphaned_by_restart"
+        active = await jobs.get("job-active")
+        terminal = await jobs.get("job-terminal")
+        assert active is not None
+        assert active.status is PlanStatus.RUNNING
+        assert terminal is not None
+        assert terminal.status is PlanStatus.COMPLETED
+
     def test_default_step_cache_is_in_memory(self, tmp_path: Path) -> None:
         """ARCH-008: omitting step_cache constructs an InMemoryStepCache (decoupled from PlanCache.data_dir)."""
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)

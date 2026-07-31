@@ -80,6 +80,45 @@ async def test_submit_job_round_trips_warnings() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_admin_client_uses_admin_token_for_reap_and_archive() -> None:
+    reap_route = respx.post("http://test/admin/jobs/reap-stale").mock(
+        return_value=httpx.Response(200, json={"reaped": 1, "job_ids": ["job-1"]})
+    )
+    archive_route = respx.post("http://test/admin/jobs/job-1/archive").mock(
+        return_value=httpx.Response(200, json={"job": _job_response_payload(status="completed")})
+    )
+    client = AcheronClient(
+        "http://test",
+        registration_token="registration-token",
+        admin_token="admin-token",
+    )
+
+    reap = await client.reap_stale_jobs(older_than_seconds=60, reason="restart")
+    archived = await client.archive_job("job-1")
+
+    assert reap.job_ids == ["job-1"]
+    assert archived.job_id == "job-1"
+    assert reap_route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+    assert archive_route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_admin_client_mark_failed_does_not_use_registration_token() -> None:
+    route = respx.post("http://test/admin/jobs/job-1/mark-failed").mock(
+        return_value=httpx.Response(200, json={"job": _job_response_payload(status="failed")})
+    )
+
+    result = await AcheronClient("http://test", registration_token="registration-token").mark_job_failed(
+        "job-1", reason="operator"
+    )
+
+    assert result.status is PlanStatus.FAILED
+    assert "authorization" not in route.calls.last.request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_get_job_round_trips_download_url() -> None:
     respx.get("http://test/jobs/job-1").mock(
         return_value=httpx.Response(

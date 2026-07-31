@@ -12,6 +12,7 @@ import aiofiles
 import httpx
 
 from acheron.core.schemas import (
+    AdminJobResponse,
     CapabilitiesResponse,
     CostSummaryResponse,
     InputResponse,
@@ -21,6 +22,7 @@ from acheron.core.schemas import (
     JobResponse,
     LanguagePair,
     PlanResponse,
+    ReapStaleResponse,
     WorkerCapability,
     WorkerListResponse,
     WorkerResponse,
@@ -51,6 +53,7 @@ class AcheronClient:
         *,
         verify: bool | str | Path = True,
         registration_token: str | None = None,
+        admin_token: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._transport = transport
@@ -58,6 +61,13 @@ class AcheronClient:
         self._verify: bool | str | Path = verify
         self._ssl_verify: bool | ssl.SSLContext = _ssl_context_for(verify)
         self._registration_token: str | None = registration_token
+        self._admin_token: str | None = admin_token
+
+    def _admin_headers(self) -> dict[str, str]:
+        """Headers applied only to operator administrative mutations."""
+        if self._admin_token is None:
+            return {}
+        return {"Authorization": f"Bearer {self._admin_token}"}
 
     def _mutation_headers(self) -> dict[str, str]:
         """Headers applied to mutating (POST) requests when a registration token is configured; empty otherwise."""
@@ -116,6 +126,48 @@ class AcheronClient:
             resp = await client.get("/cost", params={"window": window})
             resp.raise_for_status()
             return CostSummaryResponse.model_validate(resp.json())
+
+    async def reap_stale_jobs(self, *, older_than_seconds: float, reason: str) -> ReapStaleResponse:
+        """Reap persisted running jobs that have exceeded the requested age."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post(
+                "/admin/jobs/reap-stale",
+                json={"older_than_seconds": older_than_seconds, "reason": reason},
+                headers=self._admin_headers(),
+            )
+            resp.raise_for_status()
+            return ReapStaleResponse.model_validate(resp.json())
+
+    async def mark_job_failed(self, job_id: str, *, reason: str) -> JobResponse:
+        """Mark one persisted job failed through the administrative API."""
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post(
+                f"/admin/jobs/{job_id}/mark-failed",
+                json={"reason": reason},
+                headers=self._admin_headers(),
+            )
+            resp.raise_for_status()
+            return AdminJobResponse.model_validate(resp.json()).job
+
+    async def archive_job(self, job_id: str, *, reason: str | None = None) -> JobResponse:
+        """Archive one job through the administrative API."""
+        payload: dict[str, bool | str] = {"apply": True}
+        if reason is not None:
+            payload["reason"] = reason
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post(
+                f"/admin/jobs/{job_id}/archive",
+                json=payload,
+                headers=self._admin_headers(),
+            )
+            resp.raise_for_status()
+            return AdminJobResponse.model_validate(resp.json()).job
 
     async def cancel_job(self, job_id: str) -> JobResponse:
         """Cancel an active job and return its persisted terminal result."""

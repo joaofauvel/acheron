@@ -74,14 +74,20 @@ async def execute_admin_action[T](
     orch: Orchestrator,
     operation: Callable[[], Awaitable[T]],
     *,
-    details: AdminAuditDetails | None = None,
+    details: AdminAuditDetails | Callable[[T], AdminAuditDetails] | None = None,
 ) -> T:
     """Run a route operation and audit its normal or exceptional completion."""
+    static_details = details if isinstance(details, AdminAuditDetails) else None
     try:
         result = await operation()
     except Exception:
-        reason = details.reason if details and details.reason else "administrative route operation failed"
+        reason = (
+            static_details.reason
+            if static_details and static_details.reason
+            else "administrative route operation failed"
+        )
         record_admin_failure(request, orch, reason=reason)
         raise
-    record_admin_success(request, orch, details=details)
+    resolved_details = details(result) if callable(details) else static_details
+    record_admin_success(request, orch, details=resolved_details)
     return result

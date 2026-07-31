@@ -561,6 +561,35 @@ def test_job_resume() -> None:
 
 
 @respx.mock
+def test_admin_reap_stuck_renders_ids_and_uses_admin_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.post(f"{_BASE_URL}/admin/jobs/reap-stale").mock(
+        return_value=httpx.Response(200, json={"reaped": 2, "job_ids": ["job-1", "job-2"]})
+    )
+
+    result = CliRunner().invoke(main, ["admin", "reap-stuck", "--older-than", "60s", "--reason", "restart"])
+
+    assert result.exit_code == 0, result.output
+    assert "reaped=2" in result.output
+    assert "job-1" in result.output
+    assert "job-2" in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+    assert json.loads(route.calls.last.request.content) == {"older_than_seconds": 60.0, "reason": "restart"}
+
+
+@respx.mock
+def test_archive_requires_admin_token_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ACHERON_ADMIN_TOKEN", raising=False)
+    route = respx.post(f"{_BASE_URL}/admin/jobs/job-1/archive").mock(return_value=httpx.Response(200))
+
+    result = CliRunner().invoke(main, ["job", "archive", "job-1"])
+
+    assert result.exit_code != 0
+    assert "ACHERON_ADMIN_TOKEN" in result.output
+    assert not route.called
+
+
+@respx.mock
 def test_jobs_empty() -> None:
     respx.get(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": []}))
     runner = CliRunner()

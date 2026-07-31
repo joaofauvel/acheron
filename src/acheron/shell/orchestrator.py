@@ -9,7 +9,7 @@ import secrets
 import time
 import uuid
 import weakref
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -71,6 +71,20 @@ if TYPE_CHECKING:
     from acheron.shell.stores.base import JobStore, WorkerStore
 
 logger = logging.getLogger(__name__)
+_MAX_ADMIN_REASON_LENGTH = 256
+
+
+@dataclass(frozen=True)
+class ReapResult:
+    """Identifiers of jobs transitioned by stale-job reaping."""
+
+    job_ids: tuple[str, ...]
+
+
+def _sanitize_admin_reason(reason: str) -> str:
+    """Bound operator-provided lifecycle reasons before persisting them."""
+    first_line = next((line.strip() for line in reason.splitlines() if line.strip()), "")
+    return (first_line or "administrative action")[:_MAX_ADMIN_REASON_LENGTH]
 
 
 def _log_unexpected(label: str, exc: BaseException) -> None:
@@ -921,6 +935,119 @@ class Orchestrator:
     async def get_job(self, job_id: str) -> TrackedJob | None:
         """Retrieve a tracked job by ID."""
         return await self._job_store.get(job_id)
+
+    def _job_lifecycle_lock(self, job_id: str) -> asyncio.Lock:
+        lock = self._job_locks.get(job_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._job_locks[job_id] = lock
+        return lock
+
+    async def mark_failed_by_admin(self, job_id: str, *, reason: str) -> TrackedJob:
+        """Mark a non-active, non-terminal job failed from an admin operation."""
+        async with self._job_lifecycle_lock(job_id):
+            await self._wait_for_background_persists(
+                job_id,
+                max_wait=self._settings.orchestrator.shutdown_drain_seconds,
+                raise_on_timeout=True,
+            )
+            tracked = await self._job_store.get(job_id)
+            if tracked is None:
+                message = f"Job not found: {job_id}"
+                raise JobNotFoundError(message)
+            if tracked.job_id in self._active_jobs:
+                message = f"Job {job_id} has an active execution task"
+                raise JobAlreadyRunningError(message, remediation=f"acheron job status {job_id}")
+            if tracked.status in {PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL}:
+                message = f"Job {job_id} is already {tracked.status.value}"
+                raise JobNotCancellableError(message, remediation=f"acheron job status {job_id}")
+
+            safe_reason = _sanitize_admin_reason(reason)
+            tracked.status = PlanStatus.FAILED
+            if tracked.result is None:
+                tracked.result = replace(
+                    self._new_failure_result(tracked, safe_reason),
+                    errors=(
+                        StepError(
+                            step_id=None,
+                            worker_type=None,
+                            worker_id=None,
+                            message=safe_reason,
+                            timestamp=datetime.now(UTC),
+                        ),
+                    ),
+                )
+            else:
+                tracked.result = replace(
+                    tracked.result,
+                    status=PlanStatus.FAILED,
+                    errors=(
+                        *tracked.result.errors,
+                        StepError(
+                            step_id=None,
+                            worker_type=None,
+                            worker_id=None,
+                            message=safe_reason,
+                            timestamp=datetime.now(UTC),
+                        ),
+                    ),
+                )
+            await self._job_store.put(tracked)
+            await self._publish_event(tracked, "job failed by administrator")
+            await self._events.finish(job_id)
+            return tracked
+
+    async def reap_stale_jobs(
+        self,
+        *,
+        older_than_seconds: float,
+        reason: str,
+        now: datetime | None = None,
+    ) -> ReapResult:
+        """Transition persisted stale jobs that have no active execution task."""
+        effective_now = datetime.now(UTC) if now is None else now
+        if effective_now.tzinfo is None or effective_now.utcoffset() is None:
+            raise ValueError("now must be timezone-aware")
+        effective_now = effective_now.astimezone(UTC)
+        candidates = await self._job_store.list(
+            JobQuery(status=PlanStatus.RUNNING, older_than_seconds=older_than_seconds),
+            now=effective_now,
+        )
+        reaped: list[str] = []
+        for candidate in sorted(candidates, key=lambda job: job.job_id):
+            if candidate.job_id in self._active_jobs:
+                continue
+            try:
+                await self.mark_failed_by_admin(candidate.job_id, reason=reason)
+            except JobAlreadyRunningError, JobNotCancellableError:
+                continue
+            reaped.append(candidate.job_id)
+        return ReapResult(job_ids=tuple(reaped))
+
+    async def archive_job(self, job_id: str) -> TrackedJob:
+        """Archive a terminal job while preserving its complete record."""
+        async with self._job_lifecycle_lock(job_id):
+            await self._wait_for_background_persists(
+                job_id,
+                max_wait=self._settings.orchestrator.shutdown_drain_seconds,
+                raise_on_timeout=True,
+            )
+            tracked = await self._job_store.get(job_id)
+            if tracked is None:
+                message = f"Job not found: {job_id}"
+                raise JobNotFoundError(message)
+            if tracked.archived_at is not None:
+                return tracked
+            if tracked.job_id in self._active_jobs or tracked.status not in {
+                PlanStatus.COMPLETED,
+                PlanStatus.FAILED,
+                PlanStatus.PARTIAL,
+            }:
+                message = f"Job {job_id} is {tracked.status.value} and cannot be archived"
+                raise JobNotCancellableError(message, remediation=f"acheron job status {job_id}")
+            archived = await self._job_store.archive(job_id)
+            await self._publish_event(archived, "job archived")
+            return archived
 
     async def get_job_cost(self, job_id: str) -> JobCostResponse | None:
         """Map persisted per-step cost evidence to the public cost response."""

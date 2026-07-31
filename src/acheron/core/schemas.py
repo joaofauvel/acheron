@@ -193,6 +193,19 @@ class JobListResponse(BaseModel):
     jobs: list[JobResponse]
 
 
+class ReapStaleResponse(BaseModel):
+    """Response for stale-job reaping."""
+
+    reaped: int
+    job_ids: list[str]
+
+
+class AdminJobResponse(BaseModel):
+    """Response for an administrative job mutation."""
+
+    job: JobResponse
+
+
 class WorkerResponse(BaseModel):
     """Response for a single worker."""
 
@@ -290,6 +303,7 @@ class PlanResponse(BaseModel):
 
 
 __all__ = [
+    "AdminJobResponse",
     "CapabilitiesResponse",
     "CostBreakdownResponse",
     "CostEstimateResponse",
@@ -306,6 +320,7 @@ __all__ = [
     "OutputSummary",
     "PlanResponse",
     "PlanStepResponse",
+    "ReapStaleResponse",
     "StepError",
     "WorkerCapability",
     "WorkerListResponse",
