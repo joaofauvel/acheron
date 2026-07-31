@@ -13,12 +13,12 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from acheron.shell.api.admin_audit import record_admin_failure
 from acheron.shell.api.input_boundary import InputRequestBoundary
 from acheron.shell.api.routes import admin, capabilities, cost, inputs, job_outputs, jobs, partials, plans, workers
 from acheron.shell.api.schemas import AdminErrorResponse
 from acheron.shell.cache import PlanCache
 from acheron.shell.config import Settings, load_settings
-from acheron.shell.job_store import AdminActionAudit
 from acheron.shell.logging_context import ContextFilter, bind_request_id
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores import create_job_store, create_worker_store
@@ -95,26 +95,18 @@ def create_app(  # noqa: C901, PLR0915
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
         request.state.request_id = request_id
         with bind_request_id(request_id):
-            return await call_next(request)
-
-    def _admin_action(path: str) -> str:
-        parts = [part for part in path.split("/") if part]
-        return "/".join(parts[1:]) if parts and parts[0] == "admin" else path
-
-    def _record_admin_failure(request: Request, *, reason: str) -> None:
-        if not request.url.path.startswith("/admin/") or getattr(request.state, "admin_audit_recorded", False):
-            return
-        request.state.admin_audit_recorded = True
-        orchestrator.record_admin_audit(
-            AdminActionAudit(
-                request_id=getattr(request.state, "request_id", ""),
-                action=_admin_action(request.url.path),
-                reason=reason,
-                job_ids=(),
-                affected_count=0,
-                result="failure",
-            )
-        )
+            try:
+                return await call_next(request)
+            except Exception:
+                if not request.url.path.startswith("/admin/"):
+                    raise
+                record_admin_failure(request, orchestrator, reason="unexpected administrative route failure")
+                error = AdminErrorResponse(
+                    type="AdminInternalError",
+                    message="Administrative request failed",
+                    remediation="Inspect the service logs and retry the operation.",
+                )
+                return JSONResponse(status_code=500, content={"detail": error.model_dump()})
 
     @app.exception_handler(RequestValidationError)
     async def _admin_validation_error(request: Request, exc: RequestValidationError) -> Response:
@@ -122,7 +114,7 @@ def create_app(  # noqa: C901, PLR0915
             from fastapi.exception_handlers import request_validation_exception_handler  # noqa: PLC0415
 
             return await request_validation_exception_handler(request, exc)
-        _record_admin_failure(request, reason="request validation failed")
+        record_admin_failure(request, orchestrator, reason="request validation failed")
         error = AdminErrorResponse(
             type="AdminRequestValidationError",
             message="Administrative request validation failed",
@@ -145,16 +137,16 @@ def create_app(  # noqa: C901, PLR0915
                     "remediation": None,
                 }
         error = AdminErrorResponse.model_validate(detail)
-        _record_admin_failure(request, reason=error.message)
+        record_admin_failure(request, orchestrator, reason=error.message)
         return JSONResponse(status_code=exc.status_code, content={"detail": error.model_dump()})
 
     @app.exception_handler(Exception)
     async def _admin_unexpected_error(request: Request, exc: Exception) -> Response:
         if not request.url.path.startswith("/admin/"):
             raise exc
-        _record_admin_failure(request, reason="unexpected administrative route failure")
+        record_admin_failure(request, orchestrator, reason="unexpected administrative route failure")
         error = AdminErrorResponse(
-            type=type(exc).__name__,
+            type="AdminInternalError",
             message="Administrative request failed",
             remediation="Inspect the service logs and retry the operation.",
         )

@@ -14,6 +14,34 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 _logger = logging.getLogger(__name__)
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+_MIN_TOKEN_LENGTH = 32
+_PUBLIC_TOKEN_VALUES = frozenset(
+    {
+        "dev-registration-token",
+        "dev-admin-token",
+        "example-registration-token",
+        "example-admin-token",
+    }
+)
+
+
+def _validate_credential_token(token: str | None, *, setting_name: str) -> None:
+    """Reject weak credential tokens while allowing optional credentials to be absent."""
+    if token is None:
+        return
+    env_name = f"ACHERON_{setting_name.upper()}"
+    if token in _PUBLIC_TOKEN_VALUES:
+        msg = (
+            f"{env_name} is set to the publicly-known value {token!r}. "
+            "Generate a fresh token with `openssl rand -hex 32` and set it in your environment."
+        )
+        raise RuntimeError(msg)
+    if len(token) < _MIN_TOKEN_LENGTH:
+        msg = (
+            f"{env_name} is too short ({len(token)} chars); minimum is {_MIN_TOKEN_LENGTH} characters. "
+            "Generate a fresh token with `openssl rand -hex 32`."
+        )
+        raise RuntimeError(msg)
 
 
 class UnsetEnvVarError(ValueError):

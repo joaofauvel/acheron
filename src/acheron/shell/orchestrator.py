@@ -44,7 +44,7 @@ from acheron.core.planner import ChunkingLimits, compile_plan
 from acheron.core.schemas import CostBreakdownResponse, CostSummaryResponse, JobCostResponse
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
-from acheron.shell.config import Settings, load_settings
+from acheron.shell.config import Settings, _validate_credential_token, load_settings
 from acheron.shell.cost import aggregate_cost_basis, build_cost_breakdown, estimate_cost
 from acheron.shell.executors import create_executor
 from acheron.shell.health import HealthMonitor
@@ -76,28 +76,6 @@ logger = logging.getLogger(__name__)
 def _log_unexpected(label: str, exc: BaseException) -> None:
     """Log an unexpected exception with a label; the caller decides whether to re-raise."""
     logger.exception("%s: %s", label, exc)
-
-
-_MIN_TOKEN_LENGTH = 32
-_PUBLIC_TOKEN_VALUES = frozenset({"dev-registration-token", "dev-admin-token"})
-
-
-def _validate_credential_token(token: str | None, *, setting_name: str) -> None:
-    if token is None:
-        return
-    env_name = f"ACHERON_{setting_name.upper()}"
-    if token in _PUBLIC_TOKEN_VALUES:
-        msg = (
-            f"{env_name} is set to the publicly-known value {token!r}. "
-            "Generate a fresh token with `openssl rand -hex 32` and set it in your environment."
-        )
-        raise RuntimeError(msg)
-    if len(token) < _MIN_TOKEN_LENGTH:
-        msg = (
-            f"{env_name} is too short ({len(token)} chars); minimum is {_MIN_TOKEN_LENGTH} characters. "
-            "Generate a fresh token with `openssl rand -hex 32`."
-        )
-        raise RuntimeError(msg)
 
 
 def _validate_registration_token(token: str | None) -> None:

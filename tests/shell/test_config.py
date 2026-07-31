@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from acheron.shell.config import OrchestratorSettings, Settings, load_settings
+from acheron.shell.config import OrchestratorSettings, Settings, _validate_credential_token, load_settings
 
 
 def test_default_settings() -> None:
@@ -244,6 +244,18 @@ def test_admin_token_structured_env_beats_flat_alias(monkeypatch: pytest.MonkeyP
 
 def test_admin_token_is_optional() -> None:
     assert Settings().orchestrator.admin_token is None
+
+
+@pytest.mark.parametrize("value", ["short", "a" * 31])
+def test_admin_token_rejects_values_below_minimum_length(value: str) -> None:
+    with pytest.raises(RuntimeError, match="too short"):
+        _validate_credential_token(value, setting_name="admin_token")
+
+
+@pytest.mark.parametrize("value", ["dev-admin-token", "example-admin-token"])
+def test_admin_token_rejects_known_public_values(value: str) -> None:
+    with pytest.raises(RuntimeError, match="publicly-known"):
+        _validate_credential_token(value, setting_name="admin_token")
 
 
 def test_open_registration_yaml_override(monkeypatch: pytest.MonkeyPatch) -> None:
