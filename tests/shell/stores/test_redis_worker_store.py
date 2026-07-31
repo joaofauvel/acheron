@@ -58,6 +58,29 @@ class TestRegister:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_register_persists_ttl_bound_generation_key(self, store: RedisWorkerStore, redis_url: str) -> None:
+        from acheron.shell.stores.redis import _WORKER_GENERATION_KEY
+
+        redis_client = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        generation_key = _WORKER_GENERATION_KEY.format(worker_id="w-ttl")
+        try:
+            await redis_client.set(generation_key, 7, ex=60)
+            assert await redis_client.ttl(generation_key) > 0
+        finally:
+            await redis_client.aclose()
+
+        await store.register("w-ttl", "http://host:8001", "http", _tts_caps())
+        worker = await store.get("w-ttl")
+        assert worker is not None
+        assert worker.registration_generation == 8
+
+        redis_client = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        try:
+            assert await redis_client.ttl(generation_key) == -1
+        finally:
+            await redis_client.aclose()
+
+    @pytest.mark.asyncio
     async def test_unregister(self, store: RedisWorkerStore, redis_url: str) -> None:
         from acheron.shell.stores.redis import _WORKER_GENERATION_KEY, _WORKER_HISTORY_TOMBSTONE_KEY
 

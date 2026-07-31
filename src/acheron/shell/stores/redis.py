@@ -179,6 +179,7 @@ local history = redis.call("HGET", worker_key, "error_history")
 if not history then
   history = redis.call("GET", tombstone_key) or "[]"
 end
+redis.call("PERSIST", generation_key)
 local generation = redis.call("INCR", generation_key)
 redis.call("DEL", worker_key)
 redis.call("HSET", worker_key,

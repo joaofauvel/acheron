@@ -39,7 +39,7 @@ _WORKER_JSON_SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 _WORKER_BEARER_RE = re.compile(r"\bbearer\s+[^\s,;]+", re.IGNORECASE)
-_WORKER_TRACE_START_RE = re.compile(r"^\s*(?:traceback\b|file\s+|during handling|the above exception)", re.IGNORECASE)
+_WORKER_TRACE_START_RE = re.compile(r"\btraceback\b|^\s*(?:file\s+|during handling|the above exception)", re.IGNORECASE)
 _WORKER_DIAGNOSTIC_RE = re.compile(
     r"\b(?:request[_ -]?id|request\s+(?:body|details|payload)|"
     r"provider\s+(?:request|details|body|response)|response\s*(?:body|details|data)?|"
@@ -57,6 +57,14 @@ def sanitize_worker_error(message: str) -> str:
         if not stripped:
             continue
         if _WORKER_TRACE_START_RE.search(stripped):
+            break
+        provider_diagnostic = _WORKER_PROVIDER_RE.search(stripped)
+        if provider_diagnostic:
+            prefix = stripped[: provider_diagnostic.start()].rstrip(" :;,-")
+            if prefix:
+                lines.append(f"{prefix}; provider check failed")
+            else:
+                lines.append("provider check failed")
             break
         diagnostic = _WORKER_DIAGNOSTIC_RE.search(stripped)
         if diagnostic:

@@ -46,6 +46,18 @@ class TestWorkerErrorSanitization:
         assert "worker.py" not in sanitized
         assert "leaked" not in sanitized
 
+    def test_provider_error_without_diagnostic_marker_is_replaced_with_safe_summary(self) -> None:
+        sanitized = sanitize_worker_error("provider aws error: upstream unavailable")
+        assert sanitized == "provider check failed"
+        assert "upstream unavailable" not in sanitized
+
+    def test_prefixed_traceback_discards_traceback_and_exception_lines(self) -> None:
+        sanitized = sanitize_worker_error("error Traceback (most recent call last):\nValueError: leaked")
+        assert sanitized == "health check failed"
+        assert "Traceback" not in sanitized
+        assert "ValueError" not in sanitized
+        assert "leaked" not in sanitized
+
 
 class TestEnums:
     @pytest.mark.parametrize(
