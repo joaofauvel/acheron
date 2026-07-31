@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, HTTPException, Request
 
 from acheron.core.errors import AcheronError, JobNotFoundError, sanitise_exc_message
@@ -12,10 +14,14 @@ from acheron.shell.api.routes.jobs import _tracked_to_response
 from acheron.shell.api.schemas import (
     AdminErrorResponse,
     ArchiveRequest,
+    CleanupCandidateResponse,
+    CleanupFailureResponse,
     CleanupRequest,
+    CleanupResponse,
     MarkFailedRequest,
     ReapStaleRequest,
 )
+from acheron.shell.retention import CleanupReport, RetentionPolicy
 
 router = APIRouter()
 
@@ -136,8 +142,66 @@ async def archive(
     )
 
 
-@router.post("/jobs/cleanup")
+def _cleanup_response(report: CleanupReport) -> CleanupResponse:
+    return CleanupResponse(
+        apply=report.apply,
+        candidates=[
+            CleanupCandidateResponse(
+                job_id=candidate.job_id,
+                status=candidate.status.value,
+                archived=candidate.archived,
+                relative_paths=list(candidate.relative_paths),
+                reclaimable_bytes=candidate.reclaimable_bytes,
+            )
+            for candidate in report.candidates
+        ],
+        deleted_job_ids=list(report.deleted_job_ids),
+        failures=[
+            CleanupFailureResponse(
+                job_id=failure.job_id,
+                relative_paths=list(failure.relative_paths),
+                message=failure.message,
+            )
+            for failure in report.failures
+        ],
+        deleted_count=report.deleted_count,
+        deleted_bytes=report.deleted_bytes,
+        reclaimable_bytes=report.reclaimable_bytes,
+    )
+
+
+@router.post("/cleanup", response_model=CleanupResponse)
 async def cleanup(
+    body: CleanupRequest,
+    request: Request,
+    orch: OrchestratorDep,
+    _token: AdminTokenDep,
+) -> CleanupResponse:
+    """Preview or apply terminal-job retention cleanup."""
+
+    async def operation() -> CleanupResponse:
+        successful = body.keep_successful_seconds or body.retention_seconds
+        failed = body.keep_failed_seconds or body.retention_seconds
+        if successful is None or failed is None:
+            raise ValueError("retention windows are required")
+        policy = RetentionPolicy(timedelta(seconds=successful), timedelta(seconds=failed))
+        report = await orch.apply_cleanup(policy) if body.apply else await orch.preview_cleanup(policy)
+        return _cleanup_response(report)
+
+    return await execute_admin_action(
+        request,
+        orch,
+        operation,
+        details=lambda result: AdminAuditDetails(
+            reason=body.reason,
+            job_ids=tuple(result.deleted_job_ids),
+            affected_count=result.deleted_count,
+        ),
+    )
+
+
+@router.post("/jobs/cleanup")
+async def cleanup_legacy(
     body: CleanupRequest,
     request: Request,
     orch: OrchestratorDep,

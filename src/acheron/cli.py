@@ -405,6 +405,35 @@ def archive_jobs(job_ids: tuple[str, ...]) -> None:
         console.print(f"job={result.job_id} status={result.status.value} archived={result.archived_at is not None}")
 
 
+@main.command()
+@click.option("--keep-successful", required=True)
+@click.option("--keep-failed", required=True)
+@click.option("--apply", is_flag=True)
+def cleanup(keep_successful: str, keep_failed: str, apply: bool) -> None:  # noqa: FBT001
+    """Preview or apply terminal-job retention cleanup."""
+    _require_admin_token()
+    result = _run(
+        _get_client().cleanup(
+            keep_successful_seconds=_parse_duration_seconds(keep_successful),
+            keep_failed_seconds=_parse_duration_seconds(keep_failed),
+            apply=apply,
+        ),
+        on_http_error=_print_http_error,
+    )
+    mode = "applied" if result.apply else "preview"
+    console.print(
+        f"cleanup={mode} candidates={len(result.candidates)} deleted={result.deleted_count} "
+        f"deleted_bytes={result.deleted_bytes} reclaimable_bytes={result.reclaimable_bytes}"
+    )
+    for candidate in result.candidates:
+        console.print(
+            f"job={candidate.job_id} status={candidate.status} "
+            f"bytes={candidate.reclaimable_bytes} paths={','.join(candidate.relative_paths) or '-'}"
+        )
+    for failure in result.failures:
+        console.print(f"failure job={failure.job_id}: {failure.message}")
+
+
 @main.group()
 def admin() -> None:
     """Perform operator-only recovery actions."""

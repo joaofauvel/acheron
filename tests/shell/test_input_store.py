@@ -253,6 +253,14 @@ class TestSave:
 
 
 class TestResolveSourcePath:
+    def test_normalize_source_path_uses_one_relative_identity(self, tmp_path: Path) -> None:
+        store = InputStore(tmp_path)
+        path = tmp_path / "inputs" / "id" / "book.epub"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"book")
+        assert store.normalize_source_path(str(path)) == "inputs/id/book.epub"
+        assert store.normalize_source_path("inputs/id/./book.epub") == "inputs/id/book.epub"
+
     @pytest.mark.asyncio
     async def test_resolve_source_path_returns_regular_file(self, tmp_path: Path) -> None:
         store = InputStore(tmp_path)

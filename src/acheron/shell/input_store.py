@@ -148,6 +148,17 @@ class InputStore:
             content_type=content_type,
         )
 
+    def normalize_source_path(self, source_path: str) -> str:
+        """Return the canonical POSIX identity of a source relative to ``data_dir``."""
+        candidate = Path(source_path)
+        if not source_path:
+            raise InputPathError("source path must not be empty")
+        resolved = (candidate if candidate.is_absolute() else self._data_dir / candidate).resolve(strict=False)
+        try:
+            return resolved.relative_to(self._data_dir).as_posix()
+        except ValueError as exc:
+            raise InputPathError("source path is outside the data directory") from exc
+
     def resolve_source_path(self, source_path: str) -> Path:
         """Resolve ``source_path`` to a regular file under the data directory.
 

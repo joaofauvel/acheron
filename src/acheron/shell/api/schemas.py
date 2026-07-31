@@ -1,8 +1,10 @@
 """Pydantic models for API request validation."""
 
+from __future__ import annotations
+
 import math
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from acheron.core.models import JsonValue  # noqa: TC001
 from acheron.core.schemas import (
@@ -69,7 +71,13 @@ class AdminErrorResponse(BaseModel):
 
 
 class _AdminDurationRequest(_StrictRequest):
-    @field_validator("older_than_seconds", "retention_seconds", check_fields=False)
+    @field_validator(
+        "older_than_seconds",
+        "retention_seconds",
+        "keep_successful_seconds",
+        "keep_failed_seconds",
+        check_fields=False,
+    )
     @classmethod
     def _validate_duration(cls, value: float) -> float:
         if isinstance(value, bool) or not math.isfinite(value) or value < 0:
@@ -101,9 +109,49 @@ class ArchiveRequest(_StrictRequest):
 class CleanupRequest(_AdminDurationRequest):
     """Request body for retention cleanup."""
 
-    retention_seconds: float = Field(gt=0)
+    keep_successful_seconds: float | None = Field(default=None, gt=0)
+    keep_failed_seconds: float | None = Field(default=None, gt=0)
+    retention_seconds: float | None = Field(default=None, gt=0)
     apply: bool = False
     reason: str | None = None
+
+    @model_validator(mode="after")
+    def _require_retention_windows(self) -> CleanupRequest:
+        if self.retention_seconds is None and (
+            self.keep_successful_seconds is None or self.keep_failed_seconds is None
+        ):
+            raise ValueError("keep_successful_seconds and keep_failed_seconds are required")
+        return self
+
+
+class CleanupCandidateResponse(BaseModel):
+    """Public cleanup candidate."""
+
+    job_id: str
+    status: str
+    archived: bool = False
+    relative_paths: list[str]
+    reclaimable_bytes: int
+
+
+class CleanupFailureResponse(BaseModel):
+    """Public cleanup failure."""
+
+    job_id: str
+    relative_paths: list[str]
+    message: str
+
+
+class CleanupResponse(BaseModel):
+    """Public cleanup preview or application report."""
+
+    apply: bool
+    candidates: list[CleanupCandidateResponse]
+    deleted_job_ids: list[str]
+    failures: list[CleanupFailureResponse]
+    deleted_count: int
+    deleted_bytes: int
+    reclaimable_bytes: int
 
 
 class WorkerCapabilitiesRequest(_StrictRequest):
@@ -125,7 +173,10 @@ __all__ = [
     "AdminErrorResponse",
     "ArchiveRequest",
     "CapabilitiesResponse",
+    "CleanupCandidateResponse",
+    "CleanupFailureResponse",
     "CleanupRequest",
+    "CleanupResponse",
     "ErrorResponse",
     "InputResponse",
     "JobListResponse",

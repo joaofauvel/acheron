@@ -79,6 +79,13 @@ class TestPlanCache:
         cache.save_plan(_sample_plan())
         assert (tmp_path / "plan-abcd1234" / "plan.json").exists()
 
+    def test_delete_plan_returns_size_and_is_idempotent(self, tmp_path: Path) -> None:
+        cache = PlanCache(tmp_path)
+        cache.save_plan(_sample_plan())
+        expected = (tmp_path / "plan-abcd1234" / "plan.json").stat().st_size
+        assert cache.delete_plan("plan-abcd1234") == expected
+        assert cache.delete_plan("plan-abcd1234") == 0
+
     def test_load_rejects_plan_id_path_escape(self, tmp_path: Path) -> None:
         """A plan_id with traversal segments must raise CacheMissError before touching the filesystem."""
         outside = tmp_path.parent / "escaped-plan"
@@ -93,6 +100,14 @@ class TestStepCache:
     @pytest_asyncio.fixture
     async def cache(self, tmp_path: Path) -> StepCache:
         return StepCache(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_delete_job_returns_size_and_is_idempotent(self, cache: StepCache) -> None:
+        await cache.save_outputs("job-1", "step-1", ())
+        expected = (cache.data_dir / "job-1" / "step-1" / "manifest.json").stat().st_size
+        assert await cache.job_size("job-1") == expected
+        assert await cache.delete_job("job-1") == expected
+        assert await cache.delete_job("job-1") == 0
 
     @pytest.mark.asyncio
     async def test_save_and_load_outputs(self, cache: StepCache) -> None:

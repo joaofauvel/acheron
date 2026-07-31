@@ -27,6 +27,7 @@ from acheron.core.schemas import (
     WorkerListResponse,
     WorkerResponse,
 )
+from acheron.shell.api.schemas import CleanupResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
@@ -168,6 +169,29 @@ class AcheronClient:
             )
             resp.raise_for_status()
             return AdminJobResponse.model_validate(resp.json()).job
+
+    async def cleanup(
+        self,
+        *,
+        keep_successful_seconds: float,
+        keep_failed_seconds: float,
+        apply: bool = False,
+        reason: str | None = None,
+    ) -> CleanupResponse:
+        """Preview or apply terminal-job retention cleanup."""
+        payload: dict[str, bool | float | str] = {
+            "keep_successful_seconds": keep_successful_seconds,
+            "keep_failed_seconds": keep_failed_seconds,
+            "apply": apply,
+        }
+        if reason is not None:
+            payload["reason"] = reason
+        async with httpx.AsyncClient(
+            base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
+        ) as client:
+            resp = await client.post("/admin/cleanup", json=payload, headers=self._admin_headers())
+            resp.raise_for_status()
+            return CleanupResponse.model_validate(resp.json())
 
     async def cancel_job(self, job_id: str) -> JobResponse:
         """Cancel an active job and return its persisted terminal result."""

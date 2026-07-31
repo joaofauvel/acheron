@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
+import os
 import re
-import shutil
+import stat
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,6 +25,7 @@ _plan_adapter = TypeAdapter(Plan)
 _output_adapter = TypeAdapter(tuple[OutputFile, ...])
 
 _PLAN_ID_RE = re.compile(r"\Aplan-[0-9a-f]+\Z")
+_SYMLINK_MODE = stat.S_IFMT(0o120000)
 
 
 def _validate_step_cache_part(value: str, field: str) -> None:
@@ -44,6 +47,77 @@ def _checksum(path: Path) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _safe_path(data_dir: Path, relative: Path) -> Path:
+    """Resolve a cache scope without permitting traversal or symlink roots."""
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        msg = f"Invalid cache path: {relative}"
+        raise CacheError(msg)
+    path = data_dir / relative
+    try:
+        path.resolve(strict=False).relative_to(data_dir.resolve())
+    except ValueError as exc:
+        msg = f"Cache path escapes data directory: {relative}"
+        raise CacheError(msg) from exc
+    return path
+
+
+def _tree_size(path: Path) -> int:
+    """Count regular-file bytes below a cache path without following symlinks."""
+    try:
+        entry_stat = path.lstat()
+    except FileNotFoundError:
+        return 0
+    if stat.S_IFMT(entry_stat.st_mode) == _SYMLINK_MODE:
+        msg = f"Refusing symlink cache path: {path.name}"
+        raise CacheError(msg)
+    if not path.is_dir():
+        return entry_stat.st_size
+    total = 0
+    for entry in path.iterdir():
+        total += _tree_size(entry)
+    return total
+
+
+def _delete_entry(parent_fd: int, name: str) -> None:
+    """Delete one directory entry using no-follow descriptor operations."""
+    try:
+        child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    except FileNotFoundError:
+        return
+    except NotADirectoryError:
+        entry_stat = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        if stat.S_IFMT(entry_stat.st_mode) == _SYMLINK_MODE:
+            msg = f"Refusing symlink cache path: {name}"
+            raise CacheError(msg) from None
+        os.unlink(name, dir_fd=parent_fd)
+        return
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            msg = f"Refusing symlink cache path: {name}"
+            raise CacheError(msg) from exc
+        raise
+    try:
+        with os.scandir(child_fd) as entries:
+            for entry in entries:
+                _delete_entry(child_fd, entry.name)
+    finally:
+        os.close(child_fd)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def _delete_tree(path: Path) -> int:
+    """Delete one cache scope, refusing symlinks and returning removed bytes."""
+    size = _tree_size(path)
+    if not path.exists():
+        return 0
+    parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        _delete_entry(parent_fd, path.name)
+    finally:
+        os.close(parent_fd)
+    return size
 
 
 class PlanCache:
@@ -100,6 +174,11 @@ class PlanCache:
             return self._plan_file(plan_id).exists()
         except CacheMissError:
             return False
+
+    def delete_plan(self, plan_id: str) -> int:
+        """Delete one plan scope and return its reclaimed bytes."""
+        self._plan_file(plan_id)
+        return _delete_tree(_safe_path(self._data_dir, Path(plan_id)))
 
 
 class StepCache:
@@ -164,7 +243,17 @@ class StepCache:
         """Remove selected step manifests while retaining unrelated job cache entries."""
         for step_id in step_ids:
             step_dir = _step_dir(self._data_dir, job_id, step_id)
-            await asyncio.to_thread(shutil.rmtree, step_dir, ignore_errors=True)
+            await asyncio.to_thread(_delete_tree, step_dir)
+
+    async def job_size(self, job_id: str) -> int:
+        """Return bytes in one job cache scope without following symlinks."""
+        _validate_step_cache_part(job_id, "job_id")
+        return await asyncio.to_thread(_tree_size, _safe_path(self._data_dir, Path(job_id)))
+
+    async def delete_job(self, job_id: str) -> int:
+        """Delete one job cache scope and return its reclaimed bytes."""
+        _validate_step_cache_part(job_id, "job_id")
+        return await asyncio.to_thread(_delete_tree, _safe_path(self._data_dir, Path(job_id)))
 
     @staticmethod
     def _write_manifest(step_dir: Path, manifest_file: Path, manifest: bytes) -> None:
@@ -231,3 +320,16 @@ class InMemoryStepCache:
         for step_id in step_ids:
             _validate_step_cache_part(step_id, "step_id")
             self._outputs.pop((job_id, step_id), None)
+
+    async def job_size(self, job_id: str) -> int:
+        """Return bytes in one in-memory job scope."""
+        _validate_step_cache_part(job_id, "job_id")
+        return 0
+
+    async def delete_job(self, job_id: str) -> int:
+        """Delete one in-memory job scope."""
+        _validate_step_cache_part(job_id, "job_id")
+        keys = [key for key in self._outputs if key[0] == job_id]
+        for key in keys:
+            self._outputs.pop(key, None)
+        return 0

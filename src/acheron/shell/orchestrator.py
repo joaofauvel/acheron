@@ -6,11 +6,13 @@ import asyncio
 import contextlib
 import logging
 import secrets
+import shutil
+import threading
 import time
 import uuid
-import weakref
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import (
@@ -56,6 +58,7 @@ from acheron.shell.local_handlers import (
     all_languages_caps,
 )
 from acheron.shell.logging_context import bind_job_id
+from acheron.shell.retention import CleanupReport, RetentionPolicy, RetentionService
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 from acheron.shell.stores.base import StoreError
@@ -72,6 +75,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _MAX_ADMIN_REASON_LENGTH = 256
+_LOW_DISK_RATIO = 0.10
+_CRITICAL_DISK_RATIO = 0.05
 
 
 @dataclass(frozen=True)
@@ -185,7 +190,19 @@ class Orchestrator:
         self._background_persists_by_job: dict[str, set[asyncio.Task[None]]] = {}
         self._lifecycle_lock = asyncio.Lock()
         self._active_jobs: set[str] = set()
-        self._job_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._job_lock_registry_mutex = threading.Lock()
+        self._job_locks: dict[str, asyncio.Lock] = {}
+        self._input_lock_registry_mutex = threading.Lock()
+        self._input_locks: dict[str, asyncio.Lock] = {}
+        self._retention = RetentionService(
+            self._job_store,
+            self._cache,
+            self._step_cache,
+            data_dir=canonical_data_dir,
+            job_lock=self._job_lifecycle_lock,
+            input_lock=self._input_reference_lock,
+            active_jobs=lambda: self._active_jobs,
+        )
         self._started = False
         self._shutting_down = False
         self._health_providers = create_health_providers(self._settings)
@@ -233,6 +250,15 @@ class Orchestrator:
         finally:
             with contextlib.suppress(OSError):
                 probe.unlink()
+        try:
+            usage = shutil.disk_usage(data_dir)
+        except OSError as exc:
+            logger.warning("Unable to inspect free space for data dir %s: %s", data_dir, exc)
+        else:
+            if usage.total and usage.free / usage.total < _CRITICAL_DISK_RATIO:
+                logger.error("Data dir %s has less than 5%% free space", data_dir)
+            elif usage.total and usage.free / usage.total < _LOW_DISK_RATIO:
+                logger.warning("Data dir %s has less than 10%% free space", data_dir)
 
     async def _register_built_in_local_workers(self) -> None:
         """Register in-process local workers for orchestration-level steps.
@@ -465,29 +491,31 @@ class Orchestrator:
             strategy.value,
         )
 
-        plan = await self._compile_plan(request, strategy, job_id=job_id)
-        self._cache.save_plan(plan)
-        await self._invalidate_handler_cache()
-        logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
+        input_identity = self._input_identity(request.source_path)
+        async with self._input_reference_lock(input_identity):
+            plan = await self._compile_plan(request, strategy, job_id=job_id)
+            self._cache.save_plan(plan)
+            await self._invalidate_handler_cache()
+            logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
-        tracked = TrackedJob(
-            job_id=job_id,
-            request=request,
-            strategy=strategy,
-            label=label,
-            retries_from=retries_from,
-            plan=plan,
-            status=PlanStatus.RUNNING,
-        )
-        async with self._lifecycle_lock:
-            if self._shutting_down:
-                msg = "Orchestrator is shutting down; new jobs are not accepted"
-                raise RuntimeError(msg)
-            await self._job_store.put(tracked)
-            self._active_jobs.add(tracked.job_id)
-            self._track_execution_task(tracked)
+            tracked = TrackedJob(
+                job_id=job_id,
+                request=request,
+                strategy=strategy,
+                label=label,
+                retries_from=retries_from,
+                plan=plan,
+                status=PlanStatus.RUNNING,
+            )
+            async with self._lifecycle_lock:
+                if self._shutting_down:
+                    msg = "Orchestrator is shutting down; new jobs are not accepted"
+                    raise RuntimeError(msg)
+                await self._job_store.put(tracked)
+                self._active_jobs.add(tracked.job_id)
+                self._track_execution_task(tracked)
 
-        return tracked
+            return tracked
 
     async def submit_retry(
         self,
@@ -938,11 +966,37 @@ class Orchestrator:
         return await self._job_store.get(job_id)
 
     def _job_lifecycle_lock(self, job_id: str) -> asyncio.Lock:
-        lock = self._job_locks.get(job_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._job_locks[job_id] = lock
-        return lock
+        with self._job_lock_registry_mutex:
+            lock = self._job_locks.get(job_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._job_locks[job_id] = lock
+            return lock
+
+    def _input_identity(self, source_path: str) -> str:
+        candidate = Path(source_path)
+        data_dir = self._settings.orchestrator.data_dir
+        resolved = (candidate if candidate.is_absolute() else data_dir / candidate).resolve(strict=False)
+        try:
+            return resolved.relative_to(data_dir).as_posix()
+        except ValueError:
+            return f"external:{resolved}"
+
+    def _input_reference_lock(self, identity: str) -> asyncio.Lock:
+        with self._input_lock_registry_mutex:
+            lock = self._input_locks.get(identity)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._input_locks[identity] = lock
+            return lock
+
+    async def preview_cleanup(self, policy: RetentionPolicy, *, now: datetime | None = None) -> CleanupReport:
+        """Preview retention cleanup without filesystem or record mutation."""
+        return await self._retention.preview(policy, now=now)
+
+    async def apply_cleanup(self, policy: RetentionPolicy, *, now: datetime | None = None) -> CleanupReport:
+        """Apply retention cleanup with lifecycle and input-reference locking."""
+        return await self._retention.apply(policy, now=now)
 
     async def mark_failed_by_admin(self, job_id: str, *, reason: str) -> TrackedJob:
         """Mark a non-active, non-terminal job failed from an admin operation."""
