@@ -153,6 +153,39 @@ class TestJobRoutes:
         assert str(tmp_path) not in detail
 
     @pytest.mark.asyncio
+    async def test_retry_route_sanitizes_absolute_stored_source_oserror(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        from acheron.shell.job_store import TrackedJob
+
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        orch = app.state.orchestrator
+        await orch._job_store.put(  # noqa: SLF001
+            TrackedJob(
+                job_id="job-absolute-source",
+                request=EpubRequest(str(tmp_path / "input" / "book.epub"), "en", "es"),
+                strategy=ExecutorStrategy.STREAMING,
+            )
+        )
+
+        def fail_resolve(_path: Path, *, strict: bool = False) -> Path:
+            raise OSError("/private/data/book.epub: permission denied")
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+        response = await client.post("/jobs/job-absolute-source/retry", json={})
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Invalid source_path: source file is unavailable"
+        assert "/private/data" not in response.text
+
+    @pytest.mark.asyncio
     async def test_retry_route_accepts_valid_replacement_after_original_deleted(
         self,
         client: AsyncClient,

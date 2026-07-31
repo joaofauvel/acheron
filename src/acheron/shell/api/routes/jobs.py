@@ -282,6 +282,10 @@ def _resolve_stored_source(orch: Orchestrator, source_path: str) -> str:
     if candidate.is_absolute():
         try:
             relative_path = candidate.resolve(strict=False).relative_to(data_dir.resolve())
+        except OSError as exc:
+            logger.warning("Stored source path %r could not be resolved under %s: %s", source_path, data_dir, exc)
+            msg = "Invalid source_path: source file is unavailable"
+            raise HTTPException(status_code=422, detail=msg) from exc
         except ValueError as exc:
             logger.warning("Stored source path %r is outside data directory %s", source_path, data_dir)
             msg = "Invalid stored source_path"
