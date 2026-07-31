@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from acheron.core.schemas import InputResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
@@ -45,8 +45,22 @@ async def upload_input(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return InputResponse(
+        input_id=stored.input_id,
         source_path=stored.source_path,
         filename=stored.filename,
         size_bytes=stored.size_bytes,
         content_type=stored.content_type,
     )
+
+
+@router.delete("/{input_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_input(
+    input_id: str,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> None:
+    """Delete a temporary uploaded input; the operation is idempotent."""
+    try:
+        InputStore(orch.settings.orchestrator.data_dir).delete(input_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

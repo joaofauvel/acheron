@@ -32,6 +32,14 @@ class _StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class VoiceRangeRequest(_StrictRequest):
+    """Strict wire representation of an inclusive chapter voice range."""
+
+    start_chapter: int
+    end_chapter: int
+    voice: str
+
+
 class SubmitJobRequest(_StrictRequest):
     """Request body for job submission."""
 
@@ -42,6 +50,9 @@ class SubmitJobRequest(_StrictRequest):
     executor_strategy: str = "streaming"
     asr_model: str | None = None
     label: str | None = None
+    voice: str | None = None
+    voice_map: list[VoiceRangeRequest] = Field(default_factory=list)
+    input_id: str | None = None
 
 
 class RetryJobRequest(_StrictRequest):
@@ -53,6 +64,8 @@ class RetryJobRequest(_StrictRequest):
     executor_strategy: str | None = None
     asr_model: str | None = None
     label: str | None = None
+    voice: str | None = None
+    voice_map: list[VoiceRangeRequest] | None = None
 
 
 class ResumeJobRequest(_StrictRequest):
@@ -193,6 +206,7 @@ __all__ = [
     "RetryJobRequest",
     "StepError",
     "SubmitJobRequest",
+    "VoiceRangeRequest",
     "WorkerCapabilitiesRequest",
     "WorkerCapability",
     "WorkerListResponse",

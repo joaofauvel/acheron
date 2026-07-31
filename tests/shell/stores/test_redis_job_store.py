@@ -26,6 +26,7 @@ from acheron.core.models import (
     PlanStep,
     StepError,
     StepStatus,
+    VoiceRange,
     WorkerType,
 )
 from acheron.shell.job_store import JobProgressState, TrackedJob
@@ -429,6 +430,26 @@ class TestPlanRoundTrip:
         assert loaded is not None
         assert loaded.result is not None
         assert loaded.result.outputs[0].metadata == {}
+
+
+class TestVoiceSelection:
+    @pytest.mark.asyncio
+    async def test_epub_voice_selection_round_trips(self, store: RedisJobStore) -> None:
+        job = TrackedJob(
+            job_id="j-voice",
+            request=EpubRequest(
+                source_path="/book.epub",
+                source_language="en",
+                target_language="es",
+                voice="Vivian",
+                voice_map=(VoiceRange(1, 3, "Vivian"),),
+            ),
+            strategy=ExecutorStrategy.STREAMING,
+        )
+        await store.put(job)
+        loaded = await store.get("j-voice")
+        assert loaded is not None
+        assert loaded.request == job.request
 
 
 class TestAudioRequest:

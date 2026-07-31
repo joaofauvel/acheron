@@ -19,11 +19,29 @@ from acheron.core.models import (
     PlanStep,
     StepError,
     StepStatus,
+    VoiceRange,
+    VoiceSelection,
     WorkerCapabilities,
     WorkerStatus,
     WorkerType,
     sanitize_worker_error,
 )
+
+
+def test_voice_range_rejects_overlap() -> None:
+    with pytest.raises(ValueError, match="overlap"):
+        VoiceSelection.from_ranges(
+            default_voice=None,
+            ranges=(VoiceRange(1, 3, "Vivian"), VoiceRange(3, 5, "Ryan")),
+            chapter_count=5,
+        )
+
+
+def test_voice_selection_rejects_uncovered_and_out_of_range_chapters() -> None:
+    with pytest.raises(ValueError, match="uncovered"):
+        VoiceSelection.from_ranges(None, (VoiceRange(1, 2, "Vivian"),), chapter_count=3)
+    with pytest.raises(ValueError, match="beyond"):
+        VoiceSelection.from_ranges("Ryan", (VoiceRange(1, 4, "Vivian"),), chapter_count=3)
 
 
 class TestWorkerErrorSanitization:

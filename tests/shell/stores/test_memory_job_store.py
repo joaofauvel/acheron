@@ -12,6 +12,7 @@ from acheron.core.models import (
     ExecutorStrategy,
     PlanResult,
     PlanStatus,
+    VoiceRange,
     WorkerType,
 )
 from acheron.shell.job_store import TrackedJob
@@ -27,6 +28,25 @@ def _tracked(job_id: str = "job-1") -> TrackedJob:
 
 
 class TestJobStore:
+    @pytest.mark.asyncio
+    async def test_voice_selection_round_trips(self) -> None:
+        store = InMemoryJobStore()
+        job = TrackedJob(
+            job_id="voice-job",
+            request=EpubRequest(
+                source_path="/input/book.epub",
+                source_language="en",
+                target_language="es",
+                voice="Vivian",
+                voice_map=(VoiceRange(1, 3, "Vivian"),),
+            ),
+            strategy=ExecutorStrategy.STREAMING,
+        )
+        await store.put(job)
+        stored = await store.get("voice-job")
+        assert stored is not None
+        assert stored.request == job.request
+
     @pytest.mark.asyncio
     async def test_put_and_get(self) -> None:
         store = InMemoryJobStore()

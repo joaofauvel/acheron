@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from contextlib import suppress
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ _DEFAULT_BASENAME: str = "input"
 class StoredInput:
     """Metadata for a successfully stored input file."""
 
+    input_id: str
     source_path: str
     filename: str
     size_bytes: int
@@ -143,11 +145,38 @@ class InputStore:
         if dest_path is None:
             raise RuntimeError("input destination was not created")
         return StoredInput(
+            input_id=random_id,
             source_path=dest_path.relative_to(self._data_dir).as_posix(),
             filename=basename,
             size_bytes=size,
             content_type=content_type,
         )
+
+    def promote(self, input_id: str, source_path: str) -> None:
+        """Validate that an uploaded input is eligible to attach to a job."""
+        if not source_path.startswith(f"{_INPUTS_DIR_NAME}/{input_id}/"):
+            raise InputPathError("source path does not belong to input identity")
+        self.resolve_source_path(source_path)
+
+    def delete(self, input_id: str) -> None:
+        """Delete an uploaded input directory, treating an absent input as success."""
+        if not input_id or Path(input_id).name != input_id or not re.fullmatch(r"[0-9a-f]{32}", input_id):
+            raise InputPathError("invalid input identity")
+        root = self._data_dir / _INPUTS_DIR_NAME / input_id
+        try:
+            root.resolve().relative_to((self._data_dir / _INPUTS_DIR_NAME).resolve())
+        except ValueError as exc:
+            raise InputPathError("input identity escapes the input directory") from exc
+        if not root.exists():
+            return
+        if not root.is_dir() or root.is_symlink():
+            raise InputPathError("input identity does not name an input directory")
+        for child in root.iterdir():
+            if child.is_file() or child.is_symlink():
+                child.unlink()
+            elif child.is_dir():
+                raise InputPathError("input directory contains unexpected nested data")
+        root.rmdir()
 
     def normalize_source_path(self, source_path: str) -> str:
         """Return the canonical POSIX identity of a source relative to ``data_dir``."""

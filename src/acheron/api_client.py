@@ -33,8 +33,18 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Sequence
     from datetime import datetime
 
+    from acheron.core.models import VoiceRange
+
 
 _MAX_ERROR_RESPONSE_BYTES = 64 * 1024
+
+
+def _voice_map_payload(voice_map: Sequence[VoiceRange]) -> list[dict[str, int | str]]:
+    """Serialize typed voice ranges to the strict API wire shape."""
+    return [
+        {"start_chapter": item.start_chapter, "end_chapter": item.end_chapter, "voice": item.voice}
+        for item in voice_map
+    ]
 
 
 async def _buffer_error_response(response: httpx.Response) -> None:
@@ -140,15 +150,21 @@ class AcheronClient:
         target_language: str,
         executor_strategy: str = "streaming",
         asr_model: str | None = None,
+        voice: str | None = None,
+        voice_map: Sequence[VoiceRange] = (),
+        input_id: str | None = None,
     ) -> JobResponse:
         """Submit a new job for processing."""
-        payload: dict[str, str | None] = {
+        payload: dict[str, object] = {
             "source_type": source_type,
             "source_path": source_path,
             "source_language": source_language,
             "target_language": target_language,
             "executor_strategy": executor_strategy,
             "asr_model": asr_model,
+            "voice": voice,
+            "voice_map": _voice_map_payload(voice_map),
+            "input_id": input_id,
         }
         async with self._http_client() as client:
             resp = await client.post("/jobs", json=payload, headers=self._mutation_headers())
@@ -301,15 +317,21 @@ class AcheronClient:
         target_language: str,
         executor_strategy: str = "streaming",
         asr_model: str | None = None,
+        voice: str | None = None,
+        voice_map: Sequence[VoiceRange] = (),
+        input_id: str | None = None,
     ) -> PlanResponse:
         """Preview the compiled plan for a job without persisting it or starting execution."""
-        payload: dict[str, str | None] = {
+        payload: dict[str, object] = {
             "source_type": source_type,
             "source_path": source_path,
             "source_language": source_language,
             "target_language": target_language,
             "executor_strategy": executor_strategy,
             "asr_model": asr_model,
+            "voice": voice,
+            "voice_map": _voice_map_payload(voice_map),
+            "input_id": input_id,
         }
         async with self._http_client() as client:
             resp = await client.post("/jobs:preview", json=payload, headers=self._mutation_headers())
@@ -368,6 +390,12 @@ class AcheronClient:
             # open until the generator is garbage-collected. Force the close
             # here so the local file is released deterministically on every path.
             await body.aclose()
+
+    async def delete_input(self, input_id: str) -> None:
+        """Delete a temporary uploaded input; repeated deletes are harmless."""
+        async with self._http_client() as client:
+            resp = await client.delete(f"/inputs/{input_id}", headers=self._mutation_headers())
+            resp.raise_for_status()
 
     async def get_health(self) -> dict[str, str]:
         """Get orchestrator health."""

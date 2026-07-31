@@ -484,7 +484,17 @@ def _serialize_job(job: TrackedJob) -> str:
         "source_path": job.request.source_path,
         "source_language": job.request.source_language,
         "target_language": job.request.target_language,
+        "voice": job.request.voice,
     }
+    if isinstance(job.request, EpubRequest):
+        request_dict["voice_map"] = [
+            {
+                "start_chapter": item.start_chapter,
+                "end_chapter": item.end_chapter,
+                "voice": item.voice,
+            }
+            for item in job.request.voice_map
+        ]
     source_type: str
     match job.request:
         case AudioRequest(asr_model=model) if model is not None:
@@ -582,6 +592,7 @@ def _deserialize_job_unchecked(blob: str) -> TrackedJob:
         PlanStep,
         StepError,
         StepStatus,
+        VoiceRange,
         WorkerType,
     )
     from acheron.shell.job_store import JobProgressState, TrackedJob  # noqa: PLC0415
@@ -596,6 +607,11 @@ def _deserialize_job_unchecked(blob: str) -> TrackedJob:
             source_path=data["request"]["source_path"],
             source_language=data["request"]["source_language"],
             target_language=data["request"]["target_language"],
+            voice=data["request"].get("voice"),
+            voice_map=tuple(
+                VoiceRange(item["start_chapter"], item["end_chapter"], item["voice"])
+                for item in data["request"].get("voice_map", [])
+            ),
         )
     else:
         request = AudioRequest(
@@ -603,6 +619,7 @@ def _deserialize_job_unchecked(blob: str) -> TrackedJob:
             source_language=data["request"]["source_language"],
             target_language=data["request"]["target_language"],
             asr_model=data["request"].get("asr_model"),
+            voice=data["request"].get("voice"),
         )
     plan = None
     if data["plan"] is not None:

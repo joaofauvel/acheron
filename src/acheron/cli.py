@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import itertools
 import logging
 import math
 import os
@@ -27,7 +28,7 @@ from rich.live import Live
 from rich.table import Table
 
 from acheron.api_client import AcheronClient
-from acheron.core.models import CostBasis, PlanStatus
+from acheron.core.models import CostBasis, PlanStatus, VoiceRange
 from acheron.tls import resolve_ca_path
 
 if TYPE_CHECKING:
@@ -504,6 +505,31 @@ def _require_admin_token() -> None:
         )
 
 
+def _parse_voice_map(values: tuple[str, ...]) -> tuple[VoiceRange, ...]:
+    """Parse strict inclusive ``START-END:VOICE`` CLI values."""
+    ranges: list[VoiceRange] = []
+    for value in values:
+        match = re.fullmatch(r"([1-9][0-9]*)-([1-9][0-9]*):([^:\\r\\n]+)", value)
+        if match is None:
+            message = f"invalid voice-map value {value!r}; expected START-END:VOICE"
+            raise click.BadParameter(message)
+        try:
+            item = VoiceRange(int(match.group(1)), int(match.group(2)), match.group(3).strip())
+        except ValueError as exc:
+            message = f"invalid voice-map value {value!r}: {exc}"
+            raise click.BadParameter(message) from exc
+        if item.start_chapter > item.end_chapter:
+            message = f"invalid voice-map value {value!r}: range is reversed"
+            raise click.BadParameter(message)
+        ranges.append(item)
+    ordered = sorted(ranges, key=lambda item: (item.start_chapter, item.end_chapter))
+    for previous, current in itertools.pairwise(ordered):
+        if current.start_chapter <= previous.end_chapter:
+            message = f"invalid voice-map value {current.start_chapter}-{current.end_chapter}: ranges overlap"
+            raise click.BadParameter(message)
+    return tuple(ordered)
+
+
 def _detect_source_type(path: str) -> str | None:
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
     return _SOURCE_TYPE_MAP.get(ext)
@@ -651,20 +677,28 @@ def reap_stuck(older_than: str, reason: str) -> None:
 @click.option("--dest", required=True, help="Target language (ISO 639-1)")
 @click.option("--executor", default="streaming", show_default=True, help="Executor strategy")
 @click.option("--asr", "asr_model", default=None, help="ASR model (for audio input)")
+@click.option("--voice", default=None, help="Default TTS voice")
+@click.option("--voice-map", multiple=True, help="Inclusive chapter range, e.g. 1-3:Vivian")
 @click.option("--type", "source_type", default=None, help="Source type override (epub/audio)")
 @click.option("--dry-run", is_flag=True, help="Preview the plan without submitting a job")
 @click.option("--follow", is_flag=True, help="Watch the job after submission")
-def submit(  # noqa: PLR0913
+def submit(  # noqa: C901, PLR0913
     file: Path,
     src: str,
     dest: str,
     executor: str,
     asr_model: str | None,
+    voice: str | None,
+    voice_map: tuple[str, ...],
     source_type: str | None,
     dry_run: bool,  # noqa: FBT001
     follow: bool,  # noqa: FBT001
 ) -> None:
     """Submit a new job for processing."""
+    parsed_voice_map = _parse_voice_map(voice_map)
+    if voice is not None and not voice.strip():
+        raise click.BadParameter("--voice must not be empty", param_hint="--voice")
+    voice = voice.strip() if voice is not None else None
     file_str = str(file)
     if source_type is None:
         source_type = _detect_source_type(file_str)
@@ -683,14 +717,45 @@ def submit(  # noqa: PLR0913
     )
 
     if dry_run:
-        preview = _run(
-            client.preview_job(
+        try:
+            preview = _run(
+                client.preview_job(
+                    source_type=source_type,
+                    source_path=uploaded.source_path,
+                    source_language=src,
+                    target_language=dest,
+                    executor_strategy=executor,
+                    asr_model=asr_model,
+                    voice=voice,
+                    voice_map=parsed_voice_map,
+                    input_id=uploaded.input_id,
+                ),
+                client=client,
+                on_http_error=lambda exc: _print_submit_http_error(
+                    exc,
+                    client=client,
+                    source_language=src,
+                    target_language=dest,
+                ),
+            )
+            _print_plan(preview, dry_run=True)
+            return
+        finally:
+            if uploaded.input_id:
+                _run(client.delete_input(uploaded.input_id), client=client)
+
+    try:
+        result = _run(
+            client.submit_job(
                 source_type=source_type,
                 source_path=uploaded.source_path,
                 source_language=src,
                 target_language=dest,
                 executor_strategy=executor,
                 asr_model=asr_model,
+                voice=voice,
+                voice_map=parsed_voice_map,
+                input_id=uploaded.input_id,
             ),
             client=client,
             on_http_error=lambda exc: _print_submit_http_error(
@@ -700,26 +765,10 @@ def submit(  # noqa: PLR0913
                 target_language=dest,
             ),
         )
-        _print_plan(preview, dry_run=True)
-        return
-
-    result = _run(
-        client.submit_job(
-            source_type=source_type,
-            source_path=uploaded.source_path,
-            source_language=src,
-            target_language=dest,
-            executor_strategy=executor,
-            asr_model=asr_model,
-        ),
-        client=client,
-        on_http_error=lambda exc: _print_submit_http_error(
-            exc,
-            client=client,
-            source_language=src,
-            target_language=dest,
-        ),
-    )
+    except BaseException:
+        if uploaded.input_id:
+            _run(client.delete_input(uploaded.input_id), client=client)
+        raise
     console.print(f"Job submitted: [bold]{result.job_id}[/bold]")
     console.print(f"Status: {result.status.value}")
     if result.plan_id:

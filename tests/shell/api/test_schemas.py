@@ -17,7 +17,7 @@ from acheron.core.schemas import (
     WorkerResponse,
 )
 from acheron.shell.api import schemas
-from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest
+from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest, VoiceRangeRequest
 
 
 def test_response_models_keep_their_public_import_path() -> None:
@@ -32,6 +32,19 @@ def test_response_models_keep_their_public_import_path() -> None:
     assert schemas.StepError is StepError
     assert schemas.WorkerListResponse is WorkerListResponse
     assert schemas.WorkerResponse is WorkerResponse
+
+
+def test_submit_rejects_unknown_fields_and_audio_voice_map_is_wire_strict() -> None:
+    with pytest.raises(ValidationError):
+        SubmitJobRequest.model_validate({"source_type": "epub", "unexpected": True})
+    request = SubmitJobRequest(
+        source_type="audio",
+        source_path="audio.mp3",
+        source_language="en",
+        target_language="es",
+        voice_map=[VoiceRangeRequest(start_chapter=1, end_chapter=2, voice="Vivian")],
+    )
+    assert request.voice_map[0].voice == "Vivian"
 
 
 def test_submit_accepts_label() -> None:

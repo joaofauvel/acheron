@@ -164,6 +164,8 @@ class JobResponse(BaseModel):
     source_language: str
     target_language: str
     asr_model: str | None
+    voice: str | None = None
+    voice_map: list[dict[str, str | int]] = Field(default_factory=list)
     executor_strategy: ExecutorStrategy
     created_at: datetime
     last_persisted_at: datetime
@@ -291,6 +293,7 @@ class VersionResponse(BaseModel):
 class InputResponse(BaseModel):
     """Response for a successful upload."""
 
+    input_id: str = ""
     source_path: str
     filename: str
     size_bytes: int

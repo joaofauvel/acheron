@@ -17,7 +17,7 @@ import respx
 from pydantic import ValidationError
 
 from acheron.api_client import AcheronClient
-from acheron.core.models import PlanStatus
+from acheron.core.models import PlanStatus, VoiceRange
 from acheron.core.schemas import WorkerCapability
 
 
@@ -55,6 +55,23 @@ def _job_response_payload(
         "errors": [],
         "warnings": warnings or [],
     }
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_submit_job_serializes_typed_voice_selection() -> None:
+    route = respx.post("http://test/jobs").mock(return_value=httpx.Response(201, json=_job_response_payload()))
+    await AcheronClient("http://test").submit_job(
+        source_type="epub",
+        source_path="inputs/book.epub",
+        source_language="en",
+        target_language="es",
+        voice="Vivian",
+        voice_map=(VoiceRange(1, 3, "Vivian"),),
+    )
+    body = json.loads(route.calls.last.request.content)
+    assert body["voice"] == "Vivian"
+    assert body["voice_map"] == [{"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"}]
 
 
 @pytest.mark.asyncio

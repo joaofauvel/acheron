@@ -334,6 +334,81 @@ class PlanResult:
     cost_breakdown: tuple[CostBreakdown, ...] = ()
 
 
+def _canonical_voice(value: str, field_name: str = "voice") -> str:
+    """Normalize a user-facing voice name without changing its canonical spelling."""
+    normalized = value.strip()
+    if not normalized:
+        msg = f"{field_name} must not be empty"
+        raise ValueError(msg)
+    if any(char in normalized for char in "\r\n"):
+        msg = f"{field_name} must not contain newlines"
+        raise ValueError(msg)
+    return normalized
+
+
+@dataclass(frozen=True)
+class VoiceRange:
+    """Inclusive chapter range selecting one canonical voice."""
+
+    start_chapter: int
+    end_chapter: int
+    voice: str
+
+    def __post_init__(self) -> None:
+        if isinstance(self.start_chapter, bool) or isinstance(self.end_chapter, bool):
+            msg = "chapter numbers must be integers"
+            raise TypeError(msg)
+        object.__setattr__(self, "voice", _canonical_voice(self.voice))
+
+
+@dataclass(frozen=True)
+class VoiceSelection:
+    """Validated default and per-chapter voice selection."""
+
+    default_voice: str | None
+    ranges: tuple[VoiceRange, ...]
+
+    def __post_init__(self) -> None:
+        if self.default_voice is not None:
+            object.__setattr__(self, "default_voice", _canonical_voice(self.default_voice, "default_voice"))
+        object.__setattr__(self, "ranges", tuple(self.ranges))
+
+    @classmethod
+    def from_ranges(
+        cls,
+        default_voice: str | None,
+        ranges: tuple[VoiceRange, ...],
+        chapter_count: int,
+    ) -> VoiceSelection:
+        """Build a selection after validating ranges against discovered chapters."""
+        if isinstance(chapter_count, bool) or chapter_count < 1:
+            msg = "chapter_count must be positive"
+            raise ValueError(msg)
+        normalized_default = _canonical_voice(default_voice, "default_voice") if default_voice is not None else None
+        ordered = tuple(sorted(ranges, key=lambda item: (item.start_chapter, item.end_chapter)))
+        previous: VoiceRange | None = None
+        covered: set[int] = set()
+        for item in ordered:
+            if item.start_chapter < 1 or item.end_chapter < 1:
+                msg = "chapter numbers must be positive"
+                raise ValueError(msg)
+            if item.start_chapter > item.end_chapter:
+                msg = "chapter range must not be reversed"
+                raise ValueError(msg)
+            if item.end_chapter > chapter_count:
+                msg = "chapter range is beyond the discovered chapter count"
+                raise ValueError(msg)
+            if previous is not None and item.start_chapter <= previous.end_chapter:
+                msg = "chapter ranges overlap"
+                raise ValueError(msg)
+            covered.update(range(item.start_chapter, item.end_chapter + 1))
+            previous = item
+        if normalized_default is None and covered != set(range(1, chapter_count + 1)):
+            msg = "chapter ranges leave chapters uncovered"
+            raise ValueError(msg)
+        return cls(default_voice=normalized_default, ranges=ordered)
+
+
 @dataclass(frozen=True)
 class EpubRequest:
     """Job request for EPUB input."""
@@ -341,6 +416,8 @@ class EpubRequest:
     source_path: str
     source_language: str
     target_language: str
+    voice: str | None = None
+    voice_map: tuple[VoiceRange, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -351,6 +428,7 @@ class AudioRequest:
     source_language: str
     target_language: str
     asr_model: str | None = None
+    voice: str | None = None
 
 
 type JobRequest = EpubRequest | AudioRequest

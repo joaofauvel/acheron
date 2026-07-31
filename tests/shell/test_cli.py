@@ -527,6 +527,17 @@ def test_job_plan_requires_exactly_one_selector() -> None:
     assert "exactly one" in both.output.lower()
 
 
+def test_submit_rejects_invalid_voice_map_before_upload(tmp_path: Path) -> None:
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    result = CliRunner().invoke(
+        main,
+        ["job", "submit", str(epub), "--src", "en", "--dest", "es", "--voice-map", "bad"],
+    )
+    assert result.exit_code != 0
+    assert "START-END:VOICE" in result.output
+
+
 @respx.mock
 def test_submit_dry_run_previews_without_submitting(tmp_path: Path) -> None:
     """`--dry-run` uploads, calls `/jobs:preview`, and never calls `/jobs`."""

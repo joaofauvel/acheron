@@ -110,6 +110,31 @@ def _validate_language_path(request: JobRequest, caps: tuple[WorkerCapabilities,
     if not _has_worker(WorkerType.TTS, caps, dst, dst):
         msg = f"No TTS worker supports language: {dst}"
         raise InvalidLanguagePathError(msg)
+    selected_voices: set[str]
+    match request:
+        case EpubRequest(voice=voice, voice_map=voice_map):
+            selected_voices = {item.voice for item in voice_map}
+            if voice is not None:
+                selected_voices.add(voice)
+        case AudioRequest(voice=voice):
+            selected_voices = {voice} if voice is not None else set()
+    if selected_voices and not any(
+        selected_voices <= _speaker_names(capability)
+        for capability in caps
+        if capability.worker_type is WorkerType.TTS
+        and dst in capability.supported_languages_out
+        and isinstance(capability.metadata.get("speakers"), list)
+    ):
+        msg = "No TTS worker supports the requested voice selection"
+        raise InvalidLanguagePathError(msg)
+
+
+def _speaker_names(capability: WorkerCapabilities) -> set[str]:
+    """Return canonical speaker names advertised by one worker."""
+    value = capability.metadata.get("speakers")
+    return (
+        {item.strip() for item in value if isinstance(item, str) and item.strip()} if isinstance(value, list) else set()
+    )
 
 
 def _has_worker(
@@ -248,7 +273,21 @@ def _epub_steps(request: EpubRequest, chapter_ids: tuple[str, ...] = ()) -> list
                 type=WorkerType.TTS,
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
-                payload=_chapter_payload({"target_language": request.target_language}, chapter_ids),
+                payload=_chapter_payload(
+                    {
+                        "target_language": request.target_language,
+                        "voice": request.voice,
+                        "voice_map": [
+                            {
+                                "start_chapter": item.start_chapter,
+                                "end_chapter": item.end_chapter,
+                                "voice": item.voice,
+                            }
+                            for item in request.voice_map
+                        ],
+                    },
+                    chapter_ids,
+                ),
             ),
             PlanStep(
                 step_id="package",
@@ -311,7 +350,7 @@ def _audio_steps(request: AudioRequest) -> list[PlanStep]:
                 type=WorkerType.TTS,
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
-                payload={"target_language": request.target_language},
+                payload={"target_language": request.target_language, "voice": request.voice},
             ),
             PlanStep(
                 step_id="package",
