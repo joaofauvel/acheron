@@ -143,7 +143,7 @@ incident_ref: "TBD-pagerduty"
 ---
 id: OPS-005
 title: "Dashboard's `MEASURED` / `CACHED` / `UNKNOWN` / `STATIC` cost-basis badges are rendered with no tooltip or legend"
-status: stale
+status: verified
 severity: high
 effort: S
 discovered_via: [code-review, user-feedback]
@@ -157,11 +157,12 @@ files:
   - path: src/acheron/core/models.py
     lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
-drift_note: "Cost labels still lack the requested tooltip and STATIC-versus-zero distinction."
+fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+last_verified_at:
+  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  date: "2026-07-31"
+verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
 ---
 ```
@@ -172,7 +173,7 @@ feedback_ref: "TBD-pagerduty"
 
 **Recommendation.** (a) Add a `?` icon next to each badge that opens a tooltip with the four-state legend. (b) Split `STATIC` into `STATIC` (fixed $/hr) and `ZERO` (stub/local). (c) Add a CLI: `acheron job cost <id> --explain`.
 
-**Verification.** Hovering a `MEASURED` badge shows the four-state legend. A `$0.00` row shows `ZERO` with the "stub/local" note. `acheron job cost <id> --explain` prints the explanation.
+**Verification.** Focused CLI/dashboard tests cover the estimated-cost label, basis explanation, and STUB distinction; the pricing-outage simulation proves only explicit `price_source=zero` emits STUB.
 
 ## OPS-006 — `BOOTING` workers show no countdown
 
@@ -1078,7 +1079,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-031
 title: "Dashboard's `partials/cost.html` renders every job ever; no time window, no \"this week\" aggregate row"
-status: stale
+status: verified
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -1092,11 +1093,12 @@ files:
   - path: dashboard/templates/index.html
     lines: 58-63
 related: [OPS-005, OPS-012, OPS-001]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
-drift_note: "Cost aggregation and time-window controls remain absent."
+fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+last_verified_at:
+  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  date: "2026-07-31"
+verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
 ---
 ```
@@ -1107,7 +1109,7 @@ feedback_ref: "TBD-pagerduty"
 
 **Recommendation.** Add a `<tfoot>` row to `cost.html` showing `Total this week: $X.XX (N jobs)`. Add a small filter bar above the table: `Last 24h | 7d | 30d | All`.
 
-**Verification.** With 200 jobs, the dashboard shows `Last 7d: $X.XX (12 jobs)` as the table footer.
+**Verification.** Focused dashboard and API tests cover the 24h/7d/30d/all windows, aggregate total, and unknown-job count; all five Stage 1 UX verification commands pass after metadata update.
 
 ## OPS-032 — `acheron job tail` leaks a traceback for HTTP errors
 

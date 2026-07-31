@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -223,6 +225,102 @@ async def test_label_filtering_in_list(wired_app: FastAPI, tmp_path: Path) -> No
 
         all_jobs = await client.list_jobs()
         assert len(all_jobs) >= 2
+
+
+@pytest.mark.asyncio
+async def test_failed_worker_persists_cost_breakdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A measurable failed worker keeps its cost evidence in the job record."""
+    from acheron.core.models import (
+        CostBasis,
+        CostEstimate,
+        EpubRequest,
+        ExecutorStrategy,
+        Job,
+        JobMetrics,
+        JobResult,
+        JobStatus,
+        WorkerCapabilities,
+        WorkerType,
+    )
+    from acheron.shell.cache import PlanCache, StepCache
+    from acheron.shell.stores.memory import InMemoryWorkerStore
+
+    async def failing_tts(job: Job) -> JobResult:
+        await asyncio.sleep(0.01)
+        return JobResult(
+            job_id=job.job_id,
+            status=JobStatus.FAILED,
+            outputs=(),
+            metrics=JobMetrics(
+                duration_seconds=0.01,
+                gpu_seconds=0.01,
+                cost_estimate=CostEstimate(
+                    cost=0.00001,
+                    basis=CostBasis.CACHED,
+                    rate_per_hour=3.6,
+                    gpu_type="NVIDIA L4",
+                    secure_cloud=False,
+                    cache_age_seconds=7.5,
+                ),
+            ),
+            error="simulated worker failure",
+        )
+
+    monkeypatch.setenv("ACHERON_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ACHERON_ORCHESTRATOR__DATA_DIR", str(tmp_path))
+    registry = InMemoryWorkerStore()
+    orch = Orchestrator(registry=registry, cache=PlanCache(tmp_path), step_cache=StepCache(tmp_path))
+    capabilities = WorkerCapabilities(
+        worker_type=WorkerType.TTS,
+        supported_languages_in=frozenset({"es"}),
+        supported_languages_out=frozenset({"es"}),
+        supported_formats_in=frozenset({"text"}),
+        supported_formats_out=frozenset({"wav"}),
+        max_payload_bytes=None,
+        batch_capable=True,
+        model_source=None,
+    )
+    await orch.register_worker("tts-failing", "local", "local", capabilities, handler=failing_tts)
+    await orch.register_worker(
+        "extraction-failing",
+        "local",
+        "local",
+        replace(capabilities, worker_type=WorkerType.EXTRACTION),
+        handler=failing_tts,
+    )
+    await orch.start()
+    try:
+        source = tmp_path / "input"
+        source.mkdir(exist_ok=True)
+        (source / "book.epub").write_bytes(b"unused")
+        tracked = await orch.submit_job(
+            EpubRequest(str(source / "book.epub"), "es", "es"),
+            ExecutorStrategy.SEQUENTIAL,
+        )
+        terminal = await _wait_for_terminal(orch, tracked.job_id, max_iterations=1000)
+        assert terminal.status.value == "failed"
+        assert terminal.result is not None
+        assert len(terminal.result.cost_breakdown) == 1
+        item = terminal.result.cost_breakdown[0]
+        assert item.worker_id == "extraction-failing"
+        assert item.gpu_seconds is not None
+        assert item.gpu_seconds > 0.0
+        assert item.estimate.basis is CostBasis.CACHED
+        assert item.estimate.gpu_type == "NVIDIA L4"
+        assert item.estimate.rate_per_hour == 3.6
+        assert item.estimate.cache_age_seconds == 7.5
+
+        persisted = await orch.get_job_cost(tracked.job_id)
+        assert persisted is not None
+        assert persisted.cost_breakdown[0].worker_id == "extraction-failing"
+        assert persisted.cost_breakdown[0].gpu_seconds is not None
+        assert persisted.cost_breakdown[0].gpu_seconds > 0.0
+        assert persisted.cost_breakdown[0].basis is CostBasis.CACHED
+        assert persisted.cost_breakdown[0].gpu_type == "NVIDIA L4"
+        assert persisted.cost_breakdown[0].cache_age_seconds == 7.5
+    finally:
+        await orch.shutdown()
+        await orch.close()
 
 
 @pytest.mark.asyncio

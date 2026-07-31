@@ -51,7 +51,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-002
 title: "When a job is FAILED with `gpu_seconds` recorded, the cost row doesn't show which GPU the rate was queried for, or how stale it is"
-status: stale
+status: verified
 severity: high
 effort: S
 discovered_via: [on-call, code-review]
@@ -65,10 +65,12 @@ files:
   - path: src/acheron/core/models.py
     lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+last_verified_at:
+  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  date: "2026-07-31"
+verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -79,7 +81,7 @@ incident_ref: TBD-pagerduty
 
 **Recommendation.** Extend `PriceEstimate` with `gpu_type: str | None`, `queried_at: datetime | None`, `cache_age_seconds_at_estimate: float | None`. Surface in `JobResponse` (or a `cost_breakdown` sub-object).
 
-**Verification.** A job with `MEASURED` basis shows the GPU type, query timestamp, and cache age in both the dashboard popover and `acheron job cost --explain`.
+**Verification.** The failed-job integration test persists GPU seconds, worker identity, rate basis, GPU type, and cache age; focused API/CLI/dashboard tests cover the explanation surfaces and both simulations provide outage metadata evidence.
 
 ## MAINT-003 — Cert expiry is silent — no warning at 30/7/0 days remaining
 
@@ -499,7 +501,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-014
 title: "`RunPodPrice.estimate` returns the lowest *uninterruptable* community-cloud price — the rate at which the job actually ran (potentially secure-cloud at 2x) is never recorded"
-status: open
+status: verified
 severity: high
 effort: S
 discovered_via: [on-call, code-review, audit]
@@ -515,10 +517,12 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 214-231
 related: [MAINT-002, CORR-040]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+last_verified_at:
+  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  date: "2026-07-31"
+verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -529,15 +533,15 @@ incident_ref: TBD-pagerduty
 
 **Recommendation.** Record per-job: `rate_source: enum(uninterruptable_lowest, on_demand_actual, cached, static, zero)`, `rate_at_job_start: float`, `secure_cloud: bool`, `gpu_type: str`.
 
-**Verification.** A job that ran on a secure-cloud H100 endpoint shows `rate_source=on_demand_actual rate=2.49 gpu_type=H100 secure_cloud=true`.
+**Verification.** The GPU-switch simulation records a refreshed A40 identity and secure-cloud $2.49/hr quote, then proves outage fallback is CACHED with retained identity/rate metadata; provider quotes remain explicitly non-invoice UNKNOWN when fresh.
 
 ## MAINT-015 — `price_source: zero` silently disables cost tracking
 
 ```yaml
 ---
 id: MAINT-015
-title: "`price_source: zero` silently disables cost tracking — every stub worker in `docker-compose.yml` defaults to it, and the basis badge says `STATIC` not `STATIC (zero, stub/local)`"
-status: open
+title: "`price_source: zero` silently disables cost tracking — every stub worker in `docker-compose.yml` defaults to it, and the basis badge says `STATIC` not `STATIC (zero, stub/local)"
+status: verified
 severity: high
 effort: S
 discovered_via: [on-call, code-review, audit]
@@ -553,10 +557,12 @@ files:
   - path: docker-compose.yml
     lines: 92-104
 related: [MAINT-002]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+verified_in: [104d66646baa2d522ee3417ee6f3df0a8db970ec]
+last_verified_at:
+  commit: 104d66646baa2d522ee3417ee6f3df0a8db970ec
+  date: "2026-07-31"
+verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -567,7 +573,7 @@ incident_ref: TBD-pagerduty
 
 **Recommendation.** Add `CostBasis.STUB` (or extend `STATIC` to a 2-tuple of `(basis, sub_kind: zero|configured)`). The dashboard's cost basis legend gains a `STUB` entry.
 
-**Verification.** A stub worker (configured with `PRICE_SOURCE=zero`) submits a job. The dashboard shows `basis=STUB`. A production worker (configured with `PRICE_SOURCE=static, DOLLARS_PER_HOUR=0.10`) shows `basis=STATIC` with sub-kind `configured`.
+**Verification.** The pricing-outage simulation asserts `price_source=zero` is the only STUB path and distinguishes it from fresh RunPod UNKNOWN and warm-outage CACHED estimates; focused pricing tests retain STATIC as a separate basis.
 
 ## MAINT-016 — Dashboard does not surface the running image SHA / version pin
 

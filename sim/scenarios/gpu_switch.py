@@ -1,6 +1,7 @@
 """GPU switch scenario — price updates after PATCH /endpoints/{id}.
 
 STORY_REF: MAINT-002
+STORY_REF: MAINT-014
 MAINT-014 — `uninterruptablePrice` is the lowest available rate, not what was paid.
 
 user_journey: "On-call changes the GPU on the RunPod endpoint, sees the dashboard
@@ -77,13 +78,31 @@ async def _submit(client: httpx.AsyncClient, job_id: str) -> dict[str, Any]:
     return parse_multipart_metrics(r.headers["content-type"], r.content)
 
 
-def _implied_rate(metrics: dict[str, Any]) -> float:
-    cost = metrics.get("cost_estimate")
-    gpu_s = metrics.get("gpu_seconds") or 0.0
-    if not cost or not gpu_s:
-        msg = f"cannot compute implied rate from metrics: {metrics}"
+async def _admin(toggle: str, value: Any) -> None:
+    async with httpx.AsyncClient() as admin:
+        response = await admin.post(f"{MOCK_URL}/_admin/control", json={"toggle": toggle, "value": value})
+        response.raise_for_status()
+
+
+def _estimate(metrics: dict[str, Any]) -> dict[str, Any]:
+    estimate = metrics.get("cost_estimate")
+    if not isinstance(estimate, dict):
+        msg = f"metrics did not contain a structured cost estimate: {metrics}"
+        raise TypeError(msg)
+    return estimate
+
+
+def _assert_quote(metrics: dict[str, Any], *, gpu_type: str, rate: float) -> None:
+    estimate = _estimate(metrics)
+    if estimate.get("basis") != "unknown":
+        msg = f"fresh provider quote must remain unknown, got {estimate}"
         raise AssertionError(msg)
-    return float(cost) * 3600.0 / float(gpu_s)
+    if estimate.get("gpu_type") != gpu_type or estimate.get("rate_per_hour") != rate:
+        msg = f"expected quote metadata gpu={gpu_type!r}, rate={rate}, got {estimate}"
+        raise AssertionError(msg)
+    if metrics.get("gpu_seconds", 0.0) <= 0.0:
+        msg = f"expected measurable GPU seconds, got {metrics}"
+        raise AssertionError(msg)
 
 
 async def _run() -> int:
@@ -96,10 +115,7 @@ async def _run() -> int:
                 transport=httpx.ASGITransport(app=_build_app()), base_url="http://test"
             ) as client:
                 m1 = await _submit(client, "j1")
-                rate1 = _implied_rate(m1)
-                if abs(rate1 - 1.39) > 0.01:
-                    msg = f"job 1 (L4 secure): expected rate ~1.39, got {rate1:.4f}"
-                    raise AssertionError(msg)
+                _assert_quote(m1, gpu_type="NVIDIA L4", rate=1.39)
 
                 async with httpx.AsyncClient() as admin:
                     response = await admin.patch(
@@ -110,9 +126,23 @@ async def _run() -> int:
                 time.sleep(1.5)
 
                 m2 = await _submit(client, "j2")
-                rate2 = _implied_rate(m2)
-                if abs(rate2 - 2.49) > 0.01:
-                    msg = f"job 2 (A40 secure): expected rate ~2.49, got {rate2:.4f}"
+                _assert_quote(m2, gpu_type="NVIDIA A40", rate=2.49)
+
+                await _admin("pricing_api_down", value=True)
+                time.sleep(1.5)
+                m3 = await _submit(client, "j3")
+                estimate3 = _estimate(m3)
+                if estimate3.get("basis") != "cached":
+                    msg = f"outage estimate must be CACHED, got {estimate3}"
+                    raise AssertionError(msg)
+                if estimate3.get("gpu_type") != "NVIDIA A40" or estimate3.get("rate_per_hour") != 2.49:
+                    msg = f"outage must retain refreshed A40 metadata, got {estimate3}"
+                    raise AssertionError(msg)
+                if not float(estimate3.get("cache_age_seconds") or 0.0) > 0.0:
+                    msg = f"outage estimate must expose positive cache age, got {estimate3}"
+                    raise AssertionError(msg)
+                if estimate3.get("cost") is None or estimate3.get("cost") <= 0.0:
+                    msg = f"outage estimate must retain a positive cached cost, got {estimate3}"
                     raise AssertionError(msg)
     finally:
         await reset_mock_best_effort()
