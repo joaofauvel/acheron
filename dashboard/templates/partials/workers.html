@@ -1,14 +1,13 @@
 {% if workers %}
 <table>
   <thead>
-    <tr><th>Worker ID</th><th>Type</th><th>Endpoint</th><th>Transport</th><th>Status</th><th>Failures</th><th>Error</th></tr>
+    <tr><th>Worker ID</th><th>Type</th><th>Transport</th><th>Status</th><th>Failures</th><th>Latest error</th><th>Worker history</th></tr>
   </thead>
   <tbody>
     {% for w in workers %}
     <tr>
       <td>{{ w.worker_id }}</td>
       <td>{{ w.worker_type }}</td>
-      <td>{{ w.endpoint }}</td>
       <td>{{ w.transport }}</td>
       <td>
         <span class="badge badge-{{ w.status }}">{{ w.status }}</span>
@@ -23,6 +22,16 @@
       <td>
         {% if w.last_error %}
         <details><summary style="color:#f85149;cursor:pointer">View Error</summary><pre style="color:#8b949e;white-space:pre-wrap;margin:0.5rem 0 0">{{ w.last_error }}</pre></details>
+        {% else %}-{% endif %}
+      </td>
+      <td>
+        {% set history = w.error_history|default([], true) %}
+        {% if history %}
+        <ul style="margin:0;padding-left:1.25rem">
+          {% for event in history[-3:] %}
+          <li>{{ event.timestamp }} — {{ event.message }} ({{ event.consecutive_failures }} failures)</li>
+          {% endfor %}
+        </ul>
         {% else %}-{% endif %}
       </td>
     </tr>

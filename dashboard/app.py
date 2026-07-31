@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import FastAPI
@@ -17,12 +18,38 @@ from starlette.requests import Request  # noqa: TC002
 from dashboard.booting_progress import clamp_booting_elapsed, format_booting_elapsed
 
 _LOGGER = logging.getLogger(__name__)
+_SECONDS_PER_MINUTE = 60
+_MINUTES_PER_HOUR = 60
+_HOURS_PER_DAY = 24
 _TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 _TEMPLATES.env.globals.update(
     clamp_booting_elapsed=clamp_booting_elapsed,
     format_booting_elapsed=format_booting_elapsed,
 )
 _TEMPLATES.env.filters["urlencode"] = lambda value: quote(str(value), safe="")
+
+
+def _format_age(timestamp: object) -> str:
+    """Render a lifecycle timestamp as a compact age label."""
+    try:
+        parsed = datetime.fromisoformat(str(timestamp))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return "unknown"
+    except ValueError:
+        return "unknown"
+    seconds = max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds())
+    if seconds < _SECONDS_PER_MINUTE:
+        return f"{seconds:.0f}s"
+    minutes = seconds / _SECONDS_PER_MINUTE
+    if minutes < _MINUTES_PER_HOUR:
+        return f"{minutes:.0f}m"
+    hours = minutes / _MINUTES_PER_HOUR
+    if hours < _HOURS_PER_DAY:
+        return f"{hours:.1f}h"
+    return f"{hours / _HOURS_PER_DAY:.1f}d"
+
+
+_TEMPLATES.env.globals["format_age"] = _format_age
 
 
 async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, object]:
@@ -47,6 +74,13 @@ async def _proxy_status_partial(orchestrator_url: str) -> HTMLResponse:
             return HTMLResponse(resp.text)
     except httpx.HTTPError, OSError:
         return HTMLResponse('<span class="dot dot-red"></span> Disconnected')
+
+
+def _jobs_path(request: Request) -> str:
+    """Forward only supported job-list filters to the orchestrator."""
+    keys = ("status", "since", "before", "older_than_seconds", "include_archived", "label")
+    params = [(key, value) for key in keys if (value := request.query_params.get(key))]
+    return f"/jobs?{urlencode(params)}" if params else "/jobs"
 
 
 async def _job_detail_partial(orchestrator_url: str, request: Request, job_id: str) -> HTMLResponse:
@@ -97,7 +131,7 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
 
     @app.get("/partials/jobs", response_class=HTMLResponse)
     async def jobs_partial(request: Request) -> HTMLResponse:
-        data = await _fetch_orchestrator(orchestrator_url, "/jobs")
+        data = await _fetch_orchestrator(orchestrator_url, _jobs_path(request))
         return _TEMPLATES.TemplateResponse(request, "partials/jobs.html", context={"jobs": data.get("jobs", [])})
 
     @app.get("/partials/jobs/{job_id}", response_class=HTMLResponse)

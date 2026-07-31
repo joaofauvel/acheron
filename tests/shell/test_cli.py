@@ -372,6 +372,75 @@ def test_cancel_cli_returns_failure_with_remediation() -> None:
 
 
 @respx.mock
+def test_jobs_accepts_recovery_filters_and_renders_archive_metadata() -> None:
+    route = respx.get(f"{_BASE_URL}/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    _job_payload(
+                        "job-old",
+                        status="running",
+                        archived_at="2026-07-30T12:34:56Z",
+                        last_persisted_at="2026-07-29T12:00:00Z",
+                    )
+                ]
+            },
+        )
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["jobs", "--since", "24h", "--status", "running", "--older-than", "30m", "--include-archived"],
+    )
+
+    assert result.exit_code == 0, result.output
+    params = route.calls.last.request.url.params
+    assert params["status"] == "running"
+    assert params["older_than_seconds"] == "1800.0"
+    assert params["include_archived"] == "true"
+    assert "job-old" in result.output
+    assert "archived" in result.output.lower()
+    assert "2026-07-30T12:34:56+00:00" in result.output
+    assert "stale age" in result.output.lower()
+
+
+@respx.mock
+def test_job_archive_renders_preserved_record_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.post(f"{_BASE_URL}/admin/jobs/job-old/archive").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "job": _job_payload(
+                    "job-old",
+                    status="failed",
+                    plan_id="plan-old",
+                    archived_at="2026-07-30T12:34:56Z",
+                    outputs=[
+                        {
+                            "download_url": "/jobs/job-old/outputs/0",
+                            "filename": "result.wav",
+                            "size_bytes": 10,
+                            "content_type": "audio/wav",
+                        }
+                    ],
+                    total_cost=0.25,
+                    total_cost_basis="measured",
+                )
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["job", "archive", "job-old"])
+
+    assert result.exit_code == 0, result.output
+    assert route.called
+    assert "archived at=2026-07-30T12:34:56+00:00" in result.output
+    assert "record preserved" in result.output.lower()
+
+
+@respx.mock
 def test_jobs_accepts_label_filter() -> None:
     route = respx.get(f"{_BASE_URL}/jobs", params={"label": "atlas-*"}).mock(
         return_value=httpx.Response(200, json={"jobs": [_job_payload("job-1", label="atlas-ch1")]})

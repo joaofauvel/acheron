@@ -42,7 +42,26 @@
 
   <div class="section" id="jobs">
     <h2>Jobs</h2>
-    <div hx-get="/partials/jobs" hx-trigger="load, every 2s" hx-swap="innerHTML">
+    <form id="job-filters" hx-get="/partials/jobs" hx-trigger="change" hx-target="#job-results" hx-swap="innerHTML">
+      <label>
+        Status
+        <select name="status">
+          <option value="">All</option>
+          <option value="running">Stuck</option>
+          <option value="failed">Failed</option>
+          <option value="completed">Completed</option>
+        </select>
+      </label>
+      <label>
+        Older than (seconds)
+        <input name="older_than_seconds" type="number" min="0" step="1" placeholder="e.g. 1800">
+      </label>
+      <label>
+        <input name="include_archived" type="checkbox" value="true">
+        Include archived
+      </label>
+    </form>
+    <div id="job-results" hx-get="/partials/jobs" hx-trigger="load, every 2s" hx-swap="innerHTML">
       <p style="color:#8b949e">Loading jobs...</p>
     </div>
   </div>

@@ -407,6 +407,37 @@ async def test_admin_transitions_preserve_outputs_progress_and_cost(wired_app: F
 
 
 @pytest.mark.asyncio
+async def test_recovery_list_includes_archived_record_after_archive(wired_app: FastAPI) -> None:
+    """The operator list journey can find a preserved archived failure."""
+    from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+    from acheron.shell.job_store import TrackedJob
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    archived = TrackedJob(
+        job_id="job-recovery-archive",
+        request=EpubRequest("input/book.epub", "en", "es"),
+        strategy=ExecutorStrategy.SEQUENTIAL,
+        status=PlanStatus.FAILED,
+    )
+    await orch._job_store.put(archived)  # noqa: SLF001
+    await orch.archive_job(archived.job_id)
+
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(transport=ASGITransport(app=wired_app), base_url="http://test") as client:
+        response = await client.get(
+            "/jobs",
+            params={"status": "failed", "include_archived": "true"},
+        )
+
+    assert response.status_code == 200
+    jobs = response.json()["jobs"]
+    assert len(jobs) == 1
+    assert jobs[0]["job_id"] == archived.job_id
+    assert jobs[0]["archived_at"] is not None
+
+
+@pytest.mark.asyncio
 async def test_event_broker_publishes_terminal_event(wired_app: FastAPI, tmp_path: Path) -> None:
     """The event broker publishes a terminal event when a job finishes."""
     from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus

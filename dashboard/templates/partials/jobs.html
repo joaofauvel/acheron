@@ -1,7 +1,7 @@
 {% if jobs %}
 <table>
   <thead>
-    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Progress</th><th>Last error</th><th title="Execution-time evidence, not invoice truth">Estimated cost (execution-time evidence)</th><th>Duration</th></tr>
+    <tr><th>Job ID</th><th>Label</th><th>Status</th><th>Archived at</th><th>Stale age</th><th>Progress</th><th>Last error</th><th title="Execution-time evidence, not invoice truth">Estimated cost (execution-time evidence)</th><th>Duration</th></tr>
   </thead>
   <tbody>
     {% for j in jobs %}
@@ -17,7 +17,11 @@
            hx-push-url="true">{{ j.job_id }}</a>
       </td>
       <td>{{ j.label|default("-") or "-" }}</td>
-      <td><span class="badge badge-{{ j.status }}">{{ j.status }}</span></td>
+      <td>
+        <span class="badge badge-{{ j.status }}">{{ j.status }}{% if j.archived_at %} (archived){% endif %}</span>
+      </td>
+      <td>{{ j.archived_at|default("-") or "-" }}</td>
+      <td>{{ format_age(j.last_persisted_at) if j.last_persisted_at else "unknown" }}</td>
       <td>
         {% if total_steps > 0 %}
         <div style="display:flex;align-items:center;gap:0.5rem">

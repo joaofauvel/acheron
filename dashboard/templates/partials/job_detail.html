@@ -13,6 +13,8 @@
     <dt>Executor strategy</dt><dd>{{ job.executor_strategy }}</dd>
     <dt>Created</dt><dd>{{ job.created_at }}</dd>
     <dt>Last persisted</dt><dd>{{ job.last_persisted_at }}</dd>
+    <dt>Stale age</dt><dd>{{ format_age(job.last_persisted_at) }}</dd>
+    <dt>Archived at</dt><dd>{{ job.archived_at|default("-") or "-" }}</dd>
     <dt>Progress</dt><dd>{{ job.progress.completed_steps }}/{{ job.progress.total_steps }}</dd>
     <dt>Current step</dt><dd>{{ job.progress.current_step_id|default("-") or "-" }}</dd>
     <dt>Current worker type</dt><dd>{{ job.progress.current_worker_type|default("-") or "-" }}</dd>

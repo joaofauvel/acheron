@@ -119,6 +119,45 @@ async def test_admin_client_mark_failed_does_not_use_registration_token() -> Non
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_list_jobs_sends_typed_recovery_filters() -> None:
+    route = respx.get(
+        "http://test/jobs",
+        params={
+            "status": "running",
+            "since": "2026-07-30T00:00:00+00:00",
+            "before": "2026-07-31T00:00:00+00:00",
+            "older_than_seconds": "1800",
+            "include_archived": "true",
+        },
+    ).mock(return_value=httpx.Response(200, json={"jobs": [_job_response_payload()]}))
+
+    result = await AcheronClient("http://test").list_jobs(
+        status="running",
+        since=datetime(2026, 7, 30, tzinfo=UTC),
+        before=datetime(2026, 7, 31, tzinfo=UTC),
+        older_than_seconds=1800,
+        include_archived=True,
+    )
+
+    assert route.called
+    assert len(result) == 1
+    assert route.calls.last.request.url.params["include_archived"] == "true"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_list_jobs_default_excludes_optional_filters() -> None:
+    route = respx.get("http://test/jobs").mock(
+        return_value=httpx.Response(200, json={"jobs": [_job_response_payload()]})
+    )
+
+    await AcheronClient("http://test").list_jobs()
+
+    assert route.calls.last.request.url.query == b""
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_get_job_round_trips_download_url() -> None:
     respx.get("http://test/jobs/job-1").mock(
         return_value=httpx.Response(

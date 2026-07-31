@@ -27,6 +27,7 @@ def _job_payload() -> dict[str, object]:
         "executor_strategy": "streaming",
         "created_at": "2026-07-29T12:00:00Z",
         "last_persisted_at": "2026-07-29T12:00:05Z",
+        "archived_at": "2026-07-30T12:34:56Z",
         "progress": {
             "completed_steps": 2,
             "total_steps": 5,
@@ -89,6 +90,7 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
         "streaming",
         "2026-07-29T12:00:00Z",
         "2026-07-29T12:00:05Z",
+        "2026-07-30T12:34:56Z",
         "2/5",
         "step-3",
         "tts",

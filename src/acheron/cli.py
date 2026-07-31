@@ -11,6 +11,7 @@ import ssl
 import sys
 import time
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,9 @@ _SOURCE_TYPE_MAP: dict[str, str] = {
 }
 
 _DEFAULT_BASE_URL = "https://localhost:8000"
+_SECONDS_PER_MINUTE = 60
+_MINUTES_PER_HOUR = 60
+_HOURS_PER_DAY = 24
 
 
 class _RemoteErrorType(StrEnum):
@@ -309,6 +313,36 @@ def _print_retry_http_error(exc: httpx.HTTPStatusError, *, job_id: str) -> None:
         console.print(f"Try: {remediation}")
 
 
+def _parse_datetime_or_duration(value: str) -> datetime:
+    """Parse an ISO-8601 timestamp or a relative duration from now."""
+    text = value.strip()
+    try:
+        seconds = _parse_duration_seconds(text)
+    except click.BadParameter:
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise click.BadParameter("expected an ISO-8601 timestamp or duration such as 24h") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise click.BadParameter("ISO-8601 timestamps must include a timezone") from None
+        return parsed.astimezone(UTC)
+    return datetime.now(UTC) - timedelta(seconds=seconds)
+
+
+def _format_age(timestamp: datetime) -> str:
+    """Render a bounded human-readable age from a lifecycle timestamp."""
+    seconds = max(0.0, (datetime.now(UTC) - timestamp).total_seconds())
+    if seconds < _SECONDS_PER_MINUTE:
+        return f"{seconds:.0f}s"
+    minutes = seconds / _SECONDS_PER_MINUTE
+    if minutes < _MINUTES_PER_HOUR:
+        return f"{minutes:.0f}m"
+    hours = minutes / _MINUTES_PER_HOUR
+    if hours < _HOURS_PER_DAY:
+        return f"{hours:.1f}h"
+    return f"{hours / _HOURS_PER_DAY:.1f}d"
+
+
 def _parse_duration_seconds(value: str) -> float:
     """Parse an operator duration such as ``60s`` or ``5m``."""
     text = value.strip().lower()
@@ -402,7 +436,12 @@ def archive_jobs(job_ids: tuple[str, ...]) -> None:
     client = _get_client()
     for job_id in job_ids:
         result = _run(client.archive_job(job_id), on_http_error=_print_http_error)
-        console.print(f"job={result.job_id} status={result.status.value} archived={result.archived_at is not None}")
+        archived_at = result.archived_at.isoformat() if result.archived_at is not None else "unknown"
+        console.print(
+            f"job={result.job_id} status={result.status.value} archived at={archived_at} "
+            f"record preserved (plan={result.plan_id or '-'}, inputs={result.source_type}, "
+            f"outputs={len(result.outputs)}, cost={_format_estimated_cost(result.total_cost, result.total_cost_basis)})"
+        )
 
 
 @main.command()
@@ -779,9 +818,50 @@ def tail(job_id: str) -> None:
 @click.option("--active", is_flag=True, help="Show only running jobs")
 @click.option("--completed", is_flag=True, help="Show only completed/failed jobs")
 @click.option("--label", default=None, help="Filter labels using a glob pattern")
-def list_jobs(active: bool, completed: bool, label: str | None) -> None:  # noqa: FBT001
-    """List all jobs."""
-    jobs = _run(_get_client().list_jobs(label=label))
+@click.option("--status", type=click.Choice([status.value for status in PlanStatus]), default=None)
+@click.option("--since", default=None, help="Only jobs since an ISO-8601 timestamp or duration such as 24h")
+@click.option("--before", default=None, help="Only jobs before an ISO-8601 timestamp")
+@click.option("--older-than", default=None, help="Only jobs not persisted within this duration")
+@click.option("--include-archived", is_flag=True, help="Include archived job records")
+def list_jobs(  # noqa: PLR0913
+    active: bool,  # noqa: FBT001
+    completed: bool,  # noqa: FBT001
+    label: str | None,
+    status: str | None,
+    since: str | None,
+    before: str | None,
+    older_than: str | None,
+    include_archived: bool,  # noqa: FBT001
+) -> None:
+    """List jobs with optional lifecycle and retention filters."""
+    if active and (completed or status is not None):
+        raise click.UsageError("--active cannot be combined with --completed or --status")
+    if completed and status is not None:
+        raise click.UsageError("--completed cannot be combined with --status")
+    since_at = _parse_datetime_or_duration(since) if since is not None else None
+    before_at = _parse_datetime_or_duration(before) if before is not None else None
+    stale_after = _parse_duration_seconds(older_than) if older_than is not None else None
+    request_status = "running" if active else status
+    client = _get_client()
+    if (
+        request_status is None
+        and since_at is None
+        and before_at is None
+        and stale_after is None
+        and not include_archived
+    ):
+        jobs = _run(client.list_jobs(label=label))
+    else:
+        jobs = _run(
+            client.list_jobs(
+                label=label,
+                status=request_status,
+                since=since_at,
+                before=before_at,
+                older_than_seconds=stale_after,
+                include_archived=include_archived,
+            )
+        )
     if active:
         jobs = [j for j in jobs if j.status.value == "running"]
     elif completed:
@@ -793,13 +873,31 @@ def list_jobs(active: bool, completed: bool, label: str | None) -> None:  # noqa
     table.add_column("Job ID")
     table.add_column("Label")
     table.add_column("Status")
+    table.add_column("Archived at")
+    table.add_column("Stale age")
     table.add_column("Plan")
     table.add_column("Steps")
     for j in jobs:
         progress = j.progress
         steps = f"{progress.completed_steps}/{progress.total_steps}" if progress.total_steps else "-"
-        table.add_row(j.job_id, j.label or "-", j.status.value, j.plan_id or "-", steps)
+        status_label = f"{j.status.value} (archived)" if j.archived_at is not None else j.status.value
+        archived_at = j.archived_at.isoformat() if j.archived_at is not None else "-"
+        table.add_row(
+            j.job_id,
+            j.label or "-",
+            status_label,
+            archived_at,
+            _format_age(j.last_persisted_at),
+            j.plan_id or "-",
+            steps,
+        )
     console.print(table)
+    for job in jobs:
+        if job.archived_at is not None:
+            console.print(
+                f"job={job.job_id} archived_at={job.archived_at.isoformat()} "
+                f"stale_age={_format_age(job.last_persisted_at)}"
+            )
 
 
 @main.command()

@@ -15,7 +15,7 @@ version: 3
 ---
 id: MAINT-001
 title: "`shell/api/routes/` has no admin namespace; on-call cannot reap / mark-failed / drain stuck jobs after orchestrator restart"
-status: stale
+status: verified
 severity: high
 effort: M
 discovered_via: [on-call, code-review]
@@ -29,10 +29,12 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 273-395
 related: [OBS-001, OBS-014, OBS-015]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [32335ce]
+verified_in: [32335ce]
+last_verified_at:
+  commit: 32335ce
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -271,7 +273,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-008
 title: "No \"stuck > N minutes\" filter in `list_jobs` — the on-call at 2am cannot find the 3 stuck jobs among 200 in the dashboard's flat list"
-status: stale
+status: verified
 severity: high
 effort: S
 discovered_via: [on-call, code-review]
@@ -285,10 +287,12 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 386-395
 related: [MAINT-001]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [32335ce]
+verified_in: [32335ce]
+last_verified_at:
+  commit: 32335ce
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -381,10 +385,12 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 212-227
 related: []
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [32335ce]
+verified_in: [32335ce]
+last_verified_at:
+  commit: 32335ce
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -399,7 +405,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-011
 title: "`last_error` is wiped on the first successful probe — the error trail that caused `record_health_failure` to unregister the worker is gone before the on-call can read it"
-status: stale
+status: verified
 severity: high
 effort: M
 discovered_via: [on-call, code-review]
@@ -411,10 +417,12 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 592-601
 related: [OBS-007]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [32335ce]
+verified_in: [32335ce]
+last_verified_at:
+  commit: 32335ce
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -433,7 +441,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-012
 title: "`ACHERON_DATA_DIR` grows monotonically with no auto-pruning and no `acheron cleanup` command — `_verify_data_dir_writable` checks writability, not capacity"
-status: stale
+status: verified
 severity: high
 effort: M
 discovered_via: [on-call, code-review, audit]
@@ -445,10 +453,12 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 211-227
 related: []
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [32335ce]
+verified_in: [32335ce]
+last_verified_at:
+  commit: 32335ce
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
 ```

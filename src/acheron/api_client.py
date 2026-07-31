@@ -31,6 +31,7 @@ from acheron.shell.api.schemas import CleanupResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
+    from datetime import datetime
 
 
 def _ssl_context_for(verify: bool | str | Path) -> bool | ssl.SSLContext:  # noqa: FBT001
@@ -342,13 +343,35 @@ class AcheronClient:
             resp.raise_for_status()
             return cast("dict[str, str]", resp.json())
 
-    async def list_jobs(self, *, label: str | None = None) -> list[JobResponse]:
-        """List all jobs, optionally filtered by label glob."""
-        params = {"label": label} if label is not None else None
+    async def list_jobs(  # noqa: PLR0913
+        self,
+        *,
+        label: str | None = None,
+        status: str | None = None,
+        since: datetime | None = None,
+        before: datetime | None = None,
+        older_than_seconds: float | None = None,
+        include_archived: bool = False,
+    ) -> list[JobResponse]:
+        """List jobs using typed lifecycle and retention filters."""
+        params: dict[str, str] = {}
+        if label is not None:
+            params["label"] = label
+        if status is not None:
+            params["status"] = status
+        if since is not None:
+            params["since"] = since.isoformat()
+        if before is not None:
+            params["before"] = before.isoformat()
+        if older_than_seconds is not None:
+            params["older_than_seconds"] = str(older_than_seconds)
+        if include_archived:
+            params["include_archived"] = "true"
+        query = params or None
         async with httpx.AsyncClient(
             base_url=self._base_url, transport=self._transport, verify=self._ssl_verify
         ) as client:
-            resp = await client.get("/jobs", params=params)
+            resp = await client.get("/jobs", params=query)
             resp.raise_for_status()
             return JobListResponse.model_validate(resp.json()).jobs
 

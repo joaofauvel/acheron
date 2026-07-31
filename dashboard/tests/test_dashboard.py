@@ -159,6 +159,34 @@ class TestJobsPartial:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_jobs_partial_forwards_recovery_filters(self, client):
+        route = respx.get(
+            f"{_ORCH_URL}/jobs",
+            params={
+                "status": "running",
+                "older_than_seconds": "1800",
+                "include_archived": "true",
+            },
+        ).mock(return_value=httpx.Response(200, json={"jobs": []}))
+
+        response = await client.get("/partials/jobs?status=running&older_than_seconds=1800&include_archived=true")
+
+        assert response.status_code == 200
+        assert route.called
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_jobs_partial_default_poll_uses_unfiltered_jobs_request(self, client):
+        route = respx.get(f"{_ORCH_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": []}))
+
+        response = await client.get("/partials/jobs")
+
+        assert response.status_code == 200
+        assert route.called
+        assert route.calls.last.request.url.query == b""
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_jobs_partial_empty(self, client):
         respx.get(f"{_ORCH_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": []}))
         resp = await client.get("/partials/jobs")
@@ -218,6 +246,46 @@ class TestWorkersPartial:
         assert resp.status_code == 200
         assert "tts-1" in resp.text
         assert "tts" in resp.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_workers_partial_renders_latest_three_sanitized_history_entries(self, client):
+        history = [
+            {
+                "timestamp": f"2026-07-29T12:00:0{i}Z",
+                "message": f"failure-{i}",
+                "consecutive_failures": i,
+            }
+            for i in range(1, 5)
+        ]
+        respx.get(f"{_ORCH_URL}/workers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workers": [
+                        {
+                            "worker_id": "tts-1",
+                            "worker_type": "tts",
+                            "transport": "http",
+                            "status": "healthy",
+                            "consecutive_failures": 0,
+                            "last_error": "latest sanitized error",
+                            "error_history": history,
+                        }
+                    ]
+                },
+            )
+        )
+
+        response = await client.get("/partials/workers")
+
+        assert response.status_code == 200
+        assert "latest sanitized error" in response.text
+        assert "failure-1" not in response.text
+        for message in ("failure-2", "failure-3", "failure-4"):
+            assert message in response.text
+        assert "http://" not in response.text
+        assert "Worker history" in response.text
 
     @respx.mock
     @pytest.mark.asyncio

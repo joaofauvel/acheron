@@ -441,7 +441,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-012
 title: "`acheron jobs` has no time-window filter, no status filter beyond binary --active/--completed, no archive/delete"
-status: stale
+status: verified
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
@@ -453,11 +453,13 @@ files:
   - path: src/acheron/cli.py
     lines: 633-657
 related: [OPS-031, OPS-004]
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
-drift_note: "Label filtering exists, but time filters and archive controls remain absent."
+fixed_in: [32335ce]
+verified_in: [32335ce]
+last_verified_at:
+  commit: 32335ce
+  date: "2026-07-30"
+verified_by: "harness:phase-4d-task-10-recovery"
+drift_note: "Time-window/status/archive controls and archive metadata are covered by the Task 10 recovery journey."
 feedback_ref: "TBD-pagerduty"
 ---
 ```
