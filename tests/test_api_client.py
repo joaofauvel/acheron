@@ -866,24 +866,31 @@ async def test_client_captures_response_request_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_tail_job_bounds_error_response_buffering() -> None:
+async def test_tail_job_does_not_consume_oversized_error_response() -> None:
     class EndlessErrorStream(httpx.AsyncByteStream):
+        def __init__(self) -> None:
+            self.reads = 0
+
         async def __aiter__(self):
+            self.reads += 1
             yield b"x" * (64 * 1024 * 2)
             await asyncio.Event().wait()
 
         async def aclose(self) -> None:
             return None
 
+    error_stream = EndlessErrorStream()
+
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, headers={"content-type": "application/json"}, stream=EndlessErrorStream())
+        return httpx.Response(500, headers={"content-type": "application/json"}, stream=error_stream)
 
     client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
     stream = client.tail_job("job-1")
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         await asyncio.wait_for(stream.__anext__(), timeout=1)
 
-    assert len(exc_info.value.response.content) <= 64 * 1024
+    assert error_stream.reads == 0
+    assert exc_info.value.response.content == b""
 
 
 @pytest.mark.asyncio
@@ -898,7 +905,11 @@ async def test_tail_job_preserves_json_error_details() -> None:
             return None
 
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, headers={"content-type": "application/json"}, stream=JsonErrorStream())
+        return httpx.Response(
+            500,
+            headers={"content-type": "application/json", "content-length": str(len(body))},
+            stream=JsonErrorStream(),
+        )
 
     client = AcheronClient("http://test", transport=httpx.MockTransport(handler))
     stream = client.tail_job("job-1")

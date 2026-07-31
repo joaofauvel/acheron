@@ -38,13 +38,21 @@ _MAX_ERROR_RESPONSE_BYTES = 64 * 1024
 
 
 async def _buffer_error_response(response: httpx.Response) -> None:
-    """Buffer a bounded error body so status diagnostics can parse JSON safely.
+    """Buffer a declared-small error body so status diagnostics can parse JSON safely.
 
     ``httpx.Response.json`` requires a content-backed response. Its public read
-    helpers consume the stream to EOF, so the bounded iteration uses the public
-    byte iterator and assigns only the resulting bytes to the private content
-    slot.
+    helpers consume the stream to EOF, so only an explicit content length within
+    the bound permits iteration; all other responses receive empty content.
     """
+    content_length = response.headers.get("content-length")
+    try:
+        declared_length = int(content_length) if content_length is not None else None
+    except ValueError:
+        declared_length = None
+    if declared_length is None or not 0 <= declared_length <= _MAX_ERROR_RESPONSE_BYTES:
+        response._content = b""  # noqa: SLF001
+        return
+
     chunks: list[bytes] = []
     buffered = 0
     async for chunk in response.aiter_bytes():
