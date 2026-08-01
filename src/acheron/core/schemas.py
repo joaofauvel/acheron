@@ -31,9 +31,9 @@ class OutputSummary(BaseModel):
 class CostEstimateResponse(BaseModel):
     """Execution-time cost estimate and pricing provenance."""
 
-    cost: float | None
+    cost: float | None = Field(default=None, ge=0)
     basis: CostBasis
-    rate_per_hour: float | None = None
+    rate_per_hour: float | None = Field(default=None, ge=0)
     gpu_type: str | None = None
     secure_cloud: bool | None = None
     queried_at: datetime | None = None
@@ -56,10 +56,10 @@ class CostBreakdownResponse(BaseModel):
     step_id: str
     worker_type: WorkerType
     worker_id: str | None
-    gpu_seconds: float | None
-    cost: float | None
+    gpu_seconds: float | None = Field(default=None, ge=0)
+    cost: float | None = Field(default=None, ge=0)
     basis: CostBasis
-    rate_per_hour: float | None = None
+    rate_per_hour: float | None = Field(default=None, ge=0)
     gpu_type: str | None = None
     secure_cloud: bool | None = None
     queried_at: datetime | None = None
@@ -91,9 +91,9 @@ class CostSummaryResponse(BaseModel):
     window: str
     since: datetime | None
     until: datetime
-    total_cost: float
-    job_count: int
-    unknown_cost_jobs: int
+    total_cost: float = Field(ge=0)
+    job_count: int = Field(ge=0)
+    unknown_cost_jobs: int = Field(ge=0)
 
     @field_validator("since", "until")
     @classmethod

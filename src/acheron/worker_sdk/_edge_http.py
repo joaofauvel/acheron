@@ -306,6 +306,7 @@ def _malformed_execute_response() -> JSONResponse:
 _SAFE_ARTIFACT_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 _SAFE_GPU_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+:-]{0,127}$")
 _MAX_ARTIFACT_FILENAME_LENGTH = 255
+_MAX_ARTIFACT_MIME_LENGTH = 256
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
 
@@ -325,8 +326,10 @@ def _safe_artifact_filename(value: object) -> str:
 
 
 def _safe_artifact_content_type(value: object) -> str:
-    if not isinstance(value, str) or any(
-        ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_ARTIFACT_MIME_LENGTH
+        or any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value)
     ):
         return "application/octet-stream"
     if _SAFE_ARTIFACT_MIME_RE.fullmatch(value) is None:

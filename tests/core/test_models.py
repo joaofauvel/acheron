@@ -96,6 +96,22 @@ class TestWorkerErrorSanitization:
         assert "leaked" not in sanitized
 
 
+def test_job_metrics_reject_non_finite_and_negative_values() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        JobMetrics(duration_seconds=float("nan"))
+    with pytest.raises(ValueError, match="finite"):
+        JobMetrics(duration_seconds=float("inf"))
+    with pytest.raises(ValueError, match="non-negative"):
+        JobMetrics(duration_seconds=-1.0)
+    with pytest.raises(ValueError, match="non-negative"):
+        JobMetrics(duration_seconds=1.0, tokens_in=-1)
+
+
+def test_job_metrics_valid_values_serialize() -> None:
+    metrics = JobMetrics(duration_seconds=1.0, gpu_seconds=0.5, tokens_in=2, tokens_out=3)
+    assert TypeAdapter(JobMetrics).validate_json(metrics.model_dump_json()) == metrics
+
+
 class TestEnums:
     @pytest.mark.parametrize(
         ("member", "value"),

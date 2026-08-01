@@ -632,7 +632,7 @@ async def list_jobs(  # noqa: PLR0913
     jobs = await orch.list_jobs(query)
     if label is not None:
         jobs = tuple(job for job in jobs if fnmatch.fnmatchcase(job.label or "", label))
-    return JobListResponse(jobs=[_tracked_to_response(j) for j in jobs])
+    return JobListResponse(jobs=[_tracked_to_response(j) for j in jobs[:1000]])
 
 
 def _booting_tts_warnings(
@@ -735,11 +735,11 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
                     size_bytes=output.size_bytes,
                     content_type=public_content_type(output.content_type),
                 )
-                for index, output in enumerate(result.outputs)
+                for index, output in enumerate(result.outputs[:1000])
             ]
             if result
             else []
         ),
-        errors=([_to_step_error_response(error) for error in result.errors] if result else []),
-        warnings=warnings if warnings is not None else [],
+        errors=([_to_step_error_response(error) for error in result.errors[:1000]] if result else []),
+        warnings=(warnings or [])[:100],
     )

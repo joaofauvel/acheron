@@ -120,6 +120,7 @@ _ROOTED_WINDOWS_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])\\{1,2}(?=[^\\/\s'\"
 _ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+(?:/[^/\s'\"<>]*)*)?")
 _TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])[^\s]*\.\.[\\/][^\s]*")
 _SAFE_FALLBACK = "request failed"
+_MAX_PUBLIC_MESSAGE_LENGTH = 4096
 _CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _REMEDIATION_COMMAND_PARTS = 4
 _UNSAFE_PATTERNS = (
@@ -155,10 +156,10 @@ def _safe_fallback(fallback: str) -> str:
 def sanitise_public_message(message: str, *, fallback: str = _SAFE_FALLBACK) -> str:
     """Return a safe message or a stable fallback for sensitive text."""
     safe_fallback = _safe_fallback(fallback)
-    if _contains_unsafe_content(message):
+    if len(message) > _MAX_PUBLIC_MESSAGE_LENGTH or _contains_unsafe_content(message):
         return safe_fallback
     text = " ".join(line.strip() for line in message.splitlines() if line.strip())
-    return text or safe_fallback
+    return text[:_MAX_PUBLIC_MESSAGE_LENGTH] if text else safe_fallback
 
 
 def sanitise_public_remediation(remediation: str) -> str:

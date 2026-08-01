@@ -7,6 +7,12 @@ from fastapi import FastAPI
 from httpx import ASGITransport
 
 from acheron.core.models import WorkerStatus
+from acheron.shell.api.public import public_content_type
+
+
+def test_public_content_type_falls_back_for_oversized_values() -> None:
+    assert public_content_type("a" * 1_000_000) == "application/octet-stream"
+    assert public_content_type("audio/wav") == "audio/wav"
 
 
 class TestCapabilitiesRoute:

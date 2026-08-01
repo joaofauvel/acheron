@@ -37,6 +37,26 @@ _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
 
 logger = logging.getLogger(__name__)
+_MAX_WORKER_RESPONSE_BYTES = 64 * 1024 * 1024
+
+
+async def _read_bounded_response(response: httpx.Response) -> bytes:
+    """Read a worker response without allowing unbounded materialization."""
+    declared = response.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > _MAX_WORKER_RESPONSE_BYTES:
+                raise WorkerError("Worker response exceeds the supported limit")
+        except ValueError as exc:
+            raise WorkerError("Worker response has an invalid content length") from exc
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in response.aiter_bytes():
+        total += len(chunk)
+        if total > _MAX_WORKER_RESPONSE_BYTES:
+            raise WorkerError("Worker response exceeds the supported limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:
@@ -135,17 +155,32 @@ class HttpWorker(Worker):
         """Make an HTTP request, raising WorkerError on failure."""
         url = f"{self._base_url}{path}"
         try:
-            resp = await self._client.request(method, url, **kwargs)
-            resp.raise_for_status()
+            stream_context = self._client.stream(method, url, **kwargs)
+            if not hasattr(stream_context, "__aenter__"):
+                close = getattr(stream_context, "close", None)
+                if callable(close):
+                    close()
+                response = await self._client.request(method, url, **kwargs)
+                response.raise_for_status()
+                content = response.content
+                if len(content) > _MAX_WORKER_RESPONSE_BYTES:
+                    raise WorkerError("Worker response exceeds the supported limit")
+                return response
+            async with stream_context as streamed:
+                streamed.raise_for_status()
+                content = await _read_bounded_response(streamed)
+                return httpx.Response(
+                    streamed.status_code,
+                    headers=streamed.headers,
+                    content=content,
+                    request=streamed.request,
+                )
         except httpx.ConnectError as exc:
             msg = f"Worker unreachable: {self._base_url}"
             raise WorkerUnavailableError(msg) from exc
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.text
-            msg = f"Worker error {exc.response.status_code}: {detail}"
+            msg = f"Worker error {exc.response.status_code}"
             raise WorkerError(msg) from exc
-        else:
-            return resp
 
     async def capabilities(self) -> WorkerCapabilities:  # noqa: D102
         resp = await self._request("GET", "/capabilities")

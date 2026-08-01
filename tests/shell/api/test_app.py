@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,40 @@ def test_create_app_uses_injected_stores_without_consulting_env(
 
     assert app.state.orchestrator._registry is registry  # noqa: SLF001
     assert app.state.orchestrator._job_store is job_store  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_chunked_json_body_is_bounded(tmp_path: Path) -> None:
+    from tests.shell.conftest import make_app
+
+    app = await make_app(tmp_path)
+
+    async def body() -> AsyncIterator[bytes]:
+        yield b"{" + b'"payload":"' + (b"x" * (8 * 1024 * 1024)) + b'"}'
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/jobs", content=body(), headers={"content-type": "application/json"})
+    assert response.status_code == 413
+    assert response.json() == {"detail": "request body exceeds the supported limit"}
+
+
+@pytest.mark.asyncio
+async def test_unexpected_error_keeps_request_id_and_safe_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.shell.conftest import make_app
+
+    app = await make_app(tmp_path)
+
+    async def failing_list_workers() -> tuple[object, ...]:
+        raise RuntimeError("secret")
+
+    monkeypatch.setattr(app.state.orchestrator, "list_workers", failing_list_workers)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/workers", headers={"x-request-id": "req-123"})
+    assert response.status_code == 500
+    assert response.headers["x-request-id"] == "req-123"
+    assert response.json() == {"detail": "Request failed"}
 
 
 @pytest.mark.asyncio

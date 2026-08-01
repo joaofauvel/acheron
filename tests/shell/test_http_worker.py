@@ -1,6 +1,7 @@
 """Tests for the HttpWorker transport."""
 
 import hashlib
+from collections.abc import AsyncIterator
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -8,6 +9,7 @@ import httpx
 import pytest
 import respx
 
+import acheron.shell.transports.http as http_transport
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
     CostBasis,
@@ -18,6 +20,31 @@ from acheron.core.models import (
 from acheron.shell.transports.http import HttpWorker
 
 _BASE_URL = "http://worker:8000"
+
+
+class _ChunkedResponseStream(httpx.AsyncByteStream):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b"oversized"
+
+
+class TestHttpWorkerBounds:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_content_length(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(http_transport, "_MAX_WORKER_RESPONSE_BYTES", 4)
+        respx.get(f"{_BASE_URL}/capabilities").mock(return_value=httpx.Response(200, content=b"oversized"))
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
+        with pytest.raises(WorkerError, match="exceeds"):
+            await worker.capabilities()
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_chunked_response(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(http_transport, "_MAX_WORKER_RESPONSE_BYTES", 4)
+        transport = httpx.MockTransport(lambda _request: httpx.Response(200, stream=_ChunkedResponseStream()))
+        async with httpx.AsyncClient(transport=transport, base_url=_BASE_URL) as client:
+            worker = HttpWorker(_BASE_URL, client=client, data_dir=tmp_path)
+            with pytest.raises(WorkerError, match="exceeds"):
+                await worker.capabilities()
 
 
 class TestHttpWorkerHealth:

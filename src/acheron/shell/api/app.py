@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from acheron.core.errors import sanitise_public_message, sanitise_public_remediation
 from acheron.shell.api.admin_audit import record_admin_failure
 from acheron.shell.api.input_boundary import InputRequestBoundary
+from acheron.shell.api.request_boundary import RequestBodyBoundary
 from acheron.shell.api.routes import (
     admin,
     capabilities,
@@ -113,6 +114,7 @@ def create_app(  # noqa: C901, PLR0915
     app.state.orchestrator = orchestrator
     app.state.version = version_info
     app.add_middleware(InputRequestBoundary)
+    app.add_middleware(RequestBodyBoundary)
     logging.getLogger().addFilter(ContextFilter())
 
     @app.middleware("http")
@@ -129,16 +131,20 @@ def create_app(  # noqa: C901, PLR0915
         with bind_request_id(request_id):
             try:
                 response = await call_next(request)
+            except TimeoutError:
+                raise
             except Exception:
-                if not request.url.path.startswith("/admin/"):
-                    raise
-                record_admin_failure(request, orchestrator, reason="unexpected administrative route failure")
-                error = AdminErrorResponse(
-                    type="AdminInternalError",
-                    message="Administrative request failed",
-                    remediation="Inspect the service logs and retry the operation.",
-                )
-                response = JSONResponse(status_code=500, content={"detail": error.model_dump()})
+                logging.getLogger(__name__).exception("Unexpected request failure")
+                if request.url.path.startswith("/admin/"):
+                    record_admin_failure(request, orchestrator, reason="unexpected administrative route failure")
+                    error = AdminErrorResponse(
+                        type="AdminInternalError",
+                        message="Administrative request failed",
+                        remediation="Inspect the service logs and retry the operation.",
+                    )
+                    response = JSONResponse(status_code=500, content={"detail": error.model_dump()})
+                else:
+                    response = JSONResponse(status_code=500, content={"detail": "Request failed"})
             response.headers["x-request-id"] = request_id
             return response
 

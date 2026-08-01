@@ -21,6 +21,7 @@ _SAFE_FORMAT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,31}(?:/[A-Za-z0-9][
 _SAFE_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+:-]{0,63}(?:/[A-Za-z0-9][A-Za-z0-9_.+:-]{0,63}){0,3}$")
 _SAFE_REVISION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 _REDACTED = "<redacted>"
+_MAX_PUBLIC_MIME_LENGTH = 256
 _SAFE_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 _UNSAFE_PUBLIC_TEXT_RE = re.compile(
     r"(?:[\x00-\x1f\x7f]|://|[@/\\]|\.\.|"
@@ -59,8 +60,10 @@ def public_transport(value: object) -> str:
 
 def public_content_type(value: object) -> str:
     """Return a safe MIME type for response headers."""
-    if not isinstance(value, str) or any(
-        ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_PUBLIC_MIME_LENGTH
+        or any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value)
     ):
         return "application/octet-stream"
     media_type = value.split(";", 1)[0].strip()

@@ -241,6 +241,25 @@ class JobMetrics:
     tokens_out: int | None = None
     cost_estimate: CostEstimate | None = None
 
+    def __post_init__(self) -> None:
+        for name, value in (("duration_seconds", self.duration_seconds), ("gpu_seconds", self.gpu_seconds)):
+            if value is not None and (not math.isfinite(value) or value < 0):
+                msg = f"{name} must be finite and non-negative"
+                raise ValueError(msg)
+        for name, value in (("tokens_in", self.tokens_in), ("tokens_out", self.tokens_out)):
+            if value is not None and (isinstance(value, bool) or value < 0):
+                msg = f"{name} must be a non-negative integer"
+                raise ValueError(msg)
+        if self.cost_estimate is not None:
+            for name, value in (
+                ("cost", self.cost_estimate.cost),
+                ("rate_per_hour", self.cost_estimate.rate_per_hour),
+                ("cache_age_seconds", self.cost_estimate.cache_age_seconds),
+            ):
+                if value is not None and (not math.isfinite(value) or value < 0):
+                    msg = f"{name} must be finite and non-negative"
+                    raise ValueError(msg)
+
     def model_dump_json(self) -> bytes:
         """Pydantic-style JSON serialisation shim for the multipart metrics part.
 

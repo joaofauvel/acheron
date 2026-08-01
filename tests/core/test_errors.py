@@ -14,7 +14,13 @@ from acheron.core.errors import (
     PlanError,
     WorkerError,
     WorkerUnavailableError,
+    sanitise_public_message,
 )
+
+
+def test_public_message_is_bounded_and_control_safe() -> None:
+    assert sanitise_public_message("x" * 5000) == "request failed"
+    assert sanitise_public_message("bad\x1bvalue") == "request failed"
 
 
 class TestExceptionHierarchy:
