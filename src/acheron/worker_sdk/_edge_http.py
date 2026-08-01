@@ -264,7 +264,7 @@ def _safe_artifact_filename(value: object) -> str:
         return "output.bin"
     if (
         any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value)
-        or any(delimiter in value for delimiter in ("\r", "\n", '"', "\\", ";"))
+        or any(delimiter in value for delimiter in ("\r", "\n", '"', "\\", ";", ":"))
         or "/" in value
         or ".." in value
         or value in {".", ".."}
