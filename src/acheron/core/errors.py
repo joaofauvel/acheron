@@ -98,7 +98,7 @@ class InvalidationTargetError(JobError):
 _CREDENTIAL_PATTERN = re.compile(
     r"(?ix)"
     r"(?<![A-Za-z0-9_-])"
-    r"([\"']?(?:password|passwd|secret|token|api[_-]?key|authorization)[\"']?)"
+    r"([\"']?(?:(?:client[_-]?secret|access[_-]?token|aws[_-]?secret[_-]?access[_-]?key)|password|passwd|secret|token|api[_-]?key|authorization)[\"']?)"
     r"\s*(?:=|:)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}\]]+")

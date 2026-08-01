@@ -198,6 +198,10 @@ class TestSanitiseExcMessage:
             "https://user:secret@example.test/execute?token=secret#fragment",
             "grpc://user:secret@example.test:8443/execute",
             "Traceback (most recent call last): File '/srv/worker.py', line 2",
+            "client_secret=top-secret",
+            "access_token: top-secret",
+            "AWS_SECRET_ACCESS_KEY=top-secret",
+            '{"client_secret": "top-secret"}',
         ],
     )
     def test_fails_closed_for_publicly_unsafe_messages(self, message: str) -> None:

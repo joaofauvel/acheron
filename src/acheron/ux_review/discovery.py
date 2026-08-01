@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import shutil
 import subprocess
@@ -29,6 +30,47 @@ def _repository_head(repo_root: Path) -> str | None:
     except OSError, subprocess.CalledProcessError:
         return None
     return result.stdout.strip() or None
+
+
+_UX_METADATA_PATHS = frozenset(
+    {
+        "docs/ux_review/deploy.md",
+        "docs/ux_review/ops.md",
+        "docs/ux_review/maint.md",
+        "docs/ux_review/summary.md",
+    }
+)
+
+
+def repository_tree_fingerprint(repo_root: Path, revision: str = "HEAD") -> str | None:
+    """Hash tracked tree entries except self-referential UX metadata files."""
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "ls-tree", "-r", "-z", revision],
+            check=True,
+            capture_output=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return None
+    entries: list[tuple[str, str]] = []
+    for record in result.stdout.split(b"\0"):
+        if not record:
+            continue
+        header, path_bytes = record.split(b"\t", 1)
+        path = path_bytes.decode("utf-8")
+        if path in _UX_METADATA_PATHS:
+            continue
+        entries.append((path, header.split()[2].decode("ascii")))
+    digest = hashlib.sha256()
+    for path, object_id in sorted(entries):
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\\0")
+        digest.update(object_id.encode("ascii"))
+        digest.update(b"\\n")
+    return digest.hexdigest()
 
 
 def _post_fixed_commit(repo_root: Path, story: Story, head_sha: str) -> bool:

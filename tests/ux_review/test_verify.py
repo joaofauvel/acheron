@@ -13,6 +13,11 @@ from acheron.ux_review.verify import main, verify
 _HEAD = "head-sha"
 
 
+@pytest.fixture(autouse=True)
+def _fake_tree_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(verify_module, "repository_tree_fingerprint", lambda *_args: "tree-sha")
+
+
 def _write_story(
     root: Path,
     *,
@@ -22,6 +27,8 @@ def _write_story(
 ) -> None:
     docs = root / "docs" / "ux_review"
     docs.mkdir(parents=True)
+    if "commit: CURRENT_HEAD" in metadata and "tree:" not in metadata:
+        metadata = metadata.replace("  date:", "  tree: tree-sha\n  date:", 1)
     (docs / "ops.md").write_text(
         f"""# OPS
 
@@ -362,3 +369,33 @@ def test_harness_artifact_requires_git_fixed_commit_evidence(
 
     assert status == "FAIL"
     assert "harness artifact" in message
+
+
+def test_current_head_requires_repository_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("verified_in: [CURRENT_HEAD]\nlast_verified_at:\n  commit: CURRENT_HEAD\n  date: '2026-07-31'\n"),
+    )
+    monkeypatch.setattr(verify_module, "_repository_head", lambda _root: None)
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", "CURRENT_HEAD")
+
+    assert status == "FAIL"
+    assert "repository HEAD" in message
+
+
+def test_current_head_attestation_rejects_later_tree_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("verified_in: [CURRENT_HEAD]\nlast_verified_at:\n  commit: CURRENT_HEAD\n  date: '2026-07-31'\n"),
+    )
+    monkeypatch.setattr(verify_module, "_repository_head", lambda _root: _HEAD)
+    monkeypatch.setattr(verify_module, "repository_tree_fingerprint", lambda *_args: "changed-tree")
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
+
+    assert status == "FAIL"
+    assert "attestation" in message

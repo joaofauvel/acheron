@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from acheron.ux_review.discovery import artifact_path_for
+from acheron.ux_review.discovery import artifact_path_for, repository_tree_fingerprint
 from acheron.ux_review.schema import CURRENT_HEAD, Story
 from acheron.ux_review.validate import _parse_story_blocks
 
@@ -58,10 +58,19 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
             return ("PARTIAL", f"story status={story.status} is not currently verified")
         actual_head = _repository_head(root)
         marker_input = head_sha in {"HEAD", CURRENT_HEAD}
-        requested_head = actual_head if marker_input and actual_head is not None else head_sha
+        if marker_input and actual_head is None:
+            return ("FAIL", "repository HEAD is unavailable for CURRENT_HEAD verification")
+        requested_head = actual_head if marker_input else head_sha
         marker_matches = actual_head is not None and requested_head == actual_head
         verified_commit = story.last_verified_at.get("commit")
-        resolved_commit = requested_head if verified_commit == CURRENT_HEAD and marker_matches else verified_commit
+        if verified_commit == CURRENT_HEAD:
+            if not marker_matches:
+                return ("PARTIAL", f"last_verified_at.commit=CURRENT_HEAD does not match head={requested_head}")
+            expected_tree = repository_tree_fingerprint(root.parent.parent, actual_head)
+            attested_tree = story.last_verified_at.get("tree")
+            if expected_tree is None or attested_tree != expected_tree:
+                return ("FAIL", "CURRENT_HEAD attestation does not match the committed tree")
+        resolved_commit = requested_head if verified_commit == CURRENT_HEAD else verified_commit
         if resolved_commit != requested_head:
             if verified_commit is None:
                 result = ("PARTIAL", "verification metadata is missing last_verified_at.commit")
