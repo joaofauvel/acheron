@@ -44,7 +44,7 @@ def _repository_head(root: Path) -> str | None:
     return result.stdout.strip() or None
 
 
-def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
+def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa: C901, PLR0912
     """Verify a single story. Returns (status, message).
 
     status is one of: PASS, PARTIAL, FAIL.
