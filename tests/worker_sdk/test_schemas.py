@@ -16,6 +16,8 @@ class TestExecuteRequest:
                     "chapter_id": "ch1",
                     "chunks": [{"text": "hola"}],
                     "target_language": "es",
+                    "voice": "Ryan",
+                    "voice_map": [{"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"}],
                 },
                 "chapter_id": "ch1",
                 "sequence_ids": [0, 1],
@@ -25,6 +27,8 @@ class TestExecuteRequest:
         assert body.job_type == "tts"
         assert body.chapter_id == "ch1"
         assert body.sequence_ids == [0, 1]
+        assert body.payload["voice"] == "Ryan"
+        assert body.payload["voice_map"] == [{"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"}]
 
     def test_sequence_ids_optional(self) -> None:
         body = ExecuteRequest.model_validate({"job_id": "j-1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"})

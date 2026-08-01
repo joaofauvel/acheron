@@ -71,6 +71,12 @@ class _SpyingModel(_FakeModel):
         return self._wavs, self._sr
 
 
+def _job_with_voice_payload(**payload: Any) -> Job:
+    base: dict[str, JsonValue] = {"chapter_id": "ch1", "target_language": "en"}
+    base.update(cast("dict[str, JsonValue]", payload))
+    return Job(job_id="j1", job_type=WorkerType.TTS, payload=base, chapter_id="ch1")
+
+
 class TestHandle:
     @pytest.mark.asyncio
     async def test_handle_returns_bytes_artifacts_in_order(self) -> None:
@@ -176,6 +182,126 @@ class TestHandle:
         )
         await h.handle(job, input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]))
         assert h._model.captured_speaker == ["Dylan"]
+
+    @pytest.mark.asyncio
+    async def test_handle_applies_voice_map_per_chunk(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _SpyingModel(
+            [np.zeros(50, dtype=np.float32), np.zeros(50, dtype=np.float32)],
+            22050,
+        )
+        job = _job_with_voice_payload(
+            voice="Ryan",
+            voice_map=[
+                {"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"},
+                {"start_chapter": 4, "end_chapter": 100, "voice": "Ryan"},
+            ],
+        )
+
+        await h.handle(
+            job,
+            input=_build_input(
+                [
+                    {"chapter_id": "ch1", "sequence_id": 0, "text": "one"},
+                    {"chapter_id": "chapter_004", "sequence_id": 1, "text": "four"},
+                ]
+            ),
+        )
+
+        assert h._model.captured_speaker == ["Vivian", "Ryan"]
+
+    @pytest.mark.asyncio
+    async def test_handle_uses_default_voice_without_voice_map(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        await h.handle(
+            _job_with_voice_payload(voice="Vivian"),
+            input=_build_input([{"chapter_id": "ch4", "sequence_id": 0, "text": "four"}]),
+        )
+
+        assert h._model.captured_speaker == ["Vivian"]
+
+    @pytest.mark.asyncio
+    async def test_handle_falls_back_to_default_for_uncovered_chapter(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings(default_speaker="Ryan"))
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        await h.handle(
+            _job_with_voice_payload(
+                voice="Ryan",
+                voice_map=[{"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"}],
+            ),
+            input=_build_input([{"chapter_id": "ch4", "sequence_id": 0, "text": "four"}]),
+        )
+
+        assert h._model.captured_speaker == ["Ryan"]
+
+    @pytest.mark.asyncio
+    async def test_handle_rejects_uncovered_chapter_without_configured_default(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings(default_speaker="", per_language_defaults={}))
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        with pytest.raises(WorkerError, match="No voice configured for chapter 4"):
+            await h.handle(
+                _job_with_voice_payload(
+                    voice_map=[{"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"}],
+                ),
+                input=_build_input([{"chapter_id": "ch4", "sequence_id": 0, "text": "four"}]),
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_rejects_malformed_chapter_id_before_inference(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        with pytest.raises(WorkerError, match="Malformed chapter_id"):
+            await h.handle(
+                _job_with_voice_payload(voice="Ryan"),
+                input=_build_input([{"chapter_id": "chapter-four", "sequence_id": 0, "text": "four"}]),
+            )
+        assert h._model.captured_speaker == []
+
+    @pytest.mark.asyncio
+    async def test_handle_rejects_voice_absent_from_advertised_set(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        with pytest.raises(WorkerError, match="Unknown speaker 'NotAdvertised'"):
+            await h.handle(
+                _job_with_voice_payload(voice="NotAdvertised"),
+                input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "one"}]),
+            )
+        assert h._model.captured_speaker == []
+
+    @pytest.mark.asyncio
+    async def test_handle_rejects_missing_voice_in_voice_map(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        with pytest.raises(WorkerError, match=r"voice_map\[0\]\.voice"):
+            await h.handle(
+                _job_with_voice_payload(
+                    voice="Ryan",
+                    voice_map=[{"start_chapter": 1, "end_chapter": 3}],
+                ),
+                input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "one"}]),
+            )
+        assert h._model.captured_speaker == []
 
     @pytest.mark.asyncio
     async def test_handle_chunks_with_no_chapter_id_raises_worker_error(self) -> None:

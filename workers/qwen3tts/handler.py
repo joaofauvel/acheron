@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import io
+import re
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
-from workers._shared_utils import parse_chunks_json, safe_chapter_id
+from workers._shared_utils import Chunk, parse_chunks_json, safe_chapter_id
 
 if TYPE_CHECKING:
     from acheron.worker_sdk.inputs import Input
@@ -137,11 +138,10 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             return []
         target_lang = self._validate_target_lang(job)
         qwen_lang = _LANG_MAP[target_lang]
-        speaker = self._resolve_speaker(job, target_lang)
+        speakers = [self._resolve_speaker_for_chunk(chunk, job, target_lang) for chunk in chunks]
 
         texts = [c.text for c in chunks]
         languages = [qwen_lang] * len(chunks)
-        speakers = [speaker] * len(chunks)
         instructs = [c.instruct for c in chunks]
 
         import soundfile as sf  # noqa: PLC0415 - lazy, not always installed
@@ -177,11 +177,72 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             raise WorkerError(msg)
         return target_lang
 
-    def _resolve_speaker(self, job: Job, target_lang: str) -> str:
-        speaker = job.payload.get("speaker")
-        if not isinstance(speaker, str) or not speaker:
-            speaker = self._settings.per_language_defaults.get(target_lang, self._settings.default_speaker)
-        if speaker not in _ALL_SPEAKERS:
-            msg = f"Unknown speaker '{speaker}' in worker config"
+    def _resolve_speaker_for_chunk(self, chunk: Chunk, job: Job, target_lang: str) -> str:
+        chapter = _chapter_number(chunk.chapter_id)
+        for start_chapter, end_chapter, voice in self._voice_ranges(job):
+            if start_chapter <= chapter <= end_chapter:
+                return self._validate_speaker(voice)
+
+        voice_value = job.payload.get("voice")
+        if voice_value is None and "voice" not in job.payload:
+            voice_value = job.payload.get("speaker")
+        if voice_value is None or voice_value == "":
+            voice_value = self._settings.per_language_defaults.get(target_lang, self._settings.default_speaker)
+        if not isinstance(voice_value, str) or not voice_value:
+            msg = f"No voice configured for chapter {chapter}"
             raise WorkerError(msg)
-        return speaker
+        return self._validate_speaker(voice_value)
+
+    @staticmethod
+    def _voice_ranges(job: Job) -> list[tuple[int, int, str]]:
+        raw_ranges = job.payload.get("voice_map")
+        if raw_ranges is None and "voice_map" not in job.payload:
+            return []
+        if not isinstance(raw_ranges, list):
+            msg = "voice_map must be a list"
+            raise WorkerError(msg)
+
+        ranges: list[tuple[int, int, str]] = []
+        for index, raw_range in enumerate(raw_ranges):
+            if not isinstance(raw_range, dict):
+                msg = f"voice_map[{index}] must be an object"
+                raise WorkerError(msg)
+            start = raw_range.get("start_chapter")
+            end = raw_range.get("end_chapter")
+            voice = raw_range.get("voice")
+            if (
+                isinstance(start, bool)
+                or not isinstance(start, int)
+                or isinstance(end, bool)
+                or not isinstance(end, int)
+            ):
+                msg = f"voice_map[{index}] chapter bounds must be integers"
+                raise WorkerError(msg)
+            if start < 1 or end < start:
+                msg = f"voice_map[{index}] has an invalid chapter range"
+                raise WorkerError(msg)
+            if not isinstance(voice, str) or not voice:
+                msg = f"voice_map[{index}].voice is required"
+                raise WorkerError(msg)
+            ranges.append((start, end, voice))
+        return ranges
+
+    @staticmethod
+    def _validate_speaker(voice: str) -> str:
+        if voice not in _ALL_SPEAKERS:
+            msg = f"Unknown speaker '{voice}' in worker config"
+            raise WorkerError(msg)
+        return voice
+
+
+def _chapter_number(chapter_id: str) -> int:
+    safe_chapter_id(chapter_id)
+    match = re.fullmatch(r"(?:ch|chapter_)?(\d+)", chapter_id)
+    if match is None:
+        msg = f"Malformed chapter_id for voice mapping: {chapter_id!r}"
+        raise WorkerError(msg)
+    chapter = int(match.group(1))
+    if chapter < 1:
+        msg = f"Malformed chapter_id for voice mapping: {chapter_id!r}"
+        raise WorkerError(msg)
+    return chapter
