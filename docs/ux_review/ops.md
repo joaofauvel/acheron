@@ -157,11 +157,11 @@ files:
   - path: src/acheron/core/models.py
     lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+fixed_in: [d78e7a1, CURRENT_HEAD]
+verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 4aae9a8b9dac884aed5dd1a7f89513ef18106c1de503ab730e71269b2bde82fc
+  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
@@ -372,7 +372,7 @@ fixed_in: ["4750302", "1f5514c", "CURRENT_HEAD"]
 verified_in: ["1f5514c", "CURRENT_HEAD"]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 4aae9a8b9dac884aed5dd1a7f89513ef18106c1de503ab730e71269b2bde82fc
+  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
   date: "2026-07-30"
 verified_by: "harness:pytest+just-validate"
 feedback_ref: "TBD-pagerduty"
@@ -455,11 +455,11 @@ files:
   - path: src/acheron/cli.py
     lines: 633-657
 related: [OPS-031, OPS-004]
-fixed_in: [32335ce, CURRENT_HEAD]
-verified_in: [32335ce, CURRENT_HEAD]
+fixed_in: [6d47e35, CURRENT_HEAD]
+verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 4aae9a8b9dac884aed5dd1a7f89513ef18106c1de503ab730e71269b2bde82fc
+  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 drift_note: "Time-window/status/archive controls and archive metadata are covered by the Task 10 recovery journey."
@@ -827,11 +827,11 @@ files:
   - path: src/acheron/api_client.py
     lines: 91-98
 related: [OPS-003]
-fixed_in: [185efcb, de85647, 215109c, 8f04f5c, c9b8710, 9e86939, CURRENT_HEAD]
-verified_in: [9e86939, CURRENT_HEAD]
+fixed_in: [8357163c, 8c0f119, d08dafc, 6ae39df, 0e6ab4e, 16898af, CURRENT_HEAD]
+verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 4aae9a8b9dac884aed5dd1a7f89513ef18106c1de503ab730e71269b2bde82fc
+  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-12-correlation"
 feedback_ref: "TBD-pagerduty"
@@ -1037,11 +1037,11 @@ files:
   - path: tests/shell/test_cli.py
     lines: 583-720
 related: [OPS-015, OPS-010]
-fixed_in: [8d3229a, CURRENT_HEAD]
-verified_in: [8d3229a, CURRENT_HEAD]
+fixed_in: [8aea0cb, CURRENT_HEAD]
+verified_in: [8aea0cb, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 4aae9a8b9dac884aed5dd1a7f89513ef18106c1de503ab730e71269b2bde82fc
+  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
   date: "2026-07-31"
 verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
@@ -1114,11 +1114,11 @@ files:
   - path: dashboard/templates/index.html
     lines: 58-63
 related: [OPS-005, OPS-012, OPS-001]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+fixed_in: [d78e7a1, CURRENT_HEAD]
+verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 4aae9a8b9dac884aed5dd1a7f89513ef18106c1de503ab730e71269b2bde82fc
+  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
