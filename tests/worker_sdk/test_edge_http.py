@@ -46,6 +46,17 @@ class _MissingStaticPrice(_MeasuredPrice):
         return PriceEstimate(cost=None, basis=CostBasis.STATIC)
 
 
+class _UnsafeGpuPrice(_MeasuredPrice):
+    async def estimate(self, gpu_seconds: float) -> PriceEstimate:
+        return PriceEstimate(
+            cost=0.34,
+            basis=CostBasis.MEASURED,
+            rate_per_hour=0.69,
+            gpu_type="https://user:secret@example.invalid/gpu",
+            secure_cloud=False,
+        )
+
+
 class _Stub(WorkerHandler):
     def __init__(self) -> None:
         self.calls = 0
@@ -311,6 +322,21 @@ class TestEdgeRoutes:
         assert body["metrics"]["duration_seconds"] >= 0.0
         assert body["metrics"]["cost_estimate"] is None
         assert any("handler failed" in r.message and "_Stub" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_unsafe_gpu_type_is_omitted_from_metrics(self) -> None:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_UnsafeGpuPrice()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+
+        assert response.status_code == 200
+        assert b'"gpu_type":null' in response.content
+        assert b"user:secret@example.invalid" not in response.content
 
     @pytest.mark.asyncio
     async def test_failed_handler_retains_cost_estimate(self, monkeypatch: pytest.MonkeyPatch) -> None:

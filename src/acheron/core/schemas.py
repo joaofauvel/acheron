@@ -1,10 +1,12 @@
 """Wire-format response schemas shared between the Acheron client and server."""
 
+import re
 from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from acheron.core.errors import sanitise_public_message
 from acheron.core.models import (
     CostBasis,
     ExecutorStrategy,
@@ -326,6 +328,18 @@ class PlanStepResponse(BaseModel):
     status: StepStatus
 
 
+_SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$")
+
+
+def _public_language(value: object) -> str:
+    """Return a bounded language code for public plan responses."""
+    if not isinstance(value, str) or _SAFE_LANGUAGE_RE.fullmatch(value) is None:
+        return "unknown"
+    if sanitise_public_message(value, fallback="unknown") == "unknown":
+        return "unknown"
+    return value
+
+
 class PlanResponse(BaseModel):
     """Public operator-facing representation of a compiled plan."""
 
@@ -344,8 +358,8 @@ class PlanResponse(BaseModel):
             plan_id=plan.plan_id,
             job_id=plan.job_id,
             source_type=plan.source_type,
-            source_language=plan.source_language,
-            target_language=plan.target_language,
+            source_language=_public_language(plan.source_language),
+            target_language=_public_language(plan.target_language),
             executor_strategy=plan.executor_strategy,
             steps=[
                 PlanStepResponse(

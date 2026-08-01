@@ -292,6 +292,7 @@ def _malformed_execute_response() -> JSONResponse:
 
 
 _SAFE_ARTIFACT_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_SAFE_GPU_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+:-]{0,127}$")
 _MAX_ARTIFACT_FILENAME_LENGTH = 255
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
@@ -490,11 +491,18 @@ class EdgeApp:
             safe_message = sanitise_exc_message(exc)
             logger.warning("cost estimate unavailable for job %s: %s", job_id, safe_message, exc_info=True)
             return CostEstimate(cost=None, basis=CostBasis.UNKNOWN)
+        gpu_type = estimate.gpu_type
+        if (
+            not isinstance(gpu_type, str)
+            or _SAFE_GPU_LABEL_RE.fullmatch(gpu_type) is None
+            or sanitise_public_message(gpu_type, fallback="__unsafe_gpu__") == "__unsafe_gpu__"
+        ):
+            gpu_type = None
         return CostEstimate(
             cost=estimate.cost,
             basis=basis,
             rate_per_hour=estimate.rate_per_hour,
-            gpu_type=estimate.gpu_type,
+            gpu_type=gpu_type,
             secure_cloud=estimate.secure_cloud,
             queried_at=estimate.queried_at,
             cache_age_seconds=estimate.cache_age_seconds,

@@ -2069,3 +2069,65 @@ class TestPreviewRoute:
         assert len(jobs_after) == len(jobs_before)
         # The preview endpoint must not expose step payloads.
         assert "payload" not in body["steps"][0]
+
+    @pytest.mark.asyncio
+    async def test_preview_sanitises_plan_language_identifiers(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from httpx import ASGITransport, AsyncClient
+
+        from acheron.core.models import ExecutorStrategy, Plan, PlanStep, StepStatus, WorkerType
+        from tests.shell.conftest import make_app
+
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+        app = await make_app(tmp_path)
+        await app.state.orchestrator.start()
+        monkeypatch.setattr(
+            app.state.orchestrator,
+            "preview_job",
+            AsyncMock(
+                return_value=Plan(
+                    plan_id="plan-1",
+                    job_id="job-1",
+                    source_type="epub",
+                    source_language="https://user:secret@example.invalid/lang",
+                    target_language="/etc/passwd",
+                    executor_strategy=ExecutorStrategy.STREAMING,
+                    steps=(
+                        PlanStep(
+                            step_id="step-1",
+                            type=WorkerType.TTS,
+                            depends_on=(),
+                            status=StepStatus.PENDING,
+                            payload={},
+                        ),
+                    ),
+                )
+            ),
+        )
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/jobs:preview",
+                    json={
+                        "source_type": "epub",
+                        "source_path": "input/book.epub",
+                        "source_language": "en",
+                        "target_language": "es",
+                    },
+                )
+        finally:
+            await app.state.orchestrator.shutdown()
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["source_language"] == "unknown"
+        assert body["target_language"] == "unknown"
+        assert "user:secret@example.invalid" not in response.text
+        assert "/etc/passwd" not in response.text
