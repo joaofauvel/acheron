@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from acheron.core.epub import read_epub_chapters
-from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
+from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError, VoiceSelectionError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
@@ -17,9 +17,14 @@ from acheron.core.models import (
     Plan,
     PlanStep,
     StepStatus,
+    VoiceRange,
+    VoiceSelection,
     WorkerCapabilities,
     WorkerType,
 )
+
+type WorkerCapabilityRecord = tuple[str, WorkerCapabilities]
+type CapabilityInput = tuple[WorkerCapabilities, ...] | tuple[WorkerCapabilityRecord, ...]
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +45,7 @@ class ChunkingLimits:
 def compile_plan(  # noqa: PLR0913
     request: JobRequest,
     strategy: ExecutorStrategy,
-    capabilities: tuple[WorkerCapabilities, ...],
+    capabilities: CapabilityInput,
     plan_id: str | None = None,
     job_id: str | None = None,
     *,
@@ -60,10 +65,23 @@ def compile_plan(  # noqa: PLR0913
             ``max_chunk_length`` exceeds a text-input worker's
             ``max_input_tokens``.
     """
-    _validate_language_path(request, capabilities)
+    records = _capability_records(capabilities)
+    capability_values = tuple(capability for _, capability in records)
+    _validate_language_path(request, capability_values)
+    selection = _request_voice_selection(request)
+    tts_records = tuple(
+        (worker_id, capability)
+        for worker_id, capability in records
+        if capability.worker_type is WorkerType.TTS
+        and request.target_language in capability.supported_languages_in
+        and request.target_language in capability.supported_languages_out
+    )
+    selected_worker_id = select_voice_worker_id(selection, tts_records)
+    selected_caps = _selected_voice_capabilities(selection, selected_worker_id, tts_records)
+    selection = _canonicalize_selection(selection, selected_caps)
     if chunking is not None:
         _validate_chunking_fits_workers(
-            capabilities,
+            capability_values,
             chunking.max_chunk_length,
             chars_per_token=chunking.chars_per_token,
         )
@@ -71,10 +89,10 @@ def compile_plan(  # noqa: PLR0913
     match request:
         case EpubRequest():
             chapter_ids = _discover_epub_chapter_ids(request.source_path, source_root=source_root)
-            steps = _epub_steps(request, chapter_ids)
+            steps = _epub_steps(request, chapter_ids, selection=selection, selected_worker_id=selected_worker_id)
             source_type = "epub"
         case AudioRequest():
-            steps = _audio_steps(request)
+            steps = _audio_steps(request, selection=selection, selected_worker_id=selected_worker_id)
             source_type = "audio"
 
     return Plan(
@@ -86,6 +104,25 @@ def compile_plan(  # noqa: PLR0913
         executor_strategy=strategy,
         steps=tuple(steps),
     )
+
+
+def _capability_records(capabilities: CapabilityInput) -> tuple[WorkerCapabilityRecord, ...]:
+    """Return explicit worker-ID/capability records without synthesizing IDs."""
+    records: list[WorkerCapabilityRecord] = []
+    for item in capabilities:
+        if isinstance(item, WorkerCapabilities):
+            records.append(("", item))
+        else:
+            records.append(item)
+    return tuple(records)
+
+
+def _request_voice_selection(request: JobRequest) -> VoiceSelection:
+    match request:
+        case EpubRequest(voice=voice, voice_map=voice_map):
+            return VoiceSelection(default_voice=voice, ranges=voice_map)
+        case AudioRequest(voice=voice):
+            return VoiceSelection(default_voice=voice, ranges=())
 
 
 def _validate_language_path(request: JobRequest, caps: tuple[WorkerCapabilities, ...]) -> None:
@@ -110,32 +147,95 @@ def _validate_language_path(request: JobRequest, caps: tuple[WorkerCapabilities,
     if not _has_worker(WorkerType.TTS, caps, dst, dst):
         msg = f"No TTS worker supports language: {dst}"
         raise InvalidLanguagePathError(msg)
-    selected_voices: set[str]
-    match request:
-        case EpubRequest(voice=voice, voice_map=voice_map):
-            selected_voices = {item.voice for item in voice_map}
-            if voice is not None:
-                selected_voices.add(voice)
-        case AudioRequest(voice=voice):
-            selected_voices = {voice} if voice is not None else set()
-    if selected_voices and not any(
-        selected_voices <= _speaker_names(capability)
-        for capability in caps
-        if capability.worker_type is WorkerType.TTS
-        and dst in capability.supported_languages_in
-        and dst in capability.supported_languages_out
-        and isinstance(capability.metadata.get("speakers"), list)
-    ):
-        msg = "No TTS worker supports the requested voice selection"
-        raise InvalidLanguagePathError(msg)
 
 
-def _speaker_names(capability: WorkerCapabilities) -> set[str]:
-    """Return canonical speaker names advertised by one worker."""
-    value = capability.metadata.get("speakers")
-    return (
-        {item.strip() for item in value if isinstance(item, str) and item.strip()} if isinstance(value, list) else set()
+def advertised_voices(capabilities: WorkerCapabilities) -> frozenset[str]:
+    """Return non-empty canonical voice spellings advertised by a worker."""
+    value = capabilities.metadata.get("speakers")
+    if not isinstance(value, list):
+        return frozenset()
+    return frozenset(item.strip() for item in value if isinstance(item, str) and item.strip())
+
+
+def _voice_error(requested: set[str], available: set[str]) -> VoiceSelectionError:
+    requested_text = ", ".join(sorted((_safe_voice(value) for value in requested), key=str.casefold))
+    available_text = ", ".join(sorted((_safe_voice(value) for value in available), key=str.casefold)) or "none"
+    return VoiceSelectionError(f"Unsupported voice selection: {requested_text}; available voices: {available_text}")
+
+
+def _safe_voice(value: str) -> str:
+    return " ".join(value.replace("\r", " ").replace("\n", " ").split())[:80]
+
+
+def canonicalize_voice(name: str, capabilities: WorkerCapabilities) -> str:
+    """Return the registered canonical spelling for a requested voice."""
+    voices = advertised_voices(capabilities)
+    normalized = name.strip().casefold()
+    for voice in sorted(voices, key=lambda value: (value.casefold(), value)):
+        if voice.casefold() == normalized:
+            return voice
+    raise _voice_error({name}, set(voices))
+
+
+def select_voice_worker_id(
+    selection: VoiceSelection,
+    workers: tuple[WorkerCapabilityRecord, ...],
+) -> str:
+    """Select one deterministic TTS worker capable of every requested voice."""
+    candidates = tuple((worker_id, caps) for worker_id, caps in workers if caps.worker_type is WorkerType.TTS)
+    requested = set((selection.default_voice,) if selection.default_voice is not None else ())
+    requested.update(item.voice for item in selection.ranges)
+    available = set().union(*(set(advertised_voices(caps)) for _, caps in candidates)) if candidates else set()
+    if not requested:
+        return next((worker_id for worker_id, _ in candidates if worker_id), "")
+
+    matching: list[tuple[str, dict[str, str]]] = []
+    for worker_id, caps in candidates:
+        canonical: dict[str, str] = {}
+        for voice in advertised_voices(caps):
+            canonical.setdefault(voice.casefold(), voice)
+        if all(voice.casefold() in canonical for voice in requested):
+            matching.append((worker_id, {voice: canonical[voice.casefold()] for voice in requested}))
+    if not matching:
+        raise _voice_error(requested, available)
+    selected_id, _canonical = matching[0]
+    # Mutate neither the request nor its value objects; canonical payloads are built by the caller.
+    return selected_id
+
+
+def _selected_voice_capabilities(
+    selection: VoiceSelection,
+    selected_worker_id: str,
+    workers: tuple[WorkerCapabilityRecord, ...],
+) -> WorkerCapabilities:
+    """Find the capabilities used to canonicalize the planner's selection."""
+    requested = set((selection.default_voice,) if selection.default_voice is not None else ())
+    requested.update(item.voice for item in selection.ranges)
+    matching = [
+        (worker_id, caps)
+        for worker_id, caps in workers
+        if caps.worker_type is WorkerType.TTS
+        and (
+            not requested
+            or all(voice.casefold() in {item.casefold() for item in advertised_voices(caps)} for voice in requested)
+        )
+    ]
+    for worker_id, caps in matching:
+        if worker_id == selected_worker_id:
+            return caps
+    if matching:
+        return min(matching, key=lambda item: item[0] or "~")[1]
+    msg = "No TTS worker can honor the selected voice worker"
+    raise VoiceSelectionError(msg)
+
+
+def _canonicalize_selection(selection: VoiceSelection, capabilities: WorkerCapabilities) -> VoiceSelection:
+    default = canonicalize_voice(selection.default_voice, capabilities) if selection.default_voice is not None else None
+    ranges = tuple(
+        VoiceRange(item.start_chapter, item.end_chapter, canonicalize_voice(item.voice, capabilities))
+        for item in selection.ranges
     )
+    return VoiceSelection(default_voice=default, ranges=ranges)
 
 
 def _has_worker(
@@ -230,8 +330,15 @@ def _chapter_payload(payload: dict[str, JsonValue], chapter_ids: tuple[str, ...]
     return {**payload, "chapter_ids": list(chapter_ids)}
 
 
-def _epub_steps(request: EpubRequest, chapter_ids: tuple[str, ...] = ()) -> list[PlanStep]:
+def _epub_steps(
+    request: EpubRequest,
+    chapter_ids: tuple[str, ...] = (),
+    *,
+    selection: VoiceSelection | None = None,
+    selected_worker_id: str | None = None,
+) -> list[PlanStep]:
     """Generate EPUB stages and attach discovered chapter identities."""
+    effective_selection = selection or VoiceSelection(default_voice=request.voice, ranges=request.voice_map)
     needs_translation = request.source_language != request.target_language
     translate_dep = "chunk"
 
@@ -277,18 +384,19 @@ def _epub_steps(request: EpubRequest, chapter_ids: tuple[str, ...] = ()) -> list
                 payload=_chapter_payload(
                     {
                         "target_language": request.target_language,
-                        "voice": request.voice,
+                        "voice": effective_selection.default_voice,
                         "voice_map": [
                             {
                                 "start_chapter": item.start_chapter,
                                 "end_chapter": item.end_chapter,
                                 "voice": item.voice,
                             }
-                            for item in request.voice_map
+                            for item in effective_selection.ranges
                         ],
                     },
                     chapter_ids,
                 ),
+                selected_worker_id=selected_worker_id,
             ),
             PlanStep(
                 step_id="package",
@@ -303,8 +411,14 @@ def _epub_steps(request: EpubRequest, chapter_ids: tuple[str, ...] = ()) -> list
     return steps
 
 
-def _audio_steps(request: AudioRequest) -> list[PlanStep]:
+def _audio_steps(
+    request: AudioRequest,
+    *,
+    selection: VoiceSelection | None = None,
+    selected_worker_id: str | None = None,
+) -> list[PlanStep]:
     """Generate step sequence for audio input."""
+    effective_selection = selection or VoiceSelection(default_voice=request.voice, ranges=())
     needs_translation = request.source_language != request.target_language
     translate_dep = "chunk"
 
@@ -351,7 +465,8 @@ def _audio_steps(request: AudioRequest) -> list[PlanStep]:
                 type=WorkerType.TTS,
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
-                payload={"target_language": request.target_language, "voice": request.voice},
+                payload={"target_language": request.target_language, "voice": effective_selection.default_voice},
+                selected_worker_id=selected_worker_id,
             ),
             PlanStep(
                 step_id="package",

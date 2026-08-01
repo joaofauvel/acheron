@@ -476,6 +476,7 @@ def _serialize_job(job: TrackedJob) -> str:
                     "depends_on": list(s.depends_on),
                     "status": s.status.value,
                     "payload": s.payload,
+                    "selected_worker_id": s.selected_worker_id,
                 }
                 for s in job.plan.steps
             ],
@@ -637,6 +638,7 @@ def _deserialize_job_unchecked(blob: str) -> TrackedJob:
                     depends_on=tuple(s["depends_on"]),
                     status=StepStatus(s["status"]),
                     payload=s["payload"],
+                    selected_worker_id=s.get("selected_worker_id"),
                 )
                 for s in data["plan"]["steps"]
             ),

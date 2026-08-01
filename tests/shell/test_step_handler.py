@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from acheron.core.errors import WorkerError
+from acheron.core.errors import VoiceSelectionError
 from acheron.core.models import (
     ExecutorStrategy,
     JobMetrics,
@@ -67,12 +67,35 @@ def _make_plan() -> Plan:
                 depends_on=(),
                 status=StepStatus.PENDING,
                 payload={"target_language": "es", "chapter_id": "ch1"},
+                selected_worker_id="tts-1",
             ),
         ),
     )
 
 
 class TestStepHandler:
+    @pytest.mark.asyncio
+    async def test_dispatches_to_planner_selected_worker(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        await reg.register("tts-2", "http://127.0.0.1:2", "http", _tts_caps())
+        chosen: list[str] = []
+
+        def _factory(registered: RegisteredWorker) -> LocalWorker:
+            chosen.append(registered.worker_id)
+            return LocalWorker(
+                worker_type=WorkerType.TTS,
+                handler=_echo_job_result,
+                supported_languages_in=frozenset({"es"}),
+                supported_languages_out=frozenset({"es"}),
+            )
+
+        handler = create_step_handler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
+        plan = _make_plan()
+        result = await handler(plan.steps[0], plan)
+        assert result.worker_id == "tts-1"
+        assert chosen == ["tts-1"]
+
     @pytest.mark.asyncio
     async def test_dispatches_to_matching_worker(self) -> None:
         reg = InMemoryWorkerStore()
@@ -96,7 +119,7 @@ class TestStepHandler:
         handler = create_step_handler(reg, data_dir=_TEST_DATA_DIR)
         plan = _make_plan()
         step = plan.steps[0]
-        with pytest.raises(WorkerError, match="No worker"):
+        with pytest.raises(VoiceSelectionError, match="selected TTS worker"):
             await handler(step, plan)
 
     @pytest.mark.asyncio
@@ -212,6 +235,7 @@ class TestStepHandler:
                     depends_on=(),
                     status=StepStatus.PENDING,
                     payload={"target_language": "es", "chapter_id": "ch1"},
+                    selected_worker_id="tts-1",
                 ),
                 PlanStep(
                     step_id="s2",
@@ -219,6 +243,7 @@ class TestStepHandler:
                     depends_on=("s1",),
                     status=StepStatus.PENDING,
                     payload={"target_language": "es", "chapter_id": "ch2"},
+                    selected_worker_id="tts-1",
                 ),
             ),
         )
@@ -258,6 +283,7 @@ class TestStepHandler:
                     depends_on=(),
                     status=StepStatus.PENDING,
                     payload={"target_language": "es", "chapter_id": "ch1"},
+                    selected_worker_id="tts-1",
                 ),
                 PlanStep(
                     step_id="s2",
@@ -265,6 +291,7 @@ class TestStepHandler:
                     depends_on=("s1",),
                     status=StepStatus.PENDING,
                     payload={"target_language": "es", "chapter_id": "ch2"},
+                    selected_worker_id="tts-1",
                 ),
             ),
         )

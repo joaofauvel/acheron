@@ -595,7 +595,8 @@ class Orchestrator:
         and :meth:`preview_job` (which omits it so ``compile_plan`` mints a
         throwaway ``job_id`` for the in-memory plan).
         """
-        capabilities = tuple(w.capabilities for w in await self._registry.list_all())
+        workers = tuple(await self._registry.list_all())
+        capabilities = tuple((worker.worker_id, worker.capabilities) for worker in workers)
         return compile_plan(
             request,
             strategy,

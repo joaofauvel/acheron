@@ -23,6 +23,10 @@ class InvalidLanguagePathError(PlanError):
     """Requested source/target language pair is not supported."""
 
 
+class VoiceSelectionError(PlanError):
+    """Requested voices cannot be served by one registered TTS worker."""
+
+
 class ChunkingTooLongForWorkerError(PlanError):
     """Chunking step's max_chunk_length exceeds a text-input worker's max_input_tokens.
 

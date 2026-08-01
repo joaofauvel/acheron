@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError
+from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError, VoiceSelectionError
 from acheron.core.models import (
     AudioRequest,
     EpubRequest,
     ExecutorStrategy,
     StepStatus,
+    VoiceRange,
     WorkerCapabilities,
     WorkerType,
 )
@@ -88,6 +89,53 @@ class TestCompilePlan:
         )
 
         assert all(step.payload["chapter_ids"] == ["chapter_001", "chapter_002"] for step in plan.steps)
+
+    def test_voice_selection_uses_one_worker_and_canonical_payload(self) -> None:
+        vivian_ryan = WorkerCapabilities(
+            worker_type=WorkerType.TTS,
+            supported_languages_in=frozenset({"es"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"wav"}),
+            max_payload_bytes=None,
+            batch_capable=True,
+            model_source=None,
+            metadata={"speakers": ["Vivian", "Ryan"]},
+        )
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice="vivian",
+            voice_map=(VoiceRange(1, 1, "ryan"),),
+        )
+        plan = compile_plan(
+            request,
+            ExecutorStrategy.STREAMING,
+            (("tts-joint", vivian_ryan), ("translation", _translation_caps())),
+        )
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+        assert synthesize.selected_worker_id == "tts-joint"
+        assert synthesize.payload["voice"] == "Vivian"
+        assert synthesize.payload["voice_map"] == [{"start_chapter": 1, "end_chapter": 1, "voice": "Ryan"}]
+
+    def test_voice_selection_fails_without_joint_worker(self) -> None:
+        vivian = _tts_caps()
+        vivian = WorkerCapabilities(**{**vivian.__dict__, "metadata": {"speakers": ["Vivian"]}})
+        ryan = WorkerCapabilities(**{**vivian.__dict__, "metadata": {"speakers": ["Ryan"]}})
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice="Vivian",
+            voice_map=(VoiceRange(1, 1, "Ryan"),),
+        )
+        with pytest.raises(VoiceSelectionError, match=r"Vivian.*Ryan"):
+            compile_plan(
+                request,
+                ExecutorStrategy.STREAMING,
+                (("tts-vivian", vivian), ("tts-ryan", ryan), ("translation", _translation_caps())),
+            )
 
     def test_epub_produces_correct_steps(self) -> None:
         caps = (_tts_caps(), _translation_caps())

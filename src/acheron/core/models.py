@@ -303,6 +303,7 @@ class PlanStep:
     depends_on: tuple[str, ...]
     status: StepStatus
     payload: dict[str, JsonValue]
+    selected_worker_id: str | None = None
 
 
 @dataclass(frozen=True)

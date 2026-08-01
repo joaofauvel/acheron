@@ -20,6 +20,7 @@ from acheron.core.errors import (
     JobNotFoundError,
     JobNotResumableError,
     NoPlanToResumeError,
+    VoiceSelectionError,
 )
 from acheron.core.models import (
     AudioRequest,
@@ -443,6 +444,25 @@ class TestOrchestrator:
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
         with pytest.raises(InvalidLanguagePathError):
             await orch.submit_job(request, ExecutorStrategy.STREAMING)
+
+    @pytest.mark.asyncio
+    async def test_voice_selection_fails_before_persistence(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        reg = InMemoryWorkerStore()
+        jobs = InMemoryJobStore()
+        await reg.register("tts-es", "http://127.0.0.1:1", "http", tts_caps("es", metadata={"speakers": ["Vivian"]}))
+        await reg.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(reg, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice="Ryan",
+        )
+        with pytest.raises(VoiceSelectionError, match=r"Ryan.*Vivian"):
+            await orch.submit_job(request, ExecutorStrategy.STREAMING)
+        assert await jobs.list_all() == ()
+        assert not any(tmp_path.glob("plan-*/plan.json"))
 
     @pytest.mark.asyncio
     async def test_submit_job_chunking_too_long_raises(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

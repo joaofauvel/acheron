@@ -7,9 +7,10 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import WorkerError
+from acheron.core.errors import VoiceSelectionError, WorkerError
 from acheron.core.interfaces import Worker
-from acheron.core.models import Job, JobResult, WorkerCapabilities, WorkerType
+from acheron.core.models import Job, JobResult, JsonValue, WorkerCapabilities, WorkerType
+from acheron.core.planner import canonicalize_voice
 from acheron.shell.transports.grpc import GrpcWorker
 from acheron.shell.transports.http import HttpWorker
 from acheron.tls import grpc_channel
@@ -78,6 +79,62 @@ def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str,
             return True
 
 
+def _required_voices(payload: dict[str, JsonValue]) -> tuple[str, ...]:
+    """Extract voice names from canonical TTS payload data."""
+    voices: list[str] = []
+    default = payload.get("voice")
+    if isinstance(default, str):
+        voices.append(default)
+    voice_map = payload.get("voice_map")
+    if isinstance(voice_map, list):
+        for item in voice_map:
+            if isinstance(item, dict):
+                voice = item.get("voice")
+                if isinstance(voice, str):
+                    voices.append(voice)
+    return tuple(dict.fromkeys(voices))
+
+
+def _select_worker(
+    step: PlanStep,
+    workers: tuple[RegisteredWorker, ...],
+    src: str,
+    dst: str,
+) -> RegisteredWorker:
+    if step.type is WorkerType.TTS:
+        if step.selected_worker_id is None:
+            msg = "No worker selected for TTS step by planner"
+            raise WorkerError(msg)
+        selected = next((worker for worker in workers if worker.worker_id == step.selected_worker_id), None)
+        if selected is None:
+            msg = "Planner-selected TTS worker is no longer registered"
+            raise VoiceSelectionError(msg)
+        if not _language_matches(step.type, selected.capabilities, src, dst):
+            msg = "Planner-selected TTS worker no longer supports the language"
+            raise VoiceSelectionError(msg)
+        for voice in _required_voices(step.payload):
+            try:
+                canonicalize_voice(voice, selected.capabilities)
+            except VoiceSelectionError as exc:
+                msg = f"Selected TTS worker cannot honor voice: {voice}"
+                raise VoiceSelectionError(msg) from exc
+        return selected
+
+    selected = next(
+        (
+            worker
+            for worker in workers
+            if worker.capabilities.worker_type == step.type
+            and _language_matches(step.type, worker.capabilities, src, dst)
+        ),
+        None,
+    )
+    if selected is None:
+        msg = f"No worker for {step.type.value} ({src} → {dst})"
+        raise WorkerError(msg)
+    return selected
+
+
 class CachingStepHandler:
     """Step handler that caches the worker list and worker instances per plan.
 
@@ -115,19 +172,7 @@ class CachingStepHandler:
             self._cached_plan_id = plan.plan_id
         workers = self._cached_workers
 
-        selected: RegisteredWorker | None = None
-        for w in workers:
-            caps = w.capabilities
-            if caps.worker_type != step.type:
-                continue
-            if not _language_matches(step.type, caps, src, dst):
-                continue
-            selected = w
-            break
-
-        if selected is None:
-            msg = f"No worker for {step.type.value} ({src} → {dst})"
-            raise WorkerError(msg)
+        selected = _select_worker(step, workers, src, dst)
 
         chapter_id = step.payload.get("chapter_id", "")
         job = Job(

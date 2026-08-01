@@ -9,6 +9,7 @@ from acheron.core.errors import (
     ChunkingError,
     InvalidLanguagePathError,
     PlanError,
+    VoiceSelectionError,
     WorkerError,
     WorkerUnavailableError,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "PlanResult",
     "PlanStep",
     "StepStatus",
+    "VoiceSelectionError",
     "Worker",
     "WorkerCapabilities",
     "WorkerError",
