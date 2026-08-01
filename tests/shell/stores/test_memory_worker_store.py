@@ -3,6 +3,7 @@
 import pytest
 
 from acheron.core.models import WorkerCapabilities, WorkerStatus, WorkerType
+from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
 
@@ -45,6 +46,14 @@ class TestInMemoryWorkerStore:
         assert w.endpoint == "http://localhost:8001"
         assert w.transport == "http"
         assert w.booting_since is None
+
+    @pytest.mark.asyncio
+    async def test_registration_count_is_bounded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("acheron.shell.stores.memory._MAX_REGISTERED_WORKERS", 1)
+        reg = InMemoryWorkerStore()
+        await reg.register("w-1", "http://localhost:8001", "http", _tts_caps())
+        with pytest.raises(StoreError, match="registry limit"):
+            await reg.register("w-2", "http://localhost:8002", "http", _tts_caps())
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self) -> None:

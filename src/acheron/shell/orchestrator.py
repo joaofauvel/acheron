@@ -1375,9 +1375,7 @@ class Orchestrator:
             self._local_handlers[worker_id] = handler
         await self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
         await self._invalidate_handler_cache()
-        logger.info(
-            "Registered worker %s (%s, %s → %s)", worker_id, capabilities.worker_type.value, endpoint, transport
-        )
+        logger.info("Registered worker %s (%s, %s)", worker_id, capabilities.worker_type.value, transport)
 
     async def list_workers(self) -> tuple[RegisteredWorker, ...]:
         """List all registered workers."""

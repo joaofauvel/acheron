@@ -282,6 +282,27 @@ class TestRegistrationSecurity:
 
 class TestStrictRequest:
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://user:secret@worker:8000",
+            "https://worker:8000/path/../secret",
+            "https://worker:8000/?token=secret",
+            "https://worker:8000/#secret",
+            "https://worker:8000/\n",
+        ],
+    )
+    async def test_register_rejects_unsafe_endpoint(self, client, endpoint: str) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post("/workers", json={**_WORKER_PAYLOAD, "endpoint": endpoint})
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_register_accepts_safe_grpc_endpoint(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post("/workers", json={**_WORKER_PAYLOAD, "endpoint": "grpcs://worker:9000"})
+        assert response.status_code == 201
+
+    @pytest.mark.asyncio
     async def test_register_rejects_extra_fields(self, client) -> None:  # type: ignore[no-untyped-def]
         """WorkerRegistrationRequest must reject unknown fields so client typos fail loudly."""
         payload = {

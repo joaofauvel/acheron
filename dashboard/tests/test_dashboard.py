@@ -74,6 +74,20 @@ class TestEnvConfig:
             assert respx.calls.call_count == 1
             assert str(respx.calls[0].request.url) == f"{target}/jobs"
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_forwards_registration_token_server_side(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Dashboard uses its server-side token without exposing it to browsers."""
+        monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "dashboard-registration-secret")
+        respx.get(f"{_ORCH_URL}/workers").mock(return_value=httpx.Response(200, json={"workers": []}))
+        app = create_app(orchestrator_url=_ORCH_URL)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/partials/workers")
+        assert response.status_code == 200
+        assert respx.calls[0].request.headers["authorization"] == "Bearer dashboard-registration-secret"
+        assert "dashboard-registration-secret" not in response.text
+
     def test_explicit_url_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ACHERON_URL", "http://env-host:1111")
         app = create_app(orchestrator_url="http://explicit:2222")

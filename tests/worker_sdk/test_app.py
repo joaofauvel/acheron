@@ -99,6 +99,19 @@ class TestCreateWorkerApp:
         paths = _all_paths(app.routes)
         assert "/version" in paths
 
+    @pytest.mark.asyncio
+    async def test_registration_rejects_case_variant_plaintext_orchestrator_with_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+        monkeypatch.setenv("ACHERON_WORKER__REGISTRATION_TOKEN", "t" * 32)
+        h = _Stub()
+        s = _settings(orchestrator_url="HTTP://orch:8000")
+        app = create_worker_app(handler=h, settings=s)
+        with pytest.raises(RuntimeError, match="plaintext"):
+            async with app.router.lifespan_context(app):
+                pass
+
     @respx.mock
     @pytest.mark.asyncio
     async def test_registration_payload_includes_runpod_health_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:

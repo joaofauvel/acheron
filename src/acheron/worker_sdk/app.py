@@ -6,6 +6,7 @@ import dataclasses
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI
@@ -102,7 +103,8 @@ def create_worker_app(
 
     async def _register() -> None:
         endpoint = _endpoint_url(settings)
-        if endpoint.startswith("http://") and settings.registration_token and not _allow_insecure():
+        orchestrator_scheme = urlsplit(settings.orchestrator_url).scheme.casefold()
+        if orchestrator_scheme == "http" and settings.registration_token and not _allow_insecure():
             raise RuntimeError(
                 "Refusing to register a bearer-authenticated worker over plaintext; "
                 "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"

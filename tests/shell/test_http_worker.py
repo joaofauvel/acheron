@@ -28,6 +28,15 @@ class _ChunkedResponseStream(httpx.AsyncByteStream):
 
 
 class TestHttpWorkerBounds:
+    @pytest.mark.asyncio
+    async def test_rejects_case_variant_plaintext_bearer_endpoint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+        worker = HttpWorker("HTTP://worker:8000", data_dir=tmp_path, registration_token="secret")
+        with pytest.raises(WorkerError, match="plaintext"):
+            await worker.capabilities()
+
     @respx.mock
     @pytest.mark.asyncio
     async def test_rejects_oversized_content_length(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

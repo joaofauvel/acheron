@@ -20,6 +20,9 @@ class StoreError(RuntimeError):
     """Backend failure normalized at the store boundary."""
 
 
+_MAX_REGISTERED_WORKERS = 1000
+
+
 class WorkerStore(ABC):
     """Persistent or in-memory store of registered workers and their health state."""
 

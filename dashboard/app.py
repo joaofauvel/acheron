@@ -61,8 +61,10 @@ _TEMPLATES.env.globals["format_age"] = _format_age
 async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, object]:
     """GET ``path`` from the orchestrator; return ``{}`` on any fetch failure."""
     try:
+        token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
+        headers = {"Authorization": f"Bearer {token}"} if token else None
         async with httpx.AsyncClient(base_url=orchestrator_url) as client:
-            resp = await client.get(path)
+            resp = await client.get(path, headers=headers)
             resp.raise_for_status()
             payload = resp.json()
             return cast("dict[str, object]", payload)

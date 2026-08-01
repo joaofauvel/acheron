@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from acheron.core.models import WorkerErrorEvent, WorkerStatus, sanitize_worker_error
 from acheron.shell.job_store import JobQuery
-from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
+from acheron.shell.stores.base import _MAX_REGISTERED_WORKERS, JobStore, StoreError, WorkerStore
 
 if TYPE_CHECKING:
     from acheron.core.models import JsonValue, WorkerCapabilities, WorkerType
@@ -53,6 +53,8 @@ class InMemoryWorkerStore(WorkerStore):
         from acheron.shell.registry import RegisteredWorker  # noqa: PLC0415
 
         self._purge_expired_tombstones()
+        if worker_id not in self._workers and len(self._workers) >= _MAX_REGISTERED_WORKERS:
+            raise StoreError("worker registry limit reached")
         history = self._history_for(worker_id)
         generation = self._generations.get(worker_id, 0) + 1
         self._generations[worker_id] = generation

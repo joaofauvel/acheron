@@ -25,7 +25,7 @@ from acheron.core.models import (
     sanitize_worker_error,
 )
 from acheron.shell.job_store import JobQuery
-from acheron.shell.stores.base import JobStore, StoreError, WorkerStore
+from acheron.shell.stores.base import _MAX_REGISTERED_WORKERS, JobStore, StoreError, WorkerStore
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -175,6 +175,9 @@ local worker_key = KEYS[1]
 local tombstone_key = KEYS[2]
 local generation_key = KEYS[3]
 local workers_set = KEYS[4]
+if redis.call("SISMEMBER", workers_set, ARGV[6]) == 0 and redis.call("SCARD", workers_set) >= tonumber(ARGV[7]) then
+  return -1
+end
 local history = redis.call("HGET", worker_key, "error_history")
 if not history then
   history = redis.call("GET", tombstone_key) or "[]"
@@ -775,7 +778,7 @@ class RedisWorkerStore(WorkerStore):
     ) -> None:
         """Register a worker with a fresh lifecycle and retained history."""
         fields = _worker_fields(endpoint, transport, capabilities, dict(metadata or {}))
-        await self._redis.eval(
+        result = await self._redis.eval(
             _REGISTER_WORKER_SCRIPT,
             4,
             _WORKER_KEY.format(worker_id=worker_id),
@@ -788,7 +791,10 @@ class RedisWorkerStore(WorkerStore):
             fields["capabilities_json"],
             fields["metadata_json"],
             worker_id,
+            str(_MAX_REGISTERED_WORKERS),
         )
+        if result == -1:
+            raise StoreError("worker registry limit reached")
 
     async def unregister(self, worker_id: str) -> None:
         """Remove a worker while retaining bounded history for re-registration."""

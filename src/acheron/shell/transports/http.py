@@ -9,6 +9,7 @@ import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -180,7 +181,7 @@ class HttpWorker(Worker):
             if self._registration_token_provider is not None
             else self._registration_token
         )
-        if token is not None and url.startswith("http://") and not _allow_insecure():
+        if token is not None and urlsplit(url).scheme.casefold() == "http" and not _allow_insecure():
             raise WorkerError(
                 "Refusing to send a bearer token over plaintext; "
                 "configure HTTPS or explicitly opt into insecure local transport"

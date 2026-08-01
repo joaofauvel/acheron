@@ -12,6 +12,7 @@ import grpc.aio
 from acheron.core.errors import AcheronError
 
 _LOG = logging.getLogger(__name__)
+_GRPC_MAX_RECEIVE_MESSAGE_BYTES = 64 * 1024 * 1024
 
 
 def _allow_insecure() -> bool:
@@ -106,5 +107,12 @@ def grpc_channel(target: str, *, require_tls: bool = False) -> grpc.aio.Channel:
                 "set ACHERON_ALLOW_INSECURE=1 for local development.",
                 target,
             )
-        return grpc.aio.insecure_channel(target)
-    return grpc.aio.secure_channel(target, creds)
+        return grpc.aio.insecure_channel(
+            target,
+            options=(("grpc.max_receive_message_length", _GRPC_MAX_RECEIVE_MESSAGE_BYTES),),
+        )
+    return grpc.aio.secure_channel(
+        target,
+        creds,
+        options=(("grpc.max_receive_message_length", _GRPC_MAX_RECEIVE_MESSAGE_BYTES),),
+    )

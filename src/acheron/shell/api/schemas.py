@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
@@ -288,3 +289,19 @@ class WorkerRegistrationRequest(_StrictRequest):
     endpoint: str = Field(max_length=2048)
     transport: str = Field(max_length=64)
     capabilities: WorkerCapabilitiesRequest
+
+    @field_validator("endpoint")
+    @classmethod
+    def _validate_endpoint(cls, value: str) -> str:
+        if any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value):
+            raise ValueError("endpoint contains control characters")
+        if any(char.isspace() for char in value) or "\\\\" in value:
+            raise ValueError("endpoint contains invalid characters")
+        parsed = urlsplit(value)
+        if parsed.scheme.casefold() not in {"http", "https", "grpc", "grpcs"} or not parsed.hostname:
+            raise ValueError("endpoint must be an http(s) or grpc(s) URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("endpoint userinfo is not allowed")
+        if parsed.query or parsed.fragment or any(part == ".." for part in parsed.path.split("/")):
+            raise ValueError("endpoint path or query is not allowed")
+        return value

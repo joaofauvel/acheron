@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from acheron.core.errors import AcheronError
 from acheron.tls import (
     _require_pair,
+    grpc_channel,
     grpc_channel_credentials,
     grpc_server_credentials,
     resolve_ca_path,
@@ -99,6 +101,14 @@ class TestResolveCaPath:
 
 
 class TestGrpcCredentials:
+    def test_grpc_channel_sets_receive_bound(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        with patch("acheron.tls.grpc.aio.insecure_channel", return_value=object()) as factory:
+            grpc_channel("worker:9000")
+        assert factory.call_args.kwargs["options"] == (("grpc.max_receive_message_length", 64 * 1024 * 1024),)
+
     def test_grpc_channel_credentials_returns_none_when_unset(
         self,
         monkeypatch: pytest.MonkeyPatch,
