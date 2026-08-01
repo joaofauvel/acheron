@@ -106,8 +106,21 @@ _URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*:[^\s'\"<>]+")
 _TRACEBACK_PATTERN = re.compile(r"\bTraceback\b", re.IGNORECASE)
 _FILE_FRAGMENT_PATTERN = re.compile(r"\bFile(?:\s|:)", re.IGNORECASE)
 _WINDOWS_PATH_PATTERN = re.compile(r"\b[A-Za-z]:[\\/][^\s'\"<>]*")
+_ROOTED_WINDOWS_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])\\{1,2}(?=[^\\/\s'\"<>]+[\\/])[^\s'\"<>]*")
 _ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+(?:/[^/\s'\"<>]*)*)?")
 _TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])[^\s]*\.\.[\\/][^\s]*")
+_SAFE_FALLBACK = "request failed"
+_UNSAFE_PATTERNS = (
+    _CREDENTIAL_PATTERN,
+    _BEARER_PATTERN,
+    _URI_PATTERN,
+    _TRACEBACK_PATTERN,
+    _FILE_FRAGMENT_PATTERN,
+    _WINDOWS_PATH_PATTERN,
+    _ROOTED_WINDOWS_PATH_PATTERN,
+    _ABSOLUTE_PATH_PATTERN,
+    _TRAVERSAL_PATH_PATTERN,
+)
 
 
 def _scrub_credentials(text: str) -> str:
@@ -115,22 +128,22 @@ def _scrub_credentials(text: str) -> str:
     return _CREDENTIAL_PATTERN.sub(r"\1=<redacted>", text)
 
 
-def sanitise_public_message(message: str, *, fallback: str = "request failed") -> str:
+def _contains_unsafe_content(text: str) -> bool:
+    return any(pattern.search(text) is not None for pattern in _UNSAFE_PATTERNS)
+
+
+def _safe_fallback(fallback: str) -> str:
+    text = " ".join(line.strip() for line in fallback.splitlines() if line.strip())
+    return text if text and not _contains_unsafe_content(text) else _SAFE_FALLBACK
+
+
+def sanitise_public_message(message: str, *, fallback: str = _SAFE_FALLBACK) -> str:
     """Return a safe message or a stable fallback for sensitive text."""
-    unsafe_patterns = (
-        _CREDENTIAL_PATTERN,
-        _BEARER_PATTERN,
-        _URI_PATTERN,
-        _TRACEBACK_PATTERN,
-        _FILE_FRAGMENT_PATTERN,
-        _WINDOWS_PATH_PATTERN,
-        _ABSOLUTE_PATH_PATTERN,
-        _TRAVERSAL_PATH_PATTERN,
-    )
-    if any(pattern.search(message) is not None for pattern in unsafe_patterns):
-        return fallback
+    safe_fallback = _safe_fallback(fallback)
+    if _contains_unsafe_content(message):
+        return safe_fallback
     text = " ".join(line.strip() for line in message.splitlines() if line.strip())
-    return text or fallback
+    return text or safe_fallback
 
 
 def sanitise_exc_message(exc: BaseException) -> str:

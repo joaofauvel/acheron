@@ -548,6 +548,8 @@ class TestJobRoutes:
         [
             "/tmp",
             r"C:\\Users\\worker\\secret.txt",
+            r"\\server\\share\\secret.txt",
+            r"\Windows\System32\secret.dll",
             "foo/../../secret",
             r"..\\..\\secret",
             "custom+scheme://user:secret@example.test/path?token=secret#fragment",
@@ -651,6 +653,8 @@ class TestJobRoutes:
         [
             "/tmp",
             r"C:\\Users\\worker\\secret.txt",
+            r"\\server\\share\\secret.txt",
+            r"\Windows\System32\secret.dll",
             "foo/../../secret",
             r"..\\..\\secret",
             "custom+scheme://user:secret@example.test/path?token=secret#fragment",

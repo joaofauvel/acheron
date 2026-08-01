@@ -96,6 +96,8 @@ class TestSanitisePublicMessage:
         [
             "/tmp",
             r"C:\\Users\\worker\\secret.txt",
+            r"\\server\\share\\secret.txt",
+            r"\Windows\System32\secret.dll",
             "foo/../../secret",
             r"..\\..\\secret",
             "custom+scheme://user:secret@example.test/path?token=secret#fragment",
@@ -120,6 +122,11 @@ class TestSanitisePublicMessage:
         from acheron.core.errors import sanitise_public_message
 
         assert sanitise_public_message("\n\n") == "request failed"
+
+    def test_unsafe_fallback_fails_closed(self) -> None:
+        from acheron.core.errors import sanitise_public_message
+
+        assert sanitise_public_message("/tmp/secret", fallback=r"C:\\secret.txt") == "request failed"
 
 
 class TestSanitiseExcMessage:
