@@ -47,7 +47,13 @@ from acheron.core.schemas import (
     StepError as StepErrorResponse,
 )
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.public import public_content_type, public_optional_worker_id, public_worker_id
+from acheron.shell.api.public import (
+    public_content_type,
+    public_filename,
+    public_label,
+    public_optional_worker_id,
+    public_worker_id,
+)
 from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
 from acheron.shell.job_store import JobQuery
@@ -696,7 +702,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         job_id=tracked.job_id,
         status=tracked.status,
         plan_id=tracked.plan.plan_id if tracked.plan else None,
-        label=tracked.label,
+        label=public_label(tracked.label),
         retries_from=tracked.retries_from,
         source_type=source_type,
         source_language=source_language,
@@ -723,7 +729,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
             [
                 OutputSummary(
                     download_url=f"/jobs/{tracked.job_id}/outputs/{index}",
-                    filename=output.filename,
+                    filename=public_filename(output.filename),
                     size_bytes=output.size_bytes,
                     content_type=public_content_type(output.content_type),
                 )

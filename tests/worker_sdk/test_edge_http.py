@@ -134,12 +134,44 @@ class TestEdgeRoutes:
         caps.metadata.update(
             {
                 "voice": "password xyz",
+                "default_speaker": "token-SECRET",
+                "speakers": ["Ryan", "api key TOPSECRET"],
                 "health_endpoint_id": "https://user:secret@provider.invalid?token=secret",
                 "health_provider": "https://provider.invalid",
             }
         )
         body = public_caps_to_dict(caps)
-        assert body["metadata"] == {"speakers": ["Ryan"], "default_speaker": "Ryan"}
+        assert body["metadata"] == {}
+
+    @pytest.mark.asyncio
+    async def test_multipart_headers_reject_crlf_artifact_values(self) -> None:
+        class UnsafeHandler(_Stub):
+            async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
+                return [
+                    BytesArtifact(
+                        filename='../secret.wav"\r\nX-Injected: yes',
+                        content_type="audio/wav\r\nX-Leak: yes",
+                        data=b"audio",
+                    )
+                ]
+
+        handler = UnsafeHandler()
+        app = EdgeApp(handler=handler, capabilities=handler.capabilities()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/execute",
+                json={
+                    "job_id": "j1",
+                    "job_type": "tts",
+                    "payload": {"chunks": [{"text": "hi"}], "target_language": "en"},
+                    "chapter_id": "ch1",
+                },
+            )
+        assert response.status_code == 200
+        assert response.headers.get("x-injected") is None
+        assert b'filename="output.bin"' in response.content
+        assert b"Content-Type: application/octet-stream" in response.content
 
     @pytest.mark.asyncio
     async def test_execute_returns_multipart(self, app_handler: tuple[FastAPI, _Stub]) -> None:

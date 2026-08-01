@@ -33,10 +33,17 @@ _SAFE_ENDPOINT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$")
 _SAFE_FORMAT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9.+_-]{0,31})?$")
 _INVALID_PUBLIC_VALUE = "__invalid_public_value__"
+_CREDENTIAL_LABEL_RE = re.compile(
+    r"(?:^|[^A-Za-z0-9])(?:authorization|credential|api(?:[ _-]?key)?|token|password|secret|bearer)"
+    r"(?=$|[^A-Za-z0-9])",
+    re.IGNORECASE,
+)
 
 
 def _safe_text(value: object, *, pattern: re.Pattern[str]) -> str | None:
     if not isinstance(value, str) or not pattern.fullmatch(value):
+        return None
+    if _CREDENTIAL_LABEL_RE.search(value) is not None:
         return None
     safe = sanitise_public_message(value, fallback=_INVALID_PUBLIC_VALUE)
     return None if safe == _INVALID_PUBLIC_VALUE else safe

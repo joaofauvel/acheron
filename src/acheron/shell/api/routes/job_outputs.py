@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from acheron.core.schemas import ErrorResponse
 from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
-from acheron.shell.api.public import public_content_type
+from acheron.shell.api.public import public_content_type, public_filename
 
 if TYPE_CHECKING:
     from starlette.types import Receive, Scope, Send
@@ -142,5 +142,5 @@ async def get_job_output(job_id: str, output_index: int, orch: OrchestratorDep) 
         file_fd,
         stat_result=stat_result,
         media_type=public_content_type(output.content_type),
-        filename=output.filename,
+        filename=public_filename(output.filename),
     )

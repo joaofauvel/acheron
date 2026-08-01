@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import secrets
 import time
 import uuid
@@ -252,6 +253,36 @@ def _malformed_execute_response() -> JSONResponse:
     return JSONResponse(status_code=500, content=_jobresult_to_json(result))
 
 
+_SAFE_ARTIFACT_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_MAX_ARTIFACT_FILENAME_LENGTH = 255
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
+
+
+def _safe_artifact_filename(value: object) -> str:
+    if not isinstance(value, str) or not value or len(value) > _MAX_ARTIFACT_FILENAME_LENGTH:
+        return "output.bin"
+    if (
+        any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value)
+        or any(delimiter in value for delimiter in ("\r", "\n", '"', "\\", ";"))
+        or "/" in value
+        or ".." in value
+        or value in {".", ".."}
+    ):
+        return "output.bin"
+    return value
+
+
+def _safe_artifact_content_type(value: object) -> str:
+    if not isinstance(value, str) or any(
+        ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value
+    ):
+        return "application/octet-stream"
+    if _SAFE_ARTIFACT_MIME_RE.fullmatch(value) is None:
+        return "application/octet-stream"
+    return value
+
+
 async def _build_multipart_response(
     artifacts: list[Artifact],
     metrics: JobMetrics,
@@ -275,10 +306,12 @@ async def _build_multipart_response(
 
     async def _body() -> AsyncIterator[bytes]:
         for a in artifacts:
+            filename = _safe_artifact_filename(a.filename)
+            content_type = _safe_artifact_content_type(a.content_type)
             yield (
                 f"--{boundary}\r\n"
-                f'Content-Disposition: attachment; filename="{a.filename}"\r\n'
-                f"Content-Type: {a.content_type}\r\n"
+                f'Content-Disposition: attachment; filename="{filename}"\r\n'
+                f"Content-Type: {content_type}\r\n"
                 f"X-Acheron-Metadata: {_encode_metadata(a.metadata)}\r\n\r\n"
             ).encode()
             async for chunk in a.stream():

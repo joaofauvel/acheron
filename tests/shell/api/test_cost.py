@@ -58,7 +58,7 @@ async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
                             cost=0.34,
                             basis=CostBasis.MEASURED,
                             rate_per_hour=0.69,
-                            gpu_type="L4",
+                            gpu_type="https://token:secret@example.invalid/private",
                             secure_cloud=False,
                             queried_at=datetime(2026, 7, 30, 12, tzinfo=UTC),
                             cache_age_seconds=0.0,
@@ -73,7 +73,7 @@ async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
             response = await client.get("/jobs/job-measured/cost")
         assert response.status_code == 200
         assert response.json()["cost_breakdown"][0]["worker_id"] == "<redacted>"
-        assert response.json()["cost_breakdown"][0]["gpu_type"] == "L4"
+        assert response.json()["cost_breakdown"][0]["gpu_type"] is None
         assert response.json()["cost_breakdown"][0]["cache_age_seconds"] == 0.0
     finally:
         await app.state.orchestrator.shutdown()

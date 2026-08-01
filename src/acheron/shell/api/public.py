@@ -20,7 +20,16 @@ _SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$")
 _SAFE_FORMAT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9.+_-]{0,31})?$")
 _REDACTED = "<redacted>"
 _SAFE_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_UNSAFE_PUBLIC_TEXT_RE = re.compile(
+    r"(?:[\x00-\x1f\x7f]|://|[@/\\]|\.\.|"
+    r"(?:authorization|credential|api(?:[ _-]?key)?|token|password|secret|bearer)"
+    r"(?:\s*[:=]|\s+|[-_])?[A-Za-z0-9])",
+    re.IGNORECASE,
+)
 _PUBLIC_TRANSPORTS = frozenset({"grpc", "grpcs", "http", "https", "local"})
+_MAX_PUBLIC_TEXT_LENGTH = 256
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
 
 
 def public_worker_id(value: object) -> str:
@@ -48,12 +57,41 @@ def public_transport(value: object) -> str:
 
 def public_content_type(value: object) -> str:
     """Return a safe MIME type for response headers."""
-    if not isinstance(value, str) or any(char in value for char in "\r\n"):
+    if not isinstance(value, str) or any(
+        ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value
+    ):
         return "application/octet-stream"
     media_type = value.split(";", 1)[0].strip()
     if _SAFE_MIME_RE.fullmatch(media_type) is None:
         return "application/octet-stream"
-    return value
+    return media_type
+
+
+def _safe_public_text(value: object) -> str | None:
+    if not isinstance(value, str) or not value or len(value) > _MAX_PUBLIC_TEXT_LENGTH:
+        return None
+    if _UNSAFE_PUBLIC_TEXT_RE.search(value) is not None or _CREDENTIAL_IDENTIFIER_RE.search(value) is not None:
+        return None
+    safe = sanitise_public_message(value, fallback=_REDACTED)
+    return None if safe == _REDACTED else value
+
+
+def public_label(value: object) -> str | None:
+    """Return a safe public label, preserving ordinary labels."""
+    return _safe_public_text(value)
+
+
+def public_filename(value: object) -> str:
+    """Return a safe basename for public output responses."""
+    safe = _safe_public_text(value)
+    if safe is None or safe in {".", ".."} or ":" in safe or '"' in safe:
+        return "output.bin"
+    return safe
+
+
+def public_gpu_type(value: object) -> str | None:
+    """Return a safe public GPU label."""
+    return public_label(value)
 
 
 def public_capability_values(values: Iterable[object], *, kind: str) -> list[str]:
@@ -63,7 +101,10 @@ def public_capability_values(values: Iterable[object], *, kind: str) -> list[str
     for value in values:
         if not isinstance(value, str) or pattern.fullmatch(value) is None:
             continue
-        if sanitise_public_message(value, fallback=_REDACTED) == _REDACTED:
+        if (
+            _CREDENTIAL_IDENTIFIER_RE.search(value) is not None
+            or sanitise_public_message(value, fallback=_REDACTED) == _REDACTED
+        ):
             continue
         safe.add(value)
     return sorted(safe)

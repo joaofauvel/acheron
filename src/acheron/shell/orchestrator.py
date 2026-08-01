@@ -44,7 +44,7 @@ from acheron.core.models import (
 )
 from acheron.core.planner import ChunkingLimits, compile_plan
 from acheron.core.schemas import CostBreakdownResponse, CostSummaryResponse, JobCostResponse
-from acheron.shell.api.public import public_optional_worker_id, public_worker_id
+from acheron.shell.api.public import public_gpu_type, public_optional_worker_id, public_worker_id
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, _validate_credential_token, load_settings
@@ -1176,7 +1176,7 @@ class Orchestrator:
                         cost=item.estimate.cost,
                         basis=item.estimate.basis,
                         rate_per_hour=item.estimate.rate_per_hour,
-                        gpu_type=item.estimate.gpu_type,
+                        gpu_type=public_gpu_type(item.estimate.gpu_type),
                         secure_cloud=item.estimate.secure_cloud,
                         queried_at=item.estimate.queried_at,
                         cache_age_seconds=item.estimate.cache_age_seconds,

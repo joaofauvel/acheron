@@ -297,7 +297,7 @@ class TestJobRoutes:
                 job_id="job-measured",
                 request=EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
                 strategy=ExecutorStrategy.SEQUENTIAL,
-                label="atlas-ch1",
+                label="https://user:secret@example.invalid/job",
                 created_at=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
                 last_persisted_at=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
                 progress=JobProgressState(completed_steps=1, total_steps=1),
@@ -310,7 +310,7 @@ class TestJobRoutes:
                     outputs=(
                         OutputFile(
                             path="/data/job-measured/output.m4b",
-                            filename="output.m4b",
+                            filename="/srv/secret.m4b",
                             size_bytes=1234,
                             checksum="checksum",
                             content_type="audio/mp4",
@@ -341,7 +341,7 @@ class TestJobRoutes:
         assert response.status_code == 200
         data = response.json()
         assert data["total_cost_basis"] == "measured"
-        assert data["label"] == "atlas-ch1"
+        assert data["label"] is None
         assert data["progress"] == {
             "completed_steps": 1,
             "total_steps": 1,
@@ -353,7 +353,7 @@ class TestJobRoutes:
         assert data["outputs"] == [
             {
                 "download_url": "/jobs/job-measured/outputs/0",
-                "filename": "output.m4b",
+                "filename": "output.bin",
                 "size_bytes": 1234,
                 "content_type": "audio/mp4",
             }

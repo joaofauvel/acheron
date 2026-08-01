@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from acheron.core.models import JsonValue  # noqa: TC001
 from acheron.core.schemas import (
@@ -139,7 +139,7 @@ class CleanupRequest(_AdminDurationRequest):
     keep_successful_seconds: float | None = Field(default=None, gt=0)
     keep_failed_seconds: float | None = Field(default=None, gt=0)
     retention_seconds: float | None = Field(default=None, gt=0)
-    apply: bool = False
+    apply: StrictBool = False
     reason: str | None = None
 
     @model_validator(mode="after")
