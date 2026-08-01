@@ -70,17 +70,24 @@ async def _buffer_error_response(response: httpx.Response) -> None:
 
     chunks: list[bytes] = []
     buffered = 0
-    iterator = cast("AsyncGenerator[bytes]", response.aiter_bytes())
+    stream = response.stream
+    if not isinstance(stream, httpx.AsyncByteStream):
+        msg = "error response did not provide an async stream"
+        raise TypeError(msg)
+    iterator = cast("AsyncGenerator[bytes]", stream.__aiter__())
     try:
-        async for chunk in iterator:
+        while buffered < declared_length:
+            try:
+                chunk = await anext(iterator)
+            except StopAsyncIteration:
+                break
             remaining = declared_length - buffered
-            if remaining <= 0:
-                continue
             bounded_chunk = chunk[:remaining]
             chunks.append(bounded_chunk)
             buffered += len(bounded_chunk)
     finally:
         await iterator.aclose()
+        await stream.aclose()
         await response.aclose()
     response._content = b"".join(chunks)  # noqa: SLF001
 

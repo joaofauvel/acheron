@@ -262,6 +262,7 @@ def _run_sync_generator[T](
             )
         finally:
             loop.run_until_complete(_close())
+            loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
     else:
 
@@ -280,6 +281,7 @@ def _run_sync_generator[T](
                 )
             finally:
                 pool.submit(loop.run_until_complete, _close()).result()
+                pool.submit(loop.run_until_complete, loop.shutdown_asyncgens()).result()
                 pool.submit(loop.close).result()
 
 
