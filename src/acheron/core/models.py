@@ -247,7 +247,7 @@ class JobMetrics:
                 msg = f"{name} must be finite and non-negative"
                 raise ValueError(msg)
         for name, value in (("tokens_in", self.tokens_in), ("tokens_out", self.tokens_out)):
-            if value is not None and (isinstance(value, bool) or value < 0):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
                 msg = f"{name} must be a non-negative integer"
                 raise ValueError(msg)
         if self.cost_estimate is not None:

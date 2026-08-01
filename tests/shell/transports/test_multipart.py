@@ -6,7 +6,7 @@ import pytest
 
 from acheron.core.errors import WorkerError
 from acheron.core.models import CostBasis, CostEstimate, JobMetrics, JobStatus, OutputFile
-from acheron.shell.transports._multipart import _build_result, _materialize_artifact
+from acheron.shell.transports._multipart import _build_result, _materialize_artifact, _parse_multipart_parts
 
 
 class TestMaterializeArtifact:
@@ -114,6 +114,33 @@ class TestSafeJoin:
                 content_type="text/plain",
                 dest_dir=tmp_path,
             )
+
+    @pytest.mark.asyncio
+    async def test_rejects_symlinked_destination(self, tmp_path: Path) -> None:
+        target = tmp_path / "target"
+        target.mkdir()
+        job = tmp_path / "job"
+        job.symlink_to(target, target_is_directory=True)
+        linked = job / "step"
+        with pytest.raises(WorkerError, match="destination symlink"):
+            await _materialize_artifact(
+                data=b"x",
+                filename="audio.wav",
+                content_type="audio/wav",
+                dest_dir=linked,
+                root_dir=tmp_path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_unsafe_multipart_content_type(self) -> None:
+        boundary = "unsafe"
+        body = (
+            f'--{boundary}\r\nContent-Disposition: attachment; filename="x.wav"\r\n'
+            "Content-Type: audio/wav\r\nX-Acheron-Metadata: {}\r\n\r\nx\r\n"
+            f"--{boundary}--\r\n"
+        ).replace("audio/wav", "audio/wav\r\nX-Injected: yes")
+        with pytest.raises(WorkerError, match=r"unsupported multipart headers|invalid artifact content type"):
+            _parse_multipart_parts(f"multipart/mixed; boundary={boundary}", body.encode())
 
     @pytest.mark.asyncio
     async def test_returns_basename_not_raw(self, tmp_path: Path) -> None:

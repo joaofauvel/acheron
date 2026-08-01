@@ -1,17 +1,18 @@
 """Tests for the internal edge FastAPI app."""
 
 import dataclasses
-from typing import TYPE_CHECKING, Any
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
 from httpx import ASGITransport
 
-from acheron.core.models import CostBasis, Job, WorkerCapabilities, WorkerType
+from acheron.core.models import CostBasis, Job, JobMetrics, JsonValue, WorkerCapabilities, WorkerType
 from acheron.worker_sdk import _edge_http as edge_module
 from acheron.worker_sdk._caps import public_caps_to_dict
 from acheron.worker_sdk._edge_http import EdgeApp
-from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
+from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, StreamArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 from acheron.worker_sdk.inputs import Input
 from acheron.worker_sdk.pricing import PriceEstimate
@@ -187,6 +188,20 @@ class TestEdgeRoutes:
             "health_endpoint_id": "endpoint-1",
         }
 
+    def test_capabilities_bound_public_collections(self) -> None:
+        caps = dataclasses.replace(
+            _Stub().capabilities(),
+            supported_languages_in=frozenset(f"lang-{index}" for index in range(200_000)),
+            metadata={"speakers": [f"Speaker {index}" for index in range(200_000)]},
+        )
+        body = public_caps_to_dict(caps)
+        languages = cast("list[JsonValue]", body["supported_languages_in"])
+        metadata = cast("dict[str, JsonValue]", body["metadata"])
+        speakers = cast("list[JsonValue]", metadata["speakers"])
+        assert len(languages) == 100
+        assert len(speakers) == 100
+        assert speakers[0] == "Speaker 0"
+
     def test_capabilities_reject_unsafe_public_values(self) -> None:
         caps = _Stub().capabilities()
         caps.metadata.update(
@@ -200,6 +215,23 @@ class TestEdgeRoutes:
         )
         body = public_caps_to_dict(caps)
         assert body["metadata"] == {}
+
+    @pytest.mark.asyncio
+    async def test_streamed_artifact_response_is_bounded(self) -> None:
+        async def oversized() -> AsyncIterator[bytes]:
+            yield b"x" * (edge_module._MAX_EXECUTE_RESPONSE_BYTES + 1)  # noqa: SLF001
+
+        artifact = StreamArtifact(
+            filename="output.bin",
+            content_type="application/octet-stream",
+            producer=oversized,
+        )
+        response = await edge_module._build_multipart_response(  # noqa: SLF001
+            [artifact], JobMetrics(duration_seconds=0.0)
+        )
+        with pytest.raises(edge_module.PayloadTooLargeError):
+            async for _chunk in response.body_iterator:
+                pass
 
     @pytest.mark.asyncio
     async def test_multipart_headers_reject_crlf_artifact_values(self) -> None:

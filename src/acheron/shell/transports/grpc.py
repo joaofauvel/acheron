@@ -122,6 +122,7 @@ class GrpcWorker(Worker):
                 filename=art.filename,
                 content_type=art.content_type,
                 dest_dir=dest_dir,
+                root_dir=self._data_dir,
             )
             outputs.append(out)
         metrics = JobMetrics(duration_seconds=duration, gpu_seconds=duration)
@@ -136,6 +137,7 @@ class GrpcWorker(Worker):
             filename=f"{job_id}.pcm",
             content_type="audio/pcm",
             dest_dir=self._data_dir / plan_job_id / step_id,
+            root_dir=self._data_dir,
         )
         return _build_result(
             job_id=job_id,

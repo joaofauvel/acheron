@@ -256,6 +256,7 @@ class HttpWorker(Worker):
                 content_type=part.content_type,
                 dest_dir=dest_dir,
                 metadata=part.metadata,
+                root_dir=self._data_dir,
             )
             outputs.append(out)
         return _build_result(job_id=job_id, outputs=tuple(outputs), metrics=metrics)

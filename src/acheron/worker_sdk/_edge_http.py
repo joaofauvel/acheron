@@ -69,8 +69,9 @@ _PUBLIC_ARTIFACT_METADATA_KEYS = frozenset(
 _MAX_METADATA_STRING_LENGTH = 256
 _METADATA_CONTROL_LIMIT = 32
 _METADATA_DELETE_CHARACTER = 127
-# Edge execute requests are bounded before JSON/multipart allocation (64 MiB).
+# Edge execute requests and streamed responses share a bounded 64 MiB envelope.
 _MAX_EXECUTE_BODY_BYTES = 64 * 1024 * 1024
+_MAX_EXECUTE_RESPONSE_BYTES = 64 * 1024 * 1024
 
 
 class PayloadTooLargeError(WorkerError):
@@ -337,7 +338,7 @@ def _safe_artifact_content_type(value: object) -> str:
     return value
 
 
-async def _build_multipart_response(
+async def _build_multipart_response(  # noqa: C901
     artifacts: list[Artifact],
     metrics: JobMetrics,
 ) -> StreamingResponse:
@@ -359,20 +360,36 @@ async def _build_multipart_response(
     metrics_json = metrics.model_dump_json()
 
     async def _body() -> AsyncIterator[bytes]:
+        emitted = 0
+
+        async def emit(chunk: bytes) -> AsyncIterator[bytes]:
+            nonlocal emitted
+            emitted += len(chunk)
+            if emitted > _MAX_EXECUTE_RESPONSE_BYTES:
+                raise PayloadTooLargeError("worker output exceeds the supported response limit")
+            yield chunk
+
         for a in artifacts:
             filename = _safe_artifact_filename(a.filename)
             content_type = _safe_artifact_content_type(a.content_type)
-            yield (
+            header = (
                 f"--{boundary}\r\n"
                 f'Content-Disposition: attachment; filename="{filename}"\r\n'
                 f"Content-Type: {content_type}\r\n"
                 f"X-Acheron-Metadata: {_encode_metadata(a.metadata)}\r\n\r\n"
             ).encode()
+            async for output in emit(header):
+                yield output
             async for chunk in a.stream():
-                yield chunk
-            yield b"\r\n"
-        yield f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode() + metrics_json + b"\r\n"
-        yield f"--{boundary}--\r\n".encode()
+                async for output in emit(chunk):
+                    yield output
+            async for output in emit(b"\r\n"):
+                yield output
+        trailer = f"--{boundary}\r\nContent-Type: application/json\r\n\r\n".encode() + metrics_json + b"\r\n"
+        async for output in emit(trailer):
+            yield output
+        async for output in emit(f"--{boundary}--\r\n".encode()):
+            yield output
 
     return StreamingResponse(
         content=_body(),

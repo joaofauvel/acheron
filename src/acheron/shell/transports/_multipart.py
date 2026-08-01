@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from email.message import Message
 from email.parser import BytesParser
@@ -17,6 +18,10 @@ from acheron.core.errors import WorkerError
 from acheron.core.models import JobMetrics, JobResult, JobStatus, OutputFile
 
 _METRICS_PART_NAME = "metrics"
+_MAX_CONTENT_TYPE_LENGTH = 256
+_SAFE_CONTENT_TYPE_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
 
 _metrics_adapter = TypeAdapter(JobMetrics)
 
@@ -31,7 +36,7 @@ class ParsedPart:
     metadata: dict[str, str]
 
 
-def _parse_multipart_parts(
+def _parse_multipart_parts(  # noqa: C901
     content_type: str,
     body: bytes,
 ) -> tuple[list[ParsedPart], JobMetrics]:
@@ -66,7 +71,21 @@ def _parse_multipart_parts(
         # ``Message`` instances.
         if not isinstance(part, Message):
             continue
+        unknown_headers = {
+            key.casefold()
+            for key in part
+            if key.casefold()
+            not in {"content-type", "content-disposition", "x-acheron-metadata", "x-acheron-part-name"}
+        }
+        if unknown_headers:
+            raise WorkerError("Worker returned unsupported multipart headers")
         part_ctype = part.get_content_type()
+        if (
+            len(part_ctype) > _MAX_CONTENT_TYPE_LENGTH
+            or any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in part_ctype)
+            or _SAFE_CONTENT_TYPE_RE.fullmatch(part_ctype) is None
+        ):
+            raise WorkerError("Worker returned an invalid artifact content type")
         if part_ctype == "application/json":
             raw = part.get_payload(decode=True)
             payload_bytes = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
@@ -133,13 +152,14 @@ def _safe_join(dest_dir: Path, filename: str) -> Path:
     return candidate
 
 
-async def _materialize_artifact(
+async def _materialize_artifact(  # noqa: PLR0913
     *,
     data: bytes,
     filename: str,
     content_type: str,
     dest_dir: Path,
     metadata: dict[str, str] | None = None,
+    root_dir: Path | None = None,
 ) -> OutputFile:
     """Write ``bytes`` to ``dest_dir/filename`` and return an ``OutputFile``.
 
@@ -149,7 +169,22 @@ async def _materialize_artifact(
     to be trusted on them. ``metadata`` is the per-artifact dict carried
     in the ``X-Acheron-Metadata`` part header.
     """
+    resolved_root = (root_dir or dest_dir).resolve()
+    current = dest_dir
+    while True:
+        if current.is_symlink():
+            raise WorkerError("Refusing artifact destination symlink")
+        if current.exists() and not current.is_dir():
+            raise WorkerError("Refusing non-directory artifact destination")
+        if current in (resolved_root, current.parent):
+            break
+        current = current.parent
     dest_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
+    resolved_dest = dest_dir.resolve()  # noqa: ASYNC240
+    try:
+        resolved_dest.relative_to(resolved_root)
+    except ValueError as exc:
+        raise WorkerError("Refusing artifact destination outside data directory") from exc
     out_path = _safe_join(dest_dir, filename)
     async with aiofiles.open(out_path, "wb") as f:
         await f.write(data)

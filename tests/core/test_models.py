@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 from pydantic import TypeAdapter
@@ -105,6 +106,10 @@ def test_job_metrics_reject_non_finite_and_negative_values() -> None:
         JobMetrics(duration_seconds=-1.0)
     with pytest.raises(ValueError, match="non-negative"):
         JobMetrics(duration_seconds=1.0, tokens_in=-1)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        JobMetrics(duration_seconds=1.0, tokens_in=cast("int", 1.5))
+    with pytest.raises(ValueError, match="non-negative integer"):
+        JobMetrics(duration_seconds=1.0, tokens_in=True)
 
 
 def test_job_metrics_valid_values_serialize() -> None:

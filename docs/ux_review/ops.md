@@ -6,7 +6,7 @@ version: 3
 
 # OPS
 
-**Grade**: C (1 high + 1 medium + 1 low unresolved story)
+**Grade**: C (1 medium + 1 low unresolved story)
 **Calibration target**: an operator should be able to submit, monitor, debug, and recover a job without `docker logs`.
 
 ## OPS-001 — Dashboard renders only three read-only tables
