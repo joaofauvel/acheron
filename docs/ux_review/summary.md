@@ -82,11 +82,11 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (`fix(acceptance): harden worker and UX verification gates`).
-- Evidence: `uv run pytest --no-cov tests/core/test_errors.py tests/shell/api/test_jobs.py -q` passed (`143 passed`), covering single-component rooted paths, UNC paths, safe fallbacks, and internal-message immutability; `just lint-strict` passed.
+- Commit: `CURRENT_HEAD` (`fix(ux-review): attest current-head metadata`).
+- Evidence: focused sanitizer and verifier regressions pass; `just validate` is the final gate with 1572 passing tests and 9 expected skips.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.
-- UX gate: all 15 required `just ux-verify` commands and `just ux-validate` passed after this commit.
+- UX gate: all 15 required Phase 4D `just ux-verify` commands and `just ux-validate` pass after this commit; parsed metadata is 16 verified overall (OPS 6, MAINT 10) and 6 obsolete.
 - Residual risks: sanitisation intentionally returns the constant `request failed` when caller fallbacks contain sensitive patterns; no other public-message behavior changed.
-- Metadata rationale: tracked UX metadata uses `CURRENT_HEAD`, which the verifier resolves against the checked-out commit; no unstaged or ignored metadata state is required.
+- Metadata rationale: tracked UX metadata uses `CURRENT_HEAD` plus a tree fingerprint excluding the UX metadata files themselves; later code/test/docs commits invalidate the attestation without a self-referential commit SHA.
 - Regression gate: `git diff --check` passed; final acceptance remediation is covered by focused type, integration, stream-cleanup, and verifier tests.
