@@ -22,6 +22,7 @@ from acheron.core.errors import (
     JobNotCancellableError,
     JobNotFoundError,
     sanitise_public_message,
+    sanitise_public_remediation,
 )
 from acheron.core.models import (
     AudioRequest,
@@ -91,7 +92,7 @@ def _error_response(exc: AcheronError) -> ErrorResponse:
     return ErrorResponse(
         type=type(exc).__name__,
         message=sanitise_public_message(str(exc)),
-        remediation=(sanitise_public_message(exc.remediation) if exc.remediation is not None else None),
+        remediation=(sanitise_public_remediation(exc.remediation) if exc.remediation is not None else None),
     )
 
 
@@ -178,7 +179,7 @@ def _validate_voice_selection(
         logger.warning("Unable to inspect EPUB chapters for voice selection at %s: %s", source_path, exc)
         raise HTTPException(status_code=422, detail="unable to inspect EPUB chapters") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail="invalid voice selection") from exc
 
 
 async def _build_job_request(  # noqa: C901, PLR0912
@@ -246,7 +247,7 @@ async def _build_job_request(  # noqa: C901, PLR0912
                 voice=normalized_voice,
             )
         case _:
-            msg = f"Invalid source_type: {body.source_type}"
+            msg = "Invalid source_type"
             raise HTTPException(status_code=400, detail=msg)
     if body.input_id is not None:
         try:
@@ -335,7 +336,7 @@ async def _build_retry_request(  # noqa: C901, PLR0912, PLR0915
                         VoiceRange(item.start_chapter, item.end_chapter, item.voice) for item in body.voice_map
                     )
                 except (TypeError, ValueError) as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                    raise HTTPException(status_code=422, detail="invalid voice selection") from exc
             else:
                 selected_map = voice_map
             selected_target = body.target_language if body.target_language is not None else target_language
@@ -448,7 +449,7 @@ async def retry_job(
     """Create a fresh job from a stored submission with optional overrides."""
     source = await orch.get_job(job_id)
     if source is None:
-        exc = JobNotFoundError(f"Job not found: {job_id}")
+        exc = JobNotFoundError("Job not found")
         raise HTTPException(status_code=404, detail=_error_response(exc).model_dump()) from exc
     request, strategy, label = await _build_retry_request(orch, source, body)
     try:
@@ -492,9 +493,7 @@ async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
     """Get job status and result."""
     tracked = await orch.get_job(job_id)
     if tracked is None:
-        raise HTTPException(
-            status_code=404, detail=_error_response(JobNotFoundError(f"Job not found: {job_id}")).model_dump()
-        )
+        raise HTTPException(status_code=404, detail=_error_response(JobNotFoundError("Job not found")).model_dump())
     return _tracked_to_response(tracked)
 
 
@@ -539,7 +538,7 @@ async def job_logs(
     if tracked is None:
         raise HTTPException(
             status_code=404,
-            detail=_error_response(JobNotFoundError(f"Job not found: {job_id}")).model_dump(),
+            detail=_error_response(JobNotFoundError("Job not found")).model_dump(),
         )
 
     _terminal = {PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL}

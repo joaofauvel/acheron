@@ -10,8 +10,8 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from acheron.ux_review.discovery import artifact_path_for
-from acheron.ux_review.schema import Story
+from acheron.ux_review.discovery import _repository_head, artifact_path_for
+from acheron.ux_review.schema import CURRENT_HEAD, Story
 
 _STORY_PATTERN = re.compile(r"^## ([A-Z]+-\d+)\b", re.MULTILINE)
 _YAML_PATTERN = re.compile(r"```yaml\n(.*?)```", re.DOTALL)
@@ -79,6 +79,15 @@ def _check_file_ref(file_path: Path, lines: str) -> list[str]:
 def _validate_story(story: Story, tag: str, root: Path, head_sha: str) -> list[str]:
     """Validate a single parsed story. Return a list of error messages."""
     errors: list[str] = []
+    actual_head = _repository_head(root.parent.parent)
+    requested_head = actual_head if head_sha == "HEAD" and actual_head is not None else head_sha
+    current_markers = [
+        value
+        for value in (*story.fixed_in, *story.verified_in, story.last_verified_at.get("commit", ""))
+        if value == CURRENT_HEAD
+    ]
+    if current_markers and (actual_head is None or requested_head != actual_head):
+        errors.append(f"{tag}: CURRENT_HEAD metadata does not match repository HEAD")
     for file_ref in story.files:
         file_path = Path(file_ref.path)
         errors.extend(f"{tag}: {err}" for err in _check_file_ref(file_path, file_ref.lines))

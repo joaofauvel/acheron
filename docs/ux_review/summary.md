@@ -82,7 +82,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (`fix(acceptance): close phase 4d validation gaps`).
+- Commit: `CURRENT_HEAD` (`fix(acceptance): close review blockers`).
 - Evidence: `uv run pytest --no-cov tests/core/test_errors.py tests/shell/api/test_jobs.py -q` passed (`143 passed`), covering single-component rooted paths, UNC paths, safe fallbacks, and internal-message immutability; `just lint-strict` passed.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.

@@ -849,7 +849,7 @@ class TestJobRoutes:
             (
                 JobAlreadyRunningError("job-1 is running password=secret", remediation="acheron job cancel job-1"),
                 409,
-                "acheron job cancel job-1",
+                "acheron job cancel <job-id>",
             ),
             (
                 NoPlanToResumeError("no saved plan token=secret", remediation="acheron job submit <source>"),
@@ -938,7 +938,7 @@ class TestJobRoutes:
         )
         assert response.status_code == 422
         body = response.json()
-        assert any("executor_strategi" in str(d).lower() for d in body.get("detail", []))
+        assert body["detail"] == "Request validation failed"
 
     @pytest.mark.asyncio
     async def test_submit_job_returns_booting_tts_warning(
@@ -1900,7 +1900,7 @@ class TestPreviewRoute:
         detail = response.json()["detail"]
         assert detail["type"] == "WorkerError"
         assert detail["message"] == "request failed"
-        assert detail["remediation"] == "acheron job retry job-1"
+        assert detail["remediation"] == "acheron job retry <job-id>"
 
     @pytest.mark.asyncio
     async def test_preview_timeout_cleans_temporary_input_without_job_or_plan(

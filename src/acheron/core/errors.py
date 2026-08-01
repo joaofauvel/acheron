@@ -102,14 +102,15 @@ _CREDENTIAL_PATTERN = re.compile(
     r"\s*(?:=|:)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}\]]+")
-_URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*:[^\s'\"<>]+")
+_URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
 _TRACEBACK_PATTERN = re.compile(r"\bTraceback\b", re.IGNORECASE)
-_FILE_FRAGMENT_PATTERN = re.compile(r"\bFile(?:\s|:)", re.IGNORECASE)
+_FILE_FRAGMENT_PATTERN = re.compile(r"\bFile\s+(?:['\"]|/|[A-Za-z]:[\\/])", re.IGNORECASE)
 _WINDOWS_PATH_PATTERN = re.compile(r"\b[A-Za-z]:[\\/][^\s'\"<>]*")
 _ROOTED_WINDOWS_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])\\{1,2}(?=[^\\/\s'\"<>])[^\s'\"<>]*")
 _ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+(?:/[^/\s'\"<>]*)*)?")
 _TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])[^\s]*\.\.[\\/][^\s]*")
 _SAFE_FALLBACK = "request failed"
+_REMEDIATION_COMMAND_PARTS = 4
 _UNSAFE_PATTERNS = (
     _CREDENTIAL_PATTERN,
     _BEARER_PATTERN,
@@ -144,6 +145,19 @@ def sanitise_public_message(message: str, *, fallback: str = _SAFE_FALLBACK) -> 
         return safe_fallback
     text = " ".join(line.strip() for line in message.splitlines() if line.strip())
     return text or safe_fallback
+
+
+def sanitise_public_remediation(remediation: str) -> str:
+    """Sanitise a remediation while hiding identifiers embedded in job commands."""
+    safe = sanitise_public_message(remediation)
+    parts = safe.split()
+    if (
+        len(parts) >= _REMEDIATION_COMMAND_PARTS
+        and parts[:2] == ["acheron", "job"]
+        and parts[2] in {"status", "cancel", "retry"}
+    ):
+        return f"acheron job {parts[2]} <job-id>"
+    return safe
 
 
 def sanitise_exc_message(exc: BaseException) -> str:

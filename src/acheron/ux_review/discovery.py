@@ -1,33 +1,90 @@
-"""Map a story's `discovered_via` channels to the harness artifacts that ground them."""
+"""Map UX review stories to harness artifacts and commit evidence."""
 
 from __future__ import annotations
 
+import ast
+import shutil
+import subprocess
 from typing import TYPE_CHECKING
+
+from acheron.ux_review.schema import CURRENT_HEAD, Story
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from acheron.ux_review.schema import Story
+
+def _repository_head(repo_root: Path) -> str | None:
+    """Return the repository HEAD when ``repo_root`` is inside a Git checkout."""
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return None
+    return result.stdout.strip() or None
+
+
+def _post_fixed_commit(repo_root: Path, story: Story, head_sha: str) -> bool:
+    """Check that the requested head descends from the story's first fix commit."""
+    actual_head = _repository_head(repo_root)
+    if actual_head is None:
+        return True
+    requested_head = actual_head if head_sha == "HEAD" else head_sha
+    if requested_head != actual_head:
+        return False
+    if not story.fixed_in:
+        return False
+    fixed_sha = story.fixed_in[0]
+    if fixed_sha == CURRENT_HEAD:
+        fixed_sha = actual_head
+    git = shutil.which("git")
+    if git is None:
+        return True
+    try:
+        subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "merge-base", "--is-ancestor", fixed_sha, requested_head],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def _normalized(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _artifact_matches(path: Path, story: Story) -> bool:
+    try:
+        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError, SyntaxError, UnicodeError:
+        return False
+    docstring = ast.get_docstring(module, clean=False)
+    if not docstring or f"STORY_REF: {story.id}" not in docstring:
+        return False
+    return _normalized(story.user_journey) in _normalized(docstring)
 
 
 def artifact_path_for(story: Story, root: Path, head_sha: str) -> Path | None:
-    """Return the harness artifact path for the strongest evidence channel.
-
-    Returns None if the strongest channel does not require a harness artifact
-    (e.g., code-review, on-call, audit, user-feedback) or if the artifact is
-    not yet present on disk.
-    """
-    del head_sha
+    """Return a valid harness artifact for the story's strongest channel."""
     if not story.discovered_via:
         return None
     strongest = story.discovered_via[0]
     repo_root = root.parent.parent
+    if not _post_fixed_commit(repo_root, story, head_sha):
+        return None
     if strongest == "simulation":
-        for path in (repo_root / "sim" / "scenarios").glob("*.py"):
-            if f"STORY_REF: {story.id}" in path.read_text(encoding="utf-8"):
-                return path
+        candidates = (repo_root / "sim" / "scenarios").glob("*.py")
     elif strongest == "first-run":
-        for path in (repo_root / "tests" / "first_run").glob("test_*.py"):
-            if f"STORY_REF: {story.id}" in path.read_text(encoding="utf-8"):
-                return path
-    return None
+        candidates = (repo_root / "tests" / "first_run").glob("test_*.py")
+    else:
+        return None
+    return next((path for path in candidates if _artifact_matches(path, story)), None)

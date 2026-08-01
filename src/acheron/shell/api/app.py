@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from acheron.core.errors import sanitise_public_message, sanitise_public_remediation
 from acheron.shell.api.admin_audit import record_admin_failure
 from acheron.shell.api.input_boundary import InputRequestBoundary
 from acheron.shell.api.routes import (
@@ -125,11 +125,9 @@ def create_app(  # noqa: C901, PLR0915
             return response
 
     @app.exception_handler(RequestValidationError)
-    async def _admin_validation_error(request: Request, exc: RequestValidationError) -> Response:
+    async def _admin_validation_error(request: Request, _exc: RequestValidationError) -> Response:
         if not request.url.path.startswith("/admin/"):
-            from fastapi.exception_handlers import request_validation_exception_handler  # noqa: PLC0415
-
-            return await request_validation_exception_handler(request, exc)
+            return JSONResponse(status_code=422, content={"detail": "Request validation failed"})
         record_admin_failure(request, orchestrator, reason="request validation failed")
         error = AdminErrorResponse(
             type="AdminRequestValidationError",
@@ -140,21 +138,41 @@ def create_app(  # noqa: C901, PLR0915
 
     @app.exception_handler(HTTPException)
     async def _admin_http_error(request: Request, exc: HTTPException) -> Response:
-        if not request.url.path.startswith("/admin/"):
-            return await http_exception_handler(request, exc)
         raw_detail: object = exc.detail
+        if not request.url.path.startswith("/admin/"):
+            if isinstance(raw_detail, dict):
+                detail = dict(raw_detail)
+                for key in ("message", "remediation"):
+                    value = detail.get(key)
+                    if isinstance(value, str):
+                        detail[key] = (
+                            sanitise_public_remediation(value)
+                            if key == "remediation"
+                            else sanitise_public_message(value)
+                        )
+            else:
+                detail = sanitise_public_message(str(raw_detail))
+            return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=exc.headers)
         match raw_detail:
-            case dict() as detail:
-                pass
+            case dict() as raw_mapping:
+                detail = dict(raw_mapping)
+                for key in ("message", "remediation"):
+                    value = detail.get(key)
+                    if isinstance(value, str):
+                        detail[key] = (
+                            sanitise_public_remediation(value)
+                            if key == "remediation"
+                            else sanitise_public_message(value)
+                        )
             case _:
                 detail = {
                     "type": "AdminRequestError",
-                    "message": str(raw_detail),
+                    "message": sanitise_public_message(str(raw_detail)),
                     "remediation": None,
                 }
         error = AdminErrorResponse.model_validate(detail)
         record_admin_failure(request, orchestrator, reason=error.message)
-        return JSONResponse(status_code=exc.status_code, content={"detail": error.model_dump()})
+        return JSONResponse(status_code=exc.status_code, content={"detail": error.model_dump()}, headers=exc.headers)
 
     @app.exception_handler(Exception)
     async def _admin_unexpected_error(request: Request, exc: Exception) -> Response:

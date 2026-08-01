@@ -54,8 +54,8 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
         result = ("FAIL", f"story {story_id} not found in any theme file")
     else:
         _path, story = found
-        if story.status in {"obsolete", "wontfix"}:
-            return ("PARTIAL", f"story status={story.status} is not current")
+        if story.status != "verified":
+            return ("PARTIAL", f"story status={story.status} is not currently verified")
         actual_head = _repository_head(root)
         requested_head = actual_head if head_sha == "HEAD" and actual_head is not None else head_sha
         marker_matches = actual_head is not None and requested_head == actual_head
@@ -98,7 +98,8 @@ def main() -> int:
     args = parser.parse_args()
     status, msg = verify(args.root, args.id, args.head)
     print(f"ux-verify {args.id}: {status} - {msg}")  # noqa: T201
-    return 0 if status != "FAIL" else 1
+    stale_metadata = status == "PARTIAL" and "does not match head=" in msg
+    return 1 if status == "FAIL" or stale_metadata else 0
 
 
 if __name__ == "__main__":

@@ -47,7 +47,7 @@ async def upload_input(
     except InputTooLargeError as exc:
         raise HTTPException(status_code=413, detail="input exceeds the 2 GiB upload limit") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail="Invalid input filename") from exc
     except OSError as exc:
         logger.warning("Input storage failed: %s", exc)
         if stored is not None:

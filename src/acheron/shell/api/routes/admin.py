@@ -6,7 +6,12 @@ from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 
-from acheron.core.errors import AcheronError, JobNotFoundError, sanitise_exc_message
+from acheron.core.errors import (
+    AcheronError,
+    JobNotFoundError,
+    sanitise_exc_message,
+    sanitise_public_remediation,
+)
 from acheron.core.schemas import AdminJobResponse, ReapStaleResponse
 from acheron.shell.api.admin_audit import AdminAuditDetails, execute_admin_action
 from acheron.shell.api.deps import AdminTokenDep, OrchestratorDep  # noqa: TC001
@@ -32,7 +37,7 @@ def _admin_error(exc: AcheronError, *, status_code: int) -> HTTPException:
     error = AdminErrorResponse(
         type=type(exc).__name__,
         message=message if separator else safe,
-        remediation=exc.remediation,
+        remediation=(sanitise_public_remediation(exc.remediation) if exc.remediation is not None else None),
     )
     return HTTPException(status_code=status_code, detail=error.model_dump())
 

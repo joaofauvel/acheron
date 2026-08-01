@@ -371,7 +371,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-010
 title: "Worker re-registration inherits stale state — `register()` overwrites the worker hash but does not reset `consecutive_failures`, `status`, or `last_error` from the previous lifecycle"
-status: obsolete
+status: verified
 severity: medium
 effort: S
 discovered_via: [on-call, code-review]
@@ -385,15 +385,17 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 212-227
 related: []
-fixed_in: [32335ce]
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  date: "2026-07-31"
+verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
 ```
 
-**Resolution.** `_worker_fields()` now resets `consecutive_failures`, `status`, `last_error`, and `booting_since` during worker re-registration. The stale-state complaint is obsolete.
+**Resolution.** `_worker_fields()` now resets `consecutive_failures`, `status`, `last_error`, and `booting_since` during worker re-registration. The recovered registration path is covered by the Task 10 recovery journey.
 
 **Verification.** Re-register a worker after failures and confirm its health state starts clean.
 
