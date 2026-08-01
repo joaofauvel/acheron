@@ -309,6 +309,7 @@ class TestHealthTracking:
         await store.register("w-tombstone", "http://a", "http", _tts_caps())
         worker = await store.get("w-tombstone")
         assert worker is not None
+        removed = False
         for _ in range(3):
             removed = await store.record_health_failure(
                 "w-tombstone", generation=worker.registration_generation, error="down"

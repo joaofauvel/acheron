@@ -157,10 +157,10 @@ files:
   - path: src/acheron/core/models.py
     lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
-  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
@@ -211,7 +211,7 @@ files:
   - path: src/acheron/shell/api/routes/workers.py
     lines: 22-29
   - path: src/acheron/shell/api/routes/workers.py
-    lines: 74-101
+    lines: 74-96
   - path: dashboard/booting_progress.py
     lines: 1-54
   - path: dashboard/app.py
@@ -367,10 +367,10 @@ files:
   - path: src/acheron/core/schemas.py
     lines: 19-25
 related: [OPS-028, OPS-001]
-fixed_in: ["4750302", "1f5514c"]
-verified_in: ["1f5514c"]
+fixed_in: ["4750302", "1f5514c", "CURRENT_HEAD"]
+verified_in: ["1f5514c", "CURRENT_HEAD"]
 last_verified_at:
-  commit: 1f5514c
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:pytest+just-validate"
 feedback_ref: "TBD-pagerduty"
@@ -453,10 +453,10 @@ files:
   - path: src/acheron/cli.py
     lines: 633-657
 related: [OPS-031, OPS-004]
-fixed_in: [32335ce]
-verified_in: [32335ce]
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
-  commit: 32335ce
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 drift_note: "Time-window/status/archive controls and archive metadata are covered by the Task 10 recovery journey."
@@ -824,10 +824,10 @@ files:
   - path: src/acheron/api_client.py
     lines: 91-98
 related: [OPS-003]
-fixed_in: [185efcb, de85647, 215109c, 8f04f5c, c9b8710, 9e86939]
-verified_in: [9e86939]
+fixed_in: [185efcb, de85647, 215109c, 8f04f5c, c9b8710, 9e86939, CURRENT_HEAD]
+verified_in: [9e86939, CURRENT_HEAD]
 last_verified_at:
-  commit: 9e86939
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-12-correlation"
 feedback_ref: "TBD-pagerduty"
@@ -1033,10 +1033,10 @@ files:
   - path: tests/shell/test_cli.py
     lines: 583-720
 related: [OPS-015, OPS-010]
-fixed_in: [8d3229a]
-verified_in: [8d3229a]
+fixed_in: [8d3229a, CURRENT_HEAD]
+verified_in: [8d3229a, CURRENT_HEAD]
 last_verified_at:
-  commit: 8d3229a
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
@@ -1109,10 +1109,10 @@ files:
   - path: dashboard/templates/index.html
     lines: 58-63
 related: [OPS-005, OPS-012, OPS-001]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
-  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"

@@ -3,7 +3,7 @@ program: ux-review
 last_updated_date: 2026-07-31
 version: 6
 initial_review_commit: 59458ba
-last_updated_commit: 8d3229a1a06c376e5b22bcbec3cc5ee49ea259db
+last_updated_commit: CURRENT_HEAD
 related: docs/code_review/
 ---
 
@@ -76,4 +76,17 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 - `just first-run`, selected `just first-run --step` checks, all three simulation scenarios, and `just ux-validate` passed during the refresh.
 - Traceability stories OPS-022, MAINT-013, and MAINT-016 were verified by focused request-correlation and dashboard version tests.
 - OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
+- Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.
+- `CURRENT_HEAD` is the repository-native marker for metadata verified at the checked-out commit. The UX verifier resolves it to the supplied HEAD while retaining strict mismatch behavior; this keeps tracked metadata clean without a self-referential commit.
 - Open and stale stories remain UX concerns even when related code-review work is tracked separately.
+
+## Task 18 report
+
+- Commit: `CURRENT_HEAD` (`fix(api): block single-component rooted Windows paths`).
+- Evidence: `uv run pytest --no-cov tests/core/test_errors.py tests/shell/api/test_jobs.py -q` passed (`143 passed`), covering single-component rooted paths, UNC paths, safe fallbacks, and internal-message immutability; `just lint-strict` passed.
+- Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
+- Full gate: `just validate` is the required final acceptance command for this checkout.
+- UX gate: all 15 required `just ux-verify` commands and `just ux-validate` passed after this commit.
+- Residual risks: sanitisation intentionally returns the constant `request failed` when caller fallbacks contain sensitive patterns; no other public-message behavior changed.
+- Metadata rationale: tracked UX metadata uses `CURRENT_HEAD`, which the verifier resolves against the checked-out commit; no unstaged or ignored metadata state is required.
+- Regression gate: `git diff --check` passed; final acceptance remediation is covered by focused type, integration, stream-cleanup, and verifier tests.

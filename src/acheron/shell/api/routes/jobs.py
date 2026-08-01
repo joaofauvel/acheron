@@ -406,7 +406,7 @@ async def submit_job(
     _token: RegistrationTokenDep,
 ) -> JobResponse:
     """Submit a new job for processing."""
-    tracked = None
+    tracked: TrackedJob | None = None
     try:
         job_request, strategy = await _build_job_request(orch, body)
         if body.input_id is None:
@@ -436,6 +436,7 @@ async def submit_job(
         warnings = _booting_tts_warnings(await orch.list_workers(), now=time.time())
     except Exception:
         logger.exception("Failed to inspect workers for job submission warnings")
+    assert tracked is not None  # noqa: S101
     return _tracked_to_response(tracked, warnings=warnings)
 
 

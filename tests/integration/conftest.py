@@ -257,19 +257,16 @@ class _LegacyGrpcTtsServicer:
     keeps the type errors out of this fixture.
     """
 
-    async def Synthesize(self, request: object, context: object) -> object:  # noqa: N802
+    async def Synthesize(self, request: object, context: object) -> AsyncIterator[object]:  # noqa: N802
+        from stubs._sdk_base import _silent_wav
+
         from acheron.proto import synthesis_pb2
 
-        async def _gen() -> object:
-            for _ in range(3):
-                # mypy can't see generated attributes on synthesis_pb2; runtime is fine.
-                yield synthesis_pb2.OutputChunk(  # type: ignore[attr-defined]
-                    pcm_data=b"\x00\x00" * 2205,
-                    sample_rate=22050,
-                    channels=1,
-                )
-
-        return _gen()
+        yield synthesis_pb2.OutputChunk(  # type: ignore[attr-defined]
+            pcm_data=_silent_wav(),
+            sample_rate=22050,
+            channels=1,
+        )
 
 
 _LANGS = frozenset({"en", "es", "fr", "de"})

@@ -37,6 +37,24 @@ files:
     )
 
 
+def test_current_head_marker_resolves_to_supplied_head(tmp_path: Path) -> None:
+    _write_story(
+        tmp_path,
+        metadata=(
+            "verified_in: [CURRENT_HEAD]\n"
+            "last_verified_at:\n"
+            "  commit: CURRENT_HEAD\n"
+            "  date: '2026-07-31'\n"
+            "verified_by: focused-journey\n"
+        ),
+    )
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
+
+    assert status == "PASS"
+    assert message == "verified_by=focused-journey"
+
+
 def test_matching_metadata_passes(tmp_path: Path) -> None:
     _write_story(
         tmp_path,

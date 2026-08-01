@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from acheron.ux_review.discovery import artifact_path_for
-from acheron.ux_review.schema import Story
+from acheron.ux_review.schema import CURRENT_HEAD, Story
 from acheron.ux_review.validate import _parse_story_blocks
 
 
@@ -40,7 +40,8 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
     else:
         _path, story = found
         verified_commit = story.last_verified_at.get("commit")
-        if verified_commit != head_sha:
+        resolved_commit = head_sha if verified_commit == CURRENT_HEAD else verified_commit
+        if resolved_commit != head_sha:
             if verified_commit is None:
                 result = ("PARTIAL", "verification metadata is missing last_verified_at.commit")
             else:
@@ -48,7 +49,7 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
                     "PARTIAL",
                     f"last_verified_at.commit={verified_commit} does not match head={head_sha}",
                 )
-        elif head_sha not in story.verified_in:
+        elif not any(commit in {head_sha, CURRENT_HEAD} for commit in story.verified_in):
             result = ("PARTIAL", f"head={head_sha} is missing from verified_in")
         elif story.discovered_via and story.discovered_via[0] in {"simulation", "first-run"}:
             artifact = artifact_path_for(story, root, head_sha)

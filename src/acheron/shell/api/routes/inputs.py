@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from acheron.core.schemas import InputResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.input_store import InputPathError, InputStore, InputTooLargeError
+from acheron.shell.input_store import InputPathError, InputStore, InputTooLargeError, StoredInput
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ async def upload_input(
     _token: RegistrationTokenDep,
 ) -> InputResponse:
     """Stream ``file`` to the orchestrator's input store and return the server-relative source path."""
-    stored = None
+    stored: StoredInput | None = None
     try:
         store = InputStore(orch.settings.orchestrator.data_dir)
         try:
@@ -58,6 +58,7 @@ async def upload_input(
             except InputPathError:
                 logger.exception("Failed to roll back input storage")
         raise HTTPException(status_code=503, detail="input storage failed") from exc
+    assert stored is not None  # noqa: S101
     return InputResponse(
         input_id=stored.input_id,
         source_path=stored.source_path,

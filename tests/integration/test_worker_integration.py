@@ -322,8 +322,10 @@ class TestWorkerIntegrationErrorPath:
 
 class TestWorkerIntegrationEdgeCases:
     @pytest.mark.asyncio
-    async def test_multiple_tts_workers_uses_first(self, wired_orchestrator: Orchestrator, epub_file: Path) -> None:
-        """First matching TTS worker is used when multiple exist (tts-http registered before tts-grpc)."""
+    async def test_multiple_tts_workers_uses_deterministic_id(
+        self, wired_orchestrator: Orchestrator, epub_file: Path
+    ) -> None:
+        """The planner-selected TTS worker is deterministic by worker ID."""
         orch = wired_orchestrator
         registered = await orch.list_workers()
         tts_workers = [w for w in registered if w.capabilities.worker_type == WorkerType.TTS]
@@ -337,6 +339,9 @@ class TestWorkerIntegrationEdgeCases:
 
         assert tracked.status == PlanStatus.COMPLETED
         assert tracked.result is not None
+        assert tracked.plan is not None
+        synthesize = next(step for step in tracked.plan.steps if step.step_id == "synthesize")
+        assert synthesize.selected_worker_id == "tts-grpc"
 
 
 _LANGS = frozenset({"en", "es", "fr", "de"})

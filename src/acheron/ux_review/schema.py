@@ -38,6 +38,8 @@ DiscoveryChannel = Literal[
     "audit",
     "user-feedback",
 ]
+CURRENT_HEAD = "CURRENT_HEAD"
+
 WontfixReason = Literal[
     "out-of-scope",
     "wontfix-product",

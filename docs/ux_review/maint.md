@@ -29,10 +29,10 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 273-395
 related: [OBS-001, OBS-014, OBS-015]
-fixed_in: [32335ce]
-verified_in: [32335ce]
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
-  commit: 32335ce
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -67,10 +67,10 @@ files:
   - path: src/acheron/core/models.py
     lines: 69-75
 related: [CORR-008, CORR-040, TYPE-005]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
-  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
@@ -287,10 +287,10 @@ files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 386-395
 related: [MAINT-001]
-fixed_in: [32335ce]
-verified_in: [32335ce]
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
-  commit: 32335ce
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -339,7 +339,7 @@ files:
   - path: src/acheron/shell/api/routes/workers.py
     lines: 22-29
   - path: src/acheron/shell/api/routes/workers.py
-    lines: 74-101
+    lines: 74-96
   - path: dashboard/booting_progress.py
     lines: 22-54
   - path: dashboard/app.py
@@ -385,10 +385,10 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 212-227
 related: []
-fixed_in: [32335ce]
-verified_in: [32335ce]
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
-  commit: 32335ce
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -417,10 +417,10 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 592-601
 related: [OBS-007]
-fixed_in: [32335ce]
-verified_in: [32335ce]
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
-  commit: 32335ce
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -453,10 +453,10 @@ files:
   - path: src/acheron/shell/orchestrator.py
     lines: 211-227
 related: []
-fixed_in: [32335ce]
-verified_in: [32335ce]
+fixed_in: [32335ce, CURRENT_HEAD]
+verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
-  commit: 32335ce
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -489,10 +489,10 @@ files:
   - path: src/acheron/shell/api/app.py
     lines: 88-92
 related: [OPS-003]
-fixed_in: [185efcb, eddbd7e, de85647]
-verified_in: [9e86939]
+fixed_in: [185efcb, eddbd7e, de85647, CURRENT_HEAD]
+verified_in: [9e86939, CURRENT_HEAD]
 last_verified_at:
-  commit: 9e86939
+  commit: CURRENT_HEAD
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
@@ -527,10 +527,10 @@ files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 214-231
 related: [MAINT-002, CORR-040]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
-  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
@@ -567,10 +567,10 @@ files:
   - path: docker-compose.yml
     lines: 92-104
 related: [MAINT-002]
-fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
-verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba]
+fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
+verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
-  commit: 0d6bd414ce745f2483fbd1af76beb010f5178aba
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
@@ -611,10 +611,10 @@ files:
   - path: dashboard/tests/test_dashboard.py
     lines: 116-153
 related: []
-fixed_in: [e8eca21]
-verified_in: [e8eca21]
+fixed_in: [e8eca21, CURRENT_HEAD]
+verified_in: [e8eca21, CURRENT_HEAD]
 last_verified_at:
-  commit: e8eca2183893f7d9e29ed693c0d09e5c107bef50
+  commit: CURRENT_HEAD
   date: "2026-07-31"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty

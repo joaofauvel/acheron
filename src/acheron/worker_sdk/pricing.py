@@ -141,12 +141,13 @@ class StaticPrice:
 
 def to_cost_basis(estimate: PriceEstimate) -> CostBasis:
     """Validate and return the explicit basis carried by an estimate."""
-    if not isinstance(estimate.basis, CostBasis):
-        msg = f"Invalid PriceEstimate basis {estimate.basis!r}"
+    basis = object.__getattribute__(estimate, "basis")
+    if not isinstance(basis, CostBasis):
+        msg = f"Invalid PriceEstimate basis {basis!r}"
         raise TypeError(msg)
     if estimate.cost is None:
         return CostBasis.UNKNOWN
-    return estimate.basis
+    return basis
 
 
 @dataclass

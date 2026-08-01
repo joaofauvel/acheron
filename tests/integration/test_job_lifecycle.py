@@ -201,7 +201,7 @@ async def _wait_for_terminal(orch: Orchestrator, job_id: str, *, max_iterations:
         job: TrackedJob | None = await orch.get_job(job_id)
         if job is not None and job.status.value in {"completed", "failed", "partial"}:
             return job
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.01)
     msg = f"Job {job_id} did not reach terminal status after {max_iterations} iterations"
     raise TimeoutError(msg)
 

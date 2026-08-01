@@ -180,6 +180,7 @@ class TestHealthTracking:
         await reg.register("w-1", "http://a", "http", _tts_caps())
         worker = await reg.get("w-1")
         assert worker is not None
+        removed = False
         for _ in range(3):
             removed = await reg.record_health_failure("w-1", generation=worker.registration_generation, error="down")
         assert removed

@@ -66,7 +66,7 @@ def test_cost_estimate_response_round_trips_utc_metadata() -> None:
         rate_per_hour=0.69,
         gpu_type="L4",
         secure_cloud=False,
-        queried_at="2026-07-30T12:00:00Z",
+        queried_at=datetime(2026, 7, 30, 12, tzinfo=UTC),
         cache_age_seconds=0.0,
     )
 
@@ -103,7 +103,7 @@ def test_cost_breakdown_response_round_trips_estimate() -> None:
         rate_per_hour=0.69,
         gpu_type="L4",
         secure_cloud=False,
-        queried_at="2026-07-30T12:00:00Z",
+        queried_at=datetime(2026, 7, 30, 12, tzinfo=UTC),
         cache_age_seconds=0.0,
     )
 

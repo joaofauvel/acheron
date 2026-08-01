@@ -249,6 +249,12 @@ def _run_sync_generator[T](
         return asyncio.run(coro)  # type: ignore[arg-type]
 
     async_iter = async_gen.__aiter__()
+
+    async def _close() -> None:
+        close = getattr(async_iter, "aclose", None)
+        if close is not None:
+            await close()
+
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -260,14 +266,18 @@ def _run_sync_generator[T](
                 request_id_printed=request_id_printed,
             )
         finally:
+            loop.run_until_complete(_close())
             loop.close()
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            yield from _drain_sync_generator(
-                lambda: pool.submit(_next, async_iter).result(),
-                client=client,
-                request_id_printed=request_id_printed,
-            )
+            try:
+                yield from _drain_sync_generator(
+                    lambda: pool.submit(_next, async_iter).result(),
+                    client=client,
+                    request_id_printed=request_id_printed,
+                )
+            finally:
+                pool.submit(lambda: asyncio.run(_close())).result()
 
 
 def _print_stream_error(

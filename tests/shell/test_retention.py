@@ -90,13 +90,19 @@ async def test_preview_does_not_create_missing_data_root(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_preview_skips_malformed_persisted_ids_without_inspection(tmp_path: Path) -> None:
+async def test_preview_skips_malformed_persisted_ids_without_inspection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     now = datetime(2026, 7, 30, tzinfo=UTC)
     service, _ = await _service(
         tmp_path,
         [_job("nested/job", "plan-abcd1234", "missing.epub", PlanStatus.COMPLETED, now)],
     )
-    service._exists = lambda _relative: pytest.fail("malformed job ID was inspected")  # noqa: SLF001
+
+    def fail_exists(relative: str) -> bool:
+        pytest.fail(f"malformed job ID was inspected: {relative}")
+
+    monkeypatch.setattr(service, "_exists", fail_exists)
 
     report = await service.preview(RetentionPolicy(timedelta(days=7), timedelta(days=30)), now=now)
 
