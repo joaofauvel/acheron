@@ -83,6 +83,22 @@ class TestHttpWorkerHealth:
         worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
         assert await worker.health() is False
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_registration_token_provider_is_read_for_each_request(self, tmp_path: Path) -> None:
+        tokens = iter(("first-token", "rotated-token"))
+        seen: list[str | None] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.headers.get("authorization"))
+            return httpx.Response(200)
+
+        respx.get(f"{_BASE_URL}/health").mock(side_effect=handler)
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, registration_token_provider=lambda: next(tokens))
+        assert await worker.health() is True
+        assert await worker.health() is True
+        assert seen == ["Bearer first-token", "Bearer rotated-token"]
+
 
 class TestHttpWorkerCapabilities:
     @respx.mock
