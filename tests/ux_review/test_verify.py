@@ -187,6 +187,37 @@ def test_missing_metadata_is_partial(tmp_path: Path) -> None:
     assert "metadata" in message
 
 
+def test_missing_metadata_main_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["ux-verify", "--root", str(tmp_path / "docs" / "ux_review"), "--id", "OPS-999", "--head", _HEAD],
+    )
+
+    assert main() == 1
+
+
+def test_missing_verified_in_main_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("verified_in: []\nlast_verified_at:\n  commit: head-sha\n  date: '2026-07-31'\n"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["ux-verify", "--root", str(tmp_path / "docs" / "ux_review"), "--id", "OPS-999", "--head", _HEAD],
+    )
+
+    assert main() == 1
+
+
 def test_missing_verified_in_head_is_partial(tmp_path: Path) -> None:
     _write_story(
         tmp_path,

@@ -99,9 +99,7 @@ def main() -> int:
     args = parser.parse_args()
     status, msg = verify(args.root, args.id, args.head)
     print(f"ux-verify {args.id}: {status} - {msg}")  # noqa: T201
-    stale_metadata = status == "PARTIAL" and "does not match head=" in msg
-    non_verified_status = status == "PARTIAL" and "story status=" in msg
-    return 1 if status == "FAIL" or stale_metadata or non_verified_status else 0
+    return 0 if status == "PASS" else 1
 
 
 if __name__ == "__main__":
