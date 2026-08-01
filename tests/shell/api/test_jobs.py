@@ -543,6 +543,63 @@ class TestJobRoutes:
         assert response.json()["errors"][0]["message"] == "cancelled by operator"
 
     @pytest.mark.asyncio
+    async def test_step_error_response_sanitizes_untrusted_message(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from datetime import UTC, datetime
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanResult, PlanStatus, StepError
+        from acheron.shell.job_store import TrackedJob
+
+        transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        now = datetime.now(UTC)
+        unsafe = (
+            "worker failed /srv/acheron/jobs/../secret "
+            "redis://user:secret@cache.internal:6379/0?token=secret "
+            "password=top-secret\nTraceback\n  File '/srv/worker.py', line 4"
+        )
+        tracked = TrackedJob(
+            job_id="job-unsafe",
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            created_at=now,
+            last_persisted_at=now,
+            status=PlanStatus.FAILED,
+            result=PlanResult(
+                plan_id="plan-unsafe",
+                status=PlanStatus.FAILED,
+                completed_steps=0,
+                total_steps=1,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=0.0,
+                errors=(StepError(None, None, None, unsafe, now),),
+            ),
+        )
+        monkeypatch.setattr(app.state.orchestrator, "cancel_job", AsyncMock(return_value=tracked))
+
+        response = await client_with_token.post(
+            "/jobs/job-unsafe/cancel",
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+
+        assert response.status_code == 200
+        message = response.json()["errors"][0]["message"]
+        assert message.startswith("worker failed <redacted-path>")
+        assert "/srv/acheron" not in message
+        assert "redis://" not in message
+        assert "top-secret" not in message
+        assert "Traceback" not in message
+        assert "File" not in message
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("error", "status_code"),
         [
@@ -1764,7 +1821,12 @@ class TestPreviewRoute:
 
         transport = cast("ASGITransport", client._transport)  # noqa: SLF001
         app = cast("FastAPI", transport.app)
-        error = WorkerError("EPUB extraction failed password=top-secret", remediation="acheron job retry job-1")
+        error = WorkerError(
+            "EPUB extraction failed at /srv/acheron/jobs/../secret "
+            "redis://user:secret@cache.internal:6379/0?token=secret "
+            "password=top-secret\nTraceback (most recent call last):\n  File '/srv/worker.py', line 4",
+            remediation="acheron job retry job-1",
+        )
         monkeypatch.setattr(app.state.orchestrator, "preview_job", AsyncMock(side_effect=error))
 
         response = await client.post(
@@ -1780,10 +1842,13 @@ class TestPreviewRoute:
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert detail["type"] == "WorkerError"
-        assert detail["message"] == "EPUB extraction failed password=<redacted>"
+        assert detail["message"].startswith("EPUB extraction failed at <redacted-path>")
         assert "/srv/acheron" not in detail["message"]
-        assert detail["remediation"] == "acheron job retry job-1"
+        assert "redis://" not in detail["message"]
         assert "top-secret" not in detail["message"]
+        assert "Traceback" not in detail["message"]
+        assert "File" not in detail["message"]
+        assert detail["remediation"] == "acheron job retry job-1"
 
     @pytest.mark.asyncio
     async def test_preview_timeout_cleans_temporary_input_without_job_or_plan(

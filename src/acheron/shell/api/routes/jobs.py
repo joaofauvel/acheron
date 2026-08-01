@@ -21,7 +21,7 @@ from acheron.core.errors import (
     JobAlreadyRunningError,
     JobNotCancellableError,
     JobNotFoundError,
-    sanitise_exc_message,
+    sanitise_public_message,
 )
 from acheron.core.models import (
     AudioRequest,
@@ -88,12 +88,10 @@ def _temporary_input_ids(body: SubmitJobRequest) -> set[str]:
 
 
 def _error_response(exc: AcheronError) -> ErrorResponse:
-    safe = sanitise_exc_message(exc)
-    _, separator, message = safe.partition(": ")
     return ErrorResponse(
         type=type(exc).__name__,
-        message=message if separator else safe,
-        remediation=exc.remediation,
+        message=sanitise_public_message(str(exc)),
+        remediation=(sanitise_public_message(exc.remediation) if exc.remediation is not None else None),
     )
 
 
@@ -660,7 +658,7 @@ def _to_step_error_response(error: DomainStepError) -> StepErrorResponse:
         step_id=error.step_id,
         worker_type=error.worker_type,
         worker_id=error.worker_id,
-        message=error.message,
+        message=sanitise_public_message(error.message),
         timestamp=error.timestamp,
     )
 

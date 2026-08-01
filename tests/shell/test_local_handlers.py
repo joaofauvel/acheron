@@ -98,6 +98,7 @@ async def test_extraction_missing_source_error_is_path_free(tmp_path: Path) -> N
 @pytest.mark.asyncio
 async def test_audio_copy_error_is_path_free(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from acheron.core.errors import WorkerError
+
     source = tmp_path / "book.mp3"
     source.write_bytes(b"audio")
     handler = ExtractionHandler(tmp_path)

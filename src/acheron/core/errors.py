@@ -99,11 +99,34 @@ _CREDENTIAL_PATTERN = re.compile(
     r"\b(password|passwd|secret|token|api[_-]?key|authorization)\s*=\s*\S+",
     re.IGNORECASE,
 )
+_URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
+_FILE_FRAGMENT_PATTERN = re.compile(r"\bFile\s+['\"][^'\"]+['\"](?:,\s*line\s+\d+)?", re.IGNORECASE)
+_WINDOWS_PATH_PATTERN = re.compile(r"\b[A-Za-z]:[\\/][^\s'\"<>]+")
+_ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+/)+[^/\s'\"<>]*")
+_TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])(?:\.\.?[\\/])+(?:[^\s'\"<>]+)")
 
 
 def _scrub_credentials(text: str) -> str:
     """Strip ``key=secret`` style credential patterns from ``text``."""
     return _CREDENTIAL_PATTERN.sub(r"\1=<redacted>", text)
+
+
+def sanitise_public_message(message: str, *, fallback: str = "request failed") -> str:
+    """Sanitise arbitrary domain text before placing it in a public response."""
+    safe_lines = []
+    for line in message.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("Traceback") or _FILE_FRAGMENT_PATTERN.search(stripped):
+            continue
+        safe_lines.append(stripped)
+    text = " ".join(safe_lines)
+    text = _FILE_FRAGMENT_PATTERN.sub("<redacted-traceback>", text)
+    text = _URI_PATTERN.sub("<redacted-url>", text)
+    text = _WINDOWS_PATH_PATTERN.sub("<redacted-path>", text)
+    text = _ABSOLUTE_PATH_PATTERN.sub("<redacted-path>", text)
+    text = _TRAVERSAL_PATH_PATTERN.sub("<redacted-path>", text)
+    text = _scrub_credentials(text)
+    return text or fallback
 
 
 def sanitise_exc_message(exc: BaseException) -> str:

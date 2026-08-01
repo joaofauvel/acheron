@@ -90,6 +90,39 @@ class TestPipelineError:
         assert not issubclass(PipelineError, WorkerError)
 
 
+class TestSanitisePublicMessage:
+    def test_preserves_safe_message_and_redacts_sensitive_fragments(self) -> None:
+        from acheron.core.errors import sanitise_public_message
+
+        message = (
+            "worker failed: /srv/acheron/jobs/../secret "
+            "redis://user:secret@cache.internal:6379/0?token=secret "
+            "password=top-secret\nTraceback (most recent call last):\n  File '/srv/worker.py', line 4"
+        )
+
+        result = sanitise_public_message(message)
+
+        assert result.startswith("worker failed:")
+        assert "/srv/" not in result
+        assert ".." not in result
+        assert "redis://" not in result
+        assert "top-secret" not in result
+        assert "Traceback" not in result
+        assert "File" not in result
+
+    def test_preserves_ordinary_domain_message(self) -> None:
+        from acheron.core.errors import sanitise_public_message
+
+        assert sanitise_public_message("job is already running; cancel it first") == (
+            "job is already running; cancel it first"
+        )
+
+    def test_empty_sensitive_message_uses_fallback(self) -> None:
+        from acheron.core.errors import sanitise_public_message
+
+        assert sanitise_public_message("Traceback\n  File '/srv/worker.py'") == "request failed"
+
+
 class TestSanitiseExcMessage:
     def test_formats_class_name_with_first_line(self) -> None:
         from acheron.core.errors import sanitise_exc_message
