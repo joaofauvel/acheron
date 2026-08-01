@@ -87,7 +87,7 @@ acheron capabilities --type tts
 
 ## Dashboard
 
-The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8080`. It polls the orchestrator for job status, worker health, and cost.
+The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8080`. It polls the orchestrator for job status, worker health, and cost. In Compose, set `ACHERON_REGISTRATION_TOKEN`; the dashboard forwards this secret only from its server-side proxy to protected orchestrator reads, never to the browser.
 
 ## Administrative Operations
 
@@ -363,6 +363,7 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Build identity | `ACHERON_BUILD_DIRTY` | (unset) | Optional exact `true`/`false` source-tree state returned by `GET /version`; metadata only. |
 | Build identity | `ACHERON_BUILD_IMAGE` | (unset) | Optional image name or reference returned by `GET /version`; metadata only. |
 | Build identity | `ACHERON_BUILD_REGISTRY` | (unset) | Optional image registry returned by `GET /version`; metadata only. |
+| Dashboard | `ACHERON_REGISTRATION_TOKEN` | (unset) | Server-side bearer token used by the dashboard proxy for protected orchestrator reads; never exposed to browsers. Compose requires the same token as the orchestrator. |
 | Dashboard | `ACHERON_TRUST_REVERSE_PROXY` | `0` | Set to `1` to trust the `X-Forwarded-User` header from a reverse proxy that authenticates and strips the header. Default `0` (unauthenticated). |
 | Worker / Transport | `ACHERON_WORKER__WORKER_ID` | (required) | Stable identifier for this worker instance. |
 | Worker / Transport | `ACHERON_WORKER__ORCHESTRATOR_URL` | (required) | Orchestrator URL the worker registers with and sends `/execute` to. |

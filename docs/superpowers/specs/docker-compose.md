@@ -102,6 +102,9 @@ services:
     ports: ["8080:8080"]
     environment:
       ACHERON_URL: http://orchestrator:8000
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+    # The dashboard forwards this token server-side for protected reads; it is
+    # never sent to browser clients.
     depends_on: [orchestrator]
 
   tts-local-stub:
