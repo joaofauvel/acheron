@@ -173,28 +173,40 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
     def _validate_target_lang(self, job: Job) -> str:
         target_lang = job.payload.get("target_language")
         if not isinstance(target_lang, str) or target_lang not in _LANG_MAP:
-            msg = f"Unsupported target language: {target_lang!r}"
+            msg = "Unsupported target language"
             raise WorkerError(msg)
         return target_lang
 
     def _resolve_speaker_for_chunk(self, chunk: Chunk, job: Job, target_lang: str) -> str:
         chapter = _chapter_number(chunk.chapter_id)
+        has_voice = "voice" in job.payload
+        has_voice_map = "voice_map" in job.payload
+
+        default_voice: str | None = None
+        if has_voice:
+            raw_voice = job.payload["voice"]
+            if not isinstance(raw_voice, str) or not raw_voice.strip():
+                msg = "voice must be a non-empty string"
+                raise WorkerError(msg)
+            default_voice = self._validate_speaker(raw_voice)
+
         for start_chapter, end_chapter, voice in self._voice_ranges(job):
             if start_chapter <= chapter <= end_chapter:
-                return self._validate_speaker(voice)
+                return voice
 
-        voice_value = job.payload.get("voice")
-        if voice_value is None and "voice" not in job.payload:
-            voice_value = job.payload.get("speaker")
-        if voice_value is None or voice_value == "":
-            voice_value = self._settings.per_language_defaults.get(target_lang, self._settings.default_speaker)
-        if not isinstance(voice_value, str) or not voice_value:
+        if default_voice is not None:
+            return default_voice
+        if has_voice_map:
             msg = f"No voice configured for chapter {chapter}"
             raise WorkerError(msg)
-        return self._validate_speaker(voice_value)
 
-    @staticmethod
-    def _voice_ranges(job: Job) -> list[tuple[int, int, str]]:
+        configured_voice = self._settings.per_language_defaults.get(target_lang, self._settings.default_speaker)
+        if not configured_voice.strip():
+            msg = f"No voice configured for chapter {chapter}"
+            raise WorkerError(msg)
+        return self._validate_speaker(configured_voice)
+
+    def _voice_ranges(self, job: Job) -> list[tuple[int, int, str]]:
         raw_ranges = job.payload.get("voice_map")
         if raw_ranges is None and "voice_map" not in job.payload:
             return []
@@ -221,16 +233,16 @@ class Qwen3TTSRunpodHandler(WorkerHandler):
             if start < 1 or end < start:
                 msg = f"voice_map[{index}] has an invalid chapter range"
                 raise WorkerError(msg)
-            if not isinstance(voice, str) or not voice:
+            if not isinstance(voice, str) or not voice.strip():
                 msg = f"voice_map[{index}].voice is required"
                 raise WorkerError(msg)
-            ranges.append((start, end, voice))
+            ranges.append((start, end, self._validate_speaker(voice)))
         return ranges
 
     @staticmethod
     def _validate_speaker(voice: str) -> str:
         if voice not in _ALL_SPEAKERS:
-            msg = f"Unknown speaker '{voice}' in worker config"
+            msg = "Unknown speaker"
             raise WorkerError(msg)
         return voice
 
@@ -239,10 +251,10 @@ def _chapter_number(chapter_id: str) -> int:
     safe_chapter_id(chapter_id)
     match = re.fullmatch(r"(?:ch|chapter_)?(\d+)", chapter_id)
     if match is None:
-        msg = f"Malformed chapter_id for voice mapping: {chapter_id!r}"
+        msg = "Invalid chapter_id"
         raise WorkerError(msg)
     chapter = int(match.group(1))
     if chapter < 1:
-        msg = f"Malformed chapter_id for voice mapping: {chapter_id!r}"
+        msg = "Invalid chapter_id"
         raise WorkerError(msg)
     return chapter

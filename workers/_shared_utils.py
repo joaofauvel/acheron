@@ -24,16 +24,16 @@ def safe_chapter_id(cid: str) -> str:
     malicious input.
     """
     if not cid or not cid.strip():
-        msg = f"chapter_id is blank: {cid!r}"
+        msg = "Invalid chapter_id"
         raise WorkerError(msg)
     if any(c in cid for c in "\x00\n\r\t"):
-        msg = f"chapter_id contains illegal whitespace/NUL: {cid!r}"
+        msg = "Invalid chapter_id (illegal whitespace/NUL)"
         raise WorkerError(msg)
     if len(cid) > MAX_CHAPTER_ID_LEN:
-        msg = f"chapter_id too long ({len(cid)} > {MAX_CHAPTER_ID_LEN}): {cid!r}"
+        msg = "Invalid chapter_id (too long)"
         raise WorkerError(msg)
     if "/" in cid or "\\" in cid or cid in {".", ".."} or ".." in cid.split("/") or ".." in cid.split("\\"):
-        msg = f"chapter_id contains a path component: {cid!r}"
+        msg = "Invalid chapter_id (path component)"
         raise WorkerError(msg)
     return cid
 
@@ -92,7 +92,7 @@ async def parse_chunks_json(input: Input) -> list[Chunk]:  # noqa: A002
     try:
         raw_chunks = json.loads(chunks_json_bytes.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        msg = f"chunks.json is not valid JSON: {exc}"
+        msg = "chunks.json is not valid JSON"
         raise WorkerError(msg) from exc
     if not isinstance(raw_chunks, list):
         msg = "chunks.json must be a JSON array of chunk dicts"

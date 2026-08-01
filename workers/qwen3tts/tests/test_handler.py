@@ -139,8 +139,9 @@ class TestHandle:
 
         h = Qwen3TTSRunpodHandler(_settings(default_speaker="Bogus"))
         h._model = _FakeModel([np.zeros(50, dtype=np.float32)], 22050)
-        with pytest.raises(WorkerError, match="Unknown speaker"):
+        with pytest.raises(WorkerError, match="Unknown speaker") as exc_info:
             await h.handle(_build_job(), input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]))
+        assert "Bogus" not in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_handle_without_startup_raises_worker_error(self) -> None:
@@ -168,7 +169,7 @@ class TestHandle:
         assert h._model.captured_speaker == ["Vivian"]
 
     @pytest.mark.asyncio
-    async def test_handle_uses_job_speaker_when_provided(self) -> None:
+    async def test_handle_ignores_legacy_speaker_payload_key(self) -> None:
         from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 
         h = Qwen3TTSRunpodHandler(_settings(default_speaker="Ryan"))
@@ -181,7 +182,7 @@ class TestHandle:
             chapter_id="ch1",
         )
         await h.handle(job, input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "hi"}]))
-        assert h._model.captured_speaker == ["Dylan"]
+        assert h._model.captured_speaker == ["Ryan"]
 
     @pytest.mark.asyncio
     async def test_handle_applies_voice_map_per_chunk(self) -> None:
@@ -244,10 +245,10 @@ class TestHandle:
         assert h._model.captured_speaker == ["Ryan"]
 
     @pytest.mark.asyncio
-    async def test_handle_rejects_uncovered_chapter_without_configured_default(self) -> None:
+    async def test_handle_rejects_uncovered_chapter_without_explicit_default(self) -> None:
         from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 
-        h = Qwen3TTSRunpodHandler(_settings(default_speaker="", per_language_defaults={}))
+        h = Qwen3TTSRunpodHandler(_settings(default_speaker="Ryan"))
         h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
 
         with pytest.raises(WorkerError, match="No voice configured for chapter 4"):
@@ -259,17 +260,37 @@ class TestHandle:
             )
 
     @pytest.mark.asyncio
-    async def test_handle_rejects_malformed_chapter_id_before_inference(self) -> None:
+    @pytest.mark.parametrize("voice", [None, "", 42])
+    async def test_handle_rejects_explicit_invalid_voice(self, voice: object) -> None:
         from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 
         h = Qwen3TTSRunpodHandler(_settings())
         h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
 
-        with pytest.raises(WorkerError, match="Malformed chapter_id"):
+        with pytest.raises(WorkerError, match="voice must be a non-empty string"):
+            await h.handle(
+                _job_with_voice_payload(voice=voice),
+                input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "one"}]),
+            )
+        assert h._model.captured_speaker == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "chapter_id",
+        ["chapter-four", "https://evil.test/token=secret", "../../etc/passwd", r"C:\\Users\\secret\\token"],
+    )
+    async def test_handle_rejects_chapter_id_without_echoing_input(self, chapter_id: str) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings())
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        with pytest.raises(WorkerError, match="Invalid chapter_id") as exc_info:
             await h.handle(
                 _job_with_voice_payload(voice="Ryan"),
-                input=_build_input([{"chapter_id": "chapter-four", "sequence_id": 0, "text": "four"}]),
+                input=_build_input([{"chapter_id": chapter_id, "sequence_id": 0, "text": "four"}]),
             )
+        assert chapter_id not in str(exc_info.value)
         assert h._model.captured_speaker == []
 
     @pytest.mark.asyncio
@@ -279,11 +300,12 @@ class TestHandle:
         h = Qwen3TTSRunpodHandler(_settings())
         h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
 
-        with pytest.raises(WorkerError, match="Unknown speaker 'NotAdvertised'"):
+        with pytest.raises(WorkerError, match="Unknown speaker") as exc_info:
             await h.handle(
                 _job_with_voice_payload(voice="NotAdvertised"),
                 input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "one"}]),
             )
+        assert "NotAdvertised" not in str(exc_info.value)
         assert h._model.captured_speaker == []
 
     @pytest.mark.asyncio
