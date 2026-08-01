@@ -84,8 +84,7 @@ ValueError: leaked""",
             assert "private.example" not in caps_body
             assert "secret" not in caps_body
             assert "https://" not in caps_body
-            assert "speakers" in caps_body
-            assert "Ryan" in caps_body
+            assert anonymous_caps.json()["workers"] == []
     finally:
         await app.state.orchestrator.shutdown()
         await app.state.orchestrator.close()
