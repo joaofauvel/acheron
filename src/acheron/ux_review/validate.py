@@ -89,7 +89,11 @@ def _validate_story(story: Story, tag: str, root: Path, head_sha: str) -> list[s
     ]
     if current_markers and (actual_head is None or requested_head != actual_head):
         errors.append(f"{tag}: CURRENT_HEAD metadata does not match repository HEAD")
-    if story.last_verified_at.get("commit") == CURRENT_HEAD and actual_head is not None and requested_head == actual_head:
+    if (
+        story.last_verified_at.get("commit") == CURRENT_HEAD
+        and actual_head is not None
+        and requested_head == actual_head
+    ):
         expected_tree = repository_tree_fingerprint(root.parent.parent, actual_head)
         if expected_tree is None or story.last_verified_at.get("tree") != expected_tree:
             errors.append(f"{tag}: CURRENT_HEAD attestation does not match the committed tree")
