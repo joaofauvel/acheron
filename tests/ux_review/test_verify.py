@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ _HEAD = "head-sha"
 @pytest.fixture(autouse=True)
 def _fake_tree_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verify_module, "repository_tree_fingerprint", lambda *_args: "tree-sha")
+    monkeypatch.setattr(verify_module, "_commit_exists", lambda *_args: True)
 
 
 def _write_story(
@@ -29,6 +31,7 @@ def _write_story(
     docs.mkdir(parents=True)
     if "commit: CURRENT_HEAD" in metadata and "tree:" not in metadata:
         metadata = metadata.replace("  date:", "  tree: tree-sha\n  date:", 1)
+    fixed_in = "" if "fixed_in:" in metadata else "fixed_in: [head-sha]\n"
     (docs / "ops.md").write_text(
         f"""# OPS
 
@@ -49,11 +52,60 @@ user_journey: Test journey
 files:
   - path: src/test.py
     lines: "1"
-{metadata}---
+{fixed_in}{metadata}---
 ```
 """,
         encoding="utf-8",
     )
+
+
+def test_tree_fingerprint_changes_for_git_mode_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
+    tree = [b"100644 blob abc\ttracked.py\0", b"100755 blob abc\ttracked.py\0"]
+    output = iter(tree)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, next(output), b""),
+    )
+
+    first = discovery_module.repository_tree_fingerprint(tmp_path)
+    second = discovery_module.repository_tree_fingerprint(tmp_path)
+
+    assert first is not None
+    assert second is not None
+    assert first != second
+
+
+def test_explicit_head_rejects_non_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(tmp_path, metadata="verified_in: [not-a-commit]\nlast_verified_at:\n  commit: not-a-commit\n")
+    monkeypatch.setattr(verify_module, "_commit_exists", lambda *_args: False)
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", "not-a-commit")
+
+    assert status == "FAIL"
+    assert "valid Git commit" in message
+
+
+def test_verified_story_requires_fixed_commit_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("fixed_in: []\nverified_in: [head-sha]\nlast_verified_at:\n  commit: head-sha\n"),
+    )
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
+
+    assert status == "PARTIAL"
+    assert "fixed_in" in message
 
 
 def test_current_head_marker_resolves_only_to_actual_head(

@@ -114,6 +114,33 @@ class TestEdgeRoutes:
         assert b"audio" in r.content
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("body", "content_type"),
+        [
+            ('{"job_id": "/tmp/private/token=secret",', "application/json"),
+            ('{"payload": {}}', "application/json"),
+        ],
+    )
+    async def test_execute_malformed_json_returns_sanitized_jobresult(
+        self,
+        app_handler: tuple[FastAPI, _Stub],
+        body: str,
+        content_type: str,
+    ) -> None:
+        app, h = app_handler
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post("/execute", content=body, headers={"content-type": content_type})
+
+        assert response.status_code == 500
+        result = response.json()
+        assert result["status"] == "failed"
+        assert result["error"] == "Malformed execute request"
+        assert "/tmp/private" not in response.text
+        assert "secret" not in response.text
+        assert h.calls == 0
+
+    @pytest.mark.asyncio
     async def test_execute_on_handler_error_returns_jobresult_json(
         self,
         app_handler: tuple[FastAPI, _Stub],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -44,7 +45,24 @@ def _repository_head(root: Path) -> str | None:
     return result.stdout.strip() or None
 
 
-def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa: C901, PLR0912
+def _commit_exists(repo_root: Path, commit: str) -> bool:
+    """Return whether ``commit`` names a commit reachable in ``repo_root``."""
+    git = shutil.which("git")
+    if git is None:
+        return False
+    try:
+        subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "rev-parse", "--verify", f"{commit}^{{commit}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa: C901, PLR0911, PLR0912
     """Verify a single story. Returns (status, message).
 
     status is one of: PASS, PARTIAL, FAIL.
@@ -64,8 +82,19 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa
             requested_head = actual_head
         else:
             requested_head = head_sha
+        repo_root = root.parent.parent
+        if not _commit_exists(repo_root, requested_head):
+            return ("FAIL", f"head={requested_head} is not a valid Git commit")
         marker_matches = actual_head is not None and requested_head == actual_head
         verified_commit = story.last_verified_at.get("commit")
+        if not story.fixed_in:
+            return ("PARTIAL", "verified story is missing fixed_in evidence")
+        metadata_commits = [*story.fixed_in[:1], *story.verified_in]
+        if verified_commit is not None:
+            metadata_commits.append(verified_commit)
+        for commit in metadata_commits:
+            if commit != CURRENT_HEAD and not _commit_exists(repo_root, commit):
+                return ("FAIL", f"verification metadata names invalid Git commit: {commit}")
         if verified_commit == CURRENT_HEAD:
             if not marker_matches:
                 return ("PARTIAL", f"last_verified_at.commit=CURRENT_HEAD does not match head={requested_head}")

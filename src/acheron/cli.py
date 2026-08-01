@@ -243,11 +243,6 @@ def _run_sync_generator[T](
     request_id_printed: Callable[[], bool] | None = None,
 ) -> Iterator[T]:
     """Drain an async generator synchronously via a thread pool."""
-
-    def _next(ait: AsyncIterator[T]) -> T:
-        coro = ait.__anext__()
-        return asyncio.run(coro)  # type: ignore[arg-type]
-
     async_iter = async_gen.__aiter__()
 
     async def _close() -> None:
@@ -269,15 +264,23 @@ def _run_sync_generator[T](
             loop.run_until_complete(_close())
             loop.close()
     else:
+
+        def _start_loop() -> asyncio.AbstractEventLoop:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            loop = pool.submit(_start_loop).result()
             try:
                 yield from _drain_sync_generator(
-                    lambda: pool.submit(_next, async_iter).result(),
+                    lambda: pool.submit(loop.run_until_complete, async_iter.__anext__()).result(),
                     client=client,
                     request_id_printed=request_id_printed,
                 )
             finally:
-                pool.submit(lambda: asyncio.run(_close())).result()
+                pool.submit(loop.run_until_complete, _close()).result()
+                pool.submit(loop.close).result()
 
 
 def _print_stream_error(

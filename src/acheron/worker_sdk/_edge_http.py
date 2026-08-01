@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from pydantic import ValidationError
 from python_multipart.multipart import MultipartParser, parse_options_header
 
 from acheron.core.errors import WorkerError, sanitise_exc_message
@@ -239,6 +240,18 @@ def _jobresult_to_json(result: JobResult) -> dict[str, JsonValue]:
     return decoded
 
 
+def _malformed_execute_response() -> JSONResponse:
+    """Return the public structured error for an invalid JSON execute request."""
+    result = JobResult(
+        job_id="<unknown>",
+        status=JobStatus.FAILED,
+        outputs=(),
+        metrics=JobMetrics(duration_seconds=0.0),
+        error="Malformed execute request",
+    )
+    return JSONResponse(status_code=500, content=_jobresult_to_json(result))
+
+
 async def _build_multipart_response(
     artifacts: list[Artifact],
     metrics: JobMetrics,
@@ -330,8 +343,12 @@ class EdgeApp:
             ctype = request.headers.get("content-type", "")
             if ctype.startswith("multipart/"):
                 return await self._run_execute_multipart(request)
-            body = ExecuteRequest.model_validate(await request.json())
-            return await self._run_execute(body)
+            try:
+                body = ExecuteRequest.model_validate(await request.json())
+                return await self._run_execute(body)
+            except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, TypeError, ValueError) as exc:
+                logger.info("Malformed JSON execute request: %s", sanitise_exc_message(exc))
+                return _malformed_execute_response()
 
         self.router = router
         self.app = FastAPI(title="acheron-worker-edge")

@@ -124,8 +124,8 @@ class TestStepHandler:
             batch_capable=False,
             model_source=None,
         )
-        await reg.register("trans-1", "http://127.0.0.1:1", "http", translation_caps)
         await reg.register("trans-2", "http://127.0.0.1:2", "http", translation_caps)
+        await reg.register("trans-1", "http://127.0.0.1:1", "http", translation_caps)
         chosen: list[str] = []
 
         def _factory(registered: RegisteredWorker) -> LocalWorker:

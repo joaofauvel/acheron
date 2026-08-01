@@ -40,6 +40,7 @@ _UX_METADATA_PATHS = frozenset(
         "docs/ux_review/summary.md",
     }
 )
+_UX_METADATA_PATH_BYTES = frozenset(path.encode("utf-8") for path in _UX_METADATA_PATHS)
 
 
 def repository_tree_fingerprint(repo_root: Path, revision: str = "HEAD") -> str | None:
@@ -55,21 +56,21 @@ def repository_tree_fingerprint(repo_root: Path, revision: str = "HEAD") -> str 
         )
     except OSError, subprocess.CalledProcessError:
         return None
-    entries: list[tuple[str, str]] = []
+    entries: list[tuple[bytes, bytes]] = []
     for record in result.stdout.split(b"\0"):
         if not record:
             continue
         header, path_bytes = record.split(b"\t", 1)
-        path = path_bytes.decode("utf-8")
-        if path in _UX_METADATA_PATHS:
+        if path_bytes in _UX_METADATA_PATH_BYTES:
             continue
-        entries.append((path, header.split()[2].decode("ascii")))
+        entries.append((path_bytes, header))
     digest = hashlib.sha256()
-    for path, object_id in sorted(entries):
-        digest.update(path.encode("utf-8"))
-        digest.update(b"\\0")
-        digest.update(object_id.encode("ascii"))
-        digest.update(b"\\n")
+    for path_bytes, header in sorted(entries):
+        digest.update(header)
+        digest.update(b"\0")
+        digest.update(len(path_bytes).to_bytes(8, "big"))
+        digest.update(path_bytes)
+        digest.update(b"\0")
     return digest.hexdigest()
 
 

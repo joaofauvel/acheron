@@ -129,7 +129,7 @@ def _select_worker(
     selected = next(
         (
             worker
-            for worker in workers
+            for worker in sorted(workers, key=lambda item: item.worker_id)
             if worker.status is not WorkerStatus.OFFLINE
             and worker.capabilities.worker_type == step.type
             and _language_matches(step.type, worker.capabilities, src, dst)
