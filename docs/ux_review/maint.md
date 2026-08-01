@@ -1,12 +1,12 @@
 ---
 theme: MAINT
 last_updated_date: 2026-08-01
-version: 3
+version: 4
 ---
 
 # MAINT
 
-**Grade**: C (3 high + 2 medium-severity open stories)
+**Grade**: C (2 high + 1 medium-severity open story)
 **Calibration target**: an on-call engineer should be able to recover from a 2am page without paging someone else.
 
 ## MAINT-001 — No admin endpoints to reap stuck `RUNNING` jobs
@@ -202,8 +202,8 @@ incident_ref: TBD-pagerduty
 ```yaml
 ---
 id: MAINT-006
-title: "Registration-token auto-mint is unreachable in compose — `ACHERON_REGISTRATION_TOKEN` is `required` in `docker-compose.yml:36`, so the auto-mint path at `orchestrator.py:273-282` is dead code in the supported deploy"
-status: open
+title: "Registration-token auto-mint is unreachable in compose — `ACHERON_REGISTRATION_TOKEN` is `required` in `docker-compose.yml:48`, so the auto-mint path at `orchestrator.py:370-397` is dead code in the supported deploy"
+status: stale
 severity: medium
 effort: S
 discovered_via: [on-call, first-run, code-review]
@@ -213,23 +213,24 @@ journey_stage: t2
 user_journey: "Deployer on a fresh checkout follows the README and runs `docker compose up`. Compose refuses to start: `ACHERON_REGISTRATION_TOKEN must be set`. Deployer must run `openssl rand -hex 32` manually, set the env var in `.env`, and re-run `docker compose up`. The orchestrator's documented 'auto-generates and persists' path is never reached because compose requires the env var up front."
 files:
   - path: docker-compose.yml
-    lines: 33-44
+    lines: 45-49
   - path: src/acheron/shell/orchestrator.py
-    lines: 255-282
+    lines: 370-397
 related: []
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "The compose requirement and auto-mint implementation moved to new line ranges; the compose contract still prevents the auto-mint journey."
 incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** `docker-compose.yml:36` declares `ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}` — the `?:` form aborts compose startup if the env var is unset. `_load_or_create_registration_token` is structured to auto-mint when the env var is unset, but in the supported deploy the env var is *required* by compose, so the mint branch is unreachable.
+**Issue.** `docker-compose.yml:48` declares `ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}` — the `?:` form aborts compose startup if the env var is unset. `_load_or_create_registration_token` is structured to auto-mint when the env var is unset, but in the supported deploy the env var is *required* by compose, so the mint branch is unreachable.
 
 **Why it matters.** The auto-mint path is the documented on-ramp for a fresh deploy.
 
-**Recommendation.** Change `docker-compose.yml:36` from `${VAR:?...}` to `${VAR:-}` so compose starts with the env var unset, and the orchestrator's auto-mint path fires. Persist the minted token; the workers read the same path via a shared volume.
+**Recommendation.** Change `docker-compose.yml:48` from `${VAR:?...}` to `${VAR:-}` so compose starts with the env var unset, and the orchestrator's auto-mint path fires. Persist the minted token; the workers read the same path via a shared volume.
 
 **Verification.** Fresh `docker compose up` with `.env` unset starts cleanly. `cat certs/.registration_token` shows a 32-char hex string. The workers register successfully.
 
@@ -249,9 +250,9 @@ journey_stage: t2
 user_journey: "On-call at 2am runs `acheron token status` and sees `created_at=2024-01-15 rotations=0 current_token=ab12...`. Engineer runs `acheron token rotate --reason incident-2026-07-24-worker-401`; a new token is generated, persisted to `.registration_token` (mode 0600), the previous token is appended to `.registration_token.history` with `rotated_at` and `reason`."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 324-351
+    lines: 370-397
   - path: src/acheron/worker_sdk/registration.py
-    lines: 42-69
+    lines: 23-77
 related: [MAINT-006, SEC-008]
 fixed_in: []
 verified_in: []
@@ -675,7 +676,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-018
 title: "Redis job records have no upgrade path across schema changes"
-status: open
+status: stale
 severity: high
 effort: M
 discovered_via: [code-review]
@@ -685,14 +686,15 @@ journey_stage: t2
 user_journey: "An operator restarts the orchestrator after a schema deployment and lists an older persisted job; deserialization fails because the record lacks newly required fields, blocking recovery and visibility."
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 359-380
+    lines: 463-575
   - path: src/acheron/shell/stores/redis.py
-    lines: 406-503
+    lines: 585-745
 related: []
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "Job serialization and deserialization moved; the current loader still indexes required fields directly and has no persisted schema version or migration path."
 ---
 ```
 
@@ -720,9 +722,9 @@ journey_stage: t2
 user_journey: "A long-running orchestrator completes many jobs; terminal event buffers remain retained after subscribers leave, and memory usage grows until the process is pressured or restarted."
 files:
   - path: src/acheron/shell/job_events.py
-    lines: 14-35
+    lines: 24-53
   - path: src/acheron/shell/orchestrator.py
-    lines: 762-768
+    lines: 857-865
 related: []
 fixed_in: []
 verified_in: []

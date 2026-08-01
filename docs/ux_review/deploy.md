@@ -1,12 +1,12 @@
 ---
 theme: DEPLOY
-last_updated_date: 2026-07-30
-version: 3
+last_updated_date: 2026-08-01
+version: 4
 ---
 
 # DEPLOY
 
-**Grade**: C (1 high + 4 medium + 1 low unresolved story)
+**Grade**: C (1 high + 3 medium + 1 low unresolved story)
 **Calibration target**: a developer who has used Docker but never used RunPod, given 1 day, should succeed without help.
 
 ## DEPLOY-001 — Asymmetric edge env-var defaults across the three worker profiles
@@ -207,7 +207,7 @@ verified_by: ""
 ---
 id: DEPLOY-006
 title: "Top-level README recommends FlashAttention 2 for Qwen3-TTS to fit 24GB, but `qwen3tts/Dockerfile.runpod` does not install it; deployers OOM on 24GB GPUs or spend 30+ min compiling"
-status: open
+status: obsolete
 severity: medium
 effort: M
 discovered_via: [code-review, first-run]
@@ -228,13 +228,9 @@ verified_by: ""
 ---
 ```
 
-**Issue.** README.md:205 says "the Qwen3-TTS card recommends FlashAttention 2 to reduce memory". `workers/qwen3tts/Dockerfile.runpod:23-34` does `pip install torch==2.5.1 torchaudio==2.5.1 ... pip install --no-cache-dir qwen-tts soundfile ... pip install --no-cache-dir runpod`. There is no `flash-attn` install. The Qwen3-TTS model card recommends FlashAttention 2 to fit 1.7B in 24GB; without it, the inference peak memory exceeds 24GB for the 1.7B CustomVoice variant.
+**Resolution.** The Qwen3-TTS handler now selects PyTorch SDPA with `attn_implementation="sdpa"` instead of requiring FlashAttention 2. The prior FlashAttention-specific memory concern no longer describes the current implementation; this change landed in `55f5fb7` (`fix(docker): use PyTorch SDPA in worker images`).
 
-**Why it matters.** This is a doc-vs-code drift. The deployer who provisions a 24GB GPU per the README's guidance is silently set up to OOM.
-
-**Recommendation.** Add `pip install flash-attn --no-build-isolation` to `qwen3tts/Dockerfile.runpod`. Validate the install in CI by booting the image and asserting `import flash_attn` succeeds.
-
-**Verification.** `docker run --rm acheron-qwen3tts-runpod:dev python -c "import flash_attn"` succeeds. A job submitted against a RunPod endpoint provisioned on an L4 (24GB) completes successfully.
+**Verification.** Read `workers/qwen3tts/handler.py:100-109` and confirm model loading specifies SDPA; no FlashAttention installation is required for this path.
 
 ## DEPLOY-007 — `tts-runpod-stub` and `translation-runpod-stub` start unconditionally
 
@@ -287,7 +283,7 @@ journey_stage: t0
 user_journey: "Deployer provisions Acheron for production with a real CA-signed cert bundle (Let's Encrypt via cert-manager). They commit the bundle to `./certs/` (or mount it as a volume). Two weeks later they make a small change to the orchestrator config and re-run `just certs` to regenerate the dev certs — which silently overwrites their real `acheron-ca.crt` and `acheron-ca.key`. The orchestrator now serves the dev cert, the dashboard fails to trust it, and the deployer has to restore from backup or rotate their real CA."
 files:
   - path: docker-compose.yml
-    lines: 15-25
+    lines: 27-33
   - path: Justfile
     lines: 46-48
   - path: scripts/generate_dev_certs.py
@@ -300,7 +296,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `scripts/generate_dev_certs.py:140-148` `generate()` calls `_build_ca` unconditionally. The `certs-init` compose service (docker-compose.yml:15-25) runs this script on every `docker compose up`. The `just certs` Justfile target (Justfile:43-44) does the same. There is no "if `./certs/acheron-ca.crt` exists, skip" branch, and no warning that a real CA is being clobbered.
+**Issue.** `scripts/generate_dev_certs.py:140-148` `generate()` calls `_build_ca` unconditionally. The `certs-init` compose service (docker-compose.yml:27-33) runs this script on every `docker compose up`. The `just certs` Justfile target (Justfile:43-44) does the same. There is no "if `./certs/acheron-ca.crt` exists, skip" branch, and no warning that a real CA is being clobbered.
 
 **Why it matters.** A deployer who has a real CA bundle in `./certs/` and runs `just certs` to "regenerate the dev certs" loses their real CA key with no warning.
 
@@ -356,7 +352,7 @@ user_journey: "Deployer follows the translategemma/README.md:79-83 'Switching mo
 files:
   - path: workers/translategemma/Dockerfile.runpod
     lines: 11-14
-  - path: README.md
+  - path: workers/translategemma/README.md
     lines: 102-106
 related: []
 fixed_in: []
@@ -424,14 +420,14 @@ discovered_via: [code-review, first-run, user-feedback]
 user_facing_surface: quickstart
 silent: true
 journey_stage: t0
-user_journey: "Deployer completes the Quick Start in terminal A (everything works). They close terminal A, open terminal B to make a code change, run `docker compose up --build` to pick up the change, and the orchestrator refuses to start with `ACHERON_REGISTRATION_TOKEN must be set` (the `${ACHERON_REGISTRATION_TOKEN:?…}` at docker-compose.yml:36 short-circuits the compose env interpolation). The deployer re-reads the Quick Start, sees the `export` line, and runs it again."
+user_journey: "Deployer completes the Quick Start in terminal A (everything works). They close terminal A, open terminal B to make a code change, run `docker compose up --build` to pick up the change, and the orchestrator refuses to start with `ACHERON_REGISTRATION_TOKEN must be set` (the `${ACHERON_REGISTRATION_TOKEN:?…}` at docker-compose.yml:48 short-circuits the compose env interpolation). The deployer re-reads the Quick Start, sees the `export` line, and runs it again."
 files:
   - path: README.md
     lines: 24-28
   - path: .env.example
     lines: 4-9
   - path: docker-compose.yml
-    lines: 36-40
+    lines: 45-49
 related: [DX-005]
 fixed_in: []
 verified_in: []
@@ -441,7 +437,7 @@ feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** README.md:24-27 instructs the deployer to `cp .env.example .env && export ACHERON_REGISTRATION_TOKEN="$(openssl rand -hex 32)" && docker compose up --build`. The `export` puts the token in the shell's environment, but it does NOT write the token to `.env`. The compose `x-*` interpolation `${ACHERON_REGISTRATION_TOKEN:?…}` (docker-compose.yml:36) reads from the shell env, so this works in terminal A. Terminal B is a fresh shell with no env var; `docker compose up --build` short-circuits.
+**Issue.** README.md:24-27 instructs the deployer to `cp .env.example .env && export ACHERON_REGISTRATION_TOKEN="$(openssl rand -hex 32)" && docker compose up --build`. The `export` puts the token in the shell's environment, but it does NOT write the token to `.env`. The compose `x-*` interpolation `${ACHERON_REGISTRATION_TOKEN:?…}` (docker-compose.yml:48) reads from the shell env, so this works in terminal A. Terminal B is a fresh shell with no env var; `docker compose up --build` short-circuits.
 
 **Why it matters.** A common deployer workflow (edit code, restart compose in a new terminal) is broken by this. Cost: 1-2 min per occurrence.
 

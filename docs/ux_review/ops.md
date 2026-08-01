@@ -1,12 +1,12 @@
 ---
 theme: OPS
 last_updated_date: 2026-08-01
-version: 3
+version: 4
 ---
 
 # OPS
 
-**Grade**: C (1 medium + 1 low unresolved story)
+**Grade**: C (1 low unresolved story)
 **Calibration target**: an operator should be able to submit, monitor, debug, and recover a job without `docker logs`.
 
 ## OPS-001 — Dashboard renders only three read-only tables
@@ -539,35 +539,35 @@ feedback_ref: "TBD-pagerduty"
 
 **Verification.** Follow a running job and confirm progress events render as they arrive.
 
-## OPS-015 — `capabilities` only filters by language pair; no per-type view
+## OPS-015 — `capabilities --type` omits the model and voice fields operators need
 
 ```yaml
 ---
 id: OPS-015
-title: "`acheron capabilities` only filters by language pair; cannot ask \"what ASR models are registered?\" or \"what TTS voices?\""
-status: fixed
+title: "`acheron capabilities --type` omits the model and voice fields operators need"
+status: stale
 severity: medium
 effort: S
 discovered_via: [user-feedback, code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator runs `acheron capabilities --tts` expecting a list of registered TTS workers with their `model_source` and `metadata.voice`."
+user_journey: "Operator runs `acheron capabilities --type tts` expecting each registered TTS worker's model and available voice; the typed response omits those fields and the CLI renders `-` for both."
 files:
   - path: src/acheron/shell/api/routes/capabilities.py
-    lines: 18-81
+    lines: 18-121
   - path: src/acheron/core/schemas.py
-    lines: 64-85
+    lines: 330-344
   - path: src/acheron/api_client.py
-    lines: 184-191
+    lines: 472-477
   - path: src/acheron/cli.py
-    lines: 395-437
+    lines: 1237-1257
   - path: tests/shell/api/test_capabilities.py
-    lines: 29-126
+    lines: 53-113
   - path: tests/test_api_client.py
-    lines: 99-188
+    lines: 331-400
   - path: tests/shell/test_cli.py
-    lines: 421-499
+    lines: 1043-1097
   - path: README.md
     lines: 60-68
 related: [OPS-024, OPS-028]
@@ -575,17 +575,18 @@ fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "The typed view was added, but its response contract now emits `speakers` while excluding `model_source` and `metadata`; the CLI still expects the excluded fields."
 feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** The capabilities surface now supports typed inventory queries in addition to language-pair queries. `GET /capabilities?type=tts|asr|translation` returns a `workers` list with each worker's ID, type, `model_source`, and metadata; the server sorts workers by ID and leaves `language_pairs` empty in typed mode. Pair mode remains unchanged and returns `workers: []`.
+**Issue.** Typed inventory queries exist, but the API route projects `speakers` and the public schema excludes `model_source` and `metadata`; the CLI still reads those excluded fields. A live `acheron capabilities --type tts` therefore renders `-` instead of the worker model and voice promised by the command's table.
 
-**Why it matters.** Operators can discover the deployed ASR models and TTS voices before choosing a submission configuration.
+**Why it matters.** Operators cannot identify which model or voice a registered worker provides before choosing a submission configuration.
 
-**Recommendation.** Keep `acheron capabilities --type tts|asr|translation` backed by the typed endpoint. Render the selected workers as a Worker ID / Model / Voice table, using `-` for missing or non-string voice metadata, and reject combinations with `--src` or `--dest`.
+**Recommendation.** Make typed capability output consistently show each registered worker's model and available voices, with an allowlisted response contract shared by the API, client, CLI, tests, and documentation.
 
-**Verification.** With the orchestrator running and TTS workers registered, run `acheron capabilities --type tts`; the command exits 0 and displays a `TTS Workers` table with each worker's ID, model, and voice (or `-` when no voice is advertised), giving the operator the inventory needed to choose a worker.
+**Verification.** With the orchestrator running and TTS workers registered, run `acheron capabilities --type tts`; the command exits 0 and displays each worker's actual model and available voice rather than placeholder dashes.
 
 ## OPS-016 — `acheron job submit` has no `--dry-run`
 
@@ -1133,40 +1134,41 @@ feedback_ref: "TBD-pagerduty"
 
 **Verification.** Focused dashboard and API tests cover the 24h/7d/30d/all windows, aggregate total, and unknown-job count; all five Stage 1 UX verification commands pass after metadata update.
 
-## OPS-032 — `acheron job tail` leaks a traceback for HTTP errors
+## OPS-032 — `acheron job tail` omits remediation for structured HTTP errors
 
 ```yaml
 ---
 id: OPS-032
-title: "`acheron job tail` leaks a traceback for HTTP errors instead of a structured CLI failure"
-status: open
+title: "`acheron job tail` omits remediation for structured HTTP errors"
+status: stale
 severity: medium
 effort: S
 discovered_via: [code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator runs `acheron job tail missing-job`, expects a concise non-zero error with remediation to inspect `acheron jobs`, but receives a raw HTTP traceback."
+user_journey: "Operator runs `acheron job tail missing-job`, expects a concise non-zero error with remediation to inspect `acheron jobs`, but receives a structured HTTP error without that remediation."
 files:
   - path: src/acheron/cli.py
-    lines: 136-163
+    lines: 239-307
   - path: src/acheron/api_client.py
-    lines: 109-119
+    lines: 265-285
 related: []
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
+drift_note: "HTTP failures now use the structured renderer without a traceback, but missing-job errors still omit the requested `acheron jobs` remediation."
 ---
 ```
 
-**Issue.** `_run_sync_generator()` does not route `HTTPStatusError` through the CLI error renderer, so `acheron job tail` exposes a traceback for missing jobs and other API failures.
+**Issue.** `_run_sync_generator()` now routes stream failures through `_print_stream_error()`, and HTTP failures render as a concise status message. The generic tail path still does not add the `acheron jobs` remediation expected for a missing job.
 
-**Why it matters.** Operators receive implementation details instead of a recoverable command-level error.
+**Why it matters.** Operators no longer see a traceback, but they still have to infer how to locate or correct a missing job identifier.
 
-**Recommendation.** Render tail API failures through the same structured CLI error path and include remediation such as `acheron jobs`.
+**Recommendation.** Preserve the structured non-zero error and include a clear `Try: acheron jobs` remediation for missing-job tail failures.
 
-**Verification.** `acheron job tail missing-job` exits non-zero without a traceback and prints actionable remediation.
+**Verification.** `acheron job tail missing-job` exits non-zero without a traceback, identifies the request failure, and prints `Try: acheron jobs`.
 
 ## OPS-033 — Dashboard job detail URL is a partial, not a durable dashboard page
 
@@ -1186,7 +1188,7 @@ files:
   - path: dashboard/templates/partials/jobs.html
     lines: 11-17
   - path: dashboard/app.py
-    lines: 86-88
+    lines: 200-220
 related: [OPS-001]
 fixed_in: []
 verified_in: []

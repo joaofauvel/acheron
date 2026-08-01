@@ -1,7 +1,7 @@
 ---
 program: ux-review
 last_updated_date: 2026-08-01
-version: 6
+version: 7
 initial_review_commit: 59458ba
 last_updated_commit: CURRENT_HEAD
 related: docs/code_review/
@@ -13,9 +13,9 @@ related: docs/code_review/
 
 | Theme | Grade | Open stories by severity | Verified | Notes |
 |---|---|---|---|---|
-| DEPLOY | C | 4 medium, 1 low | 0 | 15 stories; 1 stale and 1 obsolete, with certificate, image, and environment gaps |
-| OPS | C | 1 medium, 1 low | 6 | 31 stories; voice, recovery, and traceability journeys now verified, with remaining durable-dashboard gaps |
-| MAINT | C | 3 high, 2 medium | 10 | 19 stories; recovery, retention, worker-history, and traceability journeys now verified |
+| DEPLOY | C | 3 medium, 1 low | 0 | 15 stories; 1 stale and 2 obsolete, with certificate, image, and environment gaps |
+| OPS | C | 1 low | 6 | 31 stories; typed capability and tail-remediation drift remain alongside durable-dashboard gaps |
+| MAINT | C | 2 high, 1 medium | 10 | 19 stories; recovery, retention, worker-history, and traceability journeys now verified, with schema and token drift |
 
 A theme with 0 stories is graded `—` (untested); this summary has no such themes.
 
@@ -25,10 +25,10 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 2. **MAINT-004** — Dev certificate SANs do not cover production hostnames.
 3. **MAINT-007** — No token rotation command or audit trail.
 4. **MAINT-018** — Existing Redis job records have no schema upgrade path.
-5. **OPS-032** — `acheron job tail` exposes raw HTTP tracebacks.
+5. **OPS-032** — `acheron job tail` still lacks missing-job remediation.
 6. **OPS-033** — Dashboard detail URLs reload as partial fragments.
-7. **DEPLOY-002** — Dev certificate SANs still mismatch compose worker names.
-8. **DEPLOY-006** — Qwen3-TTS image guidance still omits FlashAttention installation.
+7. **OPS-015** — Typed capability output omits the model and voice fields.
+8. **DEPLOY-002** — Dev certificate SANs still mismatch compose worker names.
 9. **DEPLOY-008** — Certificate generation can overwrite an existing CA.
 10. **DEPLOY-010** — TranslateGemma model-switching guidance conflicts with offline mode.
 11. **DEPLOY-012** — The shell-local token and compose token configuration remain easy to confuse.
@@ -36,7 +36,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Quick wins (S-effort, high-impact)
 
-1. **OPS-032** (S, medium) — Route tail HTTP failures through the structured CLI renderer.
+1. **OPS-032** (S, medium) — Add missing-job remediation to the structured tail error.
 2. **OPS-033** (S, low) — Make job detail URLs resolve to the full dashboard shell.
 3. **DEPLOY-013** (S, low) — Clarify container-disk versus model-cache storage.
 4. **DEPLOY-008** (M, medium) — Guard certificate regeneration from overwriting operator material.
@@ -46,13 +46,13 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 | Status | Count |
 |---|---|
-| open | 12 |
+| open | 8 |
 | in-progress | 0 |
-| fixed | 28 |
+| fixed | 27 |
 | verified | 16 |
 | partial | 0 |
-| stale | 3 |
-| obsolete | 6 |
+| stale | 7 |
+| obsolete | 7 |
 | broken-yaml | 0 |
 | wontfix | 0 |
 | **total filed** | **65** |
@@ -70,10 +70,10 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 ## Notes
 
 - Task 10 recovery evidence covers stuck-job discovery/reaping, archive and cleanup controls, worker history rendering, and CLI/dashboard filters via `harness:phase-4d-task-10-recovery`.
-- Refresh performed against `CURRENT_HEAD` using file/line re-resolution and independent journey checks.
-- `discovered_via` ordering was preserved; existing verified metadata was not rewritten. Stage 1 cost-truth stories MAINT-002, MAINT-014, MAINT-015, OPS-005, and OPS-031 were verified by focused tests and deterministic simulation evidence.
+- Refresh performed against `CURRENT_HEAD` after the prior UX metadata commit `22d20f5`; only seven `docs/code_review/` files changed, so no new UX story was added.
+- Independent journey checks marked DEPLOY-006 obsolete and OPS-015, OPS-032, MAINT-006, and MAINT-018 stale; `discovered_via` ordering and existing verified metadata were preserved.
 - `fixed_in` placeholders were resolved only where the review evidence supplied a matching Conventional Commit SHA.
-- `just first-run`, selected `just first-run --step` checks, all three simulation scenarios, and `just ux-validate` passed during the refresh.
+- `just first-run` and all three simulation scenarios passed during this refresh. `just ux-validate` still reports 16 pre-existing `CURRENT_HEAD` tree-attestation mismatches for verified OPS/MAINT stories; those terminal metadata records were intentionally not rewritten per §9.3.
 - Traceability stories OPS-022, MAINT-013, and MAINT-016 were verified by focused request-correlation and dashboard version tests.
 - OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
 - Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.
