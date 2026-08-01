@@ -40,7 +40,8 @@ class _FakeSynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
         request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
         context: grpc.aio.ServicerContext,
     ) -> Any:
-        self.metadata = tuple((item.key, item.value) for item in context.invocation_metadata())
+        metadata = context.invocation_metadata() or ()
+        self.metadata = tuple((key, value.decode() if isinstance(value, bytes) else value) for key, value in metadata)
         if self._fail:
             context.set_code(grpc.StatusCode.UNAVAILABLE)
             context.set_details("GPU down")
