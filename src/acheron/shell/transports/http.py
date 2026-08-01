@@ -31,6 +31,7 @@ from acheron.shell.transports._multipart import (
     _build_result,
     _materialize_artifact,
     _parse_multipart_parts,
+    _safe_join,
 )
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
@@ -301,6 +302,10 @@ async def _stream_multipart_request(
     :meth:`httpx.AsyncClient.request` via ``content=`` and ``headers=``
     respectively.
     """
+    try:
+        _safe_join(file_path.parent, file_path.name)
+    except WorkerError as exc:
+        raise WorkerError("Worker input filename is unsafe") from exc
     boundary = f"acheron-{secrets.token_hex(16)}"
     envelope = json.dumps(_job_to_dict(job)).encode("utf-8")
 

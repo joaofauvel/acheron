@@ -33,6 +33,7 @@ _PUBLIC_TRANSPORTS = frozenset({"grpc", "grpcs", "http", "https", "local"})
 _MAX_PUBLIC_TEXT_LENGTH = 256
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
+_MAX_PUBLIC_CAPABILITY_VALUES = 100
 
 
 def public_worker_id(value: object) -> str:
@@ -140,4 +141,4 @@ def public_capability_values(values: Iterable[object], *, kind: str) -> list[str
         ):
             continue
         safe.add(value)
-    return sorted(safe)
+    return sorted(safe)[:_MAX_PUBLIC_CAPABILITY_VALUES]

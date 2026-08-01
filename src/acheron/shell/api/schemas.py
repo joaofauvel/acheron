@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
@@ -84,6 +85,9 @@ class AdminErrorResponse(BaseModel):
 
 
 _MAX_ADMIN_DURATION_SECONDS = 100 * 365 * 24 * 60 * 60
+_MAX_CAPABILITY_METADATA_STRING = 256
+_MAX_CAPABILITY_METADATA_ITEMS = 128
+_MAX_CAPABILITY_METADATA_KEYS = 64
 
 
 class _AdminDurationRequest(_StrictRequest):
@@ -118,19 +122,19 @@ class ReapStaleRequest(_AdminDurationRequest):
     """Request body for stale-job reaping."""
 
     older_than_seconds: float
-    reason: str
+    reason: str = Field(max_length=512)
 
 
 class MarkFailedRequest(_StrictRequest):
     """Request body for marking a job failed."""
 
-    reason: str
+    reason: str = Field(max_length=512)
 
 
 class ArchiveRequest(_StrictRequest):
     """Request body for archiving jobs."""
 
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=512)
 
 
 class CleanupRequest(_AdminDurationRequest):
@@ -140,7 +144,7 @@ class CleanupRequest(_AdminDurationRequest):
     keep_failed_seconds: float | None = Field(default=None, gt=0)
     retention_seconds: float | None = Field(default=None, gt=0)
     apply: StrictBool = False
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=512)
 
     @model_validator(mode="after")
     def _require_retention_windows(self) -> CleanupRequest:
@@ -185,15 +189,38 @@ class WorkerCapabilitiesRequest(_StrictRequest):
     """Worker capabilities in a registration request."""
 
     worker_type: str
-    supported_languages_in: list[str]
-    supported_languages_out: list[str]
-    supported_formats_in: list[str] = Field(default_factory=list)
-    supported_formats_out: list[str] = Field(default_factory=list)
+    supported_languages_in: list[Annotated[str, Field(max_length=64)]] = Field(max_length=128)
+    supported_languages_out: list[Annotated[str, Field(max_length=64)]] = Field(max_length=128)
+    supported_formats_in: list[Annotated[str, Field(max_length=64)]] = Field(default_factory=list, max_length=128)
+    supported_formats_out: list[Annotated[str, Field(max_length=64)]] = Field(default_factory=list, max_length=128)
     max_payload_bytes: int | None = None
     batch_capable: bool = False
     model_source: str | None = None
     max_input_tokens: int | None = None
-    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
+
+    @field_validator("metadata")
+    @classmethod
+    def _validate_metadata_values(cls, value: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        def validate(item: JsonValue) -> None:
+            match item:
+                case str() if len(item) > _MAX_CAPABILITY_METADATA_STRING:
+                    raise ValueError("metadata string values must be at most 256 characters")
+                case list() if len(item) > _MAX_CAPABILITY_METADATA_ITEMS:
+                    raise ValueError("metadata collections must contain at most 128 items")
+                case dict() if len(item) > _MAX_CAPABILITY_METADATA_KEYS:
+                    raise ValueError("metadata mappings must contain at most 64 items")
+                case list() as items:
+                    for nested in items:
+                        validate(nested)
+                case dict() as mapping:
+                    for nested in mapping.values():
+                        validate(nested)
+                case _:
+                    return
+
+        validate(value)
+        return value
 
 
 __all__ = [

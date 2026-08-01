@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from acheron.core.errors import WorkerError
-from acheron.shell.transports._multipart import _parse_multipart_parts
+from acheron.shell.transports._multipart import _parse_multipart_parts, _safe_join
 
 _BOUNDARY = "acheron-test"
 
@@ -31,6 +32,12 @@ def _build_body(parts: list[tuple[str, str, bytes, dict[str, str] | None]]) -> b
         )
     out += f"--{_BOUNDARY}--\r\n".encode()
     return out
+
+
+def test_safe_join_rejects_header_injection_filename(tmp_path: Path) -> None:
+    """Cached worker filenames cannot become multipart request headers."""
+    with pytest.raises(WorkerError, match="unsafe filename"):
+        _safe_join(tmp_path, "ok.wav\\r\\nX-Evil: injected")
 
 
 class TestParseMultipartPartsMetadata:

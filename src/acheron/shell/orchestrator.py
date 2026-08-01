@@ -10,6 +10,7 @@ import shutil
 import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -209,7 +210,7 @@ class Orchestrator:
         self._shutting_down = False
         self._health_providers = create_health_providers(self._settings)
         self._events = JobEventBroker()
-        self._admin_audits: list[AdminActionAudit] = []
+        self._admin_audits: deque[AdminActionAudit] = deque(maxlen=1000)
         self._health_monitor = HealthMonitor(
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),

@@ -7,12 +7,24 @@ from fastapi import FastAPI
 from httpx import ASGITransport
 
 from acheron.core.models import WorkerStatus
-from acheron.shell.api.public import public_content_type
+from acheron.shell.api.public import public_capability_values, public_content_type
+from acheron.shell.api.schemas import WorkerCapabilitiesRequest
 
 
 def test_public_content_type_falls_back_for_oversized_values() -> None:
     assert public_content_type("a" * 1_000_000) == "application/octet-stream"
     assert public_content_type("audio/wav") == "audio/wav"
+
+
+def test_capability_collections_are_bounded() -> None:
+    values = [f"lang-{index}" for index in range(200_000)]
+    with pytest.raises(ValueError, match="at most 128"):
+        WorkerCapabilitiesRequest(
+            worker_type="tts",
+            supported_languages_in=values,
+            supported_languages_out=["en"],
+        )
+    assert len(public_capability_values(values, kind="language")) == 100
 
 
 class TestCapabilitiesRoute:

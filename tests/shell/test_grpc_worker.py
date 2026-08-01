@@ -13,6 +13,7 @@ import pytest
 import pytest_asyncio
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
+import acheron.shell.transports.grpc as grpc_transport
 from acheron.core.errors import WorkerError, WorkerUnavailableError
 from acheron.core.models import (
     Job,
@@ -143,6 +144,18 @@ class TestGrpcWorkerExecute:
         assert out.content_type == "audio/pcm"
         assert Path(out.path) == tmp_path / "job-xyz" / "synthesize" / "job-xyz-synthesize.pcm"
         assert Path(out.path).read_bytes() == b"\x01\x02\x03\x04"
+        await channel.close()
+
+    @pytest.mark.asyncio
+    async def test_execute_rejects_oversized_pcm(self, grpc_server, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(grpc_transport, "_MAX_WORKER_OUTPUT_BYTES", 4)
+        addr, servicer = grpc_server
+        servicer._chunks = [b"12345"]  # noqa: SLF001
+        channel = grpc.aio.insecure_channel(addr)
+        worker = GrpcWorker(channel, data_dir=tmp_path)
+        job = Job(job_id="job-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        with pytest.raises(WorkerError, match="maximum allowed size"):
+            await worker.execute(job)
         await channel.close()
 
     @pytest.mark.asyncio

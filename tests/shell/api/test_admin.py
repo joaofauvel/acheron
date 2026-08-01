@@ -176,6 +176,8 @@ def test_admin_request_models_are_strict_and_validate_durations() -> None:
         CleanupRequest(retention_seconds=0)
     with pytest.raises(ValueError, match="extra"):
         ReapStaleRequest.model_validate({"older_than_seconds": 1, "reason": "restart", "typo": True})
+    with pytest.raises(ValueError, match="at most 512"):
+        ReapStaleRequest(older_than_seconds=1, reason="x" * 513)
     with pytest.raises(ValueError, match="boolean"):
         CleanupRequest.model_validate(
             {"retention_seconds": 60, "keep_successful_seconds": 60, "keep_failed_seconds": 60, "apply": "yes"}

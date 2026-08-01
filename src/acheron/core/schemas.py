@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, FiniteFloat, field_validator
 
 from acheron.core.errors import sanitise_public_message
 from acheron.core.models import (
@@ -31,13 +31,13 @@ class OutputSummary(BaseModel):
 class CostEstimateResponse(BaseModel):
     """Execution-time cost estimate and pricing provenance."""
 
-    cost: float | None = Field(default=None, ge=0)
+    cost: FiniteFloat | None = Field(default=None, ge=0)
     basis: CostBasis
-    rate_per_hour: float | None = Field(default=None, ge=0)
+    rate_per_hour: FiniteFloat | None = Field(default=None, ge=0)
     gpu_type: str | None = None
     secure_cloud: bool | None = None
     queried_at: datetime | None = None
-    cache_age_seconds: float | None = Field(default=None, ge=0)
+    cache_age_seconds: FiniteFloat | None = Field(default=None, ge=0)
 
     @field_validator("queried_at")
     @classmethod
@@ -56,14 +56,14 @@ class CostBreakdownResponse(BaseModel):
     step_id: str
     worker_type: WorkerType
     worker_id: str | None
-    gpu_seconds: float | None = Field(default=None, ge=0)
-    cost: float | None = Field(default=None, ge=0)
+    gpu_seconds: FiniteFloat | None = Field(default=None, ge=0)
+    cost: FiniteFloat | None = Field(default=None, ge=0)
     basis: CostBasis
-    rate_per_hour: float | None = Field(default=None, ge=0)
+    rate_per_hour: FiniteFloat | None = Field(default=None, ge=0)
     gpu_type: str | None = None
     secure_cloud: bool | None = None
     queried_at: datetime | None = None
-    cache_age_seconds: float | None = Field(default=None, ge=0)
+    cache_age_seconds: FiniteFloat | None = Field(default=None, ge=0)
 
     @field_validator("queried_at")
     @classmethod
@@ -80,7 +80,7 @@ class JobCostResponse(BaseModel):
     """Execution-time cost evidence for one tracked job."""
 
     job_id: str
-    total_cost: float
+    total_cost: FiniteFloat = Field(ge=0)
     total_cost_basis: CostBasis | None
     cost_breakdown: list[CostBreakdownResponse]
 
@@ -91,7 +91,7 @@ class CostSummaryResponse(BaseModel):
     window: str
     since: datetime | None
     until: datetime
-    total_cost: float = Field(ge=0)
+    total_cost: FiniteFloat = Field(ge=0)
     job_count: int = Field(ge=0)
     unknown_cost_jobs: int = Field(ge=0)
 

@@ -24,6 +24,8 @@ from acheron.core.models import (
 from acheron.proto import synthesis_pb2, synthesis_pb2_grpc
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
+_MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024
+
 # Alias the proto Artifact once at module top — the proto-generated name
 # is not in the mypy module's namespace, so the bare `synthesis_pb2.Artifact`
 # would otherwise need a per-site # type: ignore[name-defined].
@@ -84,14 +86,19 @@ class GrpcWorker(Worker):
         start_time = time.monotonic()
         artifact_parts: list[_Artifact] = []
         pcm_chunks: list[bytes] = []
+        total_bytes = 0
 
         try:
             async for chunk in self._stub.Synthesize(request):
                 payload_type = chunk.WhichOneof("payload")
                 if payload_type == "artifact":
+                    total_bytes += len(chunk.artifact.data)
                     artifact_parts.append(chunk.artifact)
                 elif payload_type == "pcm_data":
+                    total_bytes += len(chunk.pcm_data)
                     pcm_chunks.append(chunk.pcm_data)
+                if total_bytes > _MAX_WORKER_OUTPUT_BYTES:
+                    raise WorkerError("Worker output exceeds the maximum allowed size")
         except grpc.aio.AioRpcError as exc:
             if exc.code() == grpc.StatusCode.UNAVAILABLE:
                 msg = f"Worker unavailable: {exc.details()}"
@@ -115,6 +122,8 @@ class GrpcWorker(Worker):
         step_id = job_id.rsplit("-", maxsplit=1)[-1] if "-" in job_id else "execute"
         dest_dir = self._data_dir / plan_job_id / step_id
 
+        if sum(len(art.data) for art in artifacts) > _MAX_WORKER_OUTPUT_BYTES:
+            raise WorkerError("Worker output exceeds the maximum allowed size")
         outputs: list[OutputFile] = []
         for art in artifacts:
             out = await _materialize_artifact(

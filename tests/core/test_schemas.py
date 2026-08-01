@@ -20,7 +20,9 @@ from acheron.core.schemas import (
     CapabilitiesResponse,
     CostBreakdownResponse,
     CostEstimateResponse,
+    CostSummaryResponse,
     InputResponse,
+    JobCostResponse,
     JobLogEvent,
     JobProgress,
     JobResponse,
@@ -72,6 +74,22 @@ def test_cost_estimate_response_round_trips_utc_metadata() -> None:
 
     assert response.queried_at == datetime(2026, 7, 30, 12, tzinfo=UTC)
     assert response.model_dump(mode="json")["basis"] == "measured"
+
+
+def test_cost_responses_reject_non_finite_values() -> None:
+    with pytest.raises(ValidationError):
+        CostEstimateResponse(cost=float("inf"), basis=CostBasis.UNKNOWN)
+    with pytest.raises(ValidationError):
+        CostSummaryResponse(
+            window="all",
+            since=None,
+            until=datetime.now(UTC),
+            total_cost=float("nan"),
+            job_count=0,
+            unknown_cost_jobs=0,
+        )
+    with pytest.raises(ValidationError):
+        JobCostResponse(job_id="j-1", total_cost=-1, total_cost_basis=None, cost_breakdown=[])
 
 
 def test_cost_estimate_response_rejects_naive_timestamp() -> None:

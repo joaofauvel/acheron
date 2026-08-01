@@ -142,6 +142,11 @@ def _safe_join(dest_dir: Path, filename: str) -> Path:
     if "\x00" in filename:
         msg = f"Refusing artifact with NUL byte in filename: {filename!r}"
         raise WorkerError(msg)
+    if any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in filename) or any(
+        delimiter in filename for delimiter in ("\r", "\n", '"', "\\", ";", ":", "/")
+    ):
+        msg = f"Refusing artifact with unsafe filename: {filename!r}"
+        raise WorkerError(msg)
     dest_dir_resolved = dest_dir.resolve()
     candidate = (dest_dir / filename).resolve()
     try:
