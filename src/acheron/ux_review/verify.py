@@ -57,7 +57,8 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
         if story.status != "verified":
             return ("PARTIAL", f"story status={story.status} is not currently verified")
         actual_head = _repository_head(root)
-        requested_head = actual_head if head_sha == "HEAD" and actual_head is not None else head_sha
+        marker_input = head_sha in {"HEAD", CURRENT_HEAD}
+        requested_head = actual_head if marker_input and actual_head is not None else head_sha
         marker_matches = actual_head is not None and requested_head == actual_head
         verified_commit = story.last_verified_at.get("commit")
         resolved_commit = requested_head if verified_commit == CURRENT_HEAD and marker_matches else verified_commit
@@ -99,7 +100,8 @@ def main() -> int:
     status, msg = verify(args.root, args.id, args.head)
     print(f"ux-verify {args.id}: {status} - {msg}")  # noqa: T201
     stale_metadata = status == "PARTIAL" and "does not match head=" in msg
-    return 1 if status == "FAIL" or stale_metadata else 0
+    non_verified_status = status == "PARTIAL" and "story status=" in msg
+    return 1 if status == "FAIL" or stale_metadata or non_verified_status else 0
 
 
 if __name__ == "__main__":

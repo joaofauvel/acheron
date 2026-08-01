@@ -112,6 +112,47 @@ class TestStepHandler:
             await handler(_make_plan().steps[0], _make_plan())
 
     @pytest.mark.asyncio
+    async def test_non_tts_dispatch_refreshes_worker_status_between_steps(self) -> None:
+        reg = InMemoryWorkerStore()
+        translation_caps = WorkerCapabilities(
+            worker_type=WorkerType.TRANSLATION,
+            supported_languages_in=frozenset({"en"}),
+            supported_languages_out=frozenset({"es"}),
+            supported_formats_in=frozenset({"text"}),
+            supported_formats_out=frozenset({"text"}),
+            max_payload_bytes=None,
+            batch_capable=False,
+            model_source=None,
+        )
+        await reg.register("trans-1", "http://127.0.0.1:1", "http", translation_caps)
+        await reg.register("trans-2", "http://127.0.0.1:2", "http", translation_caps)
+        chosen: list[str] = []
+
+        def _factory(registered: RegisteredWorker) -> LocalWorker:
+            chosen.append(registered.worker_id)
+            return LocalWorker(
+                worker_type=WorkerType.TRANSLATION,
+                handler=_echo_job_result,
+                supported_languages_in=frozenset({"en"}),
+                supported_languages_out=frozenset({"es"}),
+            )
+
+        handler = create_step_handler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
+        plan = _make_plan()
+        step = replace(
+            plan.steps[0],
+            step_id="translate",
+            type=WorkerType.TRANSLATION,
+            payload={"text": "hello"},
+            selected_worker_id=None,
+        )
+        await handler(step, plan)
+        await reg.set_worker_status("trans-1", WorkerStatus.OFFLINE, "down")
+        await handler(replace(step, step_id="translate-2"), plan)
+
+        assert chosen == ["trans-1", "trans-2"]
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "unsafe_voice",
         [
@@ -283,8 +324,8 @@ class TestStepHandler:
         assert chosen_worker_id == ["asr-good"]
 
     @pytest.mark.asyncio
-    async def test_list_all_cached_per_plan(self) -> None:
-        """registry.list_all() is called once when handling multiple steps of the same plan."""
+    async def test_list_all_refreshes_status_per_step(self) -> None:
+        """registry.list_all() refreshes worker status before each dispatch."""
         call_count = 0
 
         class CountingStore(InMemoryWorkerStore):
@@ -330,7 +371,7 @@ class TestStepHandler:
         )
         await handler(plan.steps[0], plan)
         await handler(plan.steps[1], plan)
-        assert call_count == 1
+        assert call_count == 2
 
     @pytest.mark.asyncio
     async def test_worker_factory_called_once_per_worker_id(self) -> None:

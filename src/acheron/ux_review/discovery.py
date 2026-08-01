@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import shutil
 import subprocess
 from typing import TYPE_CHECKING
@@ -33,19 +34,15 @@ def _repository_head(repo_root: Path) -> str | None:
 def _post_fixed_commit(repo_root: Path, story: Story, head_sha: str) -> bool:
     """Check that the requested head descends from the story's first fix commit."""
     actual_head = _repository_head(repo_root)
-    if actual_head is None:
-        return True
-    requested_head = actual_head if head_sha == "HEAD" else head_sha
-    if requested_head != actual_head:
+    if actual_head is None or not story.fixed_in:
         return False
-    if not story.fixed_in:
-        return False
+    requested_head = actual_head if head_sha in {"HEAD", CURRENT_HEAD} else head_sha
     fixed_sha = story.fixed_in[0]
     if fixed_sha == CURRENT_HEAD:
         fixed_sha = actual_head
     git = shutil.which("git")
     if git is None:
-        return True
+        return False
     try:
         subprocess.run(  # noqa: S603 - executable and arguments are fixed
             [git, "-C", str(repo_root), "merge-base", "--is-ancestor", fixed_sha, requested_head],
@@ -68,7 +65,10 @@ def _artifact_matches(path: Path, story: Story) -> bool:
     except OSError, SyntaxError, UnicodeError:
         return False
     docstring = ast.get_docstring(module, clean=False)
-    if not docstring or f"STORY_REF: {story.id}" not in docstring:
+    if not docstring:
+        return False
+    marker = re.compile(rf"^\s*STORY_REF:\s*{re.escape(story.id)}\s*$", re.MULTILINE)
+    if marker.search(docstring) is None:
         return False
     return _normalized(story.user_journey) in _normalized(docstring)
 

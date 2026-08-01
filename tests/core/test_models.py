@@ -51,7 +51,9 @@ class TestWorkerErrorSanitization:
             'provider aws error: request body: {"token":"secret", "url":"https://private.example"}',
             'Traceback (most recent call last):\n  File "worker.py", line 1\nRuntimeError: bearer secret',
             'provider details: request_id=req-123\nresponse: {"api_key": "secret"}\nValueError: leaked',
-            "https://worker.example:8443 failed with token=secret",
+            "https://user:secret@worker.example:8443/path?token=secret failed with token=secret",
+            "/srv/private/secret Traceback (most recent call last): File /srv/worker.py",
+            r"\\server\share\secret ..\..\credentials",
         ],
     )
     def test_diagnostics_and_traceback_continuations_are_not_retained(self, message: str) -> None:

@@ -174,25 +174,17 @@ class CachingStepHandler:
         src = plan.source_language
         dst = plan.target_language
 
-        if self._cached_workers is None or plan.plan_id != self._cached_plan_id:
-            self._cached_workers = await self._registry.list_all()
-            self._cached_plan_id = plan.plan_id
-        workers = self._cached_workers
-        if step.type is WorkerType.TTS and step.selected_worker_id is not None:
-            current = await self._registry.get(step.selected_worker_id)
-            cached = next((worker for worker in workers if worker.worker_id == step.selected_worker_id), None)
-            if current is None:
-                self._retire_worker_instance(step.selected_worker_id)
-                workers = tuple(worker for worker in workers if worker.worker_id != step.selected_worker_id)
-            else:
-                if cached != current:
-                    self._retire_worker_instance(step.selected_worker_id)
-                workers = (
-                    *(worker for worker in workers if worker.worker_id != step.selected_worker_id),
-                    current,
-                )
+        current_workers = await self._registry.list_all()
+        if self._cached_workers is not None and plan.plan_id == self._cached_plan_id:
+            previous = {worker.worker_id: worker for worker in self._cached_workers}
+            current_by_id = {worker.worker_id: worker for worker in current_workers}
+            for worker_id, old_worker in previous.items():
+                if current_by_id.get(worker_id) != old_worker:
+                    self._retire_worker_instance(worker_id)
+        self._cached_workers = current_workers
+        self._cached_plan_id = plan.plan_id
 
-        selected = _select_worker(step, workers, src, dst)
+        selected = _select_worker(step, current_workers, src, dst)
 
         chapter_id = step.payload.get("chapter_id", "")
         job = Job(

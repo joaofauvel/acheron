@@ -118,13 +118,17 @@ class TestWorkerRoutes:
         app = cast("FastAPI", transport.app)
         registry = app.state.orchestrator._registry  # noqa: SLF001
         monkeypatch.setattr(time, "time", lambda: 2000.0)
-        await registry.set_worker_status("asr-1", WorkerStatus.BOOTING, "secret internal error")
+        await registry.set_worker_status(
+            "asr-1",
+            WorkerStatus.BOOTING,
+            "failed /srv/private/secret at redis://user:secret@cache:6379/0?token=secret",
+        )
         monkeypatch.setattr(time, "time", lambda: 2100.0)
 
         unauthenticated = await client_with_token.get("/workers")
         anonymous_worker = {w["worker_id"]: w for w in unauthenticated.json()["workers"]}["asr-1"]
         assert anonymous_worker["booting_elapsed_seconds"] == 100.0
-        assert anonymous_worker["last_error"] == "secret internal error"
+        assert anonymous_worker["last_error"] == "health check failed"
         assert anonymous_worker["endpoint"] is None
 
         authenticated = await client_with_token.get("/workers", headers={"Authorization": token})

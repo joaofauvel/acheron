@@ -8,6 +8,8 @@ from enum import Enum
 
 from pydantic import TypeAdapter
 
+from acheron.core.errors import sanitise_public_message
+
 type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 
 
@@ -83,7 +85,7 @@ def sanitize_worker_error(message: str) -> str:
     sanitized = _WORKER_BEARER_RE.sub("[redacted credential]", sanitized)
     sanitized = _WORKER_JSON_SECRET_RE.sub("[redacted credential]", sanitized)
     sanitized = _WORKER_SECRET_RE.sub("[redacted credential]", sanitized)
-    return sanitized[:_MAX_WORKER_ERROR_LENGTH]
+    return sanitise_public_message(sanitized, fallback="health check failed")[:_MAX_WORKER_ERROR_LENGTH]
 
 
 class JobStatus(Enum):

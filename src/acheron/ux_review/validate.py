@@ -80,7 +80,8 @@ def _validate_story(story: Story, tag: str, root: Path, head_sha: str) -> list[s
     """Validate a single parsed story. Return a list of error messages."""
     errors: list[str] = []
     actual_head = _repository_head(root.parent.parent)
-    requested_head = actual_head if head_sha == "HEAD" and actual_head is not None else head_sha
+    marker_input = head_sha in {"HEAD", CURRENT_HEAD}
+    requested_head = actual_head if marker_input and actual_head is not None else head_sha
     current_markers = [
         value
         for value in (*story.fixed_in, *story.verified_in, story.last_verified_at.get("commit", ""))

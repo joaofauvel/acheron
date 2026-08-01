@@ -15,7 +15,7 @@ related: docs/code_review/
 |---|---|---|---|---|
 | DEPLOY | C | 4 medium, 1 low | 0 | 15 stories; 1 stale and 1 obsolete, with certificate, image, and environment gaps |
 | OPS | C | 1 medium, 1 low | 6 | 31 stories; voice, recovery, and traceability journeys now verified, with remaining durable-dashboard gaps |
-| MAINT | C | 3 high, 2 medium | 9 | 19 stories; recovery, retention, worker-history, and traceability journeys now verified |
+| MAINT | C | 3 high, 2 medium | 10 | 19 stories; recovery, retention, worker-history, and traceability journeys now verified |
 
 A theme with 0 stories is graded `—` (untested); this summary has no such themes.
 
@@ -49,10 +49,10 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 | open | 12 |
 | in-progress | 0 |
 | fixed | 28 |
-| verified | 15 |
+| verified | 16 |
 | partial | 0 |
 | stale | 3 |
-| obsolete | 7 |
+| obsolete | 6 |
 | broken-yaml | 0 |
 | wontfix | 0 |
 | **total filed** | **65** |
@@ -82,7 +82,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (`fix(acceptance): close review blockers`).
+- Commit: `CURRENT_HEAD` (`fix(acceptance): close validation error leaks`).
 - Evidence: `uv run pytest --no-cov tests/core/test_errors.py tests/shell/api/test_jobs.py -q` passed (`143 passed`), covering single-component rooted paths, UNC paths, safe fallbacks, and internal-message immutability; `just lint-strict` passed.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.
