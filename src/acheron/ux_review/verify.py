@@ -36,18 +36,34 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
     """
     found = find_story(root, story_id)
     if found is None:
-        return ("FAIL", f"story {story_id} not found in any theme file")
-    _path, story = found
-    if story.discovered_via and story.discovered_via[0] in {"simulation", "first-run"}:
-        artifact = artifact_path_for(story, root, head_sha)
-        if artifact is None:
-            return ("FAIL", f"no harness artifact for discovered_via={story.discovered_via[0]}")
-        return ("PASS", f"artifact={artifact}")
-    if story.verified_by:
-        return ("PASS", f"verified_by={story.verified_by}")
-    if story.last_verified_at and "commit" in story.last_verified_at:
-        return ("PASS", f"verified at {story.last_verified_at['commit']}")
-    return ("PARTIAL", "no harness artifact and no verified_by")
+        result = ("FAIL", f"story {story_id} not found in any theme file")
+    else:
+        _path, story = found
+        verified_commit = story.last_verified_at.get("commit")
+        if verified_commit != head_sha:
+            if verified_commit is None:
+                result = ("PARTIAL", "verification metadata is missing last_verified_at.commit")
+            else:
+                result = (
+                    "PARTIAL",
+                    f"last_verified_at.commit={verified_commit} does not match head={head_sha}",
+                )
+        elif head_sha not in story.verified_in:
+            result = ("PARTIAL", f"head={head_sha} is missing from verified_in")
+        elif story.discovered_via and story.discovered_via[0] in {"simulation", "first-run"}:
+            artifact = artifact_path_for(story, root, head_sha)
+            if artifact is None:
+                result = (
+                    "FAIL",
+                    f"no harness artifact for discovered_via={story.discovered_via[0]}",
+                )
+            else:
+                result = ("PASS", f"artifact={artifact}")
+        elif story.verified_by:
+            result = ("PASS", f"verified_by={story.verified_by}")
+        else:
+            result = ("PASS", f"verified at {verified_commit}")
+    return result
 
 
 def main() -> int:
