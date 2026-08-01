@@ -339,7 +339,7 @@ files:
   - path: src/acheron/shell/api/routes/workers.py
     lines: 22-29
   - path: src/acheron/shell/api/routes/workers.py
-    lines: 74-96
+    lines: 74-95
   - path: dashboard/booting_progress.py
     lines: 22-54
   - path: dashboard/app.py
@@ -385,12 +385,10 @@ files:
   - path: src/acheron/shell/stores/redis.py
     lines: 212-227
 related: []
-fixed_in: [32335ce, CURRENT_HEAD]
-verified_in: [32335ce, CURRENT_HEAD]
-last_verified_at:
-  commit: CURRENT_HEAD
-  date: "2026-07-30"
-verified_by: "harness:phase-4d-task-10-recovery"
+fixed_in: [32335ce]
+verified_in: []
+last_verified_at: {}
+verified_by: ""
 incident_ref: TBD-pagerduty
 ---
 ```

@@ -110,7 +110,7 @@ Field semantics:
 - **`user_facing_surface: internal`** is reserved for surfaces below the user-facing API (e.g. internal cache, internal transport). Use only when no other enum value applies and the operator still observes the effect indirectly.
 - **`related:`** accepts any story ID, present or future, in any program; IDs are not validated. Self-reference is allowed but discouraged. A reference to a `wontfix` story is allowed; the new story must justify why it is not also `wontfix`.
 - **`fixed_in` and `verified_in`** start empty. `ux-review-update` resolves `"pending"` placeholders to commit SHAs whose Conventional Commits scope includes the story ID.
-- **`last_verified_at.commit`** is the harness's last-green SHA (for `discovered_via: simulation | first-run`) or the manual verification commit (for human-only paths).
+- **`last_verified_at.commit`** is the harness's last-green SHA (for `discovered_via: simulation | first-run`) or the manual verification commit (for human-only paths). Tracked metadata may use the literal `CURRENT_HEAD`; the verifier resolves it only when it matches the repository's actual checked-out HEAD, never an arbitrary supplied SHA.
 - **`verified_by`** must be someone other than the PR author. A harness artifact is acceptable as a "second pair of eyes" when the PR author is also the harness author — the harness itself is the second witness.
 - **`bundle`** is optional and groups stories into one worktree. Mirror the code-review `tackle/round-N` pattern. Use when stories share a `user_facing_surface` and non-conflicting `files` ranges.
 

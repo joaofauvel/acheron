@@ -14,6 +14,7 @@ from acheron.core.models import (
     StepStatus,
     VoiceRange,
     WorkerCapabilities,
+    WorkerStatus,
     WorkerType,
 )
 from acheron.core.planner import (
@@ -185,6 +186,47 @@ class TestCompilePlan:
         )
         synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
         assert synthesize.selected_worker_id == "tts-a"
+
+    def test_case_only_worker_ids_use_exact_tie_breaker_independent_of_input_order(self) -> None:
+        caps = WorkerCapabilities(**{**_tts_caps().__dict__, "metadata": {"speakers": ["Vivian"]}})
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice="Vivian",
+        )
+        for records in (
+            (("tts-a", caps), ("tts-A", caps), ("translation", _translation_caps())),
+            (("tts-A", caps), ("tts-a", caps), ("translation", _translation_caps())),
+        ):
+            plan = compile_plan(request, ExecutorStrategy.STREAMING, records)
+            synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+            assert synthesize.selected_worker_id == "tts-A"
+
+    def test_offline_worker_is_excluded_when_healthy_fallback_exists(self) -> None:
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
+        plan = compile_plan(
+            request,
+            ExecutorStrategy.STREAMING,
+            (("tts-a", _tts_caps()), ("tts-z", _tts_caps()), ("translation", _translation_caps())),
+            worker_statuses={
+                "tts-a": WorkerStatus.OFFLINE,
+                "tts-z": WorkerStatus.HEALTHY,
+                "translation": WorkerStatus.HEALTHY,
+            },
+        )
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+        assert synthesize.selected_worker_id == "tts-z"
+
+    def test_offline_only_worker_fails_preflight(self) -> None:
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
+        with pytest.raises(InvalidLanguagePathError):
+            compile_plan(
+                request,
+                ExecutorStrategy.STREAMING,
+                (("tts-a", _tts_caps()), ("translation", _translation_caps())),
+                worker_statuses={"tts-a": WorkerStatus.OFFLINE, "translation": WorkerStatus.HEALTHY},
+            )
 
     def test_capability_only_legacy_plan_has_no_selected_worker(self) -> None:
         request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")

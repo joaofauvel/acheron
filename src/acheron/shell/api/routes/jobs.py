@@ -131,7 +131,7 @@ def _voice_ranges(body: SubmitJobRequest) -> tuple[VoiceRange, ...]:
     try:
         return tuple(VoiceRange(item.start_chapter, item.end_chapter, item.voice) for item in body.voice_map)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitise_public_message(str(exc))) from exc
 
 
 async def _canonicalize_voices(
@@ -195,8 +195,7 @@ async def _build_job_request(  # noqa: C901, PLR0912
     try:
         strategy = ExecutorStrategy(body.executor_strategy)
     except ValueError as exc:
-        msg = f"Invalid strategy: {body.executor_strategy}"
-        raise HTTPException(status_code=400, detail=msg) from exc
+        raise HTTPException(status_code=400, detail="Invalid executor strategy") from exc
 
     normalized_asr_model = body.asr_model.strip() if body.asr_model is not None else None
     normalized_voice = body.voice.strip() if body.voice is not None else None
@@ -306,8 +305,7 @@ async def _build_retry_request(  # noqa: C901, PLR0912, PLR0915
     try:
         strategy = ExecutorStrategy(strategy_value)
     except ValueError as exc:
-        msg = f"Invalid strategy: {strategy_value}"
-        raise HTTPException(status_code=400, detail=msg) from exc
+        raise HTTPException(status_code=400, detail="Invalid executor strategy") from exc
 
     label = body.label if body.label is not None else source.label
     request: JobRequest
@@ -622,7 +620,7 @@ async def list_jobs(  # noqa: PLR0913
             include_archived=include_archived,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitise_public_message(str(exc))) from exc
     jobs = await orch.list_jobs(query)
     if label is not None:
         jobs = tuple(job for job in jobs if fnmatch.fnmatchcase(job.label or "", label))

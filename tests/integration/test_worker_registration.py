@@ -126,8 +126,9 @@ async def test_capabilities_filter_no_match(runner: CliRunner, wired_app: FastAP
     result = runner.invoke(main, ["capabilities", "--src", "xx"])
     assert result.exit_code != 0
     assert "Error 422" in result.output
-    assert "source language 'xx' is not supported" in result.output
-    assert "supported sources: de, en, es, fr" in result.output
+    assert "source language is not supported" in result.output
+    assert "'xx'" not in result.output
+    assert "sources: de, en, es, fr" in result.output
 
 
 def _wire_app(

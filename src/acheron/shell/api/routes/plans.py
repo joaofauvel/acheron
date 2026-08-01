@@ -24,7 +24,7 @@ async def get_plan(plan_id: str, orch: OrchestratorDep) -> PlanResponse:
     try:
         plan = await orch.get_plan(plan_id)
     except CacheMissError as exc:
-        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}") from exc
+        raise HTTPException(status_code=404, detail="Plan not found") from exc
     except CacheCorruptedError as exc:
         raise HTTPException(status_code=500, detail="Cached plan could not be loaded") from exc
     return PlanResponse.from_plan(plan)

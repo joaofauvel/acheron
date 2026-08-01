@@ -122,12 +122,20 @@ async def make_app(tmp_path: Path) -> FastAPI:
     input_dir = tmp_path / "input"
     input_dir.mkdir(parents=True, exist_ok=True)
     (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
-    return create_app(
+    app = create_app(
         registry=reg,
         job_store=InMemoryJobStore(),
         cache=PlanCache(tmp_path),
         data_dir=tmp_path,
     )
+
+    from acheron.shell.health import HealthProbeResult
+
+    async def _healthy(_endpoint: str, _transport: str) -> HealthProbeResult:
+        return HealthProbeResult(healthy=True)
+
+    app.state.orchestrator._health_monitor._health_check = _healthy  # noqa: SLF001
+    return app
 
 
 @pytest_asyncio.fixture

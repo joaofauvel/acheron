@@ -65,8 +65,7 @@ async def register_worker(
     try:
         worker_type = WorkerType(body.capabilities.worker_type)
     except ValueError as exc:
-        msg = f"Invalid worker_type: {body.capabilities.worker_type}"
-        raise HTTPException(status_code=400, detail=msg) from exc
+        raise HTTPException(status_code=400, detail="Invalid worker type") from exc
 
     capabilities = WorkerCapabilities(
         worker_type=worker_type,

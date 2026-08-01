@@ -177,7 +177,7 @@ def test_admin_request_models_are_strict_and_validate_durations() -> None:
     ("path", "body"),
     [
         ("/admin/jobs/missing/mark-failed", {"reason": "operator"}),
-        ("/admin/jobs/missing/archive", {"apply": True}),
+        ("/admin/jobs/missing/archive", {}),
         ("/admin/jobs/cleanup", {"retention_seconds": 60, "apply": True}),
     ],
 )

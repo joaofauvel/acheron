@@ -159,13 +159,13 @@ class TestSanitiseExcMessage:
         from acheron.core.errors import sanitise_exc_message
 
         exc = RuntimeError("secret stuff\n  File '/etc/passwd'\nTraceback (most recent call last):")
-        assert sanitise_exc_message(exc) == "RuntimeError: secret stuff"
+        assert sanitise_exc_message(exc) == "RuntimeError: <no message>"
 
     def test_strips_leading_blank_lines(self) -> None:
         from acheron.core.errors import sanitise_exc_message
 
         exc = RuntimeError("\n\n  File '/etc/passwd'\nactual message")
-        assert sanitise_exc_message(exc) == "RuntimeError: actual message"
+        assert sanitise_exc_message(exc) == "RuntimeError: <no message>"
 
     def test_empty_message_returns_placeholder(self) -> None:
         from acheron.core.errors import sanitise_exc_message
@@ -181,7 +181,7 @@ class TestSanitiseExcMessage:
         from acheron.core.errors import sanitise_exc_message
 
         exc = RuntimeError("DB connect failed password=foo at /runpod-volume")
-        assert sanitise_exc_message(exc) == "RuntimeError: DB connect failed password=<redacted> at /runpod-volume"
+        assert sanitise_exc_message(exc) == "RuntimeError: <no message>"
 
     def test_strips_multiple_credential_variants(self) -> None:
         from acheron.core.errors import sanitise_exc_message
@@ -190,3 +190,18 @@ class TestSanitiseExcMessage:
         result = sanitise_exc_message(exc)
         assert "abc123" not in result
         assert "xyz" not in result
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "/runpod-volume/models/qwen3",
+            "https://user:secret@example.test/execute?token=secret#fragment",
+            "grpc://user:secret@example.test:8443/execute",
+            "Traceback (most recent call last): File '/srv/worker.py', line 2",
+        ],
+    )
+    def test_fails_closed_for_publicly_unsafe_messages(self, message: str) -> None:
+        from acheron.core.errors import sanitise_exc_message
+
+        result = sanitise_exc_message(RuntimeError(message))
+        assert result == "RuntimeError: <no message>"

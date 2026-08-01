@@ -17,6 +17,7 @@ from acheron.core.models import (
     PlanStep,
     StepStatus,
     WorkerCapabilities,
+    WorkerStatus,
     WorkerType,
 )
 from acheron.shell.cache import StepCache
@@ -99,6 +100,16 @@ class TestStepHandler:
         result = await handler(plan.steps[0], plan)
         assert result.worker_id == "tts-1"
         assert chosen == ["tts-1"]
+
+    @pytest.mark.asyncio
+    async def test_offline_selected_tts_worker_is_rejected(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        await reg.set_worker_status("tts-1", WorkerStatus.OFFLINE, "down")
+        handler = create_step_handler(reg, data_dir=_TEST_DATA_DIR)
+
+        with pytest.raises(VoiceSelectionError, match="offline"):
+            await handler(_make_plan().steps[0], _make_plan())
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

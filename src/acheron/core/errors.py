@@ -158,16 +158,5 @@ def sanitise_exc_message(exc: BaseException) -> str:
     belong in ``logger.exception`` output, not in machine-readable error
     fields.
     """
-    raw = str(exc)
-    first_line = ""
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith(("File ", "Traceback")):
-            continue
-        first_line = _scrub_credentials(stripped)
-        break
-    if not first_line:
-        first_line = "<no message>"
-    return f"{type(exc).__name__}: {first_line}"
+    safe_message = sanitise_public_message(str(exc), fallback="<no message>")
+    return f"{type(exc).__name__}: {safe_message}"

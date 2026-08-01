@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from acheron.core.errors import VoiceSelectionError, WorkerError
 from acheron.core.interfaces import Worker
-from acheron.core.models import Job, JobResult, JsonValue, WorkerCapabilities, WorkerType
+from acheron.core.models import Job, JobResult, JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
 from acheron.core.planner import _safe_voice, canonicalize_voice
 from acheron.shell.transports.grpc import GrpcWorker
 from acheron.shell.transports.http import HttpWorker
@@ -112,6 +112,9 @@ def _select_worker(
         if selected.capabilities.worker_type is not WorkerType.TTS:
             msg = "Planner-selected worker is no longer a TTS worker"
             raise VoiceSelectionError(msg)
+        if selected.status is WorkerStatus.OFFLINE:
+            msg = "Planner-selected TTS worker is offline"
+            raise VoiceSelectionError(msg)
         if not _language_matches(step.type, selected.capabilities, src, dst):
             msg = "Planner-selected TTS worker no longer supports the language"
             raise VoiceSelectionError(msg)
@@ -127,7 +130,8 @@ def _select_worker(
         (
             worker
             for worker in workers
-            if worker.capabilities.worker_type == step.type
+            if worker.status is not WorkerStatus.OFFLINE
+            and worker.capabilities.worker_type == step.type
             and _language_matches(step.type, worker.capabilities, src, dst)
         ),
         None,

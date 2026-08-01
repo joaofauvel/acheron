@@ -211,7 +211,7 @@ files:
   - path: src/acheron/shell/api/routes/workers.py
     lines: 22-29
   - path: src/acheron/shell/api/routes/workers.py
-    lines: 74-96
+    lines: 74-95
   - path: dashboard/booting_progress.py
     lines: 1-54
   - path: dashboard/app.py

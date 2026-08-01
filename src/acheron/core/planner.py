@@ -6,6 +6,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from acheron.core.epub import read_epub_chapters
 from acheron.core.errors import ChunkingTooLongForWorkerError, InvalidLanguagePathError, VoiceSelectionError
@@ -21,11 +22,15 @@ from acheron.core.models import (
     VoiceRange,
     VoiceSelection,
     WorkerCapabilities,
+    WorkerStatus,
     WorkerType,
 )
 
 type WorkerCapabilityRecord = tuple[str | None, WorkerCapabilities]
 type CapabilityInput = tuple[WorkerCapabilities, ...] | tuple[WorkerCapabilityRecord, ...]
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,7 @@ def compile_plan(  # noqa: PLR0913
     *,
     chunking: ChunkingLimits | None = None,
     source_root: Path | None = None,
+    worker_statuses: Mapping[str, WorkerStatus] | None = None,
 ) -> Plan:
     """Compile a job request into a validated Plan DAG.
 
@@ -67,6 +73,12 @@ def compile_plan(  # noqa: PLR0913
             ``max_input_tokens``.
     """
     records = _capability_records(capabilities)
+    if worker_statuses is not None:
+        records = tuple(
+            (worker_id, capability)
+            for worker_id, capability in records
+            if worker_id is None or worker_statuses.get(worker_id, WorkerStatus.HEALTHY) is not WorkerStatus.OFFLINE
+        )
     capability_values = tuple(capability for _, capability in records)
     _validate_language_path(request, capability_values)
     selection = _request_voice_selection(request)
@@ -202,7 +214,11 @@ def select_voice_worker_id(
     requested.update(item.voice for item in selection.ranges)
     available = set().union(*(set(advertised_voices(caps)) for _, caps in candidates)) if candidates else set()
     if not requested:
-        return min((worker_id for worker_id, _ in candidates if worker_id), key=str.casefold, default=None)
+        return min(
+            (worker_id for worker_id, _ in candidates if worker_id),
+            key=lambda worker_id: (worker_id.casefold(), worker_id),
+            default=None,
+        )
 
     matching: list[str] = []
     for worker_id, caps in candidates:

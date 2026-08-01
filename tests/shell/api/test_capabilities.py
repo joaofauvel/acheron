@@ -111,7 +111,7 @@ class TestTypedCapabilitiesRoute:
         assert response.status_code == 422
         body = response.json()
         assert "detail" in body
-        assert "bogus" in body["detail"]
+        assert "bogus" not in body["detail"]
 
     @pytest.mark.asyncio
     async def test_type_with_src_returns_422(self, client) -> None:  # type: ignore[no-untyped-def]
@@ -138,7 +138,7 @@ class TestLanguagePairCapabilitiesRoute:
         body = response.json()
         assert "detail" in body
         detail = body["detail"]
-        assert "xx" in detail
+        assert "xx" not in detail
         # Extract the sorted list after 'supported sources: '.
         prefix = "supported sources: "
         assert prefix in detail
@@ -152,7 +152,7 @@ class TestLanguagePairCapabilitiesRoute:
         body = response.json()
         assert "detail" in body
         detail = body["detail"]
-        assert "xx" in detail
+        assert "xx" not in detail
         # Extract the sorted list after 'supported targets: '.
         prefix = "supported targets: "
         assert prefix in detail

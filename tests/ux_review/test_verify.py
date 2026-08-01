@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import acheron.ux_review.verify as verify_module
 from acheron.ux_review.verify import verify
 
 _HEAD = "head-sha"
 
 
-def _write_story(root: Path, *, discovered_via: str = "code-review", metadata: str = "") -> None:
+def _write_story(
+    root: Path,
+    *,
+    discovered_via: str = "code-review",
+    status: str = "verified",
+    metadata: str = "",
+) -> None:
     docs = root / "docs" / "ux_review"
     docs.mkdir(parents=True)
     (docs / "ops.md").write_text(
@@ -19,7 +28,7 @@ def _write_story(root: Path, *, discovered_via: str = "code-review", metadata: s
 ---
 id: OPS-999
 title: Test story
-status: verified
+status: {status}
 severity: medium
 effort: S
 discovered_via: [{discovered_via}]
@@ -37,7 +46,10 @@ files:
     )
 
 
-def test_current_head_marker_resolves_to_supplied_head(tmp_path: Path) -> None:
+def test_current_head_marker_resolves_only_to_actual_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _write_story(
         tmp_path,
         metadata=(
@@ -49,10 +61,55 @@ def test_current_head_marker_resolves_to_supplied_head(tmp_path: Path) -> None:
         ),
     )
 
+    monkeypatch.setattr(verify_module, "_repository_head", lambda _root: _HEAD)
     status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
 
     assert status == "PASS"
     assert message == "verified_by=focused-journey"
+
+
+def test_current_head_marker_rejects_stale_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("verified_in: [CURRENT_HEAD]\nlast_verified_at:\n  commit: CURRENT_HEAD\n  date: '2026-07-31'\n"),
+    )
+    monkeypatch.setattr(verify_module, "_repository_head", lambda _root: _HEAD)
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", "stale-sha")
+
+    assert status == "PARTIAL"
+    assert "last_verified_at.commit" in message
+
+
+def test_default_head_resolves_actual_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("verified_in: [CURRENT_HEAD]\nlast_verified_at:\n  commit: CURRENT_HEAD\n  date: '2026-07-31'\n"),
+    )
+    monkeypatch.setattr(verify_module, "_repository_head", lambda _root: _HEAD)
+
+    status, _message = verify(tmp_path / "docs" / "ux_review", "OPS-999", "HEAD")
+
+    assert status == "PASS"
+
+
+def test_obsolete_story_is_not_currently_verified(tmp_path: Path) -> None:
+    _write_story(
+        tmp_path,
+        status="obsolete",
+        metadata=("verified_in: [CURRENT_HEAD]\nlast_verified_at:\n  commit: CURRENT_HEAD\n  date: '2026-07-31'\n"),
+    )
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
+
+    assert status == "PARTIAL"
+    assert "obsolete" in message
 
 
 def test_matching_metadata_passes(tmp_path: Path) -> None:

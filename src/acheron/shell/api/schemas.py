@@ -115,7 +115,6 @@ class MarkFailedRequest(_StrictRequest):
 class ArchiveRequest(_StrictRequest):
     """Request body for archiving jobs."""
 
-    apply: bool = False
     reason: str | None = None
 
 

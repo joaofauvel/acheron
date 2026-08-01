@@ -95,12 +95,20 @@ async def make_app(
     await reg.register("asr-1", "http://127.0.0.1:3", "http", asr_caps())
     for worker_id, endpoint, transport, caps in extra_workers or []:
         await reg.register(worker_id, endpoint, transport, caps)
-    return create_app(
+    app = create_app(
         registry=reg,
         job_store=InMemoryJobStore(),
         cache=PlanCache(tmp_path),
         data_dir=tmp_path,
     )
+
+    from acheron.shell.health import HealthProbeResult
+
+    async def _healthy(_endpoint: str, _transport: str) -> HealthProbeResult:
+        return HealthProbeResult(healthy=True)
+
+    app.state.orchestrator._health_monitor._health_check = _healthy  # noqa: SLF001
+    return app
 
 
 @pytest.fixture
@@ -330,6 +338,13 @@ async def wired_orchestrator(
     )
 
     orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), step_cache=StepCache(tmp_path))
+
+    from acheron.shell.health import HealthProbeResult
+
+    async def _healthy(_endpoint: str, _transport: str) -> HealthProbeResult:
+        return HealthProbeResult(healthy=True)
+
+    orch._health_monitor._health_check = _healthy  # noqa: SLF001
     await orch.start()
     yield orch
     await orch.shutdown()

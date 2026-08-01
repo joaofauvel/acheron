@@ -597,6 +597,7 @@ class Orchestrator:
         """
         workers = tuple(await self._registry.list_all())
         capabilities = tuple((worker.worker_id, worker.capabilities) for worker in workers)
+        worker_statuses = {worker.worker_id: worker.status for worker in workers}
         return compile_plan(
             request,
             strategy,
@@ -607,6 +608,7 @@ class Orchestrator:
                 chars_per_token=self._settings.chars_per_token,
             ),
             source_root=self._settings.orchestrator.data_dir,
+            worker_statuses=worker_statuses,
         )
 
     async def preview_job(self, request: JobRequest, strategy: ExecutorStrategy) -> Plan:

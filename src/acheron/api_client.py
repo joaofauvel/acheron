@@ -222,7 +222,7 @@ class AcheronClient:
 
     async def archive_job(self, job_id: str, *, reason: str | None = None) -> JobResponse:
         """Archive one job through the administrative API."""
-        payload: dict[str, bool | str] = {"apply": True}
+        payload: dict[str, str] = {}
         if reason is not None:
             payload["reason"] = reason
         async with self._http_client() as client:

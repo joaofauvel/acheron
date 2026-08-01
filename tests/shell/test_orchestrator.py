@@ -1827,7 +1827,7 @@ class TestOrchestrator:
 
         assert tracked.status == PlanStatus.FAILED
         assert tracked.result is not None
-        assert [error.message for error in tracked.result.errors] == ["RuntimeError: secret stuff"]
+        assert [error.message for error in tracked.result.errors] == ["RuntimeError: <no message>"]
 
     @pytest.mark.asyncio
     async def test_orchestrator_generates_and_persists_registration_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

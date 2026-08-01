@@ -206,7 +206,7 @@ class TestEdgeRoutes:
         estimate = response.content
         assert b'"basis":"unknown"' in estimate
         assert b"password=secret" not in estimate
-        assert any("RuntimeError: price lookup password=<redacted>" in record.message for record in caplog.records)
+        assert any("RuntimeError: <no message>" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_execute_error_sanitises_secrets_in_message(

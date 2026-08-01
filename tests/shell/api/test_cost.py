@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -73,6 +74,29 @@ async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert response.json()["cost_breakdown"][0]["gpu_type"] == "L4"
         assert response.json()["cost_breakdown"][0]["cache_age_seconds"] == 0.0
+    finally:
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_job_cost_uses_structured_sanitized_error(tmp_path: Path) -> None:
+    app = create_app(
+        registry=InMemoryWorkerStore(),
+        job_store=InMemoryJobStore(),
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
+    await app.state.orchestrator.start()
+    try:
+        job_id = r"..\..\secret"
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(f"/jobs/{quote(job_id, safe='')}/cost")
+        assert response.status_code == 404
+        detail = response.json()["detail"]
+        assert detail == {"type": "JobNotFoundError", "message": "job not found", "remediation": None}
+        assert "secret" not in response.text
+        assert "token" not in response.text
     finally:
         await app.state.orchestrator.shutdown()
         await app.state.orchestrator.close()

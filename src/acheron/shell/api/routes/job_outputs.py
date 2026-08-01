@@ -60,12 +60,12 @@ def _require_regular_file(result: os.stat_result, stored_path: str) -> None:
 def _open_output_fd(data_dir: Path, job_id: str, stored_path: str) -> tuple[int, os.stat_result]:
     """Open a stored output without following path components or replacement races."""
     if not _is_path_component(job_id):
-        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}")
+        raise _not_found("OutputNotFoundError", "Output not found", "acheron job status")
 
     data_root = data_dir.resolve()
     raw_job_root = data_root / job_id
     if raw_job_root.is_symlink():
-        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}")
+        raise _not_found("OutputNotFoundError", "Output not found", "acheron job status")
 
     file_fd: int | None = None
     directory_fd: int | None = None
@@ -82,7 +82,7 @@ def _open_output_fd(data_dir: Path, job_id: str, stored_path: str) -> tuple[int,
     except (FileNotFoundError, OSError, ValueError) as exc:
         if file_fd is not None:
             os.close(file_fd)
-        raise _not_found("OutputNotFoundError", "Output not found", f"acheron job status {job_id}") from exc
+        raise _not_found("OutputNotFoundError", "Output not found", "acheron job status") from exc
     finally:
         if directory_fd is not None:
             os.close(directory_fd)
@@ -126,18 +126,16 @@ async def get_job_output(job_id: str, output_index: int, orch: OrchestratorDep) 
     """Serve an output listed by its persisted position."""
     tracked = await orch.get_job(job_id)
     if tracked is None:
-        raise _not_found("JobNotFoundError", f"Job not found: {job_id}", "acheron jobs")
+        raise _not_found("JobNotFoundError", "Job not found", "acheron jobs")
     if tracked.result is None:
-        raise _not_found("OutputNotFoundError", f"Output not found: {output_index}", f"acheron job status {job_id}")
+        raise _not_found("OutputNotFoundError", f"Output not found: {output_index}", "acheron job status")
 
     if output_index < 0:
-        raise _not_found("OutputNotFoundError", f"Output not found: {output_index}", f"acheron job status {job_id}")
+        raise _not_found("OutputNotFoundError", f"Output not found: {output_index}", "acheron job status")
     try:
         output = tracked.result.outputs[output_index]
     except IndexError as exc:
-        raise _not_found(
-            "OutputNotFoundError", f"Output not found: {output_index}", f"acheron job status {job_id}"
-        ) from exc
+        raise _not_found("OutputNotFoundError", f"Output not found: {output_index}", "acheron job status") from exc
     file_fd, stat_result = _open_output_fd(orch.settings.orchestrator.data_dir, job_id, output.path)
     return _PinnedFileResponse(
         file_fd,

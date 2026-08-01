@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,6 +30,20 @@ def find_story(root: Path, story_id: str) -> tuple[Path, Story] | None:
     return None
 
 
+def _repository_head(root: Path) -> str | None:
+    """Return the actual repository HEAD containing ``root`` when available."""
+    try:
+        result = subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            ["git", "-C", str(root), "rev-parse", "HEAD"],  # noqa: S607 - fixed executable
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return None
+    return result.stdout.strip() or None
+
+
 def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
     """Verify a single story. Returns (status, message).
 
@@ -39,20 +54,27 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:
         result = ("FAIL", f"story {story_id} not found in any theme file")
     else:
         _path, story = found
+        if story.status in {"obsolete", "wontfix"}:
+            return ("PARTIAL", f"story status={story.status} is not current")
+        actual_head = _repository_head(root)
+        requested_head = actual_head if head_sha == "HEAD" and actual_head is not None else head_sha
+        marker_matches = actual_head is not None and requested_head == actual_head
         verified_commit = story.last_verified_at.get("commit")
-        resolved_commit = head_sha if verified_commit == CURRENT_HEAD else verified_commit
-        if resolved_commit != head_sha:
+        resolved_commit = requested_head if verified_commit == CURRENT_HEAD and marker_matches else verified_commit
+        if resolved_commit != requested_head:
             if verified_commit is None:
                 result = ("PARTIAL", "verification metadata is missing last_verified_at.commit")
             else:
                 result = (
                     "PARTIAL",
-                    f"last_verified_at.commit={verified_commit} does not match head={head_sha}",
+                    f"last_verified_at.commit={verified_commit} does not match head={requested_head}",
                 )
-        elif not any(commit in {head_sha, CURRENT_HEAD} for commit in story.verified_in):
-            result = ("PARTIAL", f"head={head_sha} is missing from verified_in")
+        elif not any(
+            commit == requested_head or (commit == CURRENT_HEAD and marker_matches) for commit in story.verified_in
+        ):
+            result = ("PARTIAL", f"head={requested_head} is missing from verified_in")
         elif story.discovered_via and story.discovered_via[0] in {"simulation", "first-run"}:
-            artifact = artifact_path_for(story, root, head_sha)
+            artifact = artifact_path_for(story, root, requested_head)
             if artifact is None:
                 result = (
                     "FAIL",

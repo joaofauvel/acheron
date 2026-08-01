@@ -71,7 +71,7 @@ async def get_capabilities(
         )
         if matching_type is None:
             supported_types = ", ".join(sorted(candidate.value for candidate in _TYPED_WORKER_TYPES))
-            msg = f"Invalid worker type '{worker_type}'; supported types: {supported_types}"
+            msg = f"Invalid worker type; supported types: {supported_types}"
             raise HTTPException(status_code=422, detail=msg)
         return CapabilitiesResponse(
             language_pairs=[],
@@ -96,11 +96,11 @@ async def get_capabilities(
     supported_languages = _supported_languages(workers)
     if src is not None and src not in supported_languages:
         supported = ", ".join(supported_languages)
-        msg = f"source language '{src}' is not supported by any registered worker; supported sources: {supported}"
+        msg = f"source language is not supported by any registered worker; supported sources: {supported}"
         raise HTTPException(status_code=422, detail=msg)
     if dest is not None and dest not in supported_languages:
         supported = ", ".join(supported_languages)
-        msg = f"destination language '{dest}' is not supported by any registered worker; supported targets: {supported}"
+        msg = f"destination language is not supported by any registered worker; supported targets: {supported}"
         raise HTTPException(status_code=422, detail=msg)
 
     pairs = await orch.get_capabilities(src=src, dst=dest)
