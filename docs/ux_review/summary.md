@@ -82,7 +82,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (`fix(cli): close streamed error generators`).
+- Commit: `CURRENT_HEAD` (final acceptance evidence refresh).
 - Evidence: focused sanitizer, edge-contract, verifier, deterministic-selection, and stream-cleanup regressions pass; `just validate` is the final gate with 1591 passing tests and 9 expected skips, with no warnings.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.
