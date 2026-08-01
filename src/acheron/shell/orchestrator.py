@@ -183,6 +183,7 @@ class Orchestrator:
             registry,
             local_handlers=self._local_handlers,
             data_dir=self._settings.orchestrator.data_dir,
+            registration_token=self._settings.orchestrator.registration_token,
         )
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)

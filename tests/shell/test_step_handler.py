@@ -553,8 +553,14 @@ class TestHttpWorkerStepCache:
             local_handlers: dict[str, LocalJobHandler] | None = None,
             *,
             data_dir: Path | str = _TEST_DATA_DIR,
+            registration_token: str | None = None,
         ) -> object:
-            worker = original_default(registered, local_handlers, data_dir=data_dir)
+            worker = original_default(
+                registered,
+                local_handlers,
+                data_dir=data_dir,
+                registration_token=registration_token,
+            )
             captured["worker"] = worker
             worker.execute = _echo_job_result  # type: ignore[method-assign]
             return worker

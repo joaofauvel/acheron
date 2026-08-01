@@ -498,7 +498,7 @@ async def preview_job(
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, orch: OrchestratorDep) -> JobResponse:
+async def get_job(job_id: str, orch: OrchestratorDep, _token: RegistrationTokenDep) -> JobResponse:
     """Get job status and result."""
     tracked = await orch.get_job(job_id)
     if tracked is None:
@@ -537,6 +537,7 @@ async def cancel_job(
 async def job_logs(
     job_id: str,
     orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
     *,
     follow: Annotated[bool, Query()] = True,
 ) -> StreamingResponse:
@@ -611,6 +612,7 @@ async def resume_job(
 @router.get("", response_model=JobListResponse)
 async def list_jobs(  # noqa: PLR0913
     orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
     label: Annotated[str | None, Query()] = None,
     status: Annotated[PlanStatus | None, Query()] = None,
     since: Annotated[datetime | None, Query()] = None,

@@ -141,8 +141,10 @@ class HttpWorker(Worker):
         *,
         data_dir: Path | str,
         step_cache: StepCache | None = None,
+        registration_token: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._registration_token = registration_token
         self._client = client or httpx.AsyncClient()
         self._owns_client = client is None
         self._data_dir = Path(data_dir)
@@ -156,6 +158,10 @@ class HttpWorker(Worker):
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:  # noqa: ANN401
         """Make an HTTP request, raising WorkerError on failure."""
         url = f"{self._base_url}{path}"
+        if self._registration_token is not None:
+            headers = dict(kwargs.pop("headers", {}))
+            headers.setdefault("Authorization", f"Bearer {self._registration_token}")
+            kwargs["headers"] = headers
         try:
             stream_context = self._client.stream(method, url, **kwargs)
             if not hasattr(stream_context, "__aenter__"):

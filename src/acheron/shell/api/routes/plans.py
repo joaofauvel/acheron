@@ -6,13 +6,13 @@ from fastapi import APIRouter, HTTPException
 
 from acheron.core.errors import CacheCorruptedError, CacheMissError
 from acheron.core.schemas import PlanResponse
-from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
+from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 
 router = APIRouter()
 
 
 @router.get("/{plan_id}", response_model=PlanResponse)
-async def get_plan(plan_id: str, orch: OrchestratorDep) -> PlanResponse:
+async def get_plan(plan_id: str, orch: OrchestratorDep, _token: RegistrationTokenDep) -> PlanResponse:
     """Return the public structure of a previously-compiled plan.
 
     A ``CacheMissError`` (missing or unsafe plan id) becomes HTTP 404 so

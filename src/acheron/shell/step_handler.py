@@ -34,6 +34,7 @@ def default_worker_factory(
     local_handlers: dict[str, LocalJobHandler] | None = None,
     *,
     data_dir: Path | str,
+    registration_token: str | None = None,
 ) -> Worker:
     """Create a worker from a registered worker's endpoint and transport.
 
@@ -63,7 +64,7 @@ def default_worker_factory(
                 supported_languages_out=registered.capabilities.supported_languages_out,
             )
         case _:
-            return HttpWorker(registered.endpoint, data_dir=data_dir)
+            return HttpWorker(registered.endpoint, data_dir=data_dir, registration_token=registration_token)
 
 
 def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str, dst: str) -> bool:
@@ -158,10 +159,18 @@ class CachingStepHandler:
         local_handlers: dict[str, LocalJobHandler] | None = None,
         *,
         data_dir: Path | str,
+        registration_token: str | None = None,
     ) -> None:
         self._registry = registry
         self._data_dir = data_dir
-        self._factory = worker_factory or (lambda reg: default_worker_factory(reg, local_handlers, data_dir=data_dir))
+        self._factory = worker_factory or (
+            lambda reg: default_worker_factory(
+                reg,
+                local_handlers,
+                data_dir=data_dir,
+                registration_token=registration_token,
+            )
+        )
         self._cached_workers: tuple[RegisteredWorker, ...] | None = None
         self._cached_plan_id: str | None = None
         self._worker_instances: dict[str, Worker] = {}
@@ -259,6 +268,7 @@ def create_step_handler(
     local_handlers: dict[str, LocalJobHandler] | None = None,
     *,
     data_dir: Path | str,
+    registration_token: str | None = None,
 ) -> StepHandler:
     """Create a step handler that dispatches to registered workers.
 
@@ -278,4 +288,5 @@ def create_step_handler(
         worker_factory=worker_factory,
         local_handlers=local_handlers,
         data_dir=data_dir,
+        registration_token=registration_token,
     )

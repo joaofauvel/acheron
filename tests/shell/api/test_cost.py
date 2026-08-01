@@ -24,7 +24,8 @@ from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 
 @pytest.mark.asyncio
-async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
+async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
     jobs = InMemoryJobStore()
     app = create_app(
         registry=InMemoryWorkerStore(),
@@ -81,7 +82,10 @@ async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_job_cost_uses_structured_sanitized_error(tmp_path: Path) -> None:
+async def test_missing_job_cost_uses_structured_sanitized_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
     app = create_app(
         registry=InMemoryWorkerStore(),
         job_store=InMemoryJobStore(),
@@ -104,7 +108,10 @@ async def test_missing_job_cost_uses_structured_sanitized_error(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_cost_window_is_query_parameter_and_unknown_counted(tmp_path: Path) -> None:
+async def test_cost_window_is_query_parameter_and_unknown_counted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
     app = create_app(
         registry=InMemoryWorkerStore(),
         job_store=InMemoryJobStore(),

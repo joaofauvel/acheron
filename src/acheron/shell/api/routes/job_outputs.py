@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from acheron.core.schemas import ErrorResponse
-from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
+from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
 from acheron.shell.api.public import public_content_type, public_filename
 
 if TYPE_CHECKING:
@@ -123,7 +123,12 @@ class _PinnedFileResponse(FileResponse):
 
 
 @router.get("/{job_id}/outputs/{output_index:int}")
-async def get_job_output(job_id: str, output_index: int, orch: OrchestratorDep) -> FileResponse:
+async def get_job_output(
+    job_id: str,
+    output_index: int,
+    orch: OrchestratorDep,
+    _token: RegistrationTokenDep,
+) -> FileResponse:
     """Serve an output listed by its persisted position."""
     tracked = await orch.get_job(job_id)
     if tracked is None:

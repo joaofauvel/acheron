@@ -110,7 +110,7 @@ class _AdminDurationRequest(_StrictRequest):
             raise ValueError("duration must be a finite non-negative number")  # noqa: TRY004
         try:
             numeric = float(value)
-        except ValueError as exc:
+        except (OverflowError, ValueError) as exc:
             raise ValueError("duration must be a finite non-negative number") from exc
         if not math.isfinite(numeric) or not 0 <= numeric <= _MAX_ADMIN_DURATION_SECONDS:
             msg = "duration must be finite, non-negative, and within the supported range"

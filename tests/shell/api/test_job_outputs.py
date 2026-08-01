@@ -277,6 +277,7 @@ async def test_output_route_serves_relative_stored_path_with_relative_data_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
     data_dir = Path("data")
     output_path = data_dir / "job-relative" / "package" / "result.m4b"
     output_path.parent.mkdir(parents=True)

@@ -180,21 +180,21 @@ class AcheronClient:
     async def get_job(self, job_id: str) -> JobResponse:
         """Get job status and result."""
         async with self._http_client() as client:
-            resp = await client.get(f"/jobs/{job_id}")
+            resp = await client.get(f"/jobs/{job_id}", headers=self._mutation_headers())
             resp.raise_for_status()
             return JobResponse.model_validate(resp.json())
 
     async def get_job_cost(self, job_id: str) -> JobCostResponse:
         """Get persisted execution-time cost evidence for a job."""
         async with self._http_client() as client:
-            resp = await client.get(f"/jobs/{job_id}/cost")
+            resp = await client.get(f"/jobs/{job_id}/cost", headers=self._mutation_headers())
             resp.raise_for_status()
             return JobCostResponse.model_validate(resp.json())
 
     async def get_cost_summary(self, window: Literal["24h", "7d", "30d", "all"] = "7d") -> CostSummaryResponse:
         """Get aggregate execution-time estimates for a cost window."""
         async with self._http_client() as client:
-            resp = await client.get("/cost", params={"window": window})
+            resp = await client.get("/cost", params={"window": window}, headers=self._mutation_headers())
             resp.raise_for_status()
             return CostSummaryResponse.model_validate(resp.json())
 
@@ -272,7 +272,9 @@ class AcheronClient:
         """Stream job progress events as NDJSON."""
         async with self._http_client() as client:
             params = {"follow": str(follow).lower()}
-            async with client.stream("GET", f"/jobs/{job_id}/logs", params=params) as resp:
+            async with client.stream(
+                "GET", f"/jobs/{job_id}/logs", params=params, headers=self._mutation_headers()
+            ) as resp:
                 if resp.is_error:
                     await _buffer_error_response(resp)
                 resp.raise_for_status()
@@ -351,7 +353,7 @@ class AcheronClient:
     async def get_plan(self, plan_id: str) -> PlanResponse:
         """Retrieve a persisted plan by ID."""
         async with self._http_client() as client:
-            resp = await client.get(f"/plans/{plan_id}")
+            resp = await client.get(f"/plans/{plan_id}", headers=self._mutation_headers())
             resp.raise_for_status()
             return PlanResponse.model_validate(resp.json())
 
@@ -440,7 +442,7 @@ class AcheronClient:
             params["include_archived"] = "true"
         query = params or None
         async with self._http_client() as client:
-            resp = await client.get("/jobs", params=query)
+            resp = await client.get("/jobs", params=query, headers=self._mutation_headers())
             resp.raise_for_status()
             return JobListResponse.model_validate(resp.json()).jobs
 

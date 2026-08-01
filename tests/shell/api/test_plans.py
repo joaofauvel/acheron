@@ -52,7 +52,10 @@ async def _make_client(tmp_path: Path) -> tuple[FastAPI, AsyncClient]:
 
 class TestGetPlanRoute:
     @pytest.mark.asyncio
-    async def test_get_plan_returns_public_structure(self, tmp_path: Path) -> None:
+    async def test_get_plan_returns_public_structure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
         PlanCache(tmp_path).save_plan(_sample_plan("plan-1"))
 
         app, client = await _make_client(tmp_path)
@@ -75,7 +78,9 @@ class TestGetPlanRoute:
         self,
         tmp_path: Path,
         plan_id: str,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
         app, client = await _make_client(tmp_path)
         try:
             response = await client.get(f"/plans/{plan_id}")
@@ -90,8 +95,10 @@ class TestGetPlanRoute:
     async def test_get_plan_corrupted_cache_returns_500_without_leaking_details(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """CacheCorruptedError must surface as 500 with a generic message, not raw file paths."""
+        monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
         plan_dir = tmp_path / "plan-deadbeef"
         plan_dir.mkdir()
         (plan_dir / "plan.json").write_text("this is not valid json")
