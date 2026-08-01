@@ -94,7 +94,7 @@ def _extract_epub(source_path: Path, extract_dir: Path) -> list[OutputFile]:
             out_path.write_text(chapter.text, encoding="utf-8")
             outputs.append(_output_file(out_path, out_filename, "text/plain"))
     except Exception as exc:
-        msg = f"EPUB extraction failed: {exc}"
+        msg = "EPUB extraction failed"
         raise WorkerError(msg) from exc
     else:
         return outputs
@@ -109,7 +109,7 @@ def _copy_audio(source_path: Path, extract_dir: Path) -> list[OutputFile]:
         content_type = "audio/mpeg" if ext == ".mp3" else "audio/wav" if ext == ".wav" else "application/octet-stream"
         return [_output_file(dest_path, dest_path.name, content_type)]
     except Exception as e:
-        msg = f"Audio copying failed: {e}"
+        msg = "Audio copying failed"
         raise WorkerError(msg) from e
 
 
@@ -124,10 +124,7 @@ class ExtractionHandler:
         """Reject source paths resolving outside the configured allowlist. Return the resolved path."""
         resolved = source_path.resolve()
         if not resolved.is_relative_to(self._allowlist_root):
-            if str(source_path) != str(resolved):
-                msg = f"path {source_path} escapes allowlist {self._allowlist_root}"
-            else:
-                msg = f"path {source_path} is not under allowlist {self._allowlist_root}"
+            msg = "path escapes allowlist" if str(source_path) != str(resolved) else "path is not under allowlist"
             raise PathNotAllowedError(msg)
         return resolved
 
@@ -148,7 +145,7 @@ class ExtractionHandler:
             source_path = self.data_dir / source_path
         resolved_source = self._validate_source_path(source_path)
         if not await asyncio.to_thread(resolved_source.exists):
-            msg = f"Source file not found: {resolved_source}"
+            msg = "Source file not found"
             raise WorkerError(msg)
 
         plan_job_id = job.job_id.rsplit("-", 1)[0]
@@ -230,7 +227,7 @@ class ChunkingHandler:
                 continue
             file_path = Path(out.path)
             if not file_path.exists():
-                msg = f"Upstream text file does not exist: {file_path}"
+                msg = "Upstream text file does not exist"
                 raise WorkerError(msg)
             chapter_id = file_path.stem
             text = file_path.read_text(encoding="utf-8")
@@ -267,36 +264,36 @@ def _read_wav_chunks(f: BinaryIO, max_fmt_chunk_length: int = 65536) -> tuple[by
     return fmt_chunk, data_size
 
 
-def _validate_wav_format(fmt_chunk: bytes, path: Path) -> int:
+def _validate_wav_format(fmt_chunk: bytes, _path: Path) -> int:
     """Validate the fmt chunk and return the byte rate."""
     if len(fmt_chunk) < _FMT_CHUNK_MIN_LEN:
-        msg = f"Corrupted fmt chunk (too short) in WAV: {path}"
+        msg = "Corrupted fmt chunk (too short) in WAV"
         raise WorkerError(msg)
     audio_format, _num_channels, _sample_rate, byte_rate = struct.unpack("<HHII", fmt_chunk[:_FMT_CHUNK_MIN_LEN])
     if audio_format != _PCM_AUDIO_FORMAT:
-        msg = f"Unsupported non-PCM WAV format: {path}"
+        msg = "Unsupported non-PCM WAV format"
         raise WorkerError(msg)
     if byte_rate == 0:
-        msg = f"Invalid byte rate in WAV format: {path}"
+        msg = "Invalid byte rate in WAV format"
         raise WorkerError(msg)
     return int(byte_rate)
 
 
-def _validate_riff_header(riff_header: bytes, path: Path) -> None:
+def _validate_riff_header(riff_header: bytes, _path: Path) -> None:
     """Validate the RIFF/WAVE magic header."""
     if (
         len(riff_header) < _RIFF_HEADER_LEN
         or riff_header[0:4] != _RIFF_MAGIC
         or riff_header[8:_RIFF_HEADER_LEN] != _WAVE_MAGIC
     ):
-        msg = f"Invalid WAV file format (missing RIFF/WAVE magic): {path}"
+        msg = "Invalid WAV file format (missing RIFF/WAVE magic)"
         raise WorkerError(msg)
 
 
-def _require_chunks(fmt_chunk: bytes | None, data_size: int | None, path: Path) -> tuple[bytes, int]:
+def _require_chunks(fmt_chunk: bytes | None, data_size: int | None, _path: Path) -> tuple[bytes, int]:
     """Ensure both fmt and data chunks were found; return the validated pair."""
     if fmt_chunk is None or data_size is None:
-        msg = f"Missing fmt or data chunk in WAV: {path}"
+        msg = "Missing fmt or data chunk in WAV"
         raise WorkerError(msg)
     return fmt_chunk, data_size
 
@@ -320,7 +317,7 @@ def _parse_wav_header(path: Path, max_fmt_chunk_length: int = 65536) -> tuple[in
     except WorkerError:
         raise
     except Exception as e:
-        msg = f"Failed to read WAV duration: {e}"
+        msg = "Failed to read WAV duration"
         raise WorkerError(msg) from e
 
 

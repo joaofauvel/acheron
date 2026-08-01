@@ -350,9 +350,9 @@ def _tts_payload(
 ) -> dict[str, JsonValue]:
     """Build a voice-map payload without an explicit null voice override."""
     payload: dict[str, JsonValue] = {"target_language": target_language}
-    if selection.default_voice is not None or not selection.ranges:
+    if selection.default_voice is not None:
         payload["voice"] = selection.default_voice
-    if include_voice_map:
+    if include_voice_map and selection.ranges:
         payload["voice_map"] = [
             {
                 "start_chapter": item.start_chapter,

@@ -607,6 +607,25 @@ class TestJobRoutes:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("params", "detail"),
+        [
+            ({"since": "2026-07-30T12:00:00"}, "lifecycle timestamps must be timezone-aware"),
+            (
+                {"since": "2026-07-31T00:00:00Z", "before": "2026-07-30T00:00:00Z"},
+                "since must not be later than before",
+            ),
+        ],
+    )
+    async def test_list_jobs_rejects_invalid_lifecycle_filters(
+        self, client: AsyncClient, params: dict[str, str], detail: str
+    ) -> None:
+        response = await client.get("/jobs", params=params)
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == detail
+
+    @pytest.mark.asyncio
     async def test_list_jobs(self, client) -> None:  # type: ignore[no-untyped-def]
         await client.post(
             "/jobs",
@@ -1745,7 +1764,7 @@ class TestPreviewRoute:
 
         transport = cast("ASGITransport", client._transport)  # noqa: SLF001
         app = cast("FastAPI", transport.app)
-        error = WorkerError("preview failed password=top-secret", remediation="acheron job retry job-1")
+        error = WorkerError("EPUB extraction failed password=top-secret", remediation="acheron job retry job-1")
         monkeypatch.setattr(app.state.orchestrator, "preview_job", AsyncMock(side_effect=error))
 
         response = await client.post(
@@ -1761,7 +1780,8 @@ class TestPreviewRoute:
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert detail["type"] == "WorkerError"
-        assert detail["message"] == "preview failed password=<redacted>"
+        assert detail["message"] == "EPUB extraction failed password=<redacted>"
+        assert "/srv/acheron" not in detail["message"]
         assert detail["remediation"] == "acheron job retry job-1"
         assert "top-secret" not in detail["message"]
 

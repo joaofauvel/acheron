@@ -614,13 +614,16 @@ async def list_jobs(  # noqa: PLR0913
     include_archived: Annotated[bool, Query()] = False,  # noqa: FBT002
 ) -> JobListResponse:
     """List jobs using typed lifecycle filters and an optional label glob."""
-    query = JobQuery(
-        status=status,
-        since=since,
-        before=before,
-        older_than_seconds=older_than_seconds,
-        include_archived=include_archived,
-    )
+    try:
+        query = JobQuery(
+            status=status,
+            since=since,
+            before=before,
+            older_than_seconds=older_than_seconds,
+            include_archived=include_archived,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     jobs = await orch.list_jobs(query)
     if label is not None:
         jobs = tuple(job for job in jobs if fnmatch.fnmatchcase(job.label or "", label))

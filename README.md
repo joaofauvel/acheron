@@ -28,7 +28,10 @@ export ACHERON_REGISTRATION_TOKEN="$(openssl rand -hex 32)"
 docker compose up --build
 ```
 
-The stack comes up with these default services:
+The stack comes up with these default services. Administrative mutations
+(`acheron admin ...`) require a separate `ACHERON_ADMIN_TOKEN`; set it in `.env`
+when using cleanup, archive, or recovery commands. It must not be reused as the
+worker registration token.
 
 - **Orchestrator** at `https://localhost:8000`. TLS is auto-enabled because the `certs-init` one-shot service generates a self-signed CA and per-service certs into `./certs/` on first run, and the compose file mounts them into every container.
 - **Dashboard** at `http://localhost:8080`.
@@ -85,6 +88,13 @@ acheron capabilities --type tts
 ## Dashboard
 
 The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8080`. It polls the orchestrator for job status, worker health, and cost.
+
+## Administrative Operations
+
+Operator-only mutations such as job archive, cleanup, and stale-job recovery use
+`ACHERON_ADMIN_TOKEN`, not `ACHERON_REGISTRATION_TOKEN`. Set the admin token in
+`.env` before running these commands; leaving it unset disables administrative
+mutations.
 
 ## Development
 
@@ -314,7 +324,7 @@ The orchestrator reads `acheron.yaml` for non-secret settings. The config search
 
 **Top-level blocks.**
 
-- `orchestrator:` — `data_dir`, `registration_token`, `health_check_interval_seconds`, `shutdown_drain_seconds`.
+- `orchestrator:` — `data_dir`, `registration_token`, `admin_token`, `health_check_interval_seconds`, `shutdown_drain_seconds`.
 - `workers:` — `chunking` (`max_chunk_length`) and `packaging` (`bitrate`, `codec`, `max_fmt_chunk_length`).
 - `providers:` — RunPod and Hugging Face API keys for decoupled health checks when a worker's HTTP probe fails.
 - `chars_per_token` — top-level CJK worst-case estimate for chunk-fit validation; default `1`.
@@ -337,6 +347,7 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | ---- | -------- | ------- | ----------- |
 | Orchestrator / URLs | `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard: orchestrator URL. Use `http://` to skip TLS. |
 | Orchestrator / Registration | `ACHERON_REGISTRATION_TOKEN` | (auto-generated) | Worker registration shared secret. If unset, the orchestrator generates a secure token on startup and writes it to `{data_dir}/.registration_token` (`src/acheron/shell/orchestrator.py:207-225`). |
+| Orchestrator / Administration | `ACHERON_ADMIN_TOKEN` | (unset) | Separate bearer token for `/admin/*` mutations such as archive, cleanup, and stuck-job recovery. Unset disables administrative mutations; never use the worker registration token. |
 | Orchestrator / Registration | `ACHERON_OPEN_REGISTRATION` | (unset) | Set to `1` to enable open worker registration (bypasses token checks, useful for local dev). |
 | Orchestrator / Config | `ACHERON_CONFIG_PATH` | (unset) | Custom path to the YAML configuration file (searches `acheron.yaml` / `acheron.yml` if unset). |
 | Orchestrator / Storage | `ACHERON_DATA_DIR` | `/data/jobs` | Orchestrator: plan and step-output cache directory (must be writable; orchestrator fails fast at startup if not). |

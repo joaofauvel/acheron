@@ -214,6 +214,20 @@ class TestHandle:
         assert h._model.captured_speaker == ["Vivian", "Ryan"]
 
     @pytest.mark.asyncio
+    async def test_handle_uses_configured_default_without_voice_payload(self) -> None:
+        from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+        h = Qwen3TTSRunpodHandler(_settings(default_speaker="Ryan"))
+        h._model = _SpyingModel([np.zeros(50, dtype=np.float32)], 22050)
+
+        await h.handle(
+            _build_job(),
+            input=_build_input([{"chapter_id": "ch1", "sequence_id": 0, "text": "one"}]),
+        )
+
+        assert h._model.captured_speaker == ["Ryan"]
+
+    @pytest.mark.asyncio
     async def test_handle_uses_default_voice_without_voice_map(self) -> None:
         from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
 

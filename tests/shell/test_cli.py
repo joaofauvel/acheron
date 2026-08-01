@@ -1312,6 +1312,17 @@ def test_submit_chunking_error_shows_remediation(tmp_path: Path) -> None:
     assert "larger token limit" in result.output
 
 
+def test_sanitize_exception_text_redacts_any_uri_scheme() -> None:
+    text = cli_module._sanitize_exception_text(  # noqa: SLF001
+        "worker unavailable at redis://user:secret@cache.internal:6379/0?token=secret "
+        "and grpc://user:secret@worker.internal:8443/execute?api_key=secret"
+    )
+
+    assert text == "worker unavailable at redis://cache.internal:6379/0 and grpc://worker.internal:8443/execute"
+    assert "secret" not in text
+    assert "cache.internal" in text
+
+
 def test_sanitize_attempted_url_removes_credentials_query_and_fragment() -> None:
     assert (
         cli_module._sanitize_attempted_url(  # noqa: SLF001

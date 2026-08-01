@@ -90,6 +90,32 @@ class TestCompilePlan:
 
         assert all(step.payload["chapter_ids"] == ["chapter_001", "chapter_002"] for step in plan.steps)
 
+    def test_default_voice_is_omitted_for_ordinary_jobs(self) -> None:
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
+        plan = compile_plan(request, ExecutorStrategy.STREAMING, (_tts_caps(), _translation_caps()))
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+
+        assert "voice" not in synthesize.payload
+        assert "voice_map" not in synthesize.payload
+
+    def test_voice_map_only_omits_null_default_voice(self) -> None:
+        tts_caps = WorkerCapabilities(**{**_tts_caps().__dict__, "metadata": {"speakers": ["Ryan", "Vivian"]}})
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice_map=(VoiceRange(1, 1, "ryan"),),
+        )
+        plan = compile_plan(
+            request,
+            ExecutorStrategy.STREAMING,
+            (("tts-joint", tts_caps), ("translation", _translation_caps())),
+        )
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+
+        assert "voice" not in synthesize.payload
+        assert synthesize.payload["voice_map"] == [{"start_chapter": 1, "end_chapter": 1, "voice": "Ryan"}]
+
     def test_voice_selection_uses_one_worker_and_canonical_payload(self) -> None:
         vivian_ryan = WorkerCapabilities(
             worker_type=WorkerType.TTS,

@@ -116,7 +116,7 @@ def _sanitize_attempted_url(url: str | httpx.URL | None) -> str:
     return f"{parsed.scheme}://{authority}{parsed.path or '/'}"
 
 
-_URL_PATTERN = re.compile(r"""https?://[^\s'"]+""")
+_URL_PATTERN = re.compile(r"""[A-Za-z][A-Za-z0-9+.-]*://[^\s'"]+""")
 
 
 def _sanitize_exception_text(text: str) -> str:

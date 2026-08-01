@@ -18,6 +18,7 @@ def test_step_1_deployment_documentation_contract(prepared_project: FirstRunProj
 
     for variable in (
         "COMPOSE_PROFILES=sim",
+        "ACHERON_ADMIN_TOKEN=",
         "GRANITE_SPEECH_RUNPOD_ENDPOINT_ID",
         "TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID",
         "ACHERON_WORKER__WORKER_ID",
@@ -25,6 +26,9 @@ def test_step_1_deployment_documentation_contract(prepared_project: FirstRunProj
     ):
         assert variable in env_example, f"step 1: .env.example omits {variable}"
 
+    assert "ACHERON_ADMIN_TOKEN" in readme, "step 1: README omits the separate admin token"
+    compose = (checkout / "docker-compose.yml").read_text()
+    assert "ACHERON_ADMIN_TOKEN: ${ACHERON_ADMIN_TOKEN:-}" in compose
     assert "ghcr.io/<owner>/<repo>/" in readme, "step 1: README uses an ambiguous GHCR image placeholder"
     for worker_readme in (
         "workers/qwen3tts/README.md",

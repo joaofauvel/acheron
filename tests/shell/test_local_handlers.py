@@ -78,6 +78,48 @@ async def test_extraction_handler_epub(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_extraction_missing_source_error_is_path_free(tmp_path: Path) -> None:
+    from acheron.core.errors import WorkerError
+
+    handler = ExtractionHandler(tmp_path)
+    missing = tmp_path / "missing.epub"
+    job = Job(
+        job_id="job1-extract",
+        job_type=WorkerType.EXTRACTION,
+        payload={"source_path": str(missing)},
+        chapter_id="",
+    )
+
+    with pytest.raises(WorkerError, match=r"^Source file not found$") as raised:
+        await handler(job)
+    assert str(missing) not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_audio_copy_error_is_path_free(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from acheron.core.errors import WorkerError
+    source = tmp_path / "book.mp3"
+    source.write_bytes(b"audio")
+    handler = ExtractionHandler(tmp_path)
+
+    def fail_copy(*_args: object) -> None:
+        msg = f"failed to copy {source}"
+        raise OSError(msg)
+
+    monkeypatch.setattr("acheron.shell.local_handlers.shutil.copy2", fail_copy)
+    job = Job(
+        job_id="job1-extract",
+        job_type=WorkerType.EXTRACTION,
+        payload={"source_path": str(source)},
+        chapter_id="",
+    )
+
+    with pytest.raises(WorkerError, match=r"^Audio copying failed$") as raised:
+        await handler(job)
+    assert str(source) not in str(raised.value)
+
+
+@pytest.mark.asyncio
 async def test_chunking_handler(tmp_path: Path) -> None:
     job_id = "job2"
     extract_dir = tmp_path / job_id / "extract"
@@ -199,13 +241,16 @@ class TestExtractionHandlerPathSecurity:
     def test_path_traversal_raises(self, tmp_path: Path) -> None:
         bad = tmp_path / ".." / "etc" / "passwd"
         handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
-        with pytest.raises(PathNotAllowedError, match="escapes allowlist"):
+        with pytest.raises(PathNotAllowedError, match=r"^path escapes allowlist$") as raised:
             handler.extract_epub(bad)
+        assert str(tmp_path) not in str(raised.value)
+        assert str(bad) not in str(raised.value)
 
     def test_absolute_path_outside_allowlist_raises(self, tmp_path: Path) -> None:
         handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
-        with pytest.raises(PathNotAllowedError, match="not under allowlist"):
+        with pytest.raises(PathNotAllowedError, match=r"^path is not under allowlist$") as raised:
             handler.extract_epub(tmp_path.parent / "outside.epub")
+        assert str(tmp_path) not in str(raised.value)
 
     def test_symlink_pointing_outside_allowlist_raises(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "outside_target_for_symlink_test"
@@ -214,7 +259,8 @@ class TestExtractionHandlerPathSecurity:
             symlink = tmp_path / "book.epub"
             symlink.symlink_to(outside)
             handler = ExtractionHandler(data_dir=tmp_path, allowlist_root=tmp_path)
-            with pytest.raises(PathNotAllowedError, match="escapes allowlist"):
+            with pytest.raises(PathNotAllowedError, match=r"^path escapes allowlist$") as raised:
                 handler.extract_epub(symlink)
+            assert str(outside) not in str(raised.value)
         finally:
             outside.unlink(missing_ok=True)
