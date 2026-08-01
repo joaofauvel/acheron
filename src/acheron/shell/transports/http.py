@@ -178,6 +178,8 @@ class HttpWorker(Worker):
         except httpx.ConnectError as exc:
             msg = f"Worker unreachable: {self._base_url}"
             raise WorkerUnavailableError(msg) from exc
+        except (httpx.ReadError, httpx.RemoteProtocolError) as exc:
+            raise WorkerError("Worker response was truncated or exceeded the supported limit") from exc
         except httpx.HTTPStatusError as exc:
             msg = f"Worker error {exc.response.status_code}"
             raise WorkerError(msg) from exc
