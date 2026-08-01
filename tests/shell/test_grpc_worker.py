@@ -33,12 +33,14 @@ class _FakeSynthesisServicer(synthesis_pb2_grpc.SynthesisServicer):
     def __init__(self, chunks: list[bytes] | None = None, fail: bool = False) -> None:
         self._chunks = chunks or [b"\x00\x00" * 100]
         self._fail = fail
+        self.metadata: tuple[tuple[str, str], ...] = ()
 
     def Synthesize(  # noqa: N802
         self,
         request: synthesis_pb2.SynthesisRequest,  # type: ignore[name-defined]
         context: grpc.aio.ServicerContext,
     ) -> Any:
+        self.metadata = tuple((item.key, item.value) for item in context.invocation_metadata())
         if self._fail:
             context.set_code(grpc.StatusCode.UNAVAILABLE)
             context.set_details("GPU down")
@@ -95,6 +97,19 @@ async def grpc_worker(grpc_server: tuple[str, _FakeSynthesisServicer]) -> AsyncI
 
 
 class TestGrpcWorkerHealth:
+    @pytest.mark.asyncio
+    async def test_registration_token_is_sent_as_call_metadata(
+        self, grpc_server: tuple[str, _FakeSynthesisServicer]
+    ) -> None:
+        addr, servicer = grpc_server
+        channel = grpc.aio.insecure_channel(addr)
+        worker = GrpcWorker(channel, data_dir=Path("/tmp/acheron-grpc-test"), registration_token="rotated-token")
+        try:
+            await worker.execute(Job(job_id="job-1", job_type=WorkerType.TTS, payload={}, chapter_id="ch1"))
+        finally:
+            await channel.close()
+        assert ("authorization", "Bearer rotated-token") in servicer.metadata
+
     @pytest.mark.asyncio
     async def test_health_returns_true(self, grpc_worker: GrpcWorker) -> None:
         result = await grpc_worker.health()
