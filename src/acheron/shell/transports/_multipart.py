@@ -23,7 +23,9 @@ _SAFE_CONTENT_TYPE_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|
 _MAX_FILENAME_LENGTH = 255
 _MAX_METADATA_BYTES = 8 * 1024
 _MAX_METADATA_ITEMS = 32
+_MAX_METADATA_DEPTH = 4
 _MAX_METADATA_VALUE_LENGTH = 256
+_MAX_MULTIPART_PARTS = 64
 _MAX_MULTIPART_PARTS = 64
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
@@ -41,7 +43,7 @@ class ParsedPart:
     metadata: dict[str, str]
 
 
-def _parse_multipart_parts(  # noqa: C901, PLR0912
+def _parse_multipart_parts(  # noqa: C901, PLR0912, PLR0915
     content_type: str,
     body: bytes,
 ) -> tuple[list[ParsedPart], JobMetrics]:
@@ -68,6 +70,7 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912
         raise WorkerError(msg)
 
     parts: list[ParsedPart] = []
+    part_count = 0
     named_metrics_raw: bytes | None = None
     fallback_metrics_raw: bytes | None = None
     payload = message.get_payload()
@@ -79,6 +82,9 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912
         # ``Message`` instances.
         if not isinstance(part, Message):
             continue
+        part_count += 1
+        if part_count > _MAX_MULTIPART_PARTS:
+            raise WorkerError("Worker returned too many multipart parts")
         unknown_headers = {
             key.casefold()
             for key in part
@@ -140,16 +146,38 @@ def _validate_content_type(value: str) -> str:
     return value
 
 
-def _decode_metadata(header: str | None) -> dict[str, str]:
+def _decode_metadata(header: str | None) -> dict[str, str]:  # noqa: C901
     if not header:
         return {}
     if len(header.encode("utf-8")) > _MAX_METADATA_BYTES:
         raise WorkerError("Worker returned oversized artifact metadata")
     try:
         parsed = json.loads(header)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise WorkerError("Worker returned invalid artifact metadata") from exc
-    if not isinstance(parsed, dict) or len(parsed) > _MAX_METADATA_ITEMS:
+
+    def validate(value: object, depth: int = 0) -> None:
+        if depth > _MAX_METADATA_DEPTH:
+            raise WorkerError("Worker returned deeply nested artifact metadata")
+        if isinstance(value, dict):
+            if len(value) > _MAX_METADATA_ITEMS:
+                raise WorkerError("Worker returned invalid artifact metadata")
+            for key, item in value.items():
+                if not isinstance(key, str) or len(key) > _MAX_METADATA_VALUE_LENGTH:
+                    raise WorkerError("Worker returned invalid artifact metadata")
+                validate(item, depth + 1)
+        elif isinstance(value, list):
+            if len(value) > _MAX_METADATA_ITEMS:
+                raise WorkerError("Worker returned invalid artifact metadata")
+            for item in value:
+                validate(item, depth + 1)
+        elif (isinstance(value, str) and len(value) > _MAX_METADATA_VALUE_LENGTH) or (
+            value is not None and not isinstance(value, (str, int, float, bool))
+        ):
+            raise WorkerError("Worker returned invalid artifact metadata")
+
+    validate(parsed)
+    if not isinstance(parsed, dict):
         raise WorkerError("Worker returned invalid artifact metadata")
     metadata: dict[str, str] = {}
     for key, value in parsed.items():

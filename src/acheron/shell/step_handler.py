@@ -50,8 +50,19 @@ def default_worker_factory(
     """
     match registered.transport:
         case "grpc":
-            channel = grpc_channel(registered.endpoint)
-            return GrpcWorker(channel, data_dir=data_dir)
+            channel = grpc_channel(
+                registered.endpoint,
+                require_tls=(
+                    (registration_token is not None or registration_token_provider is not None)
+                    and not registered.endpoint.startswith(("localhost:", "127.0.0.1:", "[::1]:"))
+                ),
+            )
+            return GrpcWorker(
+                channel,
+                data_dir=data_dir,
+                registration_token=registration_token,
+                registration_token_provider=registration_token_provider,
+            )
         case "local":
             from acheron.shell.transports.local import LocalWorker  # noqa: PLC0415
 
@@ -67,7 +78,12 @@ def default_worker_factory(
             )
         case _:
             token = registration_token_provider() if registration_token_provider is not None else registration_token
-            return HttpWorker(registered.endpoint, data_dir=data_dir, registration_token=token)
+            return HttpWorker(
+                registered.endpoint,
+                data_dir=data_dir,
+                registration_token=token,
+                registration_token_provider=registration_token_provider,
+            )
 
 
 def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str, dst: str) -> bool:

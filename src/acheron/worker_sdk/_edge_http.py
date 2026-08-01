@@ -71,6 +71,11 @@ _MAX_METADATA_HEADER_BYTES = 8 * 1024
 _MAX_METADATA_ITEMS = 32
 _MAX_METADATA_DEPTH = 4
 _MAX_MULTIPART_PARTS = 64
+_MAX_MULTIPART_FIELD_BYTES = 256
+_MAX_MULTIPART_FILENAME_BYTES = 255
+_MAX_MULTIPART_CONTENT_TYPE_BYTES = 256
+_MULTIPART_CONTROL_CHARACTER_LIMIT = 32
+_MULTIPART_DELETE_CHARACTER = 127
 _METADATA_CONTROL_LIMIT = 32
 _METADATA_DELETE_CHARACTER = 127
 # Edge execute requests and streamed responses share a bounded 64 MiB envelope.
@@ -227,6 +232,12 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
     def _on_header_end() -> None:
         name = b"".join(state.header_name_buf).lower()
         value = b"".join(state.header_value_buf)
+        if not name or len(name) > _MAX_MULTIPART_FIELD_BYTES or len(value) > _MAX_MULTIPART_FIELD_BYTES:
+            raise WorkerError("multipart header is oversized")
+        if any(
+            byte < _MULTIPART_CONTROL_CHARACTER_LIMIT or byte == _MULTIPART_DELETE_CHARACTER for byte in name + value
+        ):
+            raise WorkerError("multipart header contains control characters")
         state.headers[name] = value
         state.header_name_buf.clear()
         state.header_value_buf.clear()
@@ -239,7 +250,13 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
             fname = opts.get(b"filename")
             state.field_name = name if isinstance(name, bytes) else name.encode("latin-1") if name else None
             state.file_name = fname if isinstance(fname, bytes) else fname.encode("latin-1") if fname else None
+        if state.field_name is None or len(state.field_name) > _MAX_MULTIPART_FIELD_BYTES:
+            raise WorkerError("multipart field name is invalid")
+        if state.file_name is not None and len(state.file_name) > _MAX_MULTIPART_FILENAME_BYTES:
+            raise WorkerError("multipart filename is oversized")
         ct = state.headers.get(b"content-type")
+        if ct is not None and len(ct) > _MAX_MULTIPART_CONTENT_TYPE_BYTES:
+            raise WorkerError("multipart content type is oversized")
         state.part_content_type = ct.decode("latin-1") if ct else None
         meta = state.headers.get(b"x-acheron-metadata")
         if meta is not None:

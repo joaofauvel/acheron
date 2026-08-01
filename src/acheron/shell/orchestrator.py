@@ -238,6 +238,7 @@ class Orchestrator:
         self._admin_audits.append(
             replace(
                 event,
+                action=event.action[:256],
                 reason=event.reason[:512] if event.reason is not None else None,
                 job_ids=event.job_ids[:1000],
             )

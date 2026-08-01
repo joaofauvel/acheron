@@ -95,7 +95,7 @@ def create_worker_app(
         capabilities=caps,
         price_source=price_source,
         registration_token=settings.registration_token,
-        allow_unauthenticated_execute=allow_unauthenticated_execute,
+        allow_unauthenticated_execute=allow_unauthenticated_execute or disable_registration,
     )
 
     async def _register() -> None:

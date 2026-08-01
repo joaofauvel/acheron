@@ -89,20 +89,21 @@ def grpc_channel_credentials() -> grpc.ChannelCredentials | None:
     return grpc.ssl_channel_credentials(root_certificates=ca_pem)
 
 
-def grpc_channel(target: str) -> grpc.aio.Channel:
-    """Return a gRPC channel to `target`.
+def grpc_channel(target: str, *, require_tls: bool = False) -> grpc.aio.Channel:
+    """Return a gRPC channel, requiring CA verification for secure dispatch.
 
-    Uses `secure_channel` with the configured CA if `ACHERON_TLS_CA_FILE` is set,
-    else `insecure_channel`. The target is expected to be `host:port` (no scheme).
-    Logs a WARNING on insecure fallback unless `ACHERON_ALLOW_INSECURE=1` is set.
+    ``require_tls`` is used for production worker dispatch. Local tests and
+    explicitly opted-in development use ``ACHERON_ALLOW_INSECURE=1``.
     """
     creds = grpc_channel_credentials()
     if creds is None:
+        if require_tls and not _allow_insecure():
+            raise RuntimeError("ACHERON_TLS_CA_FILE is required for authenticated gRPC dispatch")
         if not _allow_insecure():
             _LOG.warning(
                 "ACHERON_TLS_CA_FILE is unset — opening insecure gRPC channel to %s. "
                 "Set ACHERON_TLS_CA_FILE to enable verification, or "
-                "set ACHERON_ALLOW_INSECURE=1 to silence this warning.",
+                "set ACHERON_ALLOW_INSECURE=1 for local development.",
                 target,
             )
         return grpc.aio.insecure_channel(target)

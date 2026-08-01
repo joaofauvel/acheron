@@ -141,6 +141,8 @@ class RetentionService:
         """Re-evaluate and safely delete eligible jobs, preserving records on failure."""
         effective_now = self._normalise_now(now)
         preview = await self.preview(policy, now=effective_now)
+        all_jobs = await self._job_store.list_all()
+        retained_inputs = self._retained_input_references(all_jobs, policy, effective_now)
         deleted: list[str] = []
         failures: list[CleanupFailure] = []
         deleted_bytes = 0
@@ -161,7 +163,7 @@ class RetentionService:
                 identity = _job_source_identity(self._data_dir, current)
                 input_guard = self._input_lock(identity) if identity is not None else _NullAsyncLock()
                 async with input_guard:
-                    retained = await self._retained_input_reference(identity, current.job_id, policy, effective_now)
+                    retained = identity in retained_inputs
                     paths = tuple(path for path in candidate.relative_paths if path != identity or not retained)
                     try:
                         removed = await self._delete_paths(paths, current)
@@ -281,23 +283,20 @@ class RetentionService:
         except CacheError:
             return 0
 
-    async def _retained_input_reference(
+    def _retained_input_references(
         self,
-        identity: str | None,
-        current_job_id: str,
+        jobs: tuple[TrackedJob, ...],
         policy: RetentionPolicy,
         now: datetime,
-    ) -> bool:
-        if identity is None:
-            return False
-        for job in await self._job_store.list_all():
-            if (
-                job.job_id != current_job_id
-                and _job_source_identity(self._data_dir, job) == identity
-                and not _eligible(job, policy, now)
-            ):
-                return True
-        return False
+    ) -> set[str]:
+        """Return input identities retained by jobs outside the cleanup policy."""
+        return {
+            identity
+            for job in jobs
+            if not _eligible(job, policy, now)
+            for identity in (_job_source_identity(self._data_dir, job),)
+            if identity is not None
+        }
 
     async def _delete_paths(self, paths: tuple[str, ...], job: TrackedJob) -> int:
         removed = 0

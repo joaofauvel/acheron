@@ -5,6 +5,10 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import grpc
 import grpc.aio
@@ -54,11 +58,23 @@ class GrpcWorker(Worker):
         channel: grpc.aio.Channel,
         *,
         data_dir: Path | str,
+        registration_token: str | None = None,
+        registration_token_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._channel = channel
         self._stub = synthesis_pb2_grpc.SynthesisStub(channel)  # type: ignore[no-untyped-call]  # proto stubs are untyped
         self._health_stub = health_pb2_grpc.HealthStub(channel)
         self._data_dir = Path(data_dir)
+        self._registration_token = registration_token
+        self._registration_token_provider = registration_token_provider
+
+    def _metadata(self) -> tuple[tuple[str, str], ...]:
+        token = (
+            self._registration_token_provider()
+            if self._registration_token_provider is not None
+            else self._registration_token
+        )
+        return () if token is None else (("authorization", f"Bearer {token}"),)
 
     async def capabilities(self) -> WorkerCapabilities:  # noqa: D102
         return WorkerCapabilities(
@@ -90,7 +106,7 @@ class GrpcWorker(Worker):
         total_bytes = 0
 
         try:
-            async for chunk in self._stub.Synthesize(request):
+            async for chunk in self._stub.Synthesize(request, metadata=self._metadata()):
                 payload_type = chunk.WhichOneof("payload")
                 if payload_type == "artifact":
                     total_bytes += len(chunk.artifact.data)
@@ -159,7 +175,7 @@ class GrpcWorker(Worker):
 
     async def health(self) -> bool:  # noqa: D102
         try:
-            response = await self._health_stub.Check(health_pb2.HealthCheckRequest())
+            response = await self._health_stub.Check(health_pb2.HealthCheckRequest(), metadata=self._metadata())
         except grpc.aio.AioRpcError:
             return False
         else:

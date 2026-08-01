@@ -38,6 +38,8 @@ from acheron.shell.transports._multipart import (
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
 _MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024
+_MAX_WORKER_OUTPUTS = 64
+_MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 _MAX_WORKER_RESPONSE_BYTES = 64 * 1024 * 1024
@@ -62,9 +64,12 @@ async def _read_bounded_response(response: httpx.Response) -> bytes:
     return b"".join(chunks)
 
 
-def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:
+def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:  # noqa: C901
     """Reject legacy output paths that cannot be safely read by the orchestrator."""
     root = data_dir.resolve()
+    if len(result.outputs) > _MAX_WORKER_OUTPUTS:
+        raise WorkerError("Worker returned too many outputs")
+    total_size = 0
     for output in result.outputs:
         if output.size_bytes < 0 or output.size_bytes > _MAX_WORKER_OUTPUT_BYTES:
             raise WorkerError("Worker returned an invalid output size")
@@ -84,6 +89,12 @@ def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:
             current /= component
             if current.is_symlink():
                 raise WorkerError("Worker returned an invalid output path")
+        actual_size = resolved.stat().st_size
+        if actual_size > output.size_bytes:
+            raise WorkerError("Worker returned an invalid output size")
+        total_size += actual_size
+        if total_size > _MAX_WORKER_OUTPUT_BYTES:
+            raise WorkerError("Worker returned oversized outputs")
     return result
 
 
@@ -137,7 +148,7 @@ class HttpWorker(Worker):
     dir without reading env vars directly.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         base_url: str,
         client: httpx.AsyncClient | None = None,
@@ -145,9 +156,11 @@ class HttpWorker(Worker):
         data_dir: Path | str,
         step_cache: StepCache | None = None,
         registration_token: str | None = None,
+        registration_token_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._registration_token = registration_token
+        self._registration_token_provider = registration_token_provider
         self._client = client or httpx.AsyncClient()
         self._owns_client = client is None
         self._data_dir = Path(data_dir)
@@ -161,9 +174,14 @@ class HttpWorker(Worker):
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:  # noqa: ANN401
         """Make an HTTP request, raising WorkerError on failure."""
         url = f"{self._base_url}{path}"
-        if self._registration_token is not None:
+        token = (
+            self._registration_token_provider()
+            if self._registration_token_provider is not None
+            else self._registration_token
+        )
+        if token is not None:
             headers = dict(kwargs.pop("headers", {}))
-            headers.setdefault("Authorization", f"Bearer {self._registration_token}")
+            headers.setdefault("Authorization", f"Bearer {token}")
             kwargs["headers"] = headers
         try:
             stream_context = self._client.stream(method, url, **kwargs)
