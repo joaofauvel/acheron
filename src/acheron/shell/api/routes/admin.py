@@ -73,7 +73,7 @@ async def reap_stale(
                 remediation="Provide a finite non-negative age and a reason.",
             )
             raise HTTPException(status_code=422, detail=error.model_dump()) from exc
-        return ReapStaleResponse(reaped=len(result.job_ids), job_ids=list(result.job_ids))
+        return ReapStaleResponse(reaped=len(result.job_ids), job_ids=list(result.job_ids[:1000]))
 
     return await execute_admin_action(
         request,
@@ -81,7 +81,7 @@ async def reap_stale(
         operation,
         details=lambda result: AdminAuditDetails(
             reason=body.reason,
-            job_ids=tuple(result.job_ids),
+            job_ids=tuple(result.job_ids[:1000]),
             affected_count=result.reaped,
         ),
     )
@@ -155,19 +155,19 @@ def _cleanup_response(report: CleanupReport) -> CleanupResponse:
                 job_id=candidate.job_id,
                 status=candidate.status.value,
                 archived=candidate.archived,
-                relative_paths=list(candidate.relative_paths),
+                relative_paths=list(candidate.relative_paths[:1000]),
                 reclaimable_bytes=candidate.reclaimable_bytes,
             )
-            for candidate in report.candidates
+            for candidate in report.candidates[:1000]
         ],
-        deleted_job_ids=list(report.deleted_job_ids),
+        deleted_job_ids=list(report.deleted_job_ids[:1000]),
         failures=[
             CleanupFailureResponse(
                 job_id=failure.job_id,
-                relative_paths=list(failure.relative_paths),
+                relative_paths=list(failure.relative_paths[:1000]),
                 message=failure.message,
             )
-            for failure in report.failures
+            for failure in report.failures[:1000]
         ],
         deleted_count=report.deleted_count,
         deleted_bytes=report.deleted_bytes,

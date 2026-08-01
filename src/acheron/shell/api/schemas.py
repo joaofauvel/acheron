@@ -177,12 +177,16 @@ class CleanupResponse(BaseModel):
     """Public cleanup preview or application report."""
 
     apply: bool
-    candidates: list[CleanupCandidateResponse]
-    deleted_job_ids: list[str]
-    failures: list[CleanupFailureResponse]
+    candidates: list[CleanupCandidateResponse] = Field(max_length=1000)
+    deleted_job_ids: list[str] = Field(max_length=1000)
+    failures: list[CleanupFailureResponse] = Field(max_length=1000)
     deleted_count: int
     deleted_bytes: int
     reclaimable_bytes: int
+
+
+_MAX_CAPABILITY_PAYLOAD_BYTES = 1 << 40
+_MAX_CAPABILITY_INPUT_TOKENS = 1_000_000_000
 
 
 class WorkerCapabilitiesRequest(_StrictRequest):
@@ -193,10 +197,10 @@ class WorkerCapabilitiesRequest(_StrictRequest):
     supported_languages_out: list[Annotated[str, Field(max_length=64)]] = Field(max_length=128)
     supported_formats_in: list[Annotated[str, Field(max_length=64)]] = Field(default_factory=list, max_length=128)
     supported_formats_out: list[Annotated[str, Field(max_length=64)]] = Field(default_factory=list, max_length=128)
-    max_payload_bytes: int | None = None
+    max_payload_bytes: int | None = Field(default=None, ge=0, le=_MAX_CAPABILITY_PAYLOAD_BYTES)
     batch_capable: bool = False
     model_source: str | None = None
-    max_input_tokens: int | None = None
+    max_input_tokens: int | None = Field(default=None, ge=0, le=_MAX_CAPABILITY_INPUT_TOKENS)
     metadata: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
 
     @field_validator("metadata")

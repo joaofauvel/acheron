@@ -233,8 +233,14 @@ class Orchestrator:
         return tuple(self._admin_audits)
 
     def record_admin_audit(self, event: AdminActionAudit) -> None:
-        """Record one administrative action event."""
-        self._admin_audits.append(event)
+        """Record one bounded administrative action event."""
+        self._admin_audits.append(
+            replace(
+                event,
+                reason=event.reason[:512] if event.reason is not None else None,
+                job_ids=event.job_ids[:1000],
+            )
+        )
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""

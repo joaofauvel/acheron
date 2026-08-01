@@ -83,8 +83,8 @@ def _safe_public_metadata(metadata: dict[str, JsonValue]) -> dict[str, JsonValue
 def public_caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
     """Serialise capabilities with only validated metadata required by public clients."""
     result = caps_to_dict(caps)
-    model_source = _safe_text(caps.model_source, pattern=re.compile(r"^[\w./:@-]{1,256}$"))
-    result["model_source"] = model_source
+    # Model/repository identifiers may embed credentials and are not needed by public clients.
+    result["model_source"] = None
     result["supported_languages_in"] = [
         value
         for value in sorted(caps.supported_languages_in)[:_MAX_PUBLIC_COLLECTION_ITEMS]

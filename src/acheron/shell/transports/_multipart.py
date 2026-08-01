@@ -20,6 +20,10 @@ from acheron.core.models import JobMetrics, JobResult, JobStatus, OutputFile
 _METRICS_PART_NAME = "metrics"
 _MAX_CONTENT_TYPE_LENGTH = 256
 _SAFE_CONTENT_TYPE_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_MAX_FILENAME_LENGTH = 255
+_MAX_METADATA_BYTES = 8 * 1024
+_MAX_METADATA_ITEMS = 32
+_MAX_METADATA_VALUE_LENGTH = 256
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
 
@@ -36,7 +40,7 @@ class ParsedPart:
     metadata: dict[str, str]
 
 
-def _parse_multipart_parts(  # noqa: C901
+def _parse_multipart_parts(  # noqa: C901, PLR0912
     content_type: str,
     body: bytes,
 ) -> tuple[list[ParsedPart], JobMetrics]:
@@ -98,6 +102,8 @@ def _parse_multipart_parts(  # noqa: C901
                 fallback_metrics_raw = payload_bytes
             continue
         filename = part.get_filename() or "artifact.bin"
+        if len(filename) > _MAX_FILENAME_LENGTH:
+            raise WorkerError("Worker returned an oversized artifact filename")
         raw = part.get_payload(decode=True)
         data = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
         metadata = _decode_metadata(part.get("X-Acheron-Metadata"))
@@ -118,11 +124,40 @@ def _parse_multipart_parts(  # noqa: C901
     return parts, metrics
 
 
+def _validate_content_type(value: str) -> str:
+    if (
+        len(value) > _MAX_CONTENT_TYPE_LENGTH
+        or any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value)
+        or _SAFE_CONTENT_TYPE_RE.fullmatch(value) is None
+    ):
+        raise WorkerError("Worker returned an invalid artifact content type")
+    return value
+
+
 def _decode_metadata(header: str | None) -> dict[str, str]:
     if not header:
         return {}
-    parsed = json.loads(header)
-    return {str(k): str(v) for k, v in parsed.items()}
+    if len(header.encode("utf-8")) > _MAX_METADATA_BYTES:
+        raise WorkerError("Worker returned oversized artifact metadata")
+    try:
+        parsed = json.loads(header)
+    except (TypeError, ValueError) as exc:
+        raise WorkerError("Worker returned invalid artifact metadata") from exc
+    if not isinstance(parsed, dict) or len(parsed) > _MAX_METADATA_ITEMS:
+        raise WorkerError("Worker returned invalid artifact metadata")
+    metadata: dict[str, str] = {}
+    for key, value in parsed.items():
+        key_text, value_text = str(key), str(value)
+        if (
+            len(key_text) > _MAX_METADATA_VALUE_LENGTH
+            or len(value_text) > _MAX_METADATA_VALUE_LENGTH
+            or any(
+                ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in key_text + value_text
+            )
+        ):
+            raise WorkerError("Worker returned invalid artifact metadata")
+        metadata[key_text] = value_text
+    return metadata
 
 
 def _safe_join(dest_dir: Path, filename: str) -> Path:
@@ -133,6 +168,8 @@ def _safe_join(dest_dir: Path, filename: str) -> Path:
     host. This helper resolves the candidate path and refuses it if the
     resolved location is not under ``dest_dir``.
     """
+    if len(filename) > _MAX_FILENAME_LENGTH:
+        raise WorkerError("Refusing oversized artifact filename")
     if not filename or filename != filename.strip():
         msg = f"Refusing artifact with blank or padded filename: {filename!r}"
         raise WorkerError(msg)
@@ -174,6 +211,7 @@ async def _materialize_artifact(  # noqa: PLR0913
     to be trusted on them. ``metadata`` is the per-artifact dict carried
     in the ``X-Acheron-Metadata`` part header.
     """
+    content_type = _validate_content_type(content_type)
     resolved_root = (root_dir or dest_dir).resolve()
     current = dest_dir
     while True:

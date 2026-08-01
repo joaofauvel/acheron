@@ -24,7 +24,7 @@ class OutputSummary(BaseModel):
 
     download_url: str
     filename: str
-    size_bytes: int
+    size_bytes: int = Field(ge=0)
     content_type: str
 
 
@@ -173,8 +173,8 @@ class JobResponse(BaseModel):
     last_persisted_at: datetime
     archived_at: datetime | None = None
     progress: JobProgress
-    total_cost: float
-    total_duration_seconds: float
+    total_cost: FiniteFloat = Field(ge=0)
+    total_duration_seconds: FiniteFloat = Field(ge=0)
     total_cost_basis: CostBasis | None
     outputs: list[OutputSummary]
     errors: list[StepError]
@@ -201,7 +201,7 @@ class ReapStaleResponse(BaseModel):
     """Response for stale-job reaping."""
 
     reaped: int
-    job_ids: list[str]
+    job_ids: list[str] = Field(max_length=1000)
 
 
 class AdminJobResponse(BaseModel):

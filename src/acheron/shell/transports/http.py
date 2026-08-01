@@ -32,6 +32,7 @@ from acheron.shell.transports._multipart import (
     _materialize_artifact,
     _parse_multipart_parts,
     _safe_join,
+    _validate_content_type,
 )
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
@@ -304,6 +305,7 @@ async def _stream_multipart_request(
     """
     try:
         _safe_join(file_path.parent, file_path.name)
+        content_type = _validate_content_type(content_type)
     except WorkerError as exc:
         raise WorkerError("Worker input filename is unsafe") from exc
     boundary = f"acheron-{secrets.token_hex(16)}"
