@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from acheron.core.errors import VoiceSelectionError, WorkerError
 from acheron.core.interfaces import Worker
 from acheron.core.models import Job, JobResult, JsonValue, WorkerCapabilities, WorkerType
-from acheron.core.planner import canonicalize_voice
+from acheron.core.planner import _safe_voice, canonicalize_voice
 from acheron.shell.transports.grpc import GrpcWorker
 from acheron.shell.transports.http import HttpWorker
 from acheron.tls import grpc_channel
@@ -109,6 +109,9 @@ def _select_worker(
         if selected is None:
             msg = "Planner-selected TTS worker is no longer registered"
             raise VoiceSelectionError(msg)
+        if selected.capabilities.worker_type is not WorkerType.TTS:
+            msg = "Planner-selected worker is no longer a TTS worker"
+            raise VoiceSelectionError(msg)
         if not _language_matches(step.type, selected.capabilities, src, dst):
             msg = "Planner-selected TTS worker no longer supports the language"
             raise VoiceSelectionError(msg)
@@ -116,7 +119,7 @@ def _select_worker(
             try:
                 canonicalize_voice(voice, selected.capabilities)
             except VoiceSelectionError as exc:
-                msg = f"Selected TTS worker cannot honor voice: {voice}"
+                msg = f"Selected TTS worker cannot honor voice: {_safe_voice(voice)}"
                 raise VoiceSelectionError(msg) from exc
         return selected
 
@@ -171,6 +174,19 @@ class CachingStepHandler:
             self._cached_workers = await self._registry.list_all()
             self._cached_plan_id = plan.plan_id
         workers = self._cached_workers
+        if step.type is WorkerType.TTS and step.selected_worker_id is not None:
+            current = await self._registry.get(step.selected_worker_id)
+            cached = next((worker for worker in workers if worker.worker_id == step.selected_worker_id), None)
+            if current is None:
+                self._retire_worker_instance(step.selected_worker_id)
+                workers = tuple(worker for worker in workers if worker.worker_id != step.selected_worker_id)
+            else:
+                if cached != current:
+                    self._retire_worker_instance(step.selected_worker_id)
+                workers = (
+                    *(worker for worker in workers if worker.worker_id != step.selected_worker_id),
+                    current,
+                )
 
         selected = _select_worker(step, workers, src, dst)
 
@@ -194,6 +210,11 @@ class CachingStepHandler:
             self._worker_refcounts[worker_key] = self._worker_refcounts.get(worker_key, 0) + 1
         result = await worker_instance.execute(job)
         return replace(result, worker_id=selected.worker_id)
+
+    def _retire_worker_instance(self, worker_id: str) -> None:
+        worker = self._worker_instances.pop(worker_id, None)
+        if worker is not None:
+            self._retired_worker_instances[id(worker)] = worker
 
     async def _invalidate_worker_cache(self) -> None:
         """Drop both the worker-list snapshot and the worker-instance pool.

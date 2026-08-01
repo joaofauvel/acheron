@@ -1,6 +1,7 @@
 """Plan compilation from job requests."""
 
 import logging
+import re
 import uuid
 import zipfile
 from dataclasses import dataclass
@@ -23,7 +24,7 @@ from acheron.core.models import (
     WorkerType,
 )
 
-type WorkerCapabilityRecord = tuple[str, WorkerCapabilities]
+type WorkerCapabilityRecord = tuple[str | None, WorkerCapabilities]
 type CapabilityInput = tuple[WorkerCapabilities, ...] | tuple[WorkerCapabilityRecord, ...]
 
 logger = logging.getLogger(__name__)
@@ -107,13 +108,14 @@ def compile_plan(  # noqa: PLR0913
 
 
 def _capability_records(capabilities: CapabilityInput) -> tuple[WorkerCapabilityRecord, ...]:
-    """Return explicit worker-ID/capability records without synthesizing IDs."""
+    """Normalize records while keeping legacy capability-only inputs anonymous."""
     records: list[WorkerCapabilityRecord] = []
     for item in capabilities:
         if isinstance(item, WorkerCapabilities):
-            records.append(("", item))
+            records.append((None, item))
         else:
-            records.append(item)
+            worker_id, capability = item
+            records.append((worker_id or None, capability))
     return tuple(records)
 
 
@@ -157,14 +159,30 @@ def advertised_voices(capabilities: WorkerCapabilities) -> frozenset[str]:
     return frozenset(item.strip() for item in value if isinstance(item, str) and item.strip())
 
 
+_VOICE_CREDENTIAL_RE = re.compile(
+    r"\b(?:password|passwd|secret|token|api[_-]?key|authorization)\s*[:=]",
+    re.IGNORECASE,
+)
+_VOICE_URL_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_VOICE_PATH_RE = re.compile(
+    r"(?:^[/\\]|^[A-Za-z]:[/\\]|(?:^|[\s=])[/\\](?:private|home|tmp|var|etc|Users)(?:[/\\]|$))",
+    re.IGNORECASE,
+)
+
+
+def _safe_voice(value: str) -> str:
+    """Return a bounded, non-sensitive label suitable for public errors."""
+    normalized = "".join(" " if not char.isprintable() else char for char in value)
+    normalized = " ".join(normalized.split())[:80]
+    if _VOICE_URL_RE.search(normalized) or _VOICE_PATH_RE.search(normalized) or _VOICE_CREDENTIAL_RE.search(normalized):
+        return "<redacted>"
+    return normalized
+
+
 def _voice_error(requested: set[str], available: set[str]) -> VoiceSelectionError:
     requested_text = ", ".join(sorted((_safe_voice(value) for value in requested), key=str.casefold))
     available_text = ", ".join(sorted((_safe_voice(value) for value in available), key=str.casefold)) or "none"
     return VoiceSelectionError(f"Unsupported voice selection: {requested_text}; available voices: {available_text}")
-
-
-def _safe_voice(value: str) -> str:
-    return " ".join(value.replace("\r", " ").replace("\n", " ").split())[:80]
 
 
 def canonicalize_voice(name: str, capabilities: WorkerCapabilities) -> str:
@@ -180,32 +198,29 @@ def canonicalize_voice(name: str, capabilities: WorkerCapabilities) -> str:
 def select_voice_worker_id(
     selection: VoiceSelection,
     workers: tuple[WorkerCapabilityRecord, ...],
-) -> str:
+) -> str | None:
     """Select one deterministic TTS worker capable of every requested voice."""
     candidates = tuple((worker_id, caps) for worker_id, caps in workers if caps.worker_type is WorkerType.TTS)
     requested = set((selection.default_voice,) if selection.default_voice is not None else ())
     requested.update(item.voice for item in selection.ranges)
     available = set().union(*(set(advertised_voices(caps)) for _, caps in candidates)) if candidates else set()
     if not requested:
-        return next((worker_id for worker_id, _ in candidates if worker_id), "")
+        return min((worker_id for worker_id, _ in candidates if worker_id), key=str.casefold, default=None)
 
-    matching: list[tuple[str, dict[str, str]]] = []
+    matching: list[str] = []
     for worker_id, caps in candidates:
-        canonical: dict[str, str] = {}
-        for voice in advertised_voices(caps):
-            canonical.setdefault(voice.casefold(), voice)
-        if all(voice.casefold() in canonical for voice in requested):
-            matching.append((worker_id, {voice: canonical[voice.casefold()] for voice in requested}))
+        canonical = {voice.casefold() for voice in advertised_voices(caps)}
+        if worker_id is not None and all(voice.casefold() in canonical for voice in requested):
+            matching.append(worker_id)
     if not matching:
         raise _voice_error(requested, available)
-    selected_id, _canonical = matching[0]
     # Mutate neither the request nor its value objects; canonical payloads are built by the caller.
-    return selected_id
+    return min(matching, key=lambda worker_id: (worker_id.casefold(), worker_id))
 
 
 def _selected_voice_capabilities(
     selection: VoiceSelection,
-    selected_worker_id: str,
+    selected_worker_id: str | None,
     workers: tuple[WorkerCapabilityRecord, ...],
 ) -> WorkerCapabilities:
     """Find the capabilities used to canonicalize the planner's selection."""
@@ -223,8 +238,8 @@ def _selected_voice_capabilities(
     for worker_id, caps in matching:
         if worker_id == selected_worker_id:
             return caps
-    if matching:
-        return min(matching, key=lambda item: item[0] or "~")[1]
+    if selected_worker_id is None and not requested and matching:
+        return matching[0][1]
     msg = "No TTS worker can honor the selected voice worker"
     raise VoiceSelectionError(msg)
 

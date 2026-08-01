@@ -119,6 +119,54 @@ class TestCompilePlan:
         assert synthesize.payload["voice"] == "Vivian"
         assert synthesize.payload["voice_map"] == [{"start_chapter": 1, "end_chapter": 1, "voice": "Ryan"}]
 
+    @pytest.mark.parametrize("unsafe_voice", ["https://example.test/?token=secret", "/private/secret", "token=secret"])
+    def test_voice_selection_errors_redact_unsafe_labels(self, unsafe_voice: str) -> None:
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice=unsafe_voice,
+        )
+        with pytest.raises(VoiceSelectionError) as raised:
+            compile_plan(
+                request,
+                ExecutorStrategy.STREAMING,
+                (("tts-1", _tts_caps()), ("translation", _translation_caps())),
+            )
+        assert unsafe_voice not in str(raised.value)
+
+    def test_voice_selection_is_deterministic_by_worker_id(self) -> None:
+        caps = WorkerCapabilities(**{**_tts_caps().__dict__, "metadata": {"speakers": ["Vivian"]}})
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice="Vivian",
+        )
+        plan = compile_plan(
+            request,
+            ExecutorStrategy.STREAMING,
+            (("tts-z", caps), ("tts-a", caps), ("translation", _translation_caps())),
+        )
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+        assert synthesize.selected_worker_id == "tts-a"
+
+    def test_capability_only_legacy_plan_has_no_selected_worker(self) -> None:
+        request = EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es")
+        plan = compile_plan(request, ExecutorStrategy.STREAMING, (_tts_caps(), _translation_caps()))
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+        assert synthesize.selected_worker_id is None
+
+    def test_capability_only_inputs_cannot_compile_voice_plan(self) -> None:
+        request = EpubRequest(
+            source_path="/input/book.epub",
+            source_language="en",
+            target_language="es",
+            voice="Vivian",
+        )
+        with pytest.raises(VoiceSelectionError):
+            compile_plan(request, ExecutorStrategy.STREAMING, (_tts_caps(), _translation_caps()))
+
     def test_voice_selection_fails_without_joint_worker(self) -> None:
         vivian = _tts_caps()
         vivian = WorkerCapabilities(**{**vivian.__dict__, "metadata": {"speakers": ["Vivian"]}})

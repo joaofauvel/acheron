@@ -52,6 +52,10 @@ def _tts_caps() -> WorkerCapabilities:
     )
 
 
+def _voice_tts_caps(*voices: str) -> WorkerCapabilities:
+    return WorkerCapabilities(**{**_tts_caps().__dict__, "metadata": {"speakers": list(voices)}})
+
+
 def _make_plan() -> Plan:
     return Plan(
         plan_id="plan-1",
@@ -95,6 +99,63 @@ class TestStepHandler:
         result = await handler(plan.steps[0], plan)
         assert result.worker_id == "tts-1"
         assert chosen == ["tts-1"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("unsafe_voice", ["https://example.test/?token=secret", "/private/secret", "token=secret"])
+    async def test_tts_errors_redact_unsafe_voice_labels(self, unsafe_voice: str) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _voice_tts_caps("Vivian"))
+        handler = create_step_handler(reg, data_dir=_TEST_DATA_DIR)
+        step = replace(
+            _make_plan().steps[0],
+            payload={"target_language": "es", "voice": unsafe_voice},
+        )
+        with pytest.raises(VoiceSelectionError) as raised:
+            await handler(step, _make_plan())
+        assert unsafe_voice not in str(raised.value)
+
+    @pytest.mark.asyncio
+    async def test_tts_capabilities_are_refetched_after_registration_change(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _voice_tts_caps("Vivian"))
+        worker = LocalWorker(
+            worker_type=WorkerType.TTS,
+            handler=_echo_job_result,
+            supported_languages_in=frozenset({"es"}),
+            supported_languages_out=frozenset({"es"}),
+        )
+        handler = create_step_handler(reg, worker_factory=lambda _registered: worker, data_dir=_TEST_DATA_DIR)
+        plan = replace(
+            _make_plan(),
+            steps=(replace(_make_plan().steps[0], payload={"target_language": "es", "voice": "Vivian"}),),
+        )
+        await handler(plan.steps[0], plan)
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _voice_tts_caps("Ryan"))
+        with pytest.raises(VoiceSelectionError):
+            await handler(plan.steps[0], plan)
+
+    @pytest.mark.asyncio
+    async def test_tts_capabilities_are_refetched_after_worker_removal(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _voice_tts_caps("Vivian"))
+        handler = create_step_handler(
+            reg,
+            worker_factory=lambda _registered: LocalWorker(
+                worker_type=WorkerType.TTS,
+                handler=_echo_job_result,
+                supported_languages_in=frozenset({"es"}),
+                supported_languages_out=frozenset({"es"}),
+            ),
+            data_dir=_TEST_DATA_DIR,
+        )
+        plan = replace(
+            _make_plan(),
+            steps=(replace(_make_plan().steps[0], payload={"target_language": "es", "voice": "Vivian"}),),
+        )
+        await handler(plan.steps[0], plan)
+        await reg.unregister("tts-1")
+        with pytest.raises(VoiceSelectionError):
+            await handler(plan.steps[0], plan)
 
     @pytest.mark.asyncio
     async def test_dispatches_to_matching_worker(self) -> None:

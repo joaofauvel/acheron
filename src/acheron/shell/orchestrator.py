@@ -1313,6 +1313,7 @@ class Orchestrator:
                 invalidate_chapters,
             )
             await self._step_cache.invalidate_steps(job_id, invalidated_steps)
+            await self._invalidate_handler_cache()
 
             async with self._lifecycle_lock:
                 if self._shutting_down:
@@ -1361,6 +1362,7 @@ class Orchestrator:
         if transport == "local" and handler is not None:
             self._local_handlers[worker_id] = handler
         await self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
+        await self._invalidate_handler_cache()
         logger.info(
             "Registered worker %s (%s, %s → %s)", worker_id, capabilities.worker_type.value, endpoint, transport
         )
