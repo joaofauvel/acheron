@@ -1033,22 +1033,21 @@ files:
   - path: tests/shell/test_cli.py
     lines: 583-720
 related: [OPS-015, OPS-010]
-fixed_in: [397f2d5]
-verified_in: []
+fixed_in: [8d3229a]
+verified_in: [8d3229a]
 last_verified_at:
+  commit: 8d3229a
   date: "2026-07-31"
 verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
 ---
 ```
 
-**Issue.** TTS voice lives in `WorkerCapabilities.metadata` — it's a property of the worker, not the job. `SubmitJobRequest` has no `voice` field. `EpubRequest` / `AudioRequest` have no `voice` field.
+**Current state.** Job-level voice selection accepts a canonical default voice or an inclusive EPUB chapter voice map. A successful preview retains the temporary upload for submission; rejected or failed preflight paths delete it before any job or plan persists.
 
-**Why it matters.** This is a primary user feature for audiobooks: the operator wants different voices for different chapters.
+**Why it matters.** Operators can assign voices per chapter while retaining deterministic worker selection and actionable preflight failures.
 
-**Recommendation.** Add `voice: str | None` to `EpubRequest` / `AudioRequest`. Add `--voice <name>` and `--voice-map '<chapter_range>: <voice>'` to `acheron job submit`.
-
-**Verification.** `acheron job submit book.epub --src en --dest es --voice-map '1-3:vivian' --voice-map '4-100:ryan'` compiles a plan where steps 1-3 target TTS workers advertising `vivian` and steps 4-100 target workers advertising `ryan`.
+**Verification.** The Task 17 journey creates a four-chapter numbered EPUB, uploads it as a temporary input, runs `POST /jobs:preview`, and submits the same input only after preview succeeds. The persisted plan carries canonical `Vivian`/`Ryan` voice-map data and selects one TTS worker advertising both voices. The Qwen boundary receives the expected speaker sequence `Vivian, Vivian, Vivian, Ryan`; a fleet with separate Vivian-only and Ryan-only workers fails during preview with no input, job, or plan leak.
 
 ## OPS-029 — `--asr` is optional for audio input
 

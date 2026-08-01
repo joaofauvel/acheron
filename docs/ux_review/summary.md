@@ -1,9 +1,9 @@
 ---
 program: ux-review
 last_updated_date: 2026-07-31
-version: 5
+version: 6
 initial_review_commit: 59458ba
-last_updated_commit: 034401b6425375f93f4ddcd3d3330b5507f996ae
+last_updated_commit: 8d3229a1a06c376e5b22bcbec3cc5ee49ea259db
 related: docs/code_review/
 ---
 
@@ -75,5 +75,5 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 - `fixed_in` placeholders were resolved only where the review evidence supplied a matching Conventional Commit SHA.
 - `just first-run`, selected `just first-run --step` checks, all three simulation scenarios, and `just ux-validate` passed during the refresh.
 - Traceability stories OPS-022, MAINT-013, and MAINT-016 were verified by focused request-correlation and dashboard version tests.
-- OPS-028 voice selection was verified by the four-chapter temporary-input preview/promotion journey, jointly capable worker assertion, and Qwen speaker-sequence assertion.
+- OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
 - Open and stale stories remain UX concerns even when related code-review work is tracked separately.
