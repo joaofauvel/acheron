@@ -64,20 +64,24 @@ def test_tree_fingerprint_changes_for_git_mode_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
-    tree = [b"100644 blob abc\ttracked.py\0", b"100755 blob abc\ttracked.py\0"]
-    output = iter(tree)
+    tree = [b"100644 blob abc\ttracked.py\0"]
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, next(output), b""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, tree[0], b""),
     )
 
     first = discovery_module.repository_tree_fingerprint(tmp_path)
-    second = discovery_module.repository_tree_fingerprint(tmp_path)
+    tree[0] = b"100755 blob abc\ttracked.py\0"
+    mode_changed = discovery_module.repository_tree_fingerprint(tmp_path)
+    tree[0] = b"100644 tree abc\ttracked.py\0"
+    type_changed = discovery_module.repository_tree_fingerprint(tmp_path)
 
     assert first is not None
-    assert second is not None
-    assert first != second
+    assert mode_changed is not None
+    assert type_changed is not None
+    assert first != mode_changed
+    assert mode_changed != type_changed
 
 
 def test_explicit_head_rejects_non_commit(
