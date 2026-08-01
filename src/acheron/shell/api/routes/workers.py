@@ -15,7 +15,7 @@ from acheron.core.schemas import (
     WorkerResponse,
 )
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.public import public_worker_id
+from acheron.shell.api.public import public_transport, public_worker_id
 from acheron.shell.api.schemas import WorkerRegistrationRequest  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ def _public_worker_response(worker: RegisteredWorker, now: float) -> WorkerRespo
     return WorkerResponse(
         worker_id=public_worker_id(worker.worker_id),
         endpoint=None,
-        transport=worker.transport,
+        transport=public_transport(worker.transport),
         worker_type=worker.capabilities.worker_type.value,
         consecutive_failures=worker.consecutive_failures,
         status=worker.status,

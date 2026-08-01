@@ -115,7 +115,8 @@ async def get_capabilities(
                     speakers=_public_speakers(worker),
                 )
                 for worker in sorted(all_workers, key=lambda item: (item.worker_id.casefold(), item.worker_id))
-                if worker.capabilities.worker_type is matching_type
+                if worker.status is WorkerStatus.HEALTHY
+                and worker.capabilities.worker_type is matching_type
             ],
         )
 

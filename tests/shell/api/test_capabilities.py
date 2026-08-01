@@ -1,6 +1,12 @@
 """Tests for capability discovery route."""
 
+from typing import cast
+
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport
+
+from acheron.core.models import WorkerStatus
 
 
 class TestCapabilitiesRoute:
@@ -87,6 +93,31 @@ class TestTypedCapabilitiesRoute:
             worker["speakers"] for worker in response.json()["workers"] if worker["worker_id"] == "tts-speakers"
         )
         assert speakers == ["A valid name", "Ryan"]
+
+    @pytest.mark.asyncio
+    async def test_typed_inventory_excludes_offline_workers(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post(
+            "/workers",
+            json={
+                "worker_id": "offline-tts",
+                "endpoint": "http://offline-tts:8000",
+                "transport": "http",
+                "capabilities": {
+                    "worker_type": "tts",
+                    "supported_languages_in": ["en"],
+                    "supported_languages_out": ["en"],
+                },
+            },
+        )
+        assert response.status_code == 201
+        app = cast("FastAPI", cast("ASGITransport", client._transport).app)  # noqa: SLF001
+        await app.state.orchestrator._registry.set_worker_status(  # noqa: SLF001
+            "offline-tts", WorkerStatus.OFFLINE, "offline"
+        )
+
+        typed = await client.get("/capabilities", params={"type": "tts"})
+        assert typed.status_code == 200
+        assert "offline-tts" not in {worker["worker_id"] for worker in typed.json()["workers"]}
 
     @pytest.mark.asyncio
     async def test_type_tts_returns_sorted_allowlisted_inventory(self, client) -> None:  # type: ignore[no-untyped-def]

@@ -11,14 +11,31 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_CREDENTIAL_IDENTIFIER_RE = re.compile(
+    r"(?:^|[^A-Za-z0-9])(?:authorization|credential|api(?:[ _-]?key)?|token|password|secret|bearer)"
+    r"(?=$|[^A-Za-z0-9])",
+    re.IGNORECASE,
+)
 _SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$")
 _SAFE_FORMAT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9.+_-]{0,31})?$")
 _REDACTED = "<redacted>"
+_PUBLIC_TRANSPORTS = frozenset({"grpc", "grpcs", "http", "https", "local"})
 
 
 def public_worker_id(value: object) -> str:
     """Return a safe worker identifier for public responses."""
-    if not isinstance(value, str) or _SAFE_IDENTIFIER_RE.fullmatch(value) is None:
+    if (
+        not isinstance(value, str)
+        or _SAFE_IDENTIFIER_RE.fullmatch(value) is None
+        or _CREDENTIAL_IDENTIFIER_RE.search(value) is not None
+    ):
+        return _REDACTED
+    return value
+
+
+def public_transport(value: object) -> str:
+    """Return an allowlisted transport name for public responses."""
+    if not isinstance(value, str) or value not in _PUBLIC_TRANSPORTS:
         return _REDACTED
     return value
 

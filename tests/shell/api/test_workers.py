@@ -47,6 +47,36 @@ class TestWorkerRoutes:
         assert "TOPSECRET" not in listed.text
 
     @pytest.mark.asyncio
+    async def test_public_projection_rejects_credential_identifiers_and_transport(self, client) -> None:  # type: ignore[no-untyped-def]
+        credential_ids = (
+            "authorization:TOPSECRET",
+            "credential TOPSECRET",
+            "api-key_TOPSECRET",
+            "token-TOPSECRET",
+            "password=TOPSECRET",
+            "secret-TOPSECRET",
+            "bearer:TOPSECRET",
+        )
+        for index, worker_id in enumerate(credential_ids):
+            response = await client.post(
+                "/workers",
+                json={
+                    **_WORKER_PAYLOAD,
+                    "worker_id": worker_id,
+                    "transport": "api-key:TOPSECRET" if index == 0 else "http",
+                },
+            )
+            assert response.status_code == 201
+            assert response.json()["worker_id"] == "<redacted>"
+
+        listed = await client.get("/workers")
+        assert listed.status_code == 200
+        workers = listed.json()["workers"]
+        assert sum(worker["worker_id"] == "<redacted>" for worker in workers) >= len(credential_ids)
+        assert any(worker["transport"] == "<redacted>" for worker in workers)
+        assert "TOPSECRET" not in listed.text
+
+    @pytest.mark.asyncio
     async def test_register_worker_invalid_type(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.post(
             "/workers",
