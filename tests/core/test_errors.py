@@ -91,36 +91,35 @@ class TestPipelineError:
 
 
 class TestSanitisePublicMessage:
-    def test_preserves_safe_message_and_redacts_sensitive_fragments(self) -> None:
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "/tmp",
+            r"C:\\Users\\worker\\secret.txt",
+            "foo/../../secret",
+            r"..\\..\\secret",
+            "custom+scheme://user:secret@example.test/path?token=secret#fragment",
+            "Traceback (most recent call last):",
+            "  File '/srv/worker.py', line 4",
+            '{"password": "top-secret"}',
+            "password: top-secret",
+            "Authorization: Bearer top-secret",
+        ],
+    )
+    def test_unsafe_message_uses_stable_fallback(self, message: str) -> None:
         from acheron.core.errors import sanitise_public_message
 
-        message = (
-            "worker failed: /srv/acheron/jobs/../secret "
-            "redis://user:secret@cache.internal:6379/0?token=secret "
-            "password=top-secret\nTraceback (most recent call last):\n  File '/srv/worker.py', line 4"
-        )
-
-        result = sanitise_public_message(message)
-
-        assert result.startswith("worker failed:")
-        assert "/srv/" not in result
-        assert ".." not in result
-        assert "redis://" not in result
-        assert "top-secret" not in result
-        assert "Traceback" not in result
-        assert "File" not in result
+        assert sanitise_public_message(message) == "request failed"
 
     def test_preserves_ordinary_domain_message(self) -> None:
         from acheron.core.errors import sanitise_public_message
 
-        assert sanitise_public_message("job is already running; cancel it first") == (
-            "job is already running; cancel it first"
-        )
+        assert sanitise_public_message("No worker supports en → es") == "No worker supports en → es"
 
     def test_empty_sensitive_message_uses_fallback(self) -> None:
         from acheron.core.errors import sanitise_public_message
 
-        assert sanitise_public_message("Traceback\n  File '/srv/worker.py'") == "request failed"
+        assert sanitise_public_message("\n\n") == "request failed"
 
 
 class TestSanitiseExcMessage:

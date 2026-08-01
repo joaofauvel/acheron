@@ -658,7 +658,7 @@ def _to_step_error_response(error: DomainStepError) -> StepErrorResponse:
         step_id=error.step_id,
         worker_type=error.worker_type,
         worker_id=error.worker_id,
-        message=sanitise_public_message(error.message),
+        message=sanitise_public_message(error.message, fallback="step failed"),
         timestamp=error.timestamp,
     )
 

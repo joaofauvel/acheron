@@ -96,14 +96,18 @@ class InvalidationTargetError(JobError):
 
 
 _CREDENTIAL_PATTERN = re.compile(
-    r"\b(password|passwd|secret|token|api[_-]?key|authorization)\s*=\s*\S+",
-    re.IGNORECASE,
+    r"(?ix)"
+    r"(?<![A-Za-z0-9_-])"
+    r"([\"']?(?:password|passwd|secret|token|api[_-]?key|authorization)[\"']?)"
+    r"\s*(?:=|:)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)"
 )
-_URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
-_FILE_FRAGMENT_PATTERN = re.compile(r"\bFile\s+['\"][^'\"]+['\"](?:,\s*line\s+\d+)?", re.IGNORECASE)
-_WINDOWS_PATH_PATTERN = re.compile(r"\b[A-Za-z]:[\\/][^\s'\"<>]+")
-_ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+/)+[^/\s'\"<>]*")
-_TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])(?:\.\.?[\\/])+(?:[^\s'\"<>]+)")
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}\]]+")
+_URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*:[^\s'\"<>]+")
+_TRACEBACK_PATTERN = re.compile(r"\bTraceback\b", re.IGNORECASE)
+_FILE_FRAGMENT_PATTERN = re.compile(r"\bFile(?:\s|:)", re.IGNORECASE)
+_WINDOWS_PATH_PATTERN = re.compile(r"\b[A-Za-z]:[\\/][^\s'\"<>]*")
+_ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+(?:/[^/\s'\"<>]*)*)?")
+_TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])[^\s]*\.\.[\\/][^\s]*")
 
 
 def _scrub_credentials(text: str) -> str:
@@ -112,20 +116,20 @@ def _scrub_credentials(text: str) -> str:
 
 
 def sanitise_public_message(message: str, *, fallback: str = "request failed") -> str:
-    """Sanitise arbitrary domain text before placing it in a public response."""
-    safe_lines = []
-    for line in message.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("Traceback") or _FILE_FRAGMENT_PATTERN.search(stripped):
-            continue
-        safe_lines.append(stripped)
-    text = " ".join(safe_lines)
-    text = _FILE_FRAGMENT_PATTERN.sub("<redacted-traceback>", text)
-    text = _URI_PATTERN.sub("<redacted-url>", text)
-    text = _WINDOWS_PATH_PATTERN.sub("<redacted-path>", text)
-    text = _ABSOLUTE_PATH_PATTERN.sub("<redacted-path>", text)
-    text = _TRAVERSAL_PATH_PATTERN.sub("<redacted-path>", text)
-    text = _scrub_credentials(text)
+    """Return a safe message or a stable fallback for sensitive text."""
+    unsafe_patterns = (
+        _CREDENTIAL_PATTERN,
+        _BEARER_PATTERN,
+        _URI_PATTERN,
+        _TRACEBACK_PATTERN,
+        _FILE_FRAGMENT_PATTERN,
+        _WINDOWS_PATH_PATTERN,
+        _ABSOLUTE_PATH_PATTERN,
+        _TRAVERSAL_PATH_PATTERN,
+    )
+    if any(pattern.search(message) is not None for pattern in unsafe_patterns):
+        return fallback
+    text = " ".join(line.strip() for line in message.splitlines() if line.strip())
     return text or fallback
 
 

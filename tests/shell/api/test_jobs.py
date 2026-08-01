@@ -543,10 +543,26 @@ class TestJobRoutes:
         assert response.json()["errors"][0]["message"] == "cancelled by operator"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "unsafe",
+        [
+            "/tmp",
+            r"C:\\Users\\worker\\secret.txt",
+            "foo/../../secret",
+            r"..\\..\\secret",
+            "custom+scheme://user:secret@example.test/path?token=secret#fragment",
+            "Traceback (most recent call last):",
+            "  File '/srv/worker.py', line 4",
+            '{"password": "top-secret"}',
+            "password: top-secret",
+            "Authorization: Bearer top-secret",
+        ],
+    )
     async def test_step_error_response_sanitizes_untrusted_message(
         self,
         client_with_token: AsyncClient,
         monkeypatch: pytest.MonkeyPatch,
+        unsafe: str,
     ) -> None:
         from datetime import UTC, datetime
         from unittest.mock import AsyncMock
@@ -560,11 +576,6 @@ class TestJobRoutes:
         transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
         app = cast("FastAPI", transport.app)
         now = datetime.now(UTC)
-        unsafe = (
-            "worker failed /srv/acheron/jobs/../secret "
-            "redis://user:secret@cache.internal:6379/0?token=secret "
-            "password=top-secret\nTraceback\n  File '/srv/worker.py', line 4"
-        )
         tracked = TrackedJob(
             job_id="job-unsafe",
             request=EpubRequest("/input/book.epub", "en", "es"),
@@ -592,12 +603,7 @@ class TestJobRoutes:
 
         assert response.status_code == 200
         message = response.json()["errors"][0]["message"]
-        assert message.startswith("worker failed <redacted-path>")
-        assert "/srv/acheron" not in message
-        assert "redis://" not in message
-        assert "top-secret" not in message
-        assert "Traceback" not in message
-        assert "File" not in message
+        assert message == "step failed"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -637,8 +643,49 @@ class TestJobRoutes:
         assert response.status_code == status_code
         detail = response.json()["detail"]
         assert detail["type"] == type(error).__name__
-        assert "top-secret" not in detail["message"]
-        assert "<redacted>" in detail["message"]
+        assert detail["message"] == "request failed"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "unsafe",
+        [
+            "/tmp",
+            r"C:\\Users\\worker\\secret.txt",
+            "foo/../../secret",
+            r"..\\..\\secret",
+            "custom+scheme://user:secret@example.test/path?token=secret#fragment",
+            "Traceback (most recent call last):",
+            "  File '/srv/worker.py', line 4",
+            '{"password": "top-secret"}',
+            "password: top-secret",
+            "Authorization: Bearer top-secret",
+        ],
+    )
+    async def test_error_response_uses_stable_fallback_for_untrusted_message(
+        self,
+        client_with_token: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        unsafe: str,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        error = JobNotFoundError(unsafe, remediation=unsafe)
+        monkeypatch.setattr(app.state.orchestrator, "cancel_job", AsyncMock(side_effect=error))
+
+        response = await client_with_token.post(
+            "/jobs/job-1/cancel",
+            headers={"Authorization": "Bearer test-registration-token-must-be-32-chars-or-more"},
+        )
+
+        assert response.status_code == 404
+        detail = response.json()["detail"]
+        assert detail["message"] == "request failed"
+        assert detail["remediation"] == "request failed"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1842,12 +1889,7 @@ class TestPreviewRoute:
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert detail["type"] == "WorkerError"
-        assert detail["message"].startswith("EPUB extraction failed at <redacted-path>")
-        assert "/srv/acheron" not in detail["message"]
-        assert "redis://" not in detail["message"]
-        assert "top-secret" not in detail["message"]
-        assert "Traceback" not in detail["message"]
-        assert "File" not in detail["message"]
+        assert detail["message"] == "request failed"
         assert detail["remediation"] == "acheron job retry job-1"
 
     @pytest.mark.asyncio
