@@ -47,6 +47,7 @@ from acheron.core.schemas import (
     StepError as StepErrorResponse,
 )
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
+from acheron.shell.api.public import public_content_type, public_optional_worker_id, public_worker_id
 from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest  # noqa: TC001
 from acheron.shell.input_store import InputPathError, InputStore
 from acheron.shell.job_store import JobQuery
@@ -551,13 +552,13 @@ async def job_logs(
             status=tracked.status,
             step_id=tracked.progress.current_step_id,
             worker_type=tracked.progress.current_worker_type,
-            worker_id=tracked.progress.current_worker_id,
+            worker_id=public_optional_worker_id(tracked.progress.current_worker_id),
             progress=JobProgress(
                 completed_steps=tracked.progress.completed_steps,
                 total_steps=tracked.progress.total_steps,
                 current_step_id=tracked.progress.current_step_id,
                 current_worker_type=tracked.progress.current_worker_type,
-                current_worker_id=tracked.progress.current_worker_id,
+                current_worker_id=public_optional_worker_id(tracked.progress.current_worker_id),
                 eta_seconds=tracked.progress.eta_seconds,
             ),
             message=f"job {tracked.status.value}",
@@ -645,7 +646,7 @@ def _booting_tts_warnings(
     if not affected:
         return []
     elapsed = ", ".join(
-        f"{worker.worker_id} ({math.floor(max(0.0, now - (worker.booting_since or 0.0)))}s elapsed)"
+        f"{public_worker_id(worker.worker_id)} ({math.floor(max(0.0, now - (worker.booting_since or 0.0)))}s elapsed)"
         for worker in affected
     )
     return [f"BOOTING TTS workers: {elapsed}; cold start typically takes 30\u201390 seconds."]
@@ -655,7 +656,7 @@ def _to_step_error_response(error: DomainStepError) -> StepErrorResponse:
     return StepErrorResponse(
         step_id=error.step_id,
         worker_type=error.worker_type,
-        worker_id=error.worker_id,
+        worker_id=public_optional_worker_id(error.worker_id),
         message=sanitise_public_message(error.message, fallback="step failed"),
         timestamp=error.timestamp,
     )
@@ -712,7 +713,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
             total_steps=progress.total_steps,
             current_step_id=progress.current_step_id,
             current_worker_type=progress.current_worker_type,
-            current_worker_id=progress.current_worker_id,
+            current_worker_id=public_optional_worker_id(progress.current_worker_id),
             eta_seconds=progress.eta_seconds,
         ),
         total_cost=result.total_cost if result else 0.0,
@@ -724,7 +725,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
                     download_url=f"/jobs/{tracked.job_id}/outputs/{index}",
                     filename=output.filename,
                     size_bytes=output.size_bytes,
-                    content_type=output.content_type,
+                    content_type=public_content_type(output.content_type),
                 )
                 for index, output in enumerate(result.outputs)
             ]

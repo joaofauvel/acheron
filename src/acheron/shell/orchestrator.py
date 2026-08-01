@@ -44,6 +44,7 @@ from acheron.core.models import (
 )
 from acheron.core.planner import ChunkingLimits, compile_plan
 from acheron.core.schemas import CostBreakdownResponse, CostSummaryResponse, JobCostResponse
+from acheron.shell.api.public import public_optional_worker_id, public_worker_id
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
 from acheron.shell.config import Settings, _validate_credential_token, load_settings
@@ -739,13 +740,13 @@ class Orchestrator:
             status=tracked.status,
             step_id=ps.current_step_id,
             worker_type=ps.current_worker_type,
-            worker_id=ps.current_worker_id,
+            worker_id=public_optional_worker_id(ps.current_worker_id),
             progress=JobProgress(
                 completed_steps=ps.completed_steps,
                 total_steps=ps.total_steps,
                 current_step_id=ps.current_step_id,
                 current_worker_type=ps.current_worker_type,
-                current_worker_id=ps.current_worker_id,
+                current_worker_id=public_optional_worker_id(ps.current_worker_id),
                 eta_seconds=ps.eta_seconds,
             ),
             message=message,
@@ -1170,7 +1171,7 @@ class Orchestrator:
                     CostBreakdownResponse(
                         step_id=item.step_id,
                         worker_type=item.worker_type,
-                        worker_id=item.worker_id,
+                        worker_id=public_worker_id(item.worker_id),
                         gpu_seconds=item.gpu_seconds,
                         cost=item.estimate.cost,
                         basis=item.estimate.basis,

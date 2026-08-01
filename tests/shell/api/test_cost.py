@@ -52,7 +52,7 @@ async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
                     CostBreakdown(
                         step_id="synthesize",
                         worker_type=WorkerType.TTS,
-                        worker_id="tts-1",
+                        worker_id="authorization:TOPSECRET",
                         gpu_seconds=1800.0,
                         estimate=CostEstimate(
                             cost=0.34,
@@ -72,6 +72,7 @@ async def test_get_job_cost_exposes_gpu_and_cache_age(tmp_path: Path) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/jobs/job-measured/cost")
         assert response.status_code == 200
+        assert response.json()["cost_breakdown"][0]["worker_id"] == "<redacted>"
         assert response.json()["cost_breakdown"][0]["gpu_type"] == "L4"
         assert response.json()["cost_breakdown"][0]["cache_age_seconds"] == 0.0
     finally:

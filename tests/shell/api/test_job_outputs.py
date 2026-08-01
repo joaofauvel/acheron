@@ -47,6 +47,8 @@ async def client_with_output(
     output_path.write_bytes(b"audio")
     second_output_path = output_dir / "chapter.m4b"
     second_output_path.write_bytes(b"chapter")
+    malformed_type_path = output_dir / "malformed.bin"
+    malformed_type_path.write_bytes(b"binary")
     outside_path = tmp_path / "external" / "outside.m4b"
     outside_path.parent.mkdir()
     outside_path.write_bytes(b"secret")
@@ -94,6 +96,13 @@ async def client_with_output(
                         size_bytes=6,
                         checksum="checksum",
                         content_type="audio/mp4",
+                    ),
+                    OutputFile(
+                        path=str(malformed_type_path),
+                        filename="malformed.bin",
+                        size_bytes=6,
+                        checksum="checksum",
+                        content_type="text/plain\r\nX-Leak: yes",
                     ),
                     OutputFile(
                         path=str(symlink_path),
@@ -157,6 +166,15 @@ async def test_output_route_serves_second_listed_artifact(client_with_output: As
 
 
 @pytest.mark.asyncio
+async def test_output_route_replaces_header_injection_content_type(client_with_output: AsyncClient) -> None:
+    response = await client_with_output.get("/jobs/job-1/outputs/3")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert "x-leak" not in response.headers
+
+
+@pytest.mark.asyncio
 async def test_output_route_rejects_artifact_outside_job_directory(
     client_with_output: AsyncClient,
 ) -> None:
@@ -168,7 +186,7 @@ async def test_output_route_rejects_artifact_outside_job_directory(
 
 @pytest.mark.asyncio
 async def test_output_route_rejects_symlink_outside_job_directory(client_with_output: AsyncClient) -> None:
-    response = await client_with_output.get("/jobs/job-1/outputs/3")
+    response = await client_with_output.get("/jobs/job-1/outputs/4")
 
     assert response.status_code == 404
     assert not response.content.startswith(b"secret")
@@ -180,7 +198,7 @@ async def test_output_route_rejects_symlink_outside_job_directory(client_with_ou
 )
 @pytest.mark.asyncio
 async def test_output_route_rejects_fifo_without_blocking(client_with_output: AsyncClient) -> None:
-    response = await client_with_output.get("/jobs/job-1/outputs/4")
+    response = await client_with_output.get("/jobs/job-1/outputs/5")
 
     assert response.status_code == 404
     assert response.json()["detail"]["type"] == "OutputNotFoundError"

@@ -500,7 +500,7 @@ class TestJobRoutes:
         from httpx import ASGITransport
 
         from acheron.core.models import EpubRequest, ExecutorStrategy, PlanResult, PlanStatus, StepError
-        from acheron.shell.job_store import TrackedJob
+        from acheron.shell.job_store import JobProgressState, TrackedJob
 
         transport = cast("ASGITransport", client_with_token._transport)  # noqa: SLF001
         app = cast("FastAPI", transport.app)
@@ -511,6 +511,7 @@ class TestJobRoutes:
             strategy=ExecutorStrategy.STREAMING,
             created_at=now,
             last_persisted_at=now,
+            progress=JobProgressState(completed_steps=0, total_steps=1, current_worker_id="authorization:TOPSECRET"),
             status=PlanStatus.FAILED,
             result=PlanResult(
                 plan_id="plan-1",
@@ -524,7 +525,7 @@ class TestJobRoutes:
                     StepError(
                         step_id=None,
                         worker_type=None,
-                        worker_id=None,
+                        worker_id="authorization:TOPSECRET",
                         message="cancelled by operator",
                         timestamp=now,
                     ),
@@ -540,6 +541,8 @@ class TestJobRoutes:
 
         assert response.status_code == 200
         assert response.json()["status"] == "failed"
+        assert response.json()["progress"]["current_worker_id"] == "<redacted>"
+        assert response.json()["errors"][0]["worker_id"] == "<redacted>"
         assert response.json()["errors"][0]["message"] == "cancelled by operator"
 
     @pytest.mark.asyncio

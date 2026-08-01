@@ -83,6 +83,9 @@ class AdminErrorResponse(BaseModel):
     remediation: str | None = None
 
 
+_MAX_ADMIN_DURATION_SECONDS = 100 * 365 * 24 * 60 * 60
+
+
 class _AdminDurationRequest(_StrictRequest):
     @field_validator(
         "older_than_seconds",
@@ -90,11 +93,23 @@ class _AdminDurationRequest(_StrictRequest):
         "keep_successful_seconds",
         "keep_failed_seconds",
         check_fields=False,
+        mode="before",
     )
     @classmethod
-    def _validate_duration(cls, value: float) -> float:
-        if isinstance(value, bool) or not math.isfinite(value) or value < 0:
-            msg = "duration must be finite and non-negative"
+    def _validate_duration(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            msg = "duration must be a finite non-negative number"
+            raise ValueError(msg)  # noqa: TRY004 - Pydantic turns this into a 422 validation error.
+        if not isinstance(value, (int, float, str)):
+            raise ValueError("duration must be a finite non-negative number")  # noqa: TRY004
+        try:
+            numeric = float(value)
+        except ValueError as exc:
+            raise ValueError("duration must be a finite non-negative number") from exc
+        if not math.isfinite(numeric) or not 0 <= numeric <= _MAX_ADMIN_DURATION_SECONDS:
+            msg = "duration must be finite, non-negative, and within the supported range"
             raise ValueError(msg)
         return value
 

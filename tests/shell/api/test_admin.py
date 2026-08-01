@@ -166,10 +166,40 @@ def test_admin_request_models_are_strict_and_validate_durations() -> None:
     assert ReapStaleRequest(older_than_seconds=0, reason="restart").older_than_seconds == 0
     with pytest.raises(ValueError, match="finite"):
         ReapStaleRequest(older_than_seconds=float("inf"), reason="restart")
+    with pytest.raises(ValueError, match="finite"):
+        ReapStaleRequest(older_than_seconds=True, reason="restart")
+    with pytest.raises(ValueError, match="supported range"):
+        ReapStaleRequest(older_than_seconds=1e308, reason="restart")
+    with pytest.raises(ValueError, match="finite"):
+        CleanupRequest(retention_seconds=True)
     with pytest.raises(ValueError, match="greater than 0"):
         CleanupRequest(retention_seconds=0)
     with pytest.raises(ValueError, match="extra"):
         ReapStaleRequest.model_validate({"older_than_seconds": 1, "reason": "restart", "typo": True})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/admin/jobs/reap-stale", {"older_than_seconds": True, "reason": "restart"}),
+        ("/admin/jobs/reap-stale", {"older_than_seconds": 1e308, "reason": "restart"}),
+        ("/admin/cleanup", {"retention_seconds": True}),
+        ("/admin/cleanup", {"retention_seconds": 1e308}),
+    ],
+)
+async def test_admin_duration_overflow_is_client_validation(
+    client: AsyncClient,
+    path: str,
+    body: dict[str, object],
+) -> None:
+    app = _app(client)
+    app.state.orchestrator.settings.orchestrator.admin_token = "a" * 32
+
+    response = await client.post(path, json=body, headers={"Authorization": "Bearer " + "a" * 32})
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["type"] == "AdminRequestValidationError"
 
 
 @pytest.mark.asyncio
