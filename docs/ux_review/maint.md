@@ -33,7 +33,7 @@ fixed_in: [32335ce, CURRENT_HEAD]
 verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -72,7 +72,7 @@ fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
@@ -293,7 +293,7 @@ fixed_in: [32335ce, CURRENT_HEAD]
 verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -392,7 +392,7 @@ fixed_in: [32335ce, CURRENT_HEAD]
 verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-31"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -425,7 +425,7 @@ fixed_in: [32335ce, CURRENT_HEAD]
 verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -462,7 +462,7 @@ fixed_in: [32335ce, CURRENT_HEAD]
 verified_in: [32335ce, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -499,7 +499,7 @@ fixed_in: [185efcb, eddbd7e, de85647, CURRENT_HEAD]
 verified_in: [9e86939, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
@@ -538,7 +538,7 @@ fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-31"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
@@ -579,7 +579,7 @@ fixed_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 verified_in: [0d6bd414ce745f2483fbd1af76beb010f5178aba, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
@@ -624,7 +624,7 @@ fixed_in: [e8eca21, CURRENT_HEAD]
 verified_in: [e8eca21, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 2efc5b679d13c667bd9cffb4acf60f877f178a4f5de6f92cd94cf77446bcc29f
+  tree: 3e1725dad230aed9a620aa395ab1719cdb2f4be6e3d36cbc69acc26ad8ca8db3
   date: "2026-07-31"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty

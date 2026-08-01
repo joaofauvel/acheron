@@ -82,7 +82,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (`fix(ux-review): attest current-head metadata`).
+- Commit: `CURRENT_HEAD` (`chore(ux-review): satisfy verifier lint complexity`).
 - Evidence: focused sanitizer and verifier regressions pass; `just validate` is the final gate with 1572 passing tests and 9 expected skips.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.
