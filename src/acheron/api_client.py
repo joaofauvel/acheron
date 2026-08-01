@@ -325,7 +325,7 @@ class AcheronClient:
         voice_map: Sequence[VoiceRange] = (),
         input_id: str | None = None,
     ) -> PlanResponse:
-        """Preview the compiled plan for a job without persisting it or starting execution."""
+        """Preview a plan without persisting a job; temporary input survives success for submission."""
         payload: dict[str, object] = {
             "source_type": source_type,
             "source_path": source_path,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +14,41 @@ import pytest
 from acheron.cli import main
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
+
+
+def _write_four_chapter_epub(path: Path) -> None:
+    """Write a minimal EPUB whose spine contains four numbered chapters."""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>""",
+        )
+        manifest = "\n".join(
+            f'    <item href="chapter-{number}.xhtml" id="chapter-{number}" media-type="application/xhtml+xml"/>'
+            for number in range(1, 5)
+        )
+        spine = "\n".join(f'    <itemref idref="chapter-{number}"/>' for number in range(1, 5))
+        archive.writestr(
+            "OEBPS/content.opf",
+            f"""<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <manifest>
+{manifest}
+  </manifest>
+  <spine>
+{spine}
+  </spine>
+</package>""",
+        )
+        for number in range(1, 5):
+            archive.writestr(
+                f"OEBPS/chapter-{number}.xhtml",
+                f"<html><body><h1>Chapter {number}</h1><p>Text for chapter {number}.</p></body></html>",
+            )
+
 
 if TYPE_CHECKING:
     from click.testing import CliRunner
@@ -487,3 +524,175 @@ async def test_event_broker_publishes_terminal_event(wired_app: FastAPI, tmp_pat
     assert buf is not None
     terminal_events = [e for e in buf if e.status in {PlanStatus.COMPLETED, PlanStatus.FAILED}]
     assert len(terminal_events) >= 1
+
+
+@pytest.mark.asyncio
+async def test_voice_journey_previews_promotes_and_dispatches_canonical_selection(
+    wired_app: FastAPI,
+    tmp_path: Path,
+) -> None:
+    """A temporary EPUB preview gates submission and preserves voice selection."""
+    import numpy as np
+    from httpx import ASGITransport, AsyncClient
+    from workers.qwen3tts.handler import Qwen3TTSRunpodHandler
+
+    from acheron.core.models import Job, JsonValue, WorkerCapabilities, WorkerType
+    from acheron.worker_sdk.inputs import BytesInput
+    from acheron.worker_sdk.settings import WorkerSettings
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    await orch.register_worker(
+        "tts-shared",
+        "http://127.0.0.1:1",
+        "http",
+        replace(
+            WorkerCapabilities(
+                worker_type=WorkerType.TTS,
+                supported_languages_in=frozenset({"es"}),
+                supported_languages_out=frozenset({"es"}),
+                supported_formats_in=frozenset({"text"}),
+                supported_formats_out=frozenset({"wav"}),
+                max_payload_bytes=None,
+                batch_capable=True,
+                model_source="Qwen/Qwen3-TTS",
+            ),
+            metadata={"speakers": ["Vivian", "Ryan"]},
+        ),
+    )
+    epub = tmp_path / "book.epub"
+    _write_four_chapter_epub(epub)
+    transport = ASGITransport(app=wired_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        upload = await client.post("/inputs", files={"file": ("book.epub", epub.read_bytes(), "application/epub+zip")})
+        assert upload.status_code == 201
+        uploaded = upload.json()
+        data_dir = orch.settings.orchestrator.data_dir
+        stored = data_dir / uploaded["source_path"]
+        assert stored.is_file()
+
+        request = {
+            "source_type": "epub",
+            "source_path": uploaded["source_path"],
+            "source_language": "en",
+            "target_language": "es",
+            "voice_map": [
+                {"start_chapter": 1, "end_chapter": 3, "voice": "vivian"},
+                {"start_chapter": 4, "end_chapter": 4, "voice": "ryan"},
+            ],
+            "input_id": uploaded["input_id"],
+        }
+        preview = await client.post("/jobs:preview", json=request)
+        assert preview.status_code == 200, preview.text
+        assert await orch.list_jobs() == ()
+        assert stored.is_file(), "successful preview must retain the temporary input for submission"
+
+        submitted = await client.post("/jobs", json=request)
+        assert submitted.status_code == 201, submitted.text
+        job = submitted.json()
+        assert job["voice"] is None
+        assert job["voice_map"] == [
+            {"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"},
+            {"start_chapter": 4, "end_chapter": 4, "voice": "Ryan"},
+        ]
+        plan = await orch.get_plan(job["plan_id"])
+        synthesize = next(step for step in plan.steps if step.step_id == "synthesize")
+        assert synthesize.selected_worker_id == "tts-shared"
+        assert "voice" not in synthesize.payload
+        assert synthesize.payload["voice_map"] == job["voice_map"]
+
+        class _SpyingModel:
+            def __init__(self) -> None:
+                self.speakers: list[str] = []
+
+            def generate_custom_voice(
+                self,
+                text: list[str],
+                language: list[str],
+                speaker: list[str],
+                instruct: list[str],
+            ) -> tuple[list[object], int]:
+                self.speakers = speaker
+                return [np.zeros(32, dtype=np.float32) for _ in text], 22050
+
+        handler = Qwen3TTSRunpodHandler(
+            WorkerSettings(
+                worker_id="tts-shared",
+                orchestrator_url="http://test",
+                price_source="zero",
+                default_speaker="Ryan",
+            )
+        )
+        spying_model = _SpyingModel()
+        handler._model = spying_model  # noqa: SLF001
+        chunks: list[dict[str, JsonValue]] = [
+            {"chapter_id": f"chapter_{number:03d}", "sequence_id": 0, "text": f"chapter {number}"}
+            for number in range(1, 5)
+        ]
+        await handler.handle(
+            Job(
+                job_id="voice-journey-synthesize",
+                job_type=WorkerType.TTS,
+                payload=synthesize.payload,
+                chapter_id="chapter_001",
+            ),
+            input=BytesInput(content_type="application/json", data=json.dumps(chunks).encode()),
+        )
+        assert spying_model.speakers == ["Vivian", "Vivian", "Vivian", "Ryan"]
+
+
+@pytest.mark.asyncio
+async def test_voice_preflight_rejects_separate_workers_and_cleans_input(
+    wired_app: FastAPI,
+    tmp_path: Path,
+) -> None:
+    """A voice map requiring separate workers fails before persistence."""
+    from httpx import ASGITransport, AsyncClient
+
+    from acheron.core.models import WorkerCapabilities, WorkerType
+
+    orch: Orchestrator = wired_app.state.orchestrator
+    for worker_id, voice in (("tts-vivian", "Vivian"), ("tts-ryan", "Ryan")):
+        await orch.register_worker(
+            worker_id,
+            "http://127.0.0.1:1",
+            "http",
+            replace(
+                WorkerCapabilities(
+                    worker_type=WorkerType.TTS,
+                    supported_languages_in=frozenset({"es"}),
+                    supported_languages_out=frozenset({"es"}),
+                    supported_formats_in=frozenset({"text"}),
+                    supported_formats_out=frozenset({"wav"}),
+                    max_payload_bytes=None,
+                    batch_capable=True,
+                    model_source="Qwen/Qwen3-TTS",
+                ),
+                metadata={"speakers": [voice]},
+            ),
+        )
+    epub = tmp_path / "book.epub"
+    _write_four_chapter_epub(epub)
+    transport = ASGITransport(app=wired_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        upload = await client.post("/inputs", files={"file": ("book.epub", epub.read_bytes(), "application/epub+zip")})
+        uploaded = upload.json()
+        response = await client.post(
+            "/jobs:preview",
+            json={
+                "source_type": "epub",
+                "source_path": uploaded["source_path"],
+                "source_language": "en",
+                "target_language": "es",
+                "voice_map": [
+                    {"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"},
+                    {"start_chapter": 4, "end_chapter": 4, "voice": "Ryan"},
+                ],
+                "input_id": uploaded["input_id"],
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["type"] == "VoiceSelectionError"
+    assert await orch.list_jobs() == ()
+    assert not (orch.settings.orchestrator.data_dir / uploaded["source_path"]).exists()
+    assert not list(orch.settings.orchestrator.data_dir.glob("plan-*/plan.json"))

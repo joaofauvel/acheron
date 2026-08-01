@@ -342,6 +342,28 @@ def _chapter_payload(payload: dict[str, JsonValue], chapter_ids: tuple[str, ...]
     return {**payload, "chapter_ids": list(chapter_ids)}
 
 
+def _tts_payload(
+    target_language: str,
+    selection: VoiceSelection,
+    *,
+    include_voice_map: bool,
+) -> dict[str, JsonValue]:
+    """Build a voice-map payload without an explicit null voice override."""
+    payload: dict[str, JsonValue] = {"target_language": target_language}
+    if selection.default_voice is not None or not selection.ranges:
+        payload["voice"] = selection.default_voice
+    if include_voice_map:
+        payload["voice_map"] = [
+            {
+                "start_chapter": item.start_chapter,
+                "end_chapter": item.end_chapter,
+                "voice": item.voice,
+            }
+            for item in selection.ranges
+        ]
+    return payload
+
+
 def _epub_steps(
     request: EpubRequest,
     chapter_ids: tuple[str, ...] = (),
@@ -394,18 +416,7 @@ def _epub_steps(
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
                 payload=_chapter_payload(
-                    {
-                        "target_language": request.target_language,
-                        "voice": effective_selection.default_voice,
-                        "voice_map": [
-                            {
-                                "start_chapter": item.start_chapter,
-                                "end_chapter": item.end_chapter,
-                                "voice": item.voice,
-                            }
-                            for item in effective_selection.ranges
-                        ],
-                    },
+                    _tts_payload(request.target_language, effective_selection, include_voice_map=True),
                     chapter_ids,
                 ),
                 selected_worker_id=selected_worker_id,
@@ -477,7 +488,7 @@ def _audio_steps(
                 type=WorkerType.TTS,
                 depends_on=(translate_dep,),
                 status=StepStatus.PENDING,
-                payload={"target_language": request.target_language, "voice": effective_selection.default_voice},
+                payload=_tts_payload(request.target_language, effective_selection, include_voice_map=False),
                 selected_worker_id=selected_worker_id,
             ),
             PlanStep(

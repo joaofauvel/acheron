@@ -1,7 +1,7 @@
 ---
 program: ux-review
 last_updated_date: 2026-07-31
-version: 4
+version: 5
 initial_review_commit: 59458ba
 last_updated_commit: 034401b6425375f93f4ddcd3d3330b5507f996ae
 related: docs/code_review/
@@ -14,7 +14,7 @@ related: docs/code_review/
 | Theme | Grade | Open stories by severity | Verified | Notes |
 |---|---|---|---|---|
 | DEPLOY | C | 4 medium, 1 low | 0 | 15 stories; 1 stale and 1 obsolete, with certificate, image, and environment gaps |
-| OPS | C | 1 medium, 1 low | 5 | 31 stories; recovery and traceability journeys now verified, with remaining durable-dashboard gaps |
+| OPS | C | 1 medium, 1 low | 6 | 31 stories; voice, recovery, and traceability journeys now verified, with remaining durable-dashboard gaps |
 | MAINT | C | 3 high, 2 medium | 9 | 19 stories; recovery, retention, worker-history, and traceability journeys now verified |
 
 A theme with 0 stories is graded `—` (untested); this summary has no such themes.
@@ -49,9 +49,9 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 | open | 12 |
 | in-progress | 0 |
 | fixed | 28 |
-| verified | 14 |
+| verified | 15 |
 | partial | 0 |
-| stale | 4 |
+| stale | 3 |
 | obsolete | 7 |
 | broken-yaml | 0 |
 | wontfix | 0 |
@@ -75,4 +75,5 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 - `fixed_in` placeholders were resolved only where the review evidence supplied a matching Conventional Commit SHA.
 - `just first-run`, selected `just first-run --step` checks, all three simulation scenarios, and `just ux-validate` passed during the refresh.
 - Traceability stories OPS-022, MAINT-013, and MAINT-016 were verified by focused request-correlation and dashboard version tests.
+- OPS-028 voice selection was verified by the four-chapter temporary-input preview/promotion journey, jointly capable worker assertion, and Qwen speaker-sequence assertion.
 - Open and stale stories remain UX concerns even when related code-review work is tracked separately.

@@ -671,6 +671,46 @@ def reap_stuck(older_than: str, reason: str) -> None:
         console.print(job_id)
 
 
+def _preflight_voice_selection(  # noqa: PLR0913
+    client: AcheronClient,
+    *,
+    source_type: str,
+    source_path: str,
+    source_language: str,
+    target_language: str,
+    executor_strategy: str,
+    asr_model: str | None,
+    voice: str | None,
+    voice_map: tuple[VoiceRange, ...],
+    input_id: str,
+) -> None:
+    """Run voice preflight while retaining a temporary input for submission."""
+    try:
+        _run(
+            client.preview_job(
+                source_type=source_type,
+                source_path=source_path,
+                source_language=source_language,
+                target_language=target_language,
+                executor_strategy=executor_strategy,
+                asr_model=asr_model,
+                voice=voice,
+                voice_map=voice_map,
+                input_id=input_id,
+            ),
+            client=client,
+            on_http_error=lambda exc: _print_submit_http_error(
+                exc,
+                client=client,
+                source_language=source_language,
+                target_language=target_language,
+            ),
+        )
+    except BaseException:
+        _run(client.delete_input(input_id), client=client)
+        raise
+
+
 @job.command()
 @click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path))
 @click.option("--src", required=True, help="Source language (ISO 639-1)")
@@ -715,6 +755,20 @@ def submit(  # noqa: C901, PLR0913
         client=client,
         on_http_error=_print_http_error,
     )
+
+    if not dry_run and uploaded.input_id and (voice is not None or parsed_voice_map):
+        _preflight_voice_selection(
+            client,
+            source_type=source_type,
+            source_path=uploaded.source_path,
+            source_language=src,
+            target_language=dest,
+            executor_strategy=executor,
+            asr_model=asr_model,
+            voice=voice,
+            voice_map=parsed_voice_map,
+            input_id=uploaded.input_id,
+        )
 
     if dry_run:
         try:

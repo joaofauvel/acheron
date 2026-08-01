@@ -1766,6 +1766,44 @@ class TestPreviewRoute:
         assert "top-secret" not in detail["message"]
 
     @pytest.mark.asyncio
+    async def test_preview_timeout_cleans_temporary_input_without_job_or_plan(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport
+
+        upload = await client.post(
+            "/inputs",
+            files={"file": ("book.epub", b"temporary-epub", "application/epub+zip")},
+        )
+        assert upload.status_code == 201
+        uploaded = upload.json()
+        transport = cast("ASGITransport", client._transport)  # noqa: SLF001
+        app = cast("FastAPI", transport.app)
+        orch = app.state.orchestrator
+        monkeypatch.setattr(orch, "preview_job", AsyncMock(side_effect=TimeoutError("preflight timed out")))
+
+        with pytest.raises(TimeoutError, match="preflight timed out"):
+            await client.post(
+                "/jobs:preview",
+                json={
+                    "source_type": "epub",
+                    "source_path": uploaded["source_path"],
+                    "source_language": "en",
+                    "target_language": "es",
+                    "input_id": uploaded["input_id"],
+                },
+            )
+
+        assert await orch.list_jobs() == ()
+        assert not (orch.settings.orchestrator.data_dir / uploaded["source_path"]).exists()
+        assert not list(orch.settings.orchestrator.data_dir.glob("plan-*/plan.json"))
+
+    @pytest.mark.asyncio
     async def test_preview_returns_plan_without_persisting(
         self,
         tmp_path: Path,

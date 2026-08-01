@@ -1003,25 +1003,41 @@ feedback_ref: "TBD-pagerduty"
 ---
 id: OPS-028
 title: "TTS voice is worker-level config (`WorkerCapabilities.metadata`), not job-level — user cannot pick per-chapter voices"
-status: stale
+status: verified
 severity: medium
 effort: L
 discovered_via: [user-feedback, code-review]
 user_facing_surface: cli
 silent: true
 journey_stage: t1
-user_journey: "Operator submits a book, wants the first 3 chapters narrated by a female voice and chapters 4+ by a male voice, runs `acheron job submit book.epub --src en --dest es --voice 'vivian:1-3' --voice 'ryan:4-100'`, gets 'Error: no such option: --voice'."
+user_journey: "Operator submits a four-chapter book with `acheron job submit book.epub --src en --dest es --voice-map 1-3:Vivian --voice-map 4-4:Ryan`, sees a successful job submission, and the persisted plan uses one jointly capable TTS worker with the requested chapter voices."
 files:
   - path: src/acheron/cli.py
-    lines: 362-380
-  - path: src/acheron/shell/api/schemas.py
-    lines: 31-41
+    lines: 674-820
+  - path: src/acheron/api_client.py
+    lines: 316-343
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 185-265
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 465-490
+  - path: src/acheron/core/planner.py
+    lines: 69-82
+  - path: src/acheron/core/planner.py
+    lines: 195-215
+  - path: workers/qwen3tts/handler.py
+    lines: 139-171
+  - path: tests/integration/test_job_lifecycle.py
+    lines: 520-698
+  - path: tests/shell/api/test_jobs.py
+    lines: 1769-1830
+  - path: tests/shell/test_cli.py
+    lines: 583-720
 related: [OPS-015, OPS-010]
-fixed_in: []
+fixed_in: [397f2d5]
 verified_in: []
-last_verified_at: {}
-verified_by: ""
-drift_note: "Voice remains absent from the CLI submission contract."
+last_verified_at:
+  date: "2026-07-31"
+verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
 ---
 ```

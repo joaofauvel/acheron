@@ -471,16 +471,23 @@ async def preview_job(
 
     Reuses :func:`_build_job_request` so the same preflight that gates
     ``POST /jobs`` also gates the preview endpoint — operators see exactly
-    the validation a real submit would experience.
+    the validation a real submit would experience. A temporary input remains
+    available after a successful preview so the caller can submit that same
+    input; every failed preflight path rolls it back.
     """
+    succeeded = False
     try:
         job_request, strategy = await _build_job_request(orch, body)
         plan = await orch.preview_job(job_request, strategy)
     except AcheronError as exc:
         raise HTTPException(status_code=422, detail=_error_response(exc).model_dump()) from exc
+    else:
+        response = PlanResponse.from_plan(plan)
+        succeeded = True
+        return response
     finally:
-        await _cleanup_temporary_inputs(orch, _temporary_input_ids(body))
-    return PlanResponse.from_plan(plan)
+        if not succeeded:
+            await _cleanup_temporary_inputs(orch, _temporary_input_ids(body))
 
 
 @router.get("/{job_id}", response_model=JobResponse)

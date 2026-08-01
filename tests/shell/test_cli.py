@@ -580,6 +580,122 @@ def test_submit_invalid_voice_map_does_not_upload_or_submit(tmp_path: Path) -> N
 
 
 @respx.mock
+def test_submit_voice_preflights_then_promotes_same_input(tmp_path: Path) -> None:
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    input_id = "a" * 32
+    respx.post(f"{_BASE_URL}/inputs").mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "input_id": input_id,
+                "source_path": f"inputs/{input_id}/book.epub",
+                "filename": "book.epub",
+                "size_bytes": 10,
+                "content_type": "application/epub+zip",
+            },
+        )
+    )
+    preview_route = respx.post(f"{_BASE_URL}/jobs:preview").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "plan_id": "plan-preview",
+                "job_id": "job-preview",
+                "source_type": "epub",
+                "source_language": "en",
+                "target_language": "es",
+                "executor_strategy": "streaming",
+                "steps": [],
+            },
+        )
+    )
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(201, json=_job_payload("job-voice")))
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "job",
+            "submit",
+            str(epub),
+            "--src",
+            "en",
+            "--dest",
+            "es",
+            "--voice-map",
+            "1-3:Vivian",
+            "--voice-map",
+            "4-4:Ryan",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert preview_route.called
+    assert jobs_route.called
+    preview_body = json.loads(preview_route.calls.last.request.content)
+    submit_body = json.loads(jobs_route.calls.last.request.content)
+    assert preview_body["input_id"] == input_id
+    assert submit_body["input_id"] == input_id
+    assert (
+        preview_body["voice_map"]
+        == submit_body["voice_map"]
+        == [
+            {"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"},
+            {"start_chapter": 4, "end_chapter": 4, "voice": "Ryan"},
+        ]
+    )
+
+
+@respx.mock
+def test_submit_voice_preflight_failure_deletes_temporary_input(tmp_path: Path) -> None:
+    epub = tmp_path / "book.epub"
+    epub.touch()
+    input_id = "b" * 32
+    respx.post(f"{_BASE_URL}/inputs").mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "input_id": input_id,
+                "source_path": f"inputs/{input_id}/book.epub",
+                "filename": "book.epub",
+                "size_bytes": 10,
+                "content_type": "application/epub+zip",
+            },
+        )
+    )
+    preview_route = respx.post(f"{_BASE_URL}/jobs:preview").mock(
+        return_value=httpx.Response(
+            422,
+            json={"detail": {"type": "VoiceSelectionError", "message": "unsupported voice"}},
+        )
+    )
+    delete_route = respx.delete(f"{_BASE_URL}/inputs/{input_id}").mock(return_value=httpx.Response(204))
+    jobs_route = respx.post(f"{_BASE_URL}/jobs").mock(return_value=httpx.Response(500))
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "job",
+            "submit",
+            str(epub),
+            "--src",
+            "en",
+            "--dest",
+            "es",
+            "--voice-map",
+            "1-3:Vivian",
+            "--voice-map",
+            "4-4:Ryan",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert preview_route.called
+    assert delete_route.called
+    assert not jobs_route.called
+
+
+@respx.mock
 def test_submit_dry_run_previews_without_submitting(tmp_path: Path) -> None:
     """`--dry-run` uploads, calls `/jobs:preview`, and never calls `/jobs`."""
     epub = tmp_path / "book.epub"
