@@ -79,6 +79,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 - Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.
 - `CURRENT_HEAD` is the repository-native marker for metadata verified at the checked-out commit. The UX verifier resolves it only against the repository's actual HEAD and rejects stale or arbitrary supplied SHAs; this keeps tracked metadata clean without a self-referential commit.
 - Open and stale stories remain UX concerns even when related code-review work is tracked separately.
+- Simulation and first-run artifacts are supplemental evidence for stories whose strongest discovery channel is human; only stories discovered via `simulation` or `first-run` require exact `STORY_REF` and `user_journey` attestation.
 
 ## Task 18 report
 

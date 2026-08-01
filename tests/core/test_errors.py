@@ -109,6 +109,10 @@ class TestSanitisePublicMessage:
             '{"password": "top-secret"}',
             "password: top-secret",
             "Authorization: Bearer top-secret",
+            "client_id: client-123",
+            "private_key=private-123",
+            "refresh_token=refresh-123",
+            "AWS_ACCESS_KEY_ID=access-123",
         ],
     )
     def test_unsafe_message_uses_stable_fallback(self, message: str) -> None:
@@ -202,6 +206,9 @@ class TestSanitiseExcMessage:
             "access_token: top-secret",
             "AWS_SECRET_ACCESS_KEY=top-secret",
             '{"client_secret": "top-secret"}',
+            '{"client_id": "client-123", "privateKey": "key-123", "refresh_token": "refresh-123"}',
+            "AWS_ACCESS_KEY_ID=access-123 AWS_SECRET_ACCESS_KEY: secret-123",
+            "Authorization: Bearer bearer-123",
         ],
     )
     def test_fails_closed_for_publicly_unsafe_messages(self, message: str) -> None:

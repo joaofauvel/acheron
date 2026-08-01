@@ -169,7 +169,11 @@ class InMemoryJobStore(JobStore):
         self._jobs: dict[str, TrackedJob] = {}
 
     async def put(self, job: TrackedJob) -> None:
-        """Store or update a tracked job."""
+        """Store or update a tracked job without losing an established archive marker."""
+        existing = self._jobs.get(job.job_id)
+        if existing is not None and existing.archived_at is not None and job.archived_at is None:
+            job = copy.deepcopy(job)
+            job.archived_at = existing.archived_at
         job.last_persisted_at = datetime.now(UTC)
         self._jobs[job.job_id] = copy.deepcopy(job)
 

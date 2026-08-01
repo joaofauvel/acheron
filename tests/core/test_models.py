@@ -54,13 +54,26 @@ class TestWorkerErrorSanitization:
             "https://user:secret@worker.example:8443/path?token=secret failed with token=secret",
             "/srv/private/secret Traceback (most recent call last): File /srv/worker.py",
             r"\\server\share\secret ..\..\credentials",
+            'worker failed: {"client_id":"client-123", "privateKey":"key-123", "refresh_token":"refresh-123"}',
+            "worker failed AWS_ACCESS_KEY_ID=access-123 AWS_SECRET_ACCESS_KEY=secret-123",
         ],
     )
     def test_diagnostics_and_traceback_continuations_are_not_retained(self, message: str) -> None:
         sanitized = sanitize_worker_error(message)
         assert len(sanitized) <= 512
         assert all(
-            secret not in sanitized.lower() for secret in ("secret", "token", "api_key", "request_id", "traceback")
+            secret not in sanitized.lower()
+            for secret in (
+                "secret",
+                "token",
+                "api_key",
+                "request_id",
+                "traceback",
+                "client-123",
+                "key-123",
+                "refresh-123",
+                "access-123",
+            )
         )
         assert "https://" not in sanitized
         assert "worker.py" not in sanitized

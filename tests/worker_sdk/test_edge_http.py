@@ -58,6 +58,15 @@ class _Stub(WorkerHandler):
             max_payload_bytes=None,
             batch_capable=False,
             model_source="huggingface:test",
+            metadata={
+                "speakers": ["Ryan"],
+                "default_speaker": "Ryan",
+                "health_provider": "runpod",
+                "health_endpoint_id": "endpoint-1",
+                "client_id": "private-client",
+                "provider_endpoint": "https://provider.invalid/private",
+                "custom": "must-not-leak",
+            },
         )
 
     async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
@@ -93,6 +102,12 @@ class TestEdgeRoutes:
         assert body["worker_type"] == "tts"
         assert body["supported_languages_in"] == ["en"]
         assert body["supported_formats_out"] == ["wav"]
+        assert body["metadata"] == {
+            "speakers": ["Ryan"],
+            "default_speaker": "Ryan",
+            "health_provider": "runpod",
+            "health_endpoint_id": "endpoint-1",
+        }
 
     @pytest.mark.asyncio
     async def test_execute_returns_multipart(self, app_handler: tuple[FastAPI, _Stub]) -> None:

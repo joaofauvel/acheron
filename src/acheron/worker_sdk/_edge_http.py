@@ -28,7 +28,7 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
-from acheron.worker_sdk._caps import caps_to_dict
+from acheron.worker_sdk._caps import public_caps_to_dict
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
 from acheron.worker_sdk.inputs import BytesInput, Input
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
@@ -335,7 +335,7 @@ class EdgeApp:
 
         @router.get("/capabilities")
         async def get_capabilities() -> dict[str, JsonValue]:
-            return caps_to_dict(self.capabilities)
+            return public_caps_to_dict(self.capabilities)
 
         @router.post("/execute", dependencies=[Depends(_verify_bearer)])
         async def execute(request: Request) -> Response:

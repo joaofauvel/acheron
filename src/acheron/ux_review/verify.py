@@ -62,6 +62,48 @@ def _commit_exists(repo_root: Path, commit: str) -> bool:
     return True
 
 
+def _is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
+    """Return whether ``ancestor`` is reachable from ``descendant``."""
+    git = shutil.which("git")
+    if git is None:
+        return False
+    try:
+        subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "merge-base", "--is-ancestor", ancestor, descendant],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def _validate_evidence_commits(
+    repo_root: Path,
+    story: Story,
+    verified_commit: str | None,
+    requested_head: str,
+    *,
+    marker_matches: bool,
+) -> tuple[str, str] | None:
+    """Validate commit existence and ancestry recorded by a story."""
+    metadata_commits = [*story.fixed_in, *story.verified_in]
+    if verified_commit is not None:
+        metadata_commits.append(verified_commit)
+    for commit in metadata_commits:
+        if commit != CURRENT_HEAD and not _commit_exists(repo_root, commit):
+            return ("FAIL", f"verification metadata names invalid Git commit: {commit}")
+    for commit in story.fixed_in:
+        if commit == CURRENT_HEAD:
+            if not marker_matches:
+                return ("PARTIAL", f"fixed_in=CURRENT_HEAD does not match head={requested_head}")
+            continue
+        if not _is_ancestor(repo_root, commit, requested_head):
+            return ("FAIL", f"fixed_in commit {commit} is not an ancestor of head={requested_head}")
+    return None
+
+
 def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa: C901, PLR0911, PLR0912
     """Verify a single story. Returns (status, message).
 
@@ -89,12 +131,15 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa
         verified_commit = story.last_verified_at.get("commit")
         if not story.fixed_in:
             return ("PARTIAL", "verified story is missing fixed_in evidence")
-        metadata_commits = [*story.fixed_in[:1], *story.verified_in]
-        if verified_commit is not None:
-            metadata_commits.append(verified_commit)
-        for commit in metadata_commits:
-            if commit != CURRENT_HEAD and not _commit_exists(repo_root, commit):
-                return ("FAIL", f"verification metadata names invalid Git commit: {commit}")
+        evidence_error = _validate_evidence_commits(
+            repo_root,
+            story,
+            verified_commit,
+            requested_head,
+            marker_matches=marker_matches,
+        )
+        if evidence_error is not None:
+            return evidence_error
         if verified_commit == CURRENT_HEAD:
             if not marker_matches:
                 return ("PARTIAL", f"last_verified_at.commit=CURRENT_HEAD does not match head={requested_head}")

@@ -22,3 +22,13 @@ def caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
         "max_input_tokens": caps.max_input_tokens,
         "metadata": dict(caps.metadata),
     }
+
+
+_PUBLIC_METADATA_KEYS = frozenset({"default_speaker", "health_endpoint_id", "health_provider", "speakers", "voice"})
+
+
+def public_caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
+    """Serialise capabilities with only metadata required by public planning and health checks."""
+    result = caps_to_dict(caps)
+    result["metadata"] = {key: value for key, value in caps.metadata.items() if key in _PUBLIC_METADATA_KEYS}
+    return result

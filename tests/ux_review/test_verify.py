@@ -9,6 +9,7 @@ import pytest
 
 import acheron.ux_review.discovery as discovery_module
 import acheron.ux_review.verify as verify_module
+from acheron.ux_review.schema import Story
 from acheron.ux_review.verify import main, verify
 
 _HEAD = "head-sha"
@@ -18,6 +19,7 @@ _HEAD = "head-sha"
 def _fake_tree_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verify_module, "repository_tree_fingerprint", lambda *_args: "tree-sha")
     monkeypatch.setattr(verify_module, "_commit_exists", lambda *_args: True)
+    monkeypatch.setattr(verify_module, "_is_ancestor", lambda *_args: True)
 
 
 def _write_story(
@@ -333,6 +335,8 @@ def test_matching_metadata_and_harness_artifact_pass(
     artifact.write_text('''"""STORY_REF: OPS-999\n\nTest journey\n"""\n''', encoding="utf-8")
 
     monkeypatch.setattr(discovery_module, "_post_fixed_commit", lambda *_args: True)
+    monkeypatch.setattr(discovery_module, "_artifact_paths", lambda *_args: (artifact,))
+    monkeypatch.setattr(discovery_module, "_artifact_source", lambda *_args: artifact.read_text(encoding="utf-8"))
     status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
 
     assert status == "PASS"
@@ -358,11 +362,77 @@ def test_harness_marker_requires_exact_story_id(
     scenarios.mkdir(parents=True)
     (scenarios / "pricing.py").write_text('''"""STORY_REF: OPS-9999\n\nTest journey\n"""\n''', encoding="utf-8")
     monkeypatch.setattr(discovery_module, "_post_fixed_commit", lambda *_args: True)
+    monkeypatch.setattr(discovery_module, "_artifact_paths", lambda *_args: (scenarios / "pricing.py",))
+    monkeypatch.setattr(discovery_module, "_artifact_source", lambda *_args: (scenarios / "pricing.py").read_text())
 
     status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
 
     assert status == "FAIL"
     assert "harness artifact" in message
+
+
+def test_historical_artifact_reads_requested_revision(tmp_path: Path) -> None:
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(tmp_path), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "Test")
+    scenarios = tmp_path / "sim" / "scenarios"
+    scenarios.mkdir(parents=True)
+    artifact = scenarios / "pricing.py"
+    artifact.write_text('''"""No story marker yet."""\n''', encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "initial")
+    historical_head = git("rev-parse", "HEAD")
+    artifact.write_text('''"""STORY_REF: OPS-999\\n\\nTest journey\\n"""\n''', encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "add marker")
+
+    story = Story.model_validate(
+        {
+            "id": "OPS-999",
+            "title": "Test story",
+            "status": "verified",
+            "severity": "medium",
+            "effort": "S",
+            "discovered_via": ["simulation"],
+            "user_facing_surface": "cli",
+            "silent": False,
+            "journey_stage": "t1",
+            "user_journey": "Test journey",
+            "files": [{"path": "sim/scenarios/pricing.py", "lines": "1"}],
+            "fixed_in": [historical_head],
+        }
+    )
+    assert discovery_module.artifact_path_for(story, tmp_path / "docs" / "ux_review", historical_head) is None
+    current_head = git("rev-parse", "HEAD")
+    assert discovery_module.artifact_path_for(story, tmp_path / "docs" / "ux_review", current_head) == artifact
+
+
+def test_invalid_trailing_fixed_commit_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_story(
+        tmp_path,
+        metadata=(
+            "fixed_in: [head-sha, invalid-trailing-sha]\n"
+            "verified_in: [head-sha]\n"
+            "last_verified_at:\n"
+            "  commit: head-sha\n"
+            "  date: '2026-07-31'\n"
+        ),
+    )
+    monkeypatch.setattr(verify_module, "_commit_exists", lambda _root, commit: commit != "invalid-trailing-sha")
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
+
+    assert status == "FAIL"
+    assert "invalid-trailing-sha" in message
 
 
 def test_historical_harness_head_accepts_post_fixed_commit(
@@ -394,6 +464,8 @@ def test_historical_harness_head_accepts_post_fixed_commit(
         "run",
         lambda args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),
     )
+    monkeypatch.setattr(discovery_module, "_artifact_paths", lambda *_args: (artifact,))
+    monkeypatch.setattr(discovery_module, "_artifact_source", lambda *_args: artifact.read_text(encoding="utf-8"))
 
     status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", "historical-sha")
 

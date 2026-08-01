@@ -75,26 +75,29 @@ def repository_tree_fingerprint(repo_root: Path, revision: str = "HEAD") -> str 
 
 
 def _post_fixed_commit(repo_root: Path, story: Story, head_sha: str) -> bool:
-    """Check that the requested head descends from the story's first fix commit."""
+    """Check that every recorded fix commit precedes the requested head."""
     actual_head = _repository_head(repo_root)
     if actual_head is None or not story.fixed_in:
         return False
     requested_head = actual_head if head_sha in {"HEAD", CURRENT_HEAD} else head_sha
-    fixed_sha = story.fixed_in[0]
-    if fixed_sha == CURRENT_HEAD:
-        fixed_sha = actual_head
     git = shutil.which("git")
     if git is None:
         return False
-    try:
-        subprocess.run(  # noqa: S603 - executable and arguments are fixed
-            [git, "-C", str(repo_root), "merge-base", "--is-ancestor", fixed_sha, requested_head],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except OSError, subprocess.CalledProcessError:
-        return False
+    for fixed_sha in story.fixed_in:
+        resolved_fixed_sha = fixed_sha
+        if fixed_sha == CURRENT_HEAD:
+            if requested_head != actual_head:
+                return False
+            resolved_fixed_sha = actual_head
+        try:
+            subprocess.run(  # noqa: S603 - executable and arguments are fixed
+                [git, "-C", str(repo_root), "merge-base", "--is-ancestor", resolved_fixed_sha, requested_head],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except OSError, subprocess.CalledProcessError:
+            return False
     return True
 
 
@@ -102,9 +105,10 @@ def _normalized(text: str) -> str:
     return " ".join(text.split())
 
 
-def _artifact_matches(path: Path, story: Story) -> bool:
+def _artifact_matches(path: Path, story: Story, source: str | None = None) -> bool:
     try:
-        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        text = path.read_text(encoding="utf-8") if source is None else source
+        module = ast.parse(text, filename=str(path))
     except OSError, SyntaxError, UnicodeError:
         return False
     docstring = ast.get_docstring(module, clean=False)
@@ -116,6 +120,41 @@ def _artifact_matches(path: Path, story: Story) -> bool:
     return _normalized(story.user_journey) in _normalized(docstring)
 
 
+def _artifact_paths(repo_root: Path, relative_dir: str, revision: str) -> tuple[Path, ...]:
+    """List artifact paths tracked by ``revision``."""
+    git = shutil.which("git")
+    if git is None:
+        return ()
+    try:
+        result = subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "ls-tree", "-r", "--name-only", revision, "--", relative_dir],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return ()
+    return tuple(repo_root / line for line in result.stdout.splitlines() if line.endswith(".py"))
+
+
+def _artifact_source(repo_root: Path, path: Path, revision: str) -> str | None:
+    """Read an artifact from a Git revision without consulting the working tree."""
+    git = shutil.which("git")
+    if git is None:
+        return None
+    relative_path = path.relative_to(repo_root).as_posix()
+    try:
+        result = subprocess.run(  # noqa: S603 - executable and arguments are fixed
+            [git, "-C", str(repo_root), "show", f"{revision}:{relative_path}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return None
+    return result.stdout
+
+
 def artifact_path_for(story: Story, root: Path, head_sha: str) -> Path | None:
     """Return a valid harness artifact for the story's strongest channel."""
     if not story.discovered_via:
@@ -124,10 +163,22 @@ def artifact_path_for(story: Story, root: Path, head_sha: str) -> Path | None:
     repo_root = root.parent.parent
     if not _post_fixed_commit(repo_root, story, head_sha):
         return None
+    revision = _repository_head(repo_root) if head_sha in {"HEAD", CURRENT_HEAD} else head_sha
+    if revision is None:
+        return None
     if strongest == "simulation":
-        candidates = (repo_root / "sim" / "scenarios").glob("*.py")
+        relative_dir = "sim/scenarios"
     elif strongest == "first-run":
-        candidates = (repo_root / "tests" / "first_run").glob("test_*.py")
+        relative_dir = "tests/first_run"
     else:
         return None
-    return next((path for path in candidates if _artifact_matches(path, story)), None)
+    candidates = _artifact_paths(repo_root, relative_dir, revision)
+    return next(
+        (
+            path
+            for path in candidates
+            if (source := _artifact_source(repo_root, path, revision)) is not None
+            and _artifact_matches(path, story, source)
+        ),
+        None,
+    )
