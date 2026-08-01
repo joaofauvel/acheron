@@ -10,7 +10,12 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from acheron.ux_review.discovery import _repository_head, artifact_path_for, repository_tree_fingerprint
+from acheron.ux_review.discovery import (
+    _repository_head,
+    artifact_path_for,
+    repository_tree_fingerprint,
+    resolve_revision,
+)
 from acheron.ux_review.schema import CURRENT_HEAD, Story
 
 _STORY_PATTERN = re.compile(r"^## ([A-Z]+-\d+)\b", re.MULTILINE)
@@ -76,12 +81,16 @@ def _check_file_ref(file_path: Path, lines: str) -> list[str]:
     return []
 
 
-def _validate_story(story: Story, tag: str, root: Path, head_sha: str) -> list[str]:
+def _validate_story(story: Story, tag: str, root: Path, head_sha: str) -> list[str]:  # noqa: C901
     """Validate a single parsed story. Return a list of error messages."""
     errors: list[str] = []
-    actual_head = _repository_head(root.parent.parent)
+    repo_root = root.parent.parent
+    actual_head = _repository_head(repo_root)
     marker_input = head_sha in {"HEAD", CURRENT_HEAD}
-    requested_head = actual_head if marker_input and actual_head is not None else head_sha
+    requested_head = actual_head if marker_input and actual_head is not None else resolve_revision(repo_root, head_sha)
+    if requested_head is None:
+        requested_head = head_sha
+        errors.append(f"{tag}: head={head_sha} is not a valid Git commit")
     current_markers = [
         value
         for value in (*story.fixed_in, *story.verified_in, story.last_verified_at.get("commit", ""))
@@ -94,11 +103,13 @@ def _validate_story(story: Story, tag: str, root: Path, head_sha: str) -> list[s
         and actual_head is not None
         and requested_head == actual_head
     ):
-        expected_tree = repository_tree_fingerprint(root.parent.parent, actual_head)
+        expected_tree = repository_tree_fingerprint(repo_root, actual_head)
         if expected_tree is None or story.last_verified_at.get("tree") != expected_tree:
             errors.append(f"{tag}: CURRENT_HEAD attestation does not match the committed tree")
     for file_ref in story.files:
         file_path = Path(file_ref.path)
+        if not file_path.is_absolute():
+            file_path = repo_root / file_path
         errors.extend(f"{tag}: {err}" for err in _check_file_ref(file_path, file_ref.lines))
     if "on-call" in story.discovered_via and not story.incident_ref:
         errors.append(f"{tag}: discovered_via includes 'on-call' but incident_ref is missing")

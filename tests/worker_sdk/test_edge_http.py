@@ -7,6 +7,7 @@ import pytest
 from httpx import ASGITransport
 
 from acheron.core.models import CostBasis, Job, WorkerCapabilities, WorkerType
+from acheron.worker_sdk._caps import public_caps_to_dict
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
@@ -108,6 +109,18 @@ class TestEdgeRoutes:
             "health_provider": "runpod",
             "health_endpoint_id": "endpoint-1",
         }
+
+    def test_capabilities_reject_unsafe_public_values(self) -> None:
+        caps = _Stub().capabilities()
+        caps.metadata.update(
+            {
+                "voice": "password xyz",
+                "health_endpoint_id": "https://user:secret@provider.invalid?token=secret",
+                "health_provider": "https://provider.invalid",
+            }
+        )
+        body = public_caps_to_dict(caps)
+        assert body["metadata"] == {"speakers": ["Ryan"], "default_speaker": "Ryan"}
 
     @pytest.mark.asyncio
     async def test_execute_returns_multipart(self, app_handler: tuple[FastAPI, _Stub]) -> None:

@@ -35,6 +35,10 @@ _WORKER_SECRET_RE = re.compile(
     r"\s*(?:[:=]|is)\s*(?:bearer\s+)?(?:\[[^\]]+\]|[^\s,;]+)",
     re.IGNORECASE,
 )
+_WORKER_BARE_SECRET_RE = re.compile(
+    r"\b(?:token|password|secret|api[_ -]?key)\b\s+(?:bearer\s+)?[^\s,;]+",
+    re.IGNORECASE,
+)
 _WORKER_JSON_SECRET_RE = re.compile(
     r"[\"']?(?:authorization|bearer|token|password|secret|api[_ -]?key|credential)"
     r"[\"']?\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|\[[^\]]+\]|[^,\s}]+)",
@@ -85,6 +89,7 @@ def sanitize_worker_error(message: str) -> str:
     sanitized = _WORKER_BEARER_RE.sub("[redacted credential]", sanitized)
     sanitized = _WORKER_JSON_SECRET_RE.sub("[redacted credential]", sanitized)
     sanitized = _WORKER_SECRET_RE.sub("[redacted credential]", sanitized)
+    sanitized = _WORKER_BARE_SECRET_RE.sub("[redacted credential]", sanitized)
     return sanitise_public_message(sanitized, fallback="health check failed")[:_MAX_WORKER_ERROR_LENGTH]
 
 

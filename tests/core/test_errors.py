@@ -113,6 +113,9 @@ class TestSanitisePublicMessage:
             "private_key=private-123",
             "refresh_token=refresh-123",
             "AWS_ACCESS_KEY_ID=access-123",
+            "token xyz",
+            "password xyz",
+            "secret xyz",
         ],
     )
     def test_unsafe_message_uses_stable_fallback(self, message: str) -> None:

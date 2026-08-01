@@ -17,12 +17,17 @@ if TYPE_CHECKING:
 
 def _repository_head(repo_root: Path) -> str | None:
     """Return the repository HEAD when ``repo_root`` is inside a Git checkout."""
+    return resolve_revision(repo_root, "HEAD")
+
+
+def resolve_revision(repo_root: Path, revision: str) -> str | None:
+    """Resolve a unique Git revision to its full commit ID."""
     git = shutil.which("git")
     if git is None:
         return None
     try:
         result = subprocess.run(  # noqa: S603 - executable and arguments are fixed
-            [git, "-C", str(repo_root), "rev-parse", "HEAD"],
+            [git, "-C", str(repo_root), "rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}"],
             check=True,
             capture_output=True,
             text=True,
@@ -79,7 +84,9 @@ def _post_fixed_commit(repo_root: Path, story: Story, head_sha: str) -> bool:
     actual_head = _repository_head(repo_root)
     if actual_head is None or not story.fixed_in:
         return False
-    requested_head = actual_head if head_sha in {"HEAD", CURRENT_HEAD} else head_sha
+    requested_head = (
+        actual_head if head_sha in {"HEAD", CURRENT_HEAD} else (resolve_revision(repo_root, head_sha) or head_sha)
+    )
     git = shutil.which("git")
     if git is None:
         return False
@@ -89,6 +96,8 @@ def _post_fixed_commit(repo_root: Path, story: Story, head_sha: str) -> bool:
             if requested_head != actual_head:
                 return False
             resolved_fixed_sha = actual_head
+        else:
+            resolved_fixed_sha = resolve_revision(repo_root, fixed_sha) or fixed_sha
         try:
             subprocess.run(  # noqa: S603 - executable and arguments are fixed
                 [git, "-C", str(repo_root), "merge-base", "--is-ancestor", resolved_fixed_sha, requested_head],

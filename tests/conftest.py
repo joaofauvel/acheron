@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import warnings
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
 import redis.asyncio
-from testcontainers.redis import RedisContainer
 
 from acheron.shell.stores.redis import RedisJobStore, RedisWorkerStore
+
+if TYPE_CHECKING:
+    from testcontainers.redis import RedisContainer
 
 
 @pytest.fixture
@@ -29,7 +33,14 @@ def dev_certs(tmp_path: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def redis_container() -> Iterator[RedisContainer]:
-    from testcontainers.redis import RedisContainer
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*wait_container_is_ready.*deprecated.*",
+            category=DeprecationWarning,
+            module=r"testcontainers(?:\..*)?",
+        )
+        from testcontainers.redis import RedisContainer
 
     container = RedisContainer("redis:7-alpine")
     container.start()

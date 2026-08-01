@@ -101,6 +101,13 @@ _CREDENTIAL_PATTERN = re.compile(
     r"([\"']?(?:(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|access[_-]?key[_-]?id)|password|passwd|secret|token|api[_-]?key|authorization|credential)[\"']?)"
     r"\s*(?:=|:)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)"
 )
+_BARE_CREDENTIAL_PATTERN = re.compile(
+    r"(?ix)"
+    r"(?<![A-Za-z0-9_-])"
+    r"(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|"
+    r"aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|password|passwd|secret|token|api[_-]?key)"
+    r"\s+(?:Bearer\s+)?[^\s,;}\]]+"
+)
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}\]]+")
 _URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
 _TRACEBACK_PATTERN = re.compile(r"\bTraceback\b", re.IGNORECASE)
@@ -113,6 +120,7 @@ _SAFE_FALLBACK = "request failed"
 _REMEDIATION_COMMAND_PARTS = 4
 _UNSAFE_PATTERNS = (
     _CREDENTIAL_PATTERN,
+    _BARE_CREDENTIAL_PATTERN,
     _BEARER_PATTERN,
     _URI_PATTERN,
     _TRACEBACK_PATTERN,

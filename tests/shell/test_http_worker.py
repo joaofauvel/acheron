@@ -273,6 +273,8 @@ class TestHttpWorkerExecuteMultipart:
 
         chunks_path = tmp_path / "chunks.json"
         chunks_path.write_bytes(b"[{}]")
+        output_path = tmp_path / "x.wav"
+        output_path.write_bytes(b"audio")
         cache = StepCache(tmp_path)
         await cache.save_outputs(
             "j-1",
@@ -295,7 +297,7 @@ class TestHttpWorkerExecuteMultipart:
                     "status": "success",
                     "outputs": [
                         {
-                            "path": "/tmp/x.wav",
+                            "path": str(output_path),
                             "filename": "x.wav",
                             "size_bytes": 10,
                             "checksum": "0" * 64,
@@ -312,6 +314,34 @@ class TestHttpWorkerExecuteMultipart:
         result = await worker.execute(job)
         assert result.status == JobStatus.SUCCESS
         assert result.outputs[0].filename == "x.wav"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_legacy_json_response_rejects_output_outside_data_dir(self, tmp_path: Path) -> None:
+        respx.post(f"{_BASE_URL}/execute").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "job_id": "j-1-package",
+                    "status": "success",
+                    "outputs": [
+                        {
+                            "path": "/etc/hosts",
+                            "filename": "hosts",
+                            "size_bytes": 1,
+                            "checksum": "0" * 64,
+                            "content_type": "text/plain",
+                        }
+                    ],
+                    "metrics": {"duration_seconds": 0.1},
+                    "error": None,
+                },
+            )
+        )
+        worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
+        job = Job(job_id="j-1-package", job_type=WorkerType.PACKAGING, payload={}, chapter_id="ch1")
+        with pytest.raises(WorkerError, match="invalid output path"):
+            await worker.execute(job)
 
 
 class TestHttpWorkerStepCache:

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from acheron.ux_review.discovery import artifact_path_for, repository_tree_fingerprint
+from acheron.ux_review.discovery import artifact_path_for, repository_tree_fingerprint, resolve_revision
 from acheron.ux_review.schema import CURRENT_HEAD, Story
 from acheron.ux_review.validate import _parse_story_blocks
 
@@ -99,12 +99,15 @@ def _validate_evidence_commits(
             if not marker_matches:
                 return ("PARTIAL", f"fixed_in=CURRENT_HEAD does not match head={requested_head}")
             continue
-        if not _is_ancestor(repo_root, commit, requested_head):
+        resolved_commit = resolve_revision(repo_root, commit)
+        if resolved_commit is None:
+            resolved_commit = commit if _commit_exists(repo_root, commit) else None
+        if resolved_commit is None or not _is_ancestor(repo_root, resolved_commit, requested_head):
             return ("FAIL", f"fixed_in commit {commit} is not an ancestor of head={requested_head}")
     return None
 
 
-def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa: C901, PLR0911, PLR0912
+def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa: C901, PLR0911, PLR0912, PLR0915
     """Verify a single story. Returns (status, message).
 
     status is one of: PASS, PARTIAL, FAIL.
@@ -117,16 +120,21 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa
         if story.status != "verified":
             return ("PARTIAL", f"story status={story.status} is not currently verified")
         actual_head = _repository_head(root)
+        repo_root = root.parent.parent
         marker_input = head_sha in {"HEAD", CURRENT_HEAD}
+        requested_head: str | None
         if marker_input:
             if actual_head is None:
                 return ("FAIL", "repository HEAD is unavailable for CURRENT_HEAD verification")
             requested_head = actual_head
         else:
-            requested_head = head_sha
-        repo_root = root.parent.parent
+            requested_head = resolve_revision(repo_root, head_sha)
+            if requested_head is None and _commit_exists(repo_root, head_sha):
+                requested_head = head_sha
+            if requested_head is None:
+                return ("FAIL", f"head={head_sha} is not a valid Git commit")
         if not _commit_exists(repo_root, requested_head):
-            return ("FAIL", f"head={requested_head} is not a valid Git commit")
+            return ("FAIL", f"head={head_sha} is not a valid Git commit")
         marker_matches = actual_head is not None and requested_head == actual_head
         verified_commit = story.last_verified_at.get("commit")
         if not story.fixed_in:
@@ -149,7 +157,14 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa
             attested_tree = story.last_verified_at.get("tree")
             if expected_tree is None or attested_tree != expected_tree:
                 return ("FAIL", "CURRENT_HEAD attestation does not match the committed tree")
-        resolved_commit = requested_head if verified_commit == CURRENT_HEAD else verified_commit
+        if verified_commit == CURRENT_HEAD:
+            resolved_commit = requested_head if marker_matches else CURRENT_HEAD
+        elif verified_commit is None:
+            resolved_commit = None
+        else:
+            resolved_commit = resolve_revision(repo_root, verified_commit)
+            if resolved_commit is None and _commit_exists(repo_root, verified_commit):
+                resolved_commit = verified_commit
         if resolved_commit != requested_head:
             if verified_commit is None:
                 result = ("PARTIAL", "verification metadata is missing last_verified_at.commit")
@@ -159,7 +174,9 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa
                     f"last_verified_at.commit={verified_commit} does not match head={requested_head}",
                 )
         elif not any(
-            commit == requested_head or (commit == CURRENT_HEAD and marker_matches) for commit in story.verified_in
+            (commit == CURRENT_HEAD and marker_matches)
+            or (commit != CURRENT_HEAD and (resolve_revision(repo_root, commit) or commit) == requested_head)
+            for commit in story.verified_in
         ):
             result = ("PARTIAL", f"head={requested_head} is missing from verified_in")
         elif story.discovered_via and story.discovered_via[0] in {"simulation", "first-run"}:

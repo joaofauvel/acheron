@@ -86,6 +86,32 @@ def test_tree_fingerprint_changes_for_git_mode_changes(
     assert mode_changed != type_changed
 
 
+def test_abbreviated_current_head_is_canonicalized(tmp_path: Path) -> None:
+    _write_story(
+        tmp_path,
+        metadata=(
+            "fixed_in: [CURRENT_HEAD]\n"
+            "verified_in: [CURRENT_HEAD]\n"
+            "last_verified_at:\n"
+            "  commit: CURRENT_HEAD\n"
+            "  date: '2026-07-31'\n"
+        ),
+    )
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "test"], check=True)
+    head = subprocess.run(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", head[:8])
+
+    assert status == "PASS"
+    assert message == "verified at CURRENT_HEAD"
+
+
 def test_explicit_head_rejects_non_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, cast
+
+from acheron.core.errors import sanitise_public_message
 
 if TYPE_CHECKING:
     from acheron.core.models import JsonValue, WorkerCapabilities
@@ -25,10 +28,52 @@ def caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
 
 
 _PUBLIC_METADATA_KEYS = frozenset({"default_speaker", "health_endpoint_id", "health_provider", "speakers", "voice"})
+_SAFE_SPEAKER_RE = re.compile(r"^[\w .'-]{1,64}$", re.UNICODE)
+_SAFE_ENDPOINT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_INVALID_PUBLIC_VALUE = "__invalid_public_value__"
+
+
+def _safe_text(value: object, *, pattern: re.Pattern[str]) -> str | None:
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        return None
+    safe = sanitise_public_message(value, fallback=_INVALID_PUBLIC_VALUE)
+    return None if safe == _INVALID_PUBLIC_VALUE else safe
+
+
+def _safe_public_metadata(metadata: dict[str, JsonValue]) -> dict[str, JsonValue]:  # noqa: C901, PLR0912
+    safe: dict[str, JsonValue] = {}
+    for key, value in metadata.items():
+        if key not in _PUBLIC_METADATA_KEYS:
+            continue
+        if key == "health_provider":
+            if value == "runpod":
+                safe[key] = value
+        elif key == "health_endpoint_id":
+            endpoint_id = _safe_text(value, pattern=_SAFE_ENDPOINT_ID_RE)
+            if endpoint_id is not None:
+                safe[key] = endpoint_id
+        elif key == "speakers":
+            if not isinstance(value, list):
+                continue
+            speakers: list[JsonValue] = []
+            for item in value:
+                speaker = _safe_text(item, pattern=_SAFE_SPEAKER_RE)
+                if speaker is None:
+                    break
+                speakers.append(speaker)
+            else:
+                safe[key] = speakers
+        else:
+            speaker = _safe_text(value, pattern=_SAFE_SPEAKER_RE)
+            if speaker is not None:
+                safe[key] = speaker
+    return safe
 
 
 def public_caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
-    """Serialise capabilities with only metadata required by public planning and health checks."""
+    """Serialise capabilities with only validated metadata required by public clients."""
     result = caps_to_dict(caps)
-    result["metadata"] = {key: value for key, value in caps.metadata.items() if key in _PUBLIC_METADATA_KEYS}
+    model_source = _safe_text(caps.model_source, pattern=re.compile(r"^[\w./:@-]{1,256}$"))
+    result["model_source"] = model_source
+    result["metadata"] = _safe_public_metadata(caps.metadata)
     return result

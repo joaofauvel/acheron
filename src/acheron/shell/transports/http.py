@@ -39,6 +39,29 @@ _result_adapter = TypeAdapter(JobResult)
 logger = logging.getLogger(__name__)
 
 
+def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:
+    """Reject legacy output paths that cannot be safely read by the orchestrator."""
+    root = data_dir.resolve()
+    for output in result.outputs:
+        path = Path(output.path)
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise WorkerError("Worker returned an invalid output path") from exc
+        if path.is_symlink() or not resolved.is_file():
+            raise WorkerError("Worker returned an invalid output path")
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError as exc:
+            raise WorkerError("Worker returned an invalid output path") from exc
+        current = root
+        for component in relative.parts:
+            current /= component
+            if current.is_symlink():
+                raise WorkerError("Worker returned an invalid output path")
+    return result
+
+
 @dataclass(frozen=True)
 class StepDispatch:
     """How an upstream step's output maps onto a multipart upload.
@@ -136,7 +159,7 @@ class HttpWorker(Worker):
         ctype = resp.headers.get("content-type", "")
         if ctype.startswith("multipart/mixed"):
             return await self._parse_multipart(resp, job.job_id)
-        return _result_adapter.validate_json(resp.content)
+        return _validate_legacy_result(_result_adapter.validate_json(resp.content), self._data_dir)
 
     async def _execute_with_upstream_input(self, job: Job, dispatch: StepDispatch) -> JobResult:
         """Read the upstream step's matching output and POST it as multipart to the worker."""
@@ -178,7 +201,7 @@ class HttpWorker(Worker):
         ctype = resp.headers.get("content-type", "")
         if ctype.startswith("multipart/mixed"):
             return await self._parse_multipart(resp, job.job_id)
-        return _result_adapter.validate_json(resp.content)
+        return _validate_legacy_result(_result_adapter.validate_json(resp.content), self._data_dir)
 
     async def _parse_multipart(self, resp: httpx.Response, job_id: str) -> JobResult:
         """Parse the multipart/mixed body emitted by the SDK edge."""
