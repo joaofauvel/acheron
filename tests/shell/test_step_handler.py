@@ -101,7 +101,16 @@ class TestStepHandler:
         assert chosen == ["tts-1"]
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("unsafe_voice", ["https://example.test/?token=secret", "/private/secret", "token=secret"])
+    @pytest.mark.parametrize(
+        "unsafe_voice",
+        [
+            "https://example.test/?token=secret",
+            "/private/secret",
+            "token=secret",
+            "../../secrets/token",
+            r"..\..\Users\alice\secret",
+        ],
+    )
     async def test_tts_errors_redact_unsafe_voice_labels(self, unsafe_voice: str) -> None:
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", _voice_tts_caps("Vivian"))

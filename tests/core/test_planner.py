@@ -119,7 +119,16 @@ class TestCompilePlan:
         assert synthesize.payload["voice"] == "Vivian"
         assert synthesize.payload["voice_map"] == [{"start_chapter": 1, "end_chapter": 1, "voice": "Ryan"}]
 
-    @pytest.mark.parametrize("unsafe_voice", ["https://example.test/?token=secret", "/private/secret", "token=secret"])
+    @pytest.mark.parametrize(
+        "unsafe_voice",
+        [
+            "https://example.test/?token=secret",
+            "/private/secret",
+            "token=secret",
+            "../../secrets/token",
+            r"..\..\Users\alice\secret",
+        ],
+    )
     def test_voice_selection_errors_redact_unsafe_labels(self, unsafe_voice: str) -> None:
         request = EpubRequest(
             source_path="/input/book.epub",

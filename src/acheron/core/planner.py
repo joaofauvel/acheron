@@ -164,10 +164,7 @@ _VOICE_CREDENTIAL_RE = re.compile(
     re.IGNORECASE,
 )
 _VOICE_URL_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://", re.IGNORECASE)
-_VOICE_PATH_RE = re.compile(
-    r"(?:^[/\\]|^[A-Za-z]:[/\\]|(?:^|[\s=])[/\\](?:private|home|tmp|var|etc|Users)(?:[/\\]|$))",
-    re.IGNORECASE,
-)
+_VOICE_PATH_RE = re.compile(r"[/\\]|\.\.")
 
 
 def _safe_voice(value: str) -> str:
