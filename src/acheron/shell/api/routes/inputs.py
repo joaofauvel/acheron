@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from acheron.core.schemas import InputResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
+from acheron.shell.api.public import public_content_type, public_filename
 from acheron.shell.input_store import InputPathError, InputStore, InputTooLargeError, StoredInput
 
 logger = logging.getLogger(__name__)
@@ -62,9 +63,9 @@ async def upload_input(
     return InputResponse(
         input_id=stored.input_id,
         source_path=stored.source_path,
-        filename=stored.filename,
+        filename=public_filename(stored.filename),
         size_bytes=stored.size_bytes,
-        content_type=stored.content_type,
+        content_type=public_content_type(stored.content_type),
     )
 
 

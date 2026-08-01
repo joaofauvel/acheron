@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from acheron.shell.api.app import create_app
+from acheron.shell.api.app import _safe_request_id, create_app
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 
@@ -61,6 +61,12 @@ async def test_conftest_make_app_is_env_independent(
             assert r.headers["x-request-id"]
     finally:
         await app.state.orchestrator.shutdown()
+
+
+def test_request_id_validation_rejects_header_injection() -> None:
+    assert _safe_request_id("req-test")
+    assert not _safe_request_id("req\r\nX-Leak: yes")
+    assert not _safe_request_id("req\x00test")
 
 
 @pytest.mark.asyncio

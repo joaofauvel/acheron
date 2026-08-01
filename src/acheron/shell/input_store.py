@@ -54,6 +54,10 @@ def _safe_basename(filename: str) -> str:
     normalized = filename.replace("\\", "/")
     raw_basename = normalized.rsplit("/", 1)[-1]
     basename = Path(normalized).name or _DEFAULT_BASENAME
+    if re.search(
+        r"(?i)(?:https?://|[@:]|(?:token|secret|password|credential|authorization|api[-_ ]?key)[-_:= ])", basename
+    ):
+        basename = _DEFAULT_BASENAME
     if raw_basename in {".", ".."} or basename in {".", ".."}:
         msg = f"Invalid input filename {filename!r}: basename must name a file"
         raise ValueError(msg)

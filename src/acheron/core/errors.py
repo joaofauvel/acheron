@@ -100,7 +100,7 @@ _CREDENTIAL_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_-])"
     r"([\"']?(?:(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|"
     r"aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|access[_-]?key[_-]?id)|"
-    r"password|passwd|secret|token|api[_ -]?key|authorization|credential)[\"']?)"
+    r"password|passwd|secret|token|(?:x[_-]?)?api[_ -]?key|(?:x[_-]?)?authorization|credential)[\"']?)"
     r"\s*(?:=|:)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)"
 )
 _BARE_CREDENTIAL_PATTERN = re.compile(
@@ -108,7 +108,7 @@ _BARE_CREDENTIAL_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_-])"
     r"(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|"
     r"aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|"
-    r"password|passwd|secret|token|api[_ -]?key|authorization|credential)"
+    r"password|passwd|secret|token|(?:x[_-]?)?api[_ -]?key|(?:x[_-]?)?authorization|credential)"
     r"\s+(?:Bearer\s+)?(?!header\b|missing\b|invalid\b|provided\b|required\b|is\b|was\b|not\b)[^\s,;}\]]+"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}\]]+")

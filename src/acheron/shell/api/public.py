@@ -18,6 +18,8 @@ _CREDENTIAL_IDENTIFIER_RE = re.compile(
 )
 _SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$")
 _SAFE_FORMAT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9.+_-]{0,31})?$")
+_SAFE_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+:-]{0,63}(?:/[A-Za-z0-9][A-Za-z0-9_.+:-]{0,63}){0,3}$")
+_SAFE_REVISION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 _REDACTED = "<redacted>"
 _SAFE_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 _UNSAFE_PUBLIC_TEXT_RE = re.compile(
@@ -92,6 +94,34 @@ def public_filename(value: object) -> str:
 def public_gpu_type(value: object) -> str | None:
     """Return a safe public GPU label."""
     return public_label(value)
+
+
+def public_language(value: object) -> str:
+    """Return a bounded language identifier or a neutral fallback."""
+    values = public_capability_values([value], kind="language")
+    return values[0] if values else "und"
+
+
+def public_model(value: object) -> str | None:
+    """Return a bounded model identifier without URLs or credentials."""
+    if not isinstance(value, str) or _SAFE_MODEL_RE.fullmatch(value) is None:
+        return None
+    if _CREDENTIAL_IDENTIFIER_RE.search(value) is not None:
+        return None
+    safe = sanitise_public_message(value, fallback=_REDACTED)
+    return value if safe != _REDACTED else None
+
+
+def public_revision(value: object) -> str | None:
+    """Return a bounded build revision or branch name."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or _SAFE_REVISION_RE.fullmatch(value) is None:
+        return "unknown"
+    if _CREDENTIAL_IDENTIFIER_RE.search(value) is not None:
+        return "unknown"
+    safe = sanitise_public_message(value, fallback=_REDACTED)
+    return value if safe != _REDACTED else "unknown"
 
 
 def public_capability_values(values: Iterable[object], *, kind: str) -> list[str]:

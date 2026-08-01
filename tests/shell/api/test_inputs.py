@@ -66,6 +66,21 @@ class TestUploadRoute:
         assert stored_path.is_file()
         assert stored_path.read_bytes() == b"epub-bytes"
 
+    async def test_post_upload_projects_unsafe_filename_and_content_type(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        response = await client.post(
+            "/inputs",
+            files={"file": ("https:secret@host", b"bytes", "https://token:secret@evil")},
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["filename"] == "input"
+        assert body["content_type"] == "application/octet-stream"
+        assert "secret" not in response.text
+
     async def test_delete_is_idempotent_and_protects_referenced_input(
         self,
         client: AsyncClient,

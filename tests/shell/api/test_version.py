@@ -53,9 +53,9 @@ async def test_version_endpoint_redacts_unsafe_image_and_registry(tmp_path: Path
     )
     app.state.version = VersionInfo(
         version="1.0.0",
-        sha="abc123",
+        sha="password=TOPSECRET",
         build_time=None,
-        branch="main",
+        branch="https://token:secret@evil/main",
         dirty=False,
         image="https://registry.example/private?token=TOPSECRET",
         registry="/etc/acheron/credentials",
@@ -69,6 +69,8 @@ async def test_version_endpoint_redacts_unsafe_image_and_registry(tmp_path: Path
     body = response.json()
     assert body["image"] is None
     assert body["registry"] is None
+    assert body["sha"] == "unknown"
+    assert body["branch"] == "unknown"
     assert "TOPSECRET" not in response.text
 
 

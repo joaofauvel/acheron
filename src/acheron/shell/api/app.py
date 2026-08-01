@@ -44,6 +44,17 @@ if TYPE_CHECKING:
     from acheron.shell.stores.base import JobStore, WorkerStore
 
 logger = logging.getLogger(__name__)
+_REQUEST_ID_MAX_LENGTH = 128
+_PRINTABLE_ASCII_MIN = 0x20
+_PRINTABLE_ASCII_MAX = 0x7F
+
+
+def _safe_request_id(value: str) -> bool:
+    """Accept only printable correlation IDs safe for an HTTP header."""
+    return all(
+        _PRINTABLE_ASCII_MIN <= ord(char) < _PRINTABLE_ASCII_MAX and char not in {'"', ",", ";", "\\", "\r", "\n"}
+        for char in value
+    )
 
 
 @asynccontextmanager
@@ -106,7 +117,14 @@ def create_app(  # noqa: C901, PLR0915
 
     @app.middleware("http")
     async def _request_id_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        supplied_request_id = request.headers.get("x-request-id")
+        request_id = (
+            supplied_request_id
+            if supplied_request_id
+            and len(supplied_request_id) <= _REQUEST_ID_MAX_LENGTH
+            and _safe_request_id(supplied_request_id)
+            else uuid.uuid4().hex
+        )
         request.state.request_id = request_id
         with bind_request_id(request_id):
             try:
