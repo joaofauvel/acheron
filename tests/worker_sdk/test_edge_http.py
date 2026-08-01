@@ -221,7 +221,10 @@ class TestEdgeRoutes:
         app, h = app_handler
 
         async def _boom(job: Job, input: Input | None = None) -> list[BytesArtifact]:  # noqa: A002
-            msg = "DB connect failed password=foo at /runpod-volume/models/qwen3"
+            msg = (
+                "DB connect failed password=foo client_secret=bar access_token:baz "
+                'AWS_SECRET_ACCESS_KEY=qux {"client_secret":"quux"} at /runpod-volume/models/qwen3'
+            )
             raise RuntimeError(msg)
 
         monkeypatch.setattr(h, "handle", _boom)
@@ -234,6 +237,10 @@ class TestEdgeRoutes:
         assert r.status_code == 500
         body = r.json()
         assert "password=foo" not in body["error"]
+        assert "client_secret=bar" not in body["error"]
+        assert "access_token:baz" not in body["error"]
+        assert "AWS_SECRET_ACCESS_KEY=qux" not in body["error"]
+        assert "quux" not in body["error"]
         assert body["error"].startswith("RuntimeError:")
 
     @pytest.mark.asyncio
