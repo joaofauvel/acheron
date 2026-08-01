@@ -52,9 +52,7 @@ async def _make_client(tmp_path: Path) -> tuple[FastAPI, AsyncClient]:
 
 class TestGetPlanRoute:
     @pytest.mark.asyncio
-    async def test_get_plan_returns_public_structure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_get_plan_returns_public_structure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
         PlanCache(tmp_path).save_plan(_sample_plan("plan-1"))
 
