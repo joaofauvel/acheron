@@ -140,19 +140,21 @@ def create_app(  # noqa: C901, PLR0915
     async def _admin_http_error(request: Request, exc: HTTPException) -> Response:
         raw_detail: object = exc.detail
         if not request.url.path.startswith("/admin/"):
+            safe_detail: object
             if isinstance(raw_detail, dict):
-                detail = dict(raw_detail)
+                safe_mapping = dict(raw_detail)
                 for key in ("message", "remediation"):
-                    value = detail.get(key)
+                    value = safe_mapping.get(key)
                     if isinstance(value, str):
-                        detail[key] = (
+                        safe_mapping[key] = (
                             sanitise_public_remediation(value)
                             if key == "remediation"
                             else sanitise_public_message(value)
                         )
+                safe_detail = safe_mapping
             else:
-                detail = sanitise_public_message(str(raw_detail))
-            return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=exc.headers)
+                safe_detail = sanitise_public_message(str(raw_detail))
+            return JSONResponse(status_code=exc.status_code, content={"detail": safe_detail}, headers=exc.headers)
         match raw_detail:
             case dict() as raw_mapping:
                 detail = dict(raw_mapping)
