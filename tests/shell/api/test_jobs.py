@@ -558,6 +558,9 @@ class TestJobRoutes:
             '{"password": "top-secret"}',
             "password: top-secret",
             "Authorization: Bearer top-secret",
+            r"\secret.dll",
+            r"\Windows",
+            r"\\server\share\secret.txt",
         ],
     )
     async def test_step_error_response_sanitizes_untrusted_message(
@@ -663,6 +666,9 @@ class TestJobRoutes:
             '{"password": "top-secret"}',
             "password: top-secret",
             "Authorization: Bearer top-secret",
+            r"\secret.dll",
+            r"\Windows",
+            r"\\server\share\secret.txt",
         ],
     )
     async def test_error_response_uses_stable_fallback_for_untrusted_message(

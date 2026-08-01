@@ -106,7 +106,7 @@ _URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*:[^\s'\"<>]+")
 _TRACEBACK_PATTERN = re.compile(r"\bTraceback\b", re.IGNORECASE)
 _FILE_FRAGMENT_PATTERN = re.compile(r"\bFile(?:\s|:)", re.IGNORECASE)
 _WINDOWS_PATH_PATTERN = re.compile(r"\b[A-Za-z]:[\\/][^\s'\"<>]*")
-_ROOTED_WINDOWS_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])\\{1,2}(?=[^\\/\s'\"<>]+[\\/])[^\s'\"<>]*")
+_ROOTED_WINDOWS_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])\\{1,2}(?=[^\\/\s'\"<>])[^\s'\"<>]*")
 _ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+(?:/[^/\s'\"<>]*)*)?")
 _TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])[^\s]*\.\.[\\/][^\s]*")
 _SAFE_FALLBACK = "request failed"

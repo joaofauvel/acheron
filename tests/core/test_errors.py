@@ -96,8 +96,11 @@ class TestSanitisePublicMessage:
         [
             "/tmp",
             r"C:\\Users\\worker\\secret.txt",
-            r"\\server\\share\\secret.txt",
+            r"\secret.dll",
+            r"\Windows",
             r"\Windows\System32\secret.dll",
+            r"\\server\\share\\secret.txt",
+            r"\\server\share\secret.txt",
             "foo/../../secret",
             r"..\\..\\secret",
             "custom+scheme://user:secret@example.test/path?token=secret#fragment",
@@ -123,10 +126,27 @@ class TestSanitisePublicMessage:
 
         assert sanitise_public_message("\n\n") == "request failed"
 
-    def test_unsafe_fallback_fails_closed(self) -> None:
+    @pytest.mark.parametrize(
+        "fallback",
+        [
+            r"C:\\secret.txt",
+            r"\secret.dll",
+            r"\Windows",
+            r"\Windows\System32\secret.dll",
+            r"\\server\share\secret.txt",
+        ],
+    )
+    def test_unsafe_fallback_fails_closed(self, fallback: str) -> None:
         from acheron.core.errors import sanitise_public_message
 
-        assert sanitise_public_message("/tmp/secret", fallback=r"C:\\secret.txt") == "request failed"
+        assert sanitise_public_message("/tmp/secret", fallback=fallback) == "request failed"
+
+    def test_sanitisation_does_not_mutate_internal_message(self) -> None:
+        from acheron.core.errors import JobNotFoundError, sanitise_public_message
+
+        error = JobNotFoundError(r"\secret.dll")
+        assert sanitise_public_message(str(error)) == "request failed"
+        assert str(error) == r"\secret.dll"
 
 
 class TestSanitiseExcMessage:
