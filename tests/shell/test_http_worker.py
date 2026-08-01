@@ -342,7 +342,7 @@ class TestHttpWorkerExecuteMultipart:
                         {
                             "path": str(output_path),
                             "filename": "x.wav",
-                            "size_bytes": 10,
+                            "size_bytes": 5,
                             "checksum": "0" * 64,
                             "content_type": "audio/wav",
                         }

@@ -90,7 +90,7 @@ def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:  # 
             if current.is_symlink():
                 raise WorkerError("Worker returned an invalid output path")
         actual_size = resolved.stat().st_size
-        if actual_size > output.size_bytes:
+        if actual_size != output.size_bytes:
             raise WorkerError("Worker returned an invalid output size")
         total_size += actual_size
         if total_size > _MAX_WORKER_OUTPUT_BYTES:

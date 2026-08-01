@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 
 from acheron.core.models import WorkerStatus, WorkerType
 
+_MAX_PUBLIC_PAIRS = 256
+_MAX_PUBLIC_PAIR_WORKERS = 128
+
 if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
     from acheron.shell.stores.base import WorkerStore
@@ -94,7 +97,11 @@ class CapabilityAggregator:
             LanguagePair(
                 src=src_lang,
                 dst=dst_lang,
-                workers=tuple(sorted(worker_ids, key=lambda worker_id: (worker_id.casefold(), worker_id))),
+                workers=tuple(
+                    sorted(worker_ids, key=lambda worker_id: (worker_id.casefold(), worker_id))[
+                        :_MAX_PUBLIC_PAIR_WORKERS
+                    ]
+                ),
             )
-            for (src_lang, dst_lang), worker_ids in sorted(pairs.items())
+            for (src_lang, dst_lang), worker_ids in sorted(pairs.items())[:_MAX_PUBLIC_PAIRS]
         ]

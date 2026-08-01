@@ -23,6 +23,17 @@ _TEMP_SUFFIX: str = ".part"
 _DEFAULT_BASENAME: str = "input"
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
+_FORBIDDEN_SOURCE_COMPONENTS = frozenset(
+    {
+        ".env",
+        ".git",
+        ".inputs-tmp",
+        ".registration_token",
+        "credentials",
+        "secrets",
+    }
+)
+_FORBIDDEN_SOURCE_SUFFIXES = frozenset({".crt", ".cer", ".key", ".pem", ".p12", ".pfx"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,11 +198,21 @@ class InputStore:
                 raise InputPathError("input directory contains unexpected nested data")
         root.rmdir()
 
+    @staticmethod
+    def _validate_source_components(source_path: str) -> None:
+        parts = Path(source_path).parts
+        if any(part in _FORBIDDEN_SOURCE_COMPONENTS for part in parts):
+            raise InputPathError("source path refers to an internal file")
+        basename = Path(source_path).name.casefold()
+        if basename in {".env", ".registration_token"} or basename.endswith(tuple(_FORBIDDEN_SOURCE_SUFFIXES)):
+            raise InputPathError("source path refers to an internal file")
+
     def normalize_source_path(self, source_path: str) -> str:
         """Return the canonical POSIX identity of a source relative to ``data_dir``."""
         candidate = Path(source_path)
         if not source_path:
             raise InputPathError("source path must not be empty")
+        self._validate_source_components(source_path)
         resolved = (candidate if candidate.is_absolute() else self._data_dir / candidate).resolve(strict=False)
         try:
             return resolved.relative_to(self._data_dir).as_posix()
@@ -209,6 +230,7 @@ class InputStore:
         if not source_path or Path(source_path).is_absolute():
             msg = f"Invalid source path {source_path!r}: must be a non-empty relative path under {self._data_dir}"
             raise InputPathError(msg)
+        self._validate_source_components(source_path)
         resolved = (self._data_dir / source_path).resolve()
         try:
             resolved.relative_to(self._data_dir)

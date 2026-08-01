@@ -304,6 +304,15 @@ class TestResolveSourcePath:
         with pytest.raises(InputPathError):
             store.resolve_source_path("../outside.epub")
 
+    @pytest.mark.parametrize("name", [".registration_token", ".env", "server.key", "server.crt", ".inputs-tmp/secret"])
+    def test_resolve_source_path_rejects_internal_files(self, tmp_path: Path, name: str) -> None:
+        store = InputStore(tmp_path)
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"secret")
+        with pytest.raises(InputPathError):
+            store.resolve_source_path(name)
+
     def test_resolve_source_path_rejects_missing_file(self, tmp_path: Path) -> None:
         store = InputStore(tmp_path)
         with pytest.raises(InputPathError):

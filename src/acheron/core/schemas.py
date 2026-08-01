@@ -19,6 +19,8 @@ from acheron.core.models import (
 )
 
 _MAX_PUBLIC_VOICE_LENGTH = 128
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
 
 
 class OutputSummary(BaseModel):
@@ -168,7 +170,7 @@ class JobResponse(BaseModel):
     source_language: str
     target_language: str
     asr_model: str | None
-    voice: str | None = None
+    voice: str | None = Field(default=None, max_length=_MAX_PUBLIC_VOICE_LENGTH)
     voice_map: list[dict[str, str | int]] = Field(default_factory=list, max_length=128)
     executor_strategy: ExecutorStrategy
     created_at: datetime
@@ -182,13 +184,25 @@ class JobResponse(BaseModel):
     errors: list[StepError]
     warnings: list[str]
 
+    @field_validator("voice")
+    @classmethod
+    def _validate_voice(cls, value: str | None) -> str | None:
+        if value is not None and any(
+            ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value
+        ):
+            raise ValueError("voice contains control characters")
+        return value
+
     @field_validator("voice_map")
     @classmethod
     def _validate_voice_map(cls, value: list[dict[str, str | int]]) -> list[dict[str, str | int]]:
         for item in value:
             voice = item.get("voice")
-            if isinstance(voice, str) and len(voice) > _MAX_PUBLIC_VOICE_LENGTH:
-                raise ValueError("voice map values must be at most 128 characters")
+            if isinstance(voice, str) and (
+                len(voice) > _MAX_PUBLIC_VOICE_LENGTH
+                or any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in voice)
+            ):
+                raise ValueError("voice map values must be bounded and control-free")
         return value
 
     @field_validator("created_at", "last_persisted_at", "archived_at")

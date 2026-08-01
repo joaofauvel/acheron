@@ -33,12 +33,26 @@ class _StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
+
+
+def _validate_voice_text(value: str | None) -> str | None:
+    if value is not None and any(
+        ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in value
+    ):
+        raise ValueError("voice contains control characters")
+    return value
+
+
 class VoiceRangeRequest(_StrictRequest):
     """Strict wire representation of an inclusive chapter voice range."""
 
     start_chapter: int
     end_chapter: int
     voice: str = Field(max_length=128)
+
+    _voice_is_safe = field_validator("voice")(_validate_voice_text)
 
 
 class SubmitJobRequest(_StrictRequest):
@@ -51,9 +65,11 @@ class SubmitJobRequest(_StrictRequest):
     executor_strategy: str = "streaming"
     asr_model: str | None = None
     label: str | None = None
-    voice: str | None = None
+    voice: str | None = Field(default=None, max_length=128)
     voice_map: list[VoiceRangeRequest] = Field(default_factory=list, max_length=128)
     input_id: str | None = None
+
+    _voice_is_safe = field_validator("voice")(_validate_voice_text)
 
 
 class RetryJobRequest(_StrictRequest):
@@ -65,8 +81,10 @@ class RetryJobRequest(_StrictRequest):
     executor_strategy: str | None = None
     asr_model: str | None = None
     label: str | None = None
-    voice: str | None = None
+    voice: str | None = Field(default=None, max_length=128)
     voice_map: list[VoiceRangeRequest] | None = Field(default=None, max_length=128)
+
+    _voice_is_safe = field_validator("voice")(_validate_voice_text)
 
 
 class ResumeJobRequest(_StrictRequest):

@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 router = APIRouter()
 _TYPED_WORKER_TYPES = frozenset({WorkerType.TTS, WorkerType.ASR, WorkerType.TRANSLATION})
+_MAX_PUBLIC_WORKERS = 128
+_MAX_PUBLIC_PAIRS = 256
 _SPEAKER_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 .'-]{0,63}$")
 _SPEAKER_FORBIDDEN_RE = re.compile(
     r"(?:https?|grpc|redis|token|secret|password|credential|api[_ -]?key|provider|request|response|body|bearer)",
@@ -116,7 +118,7 @@ async def get_capabilities(
                 )
                 for worker in sorted(all_workers, key=lambda item: (item.worker_id.casefold(), item.worker_id))
                 if worker.status is WorkerStatus.HEALTHY and worker.capabilities.worker_type is matching_type
-            ],
+            ][:_MAX_PUBLIC_WORKERS],
         )
 
     workers = tuple(worker for worker in all_workers if worker.status is WorkerStatus.HEALTHY)
@@ -132,6 +134,8 @@ async def get_capabilities(
 
     pairs = await orch.get_capabilities(src=src, dst=dest)
     return CapabilitiesResponse(
-        language_pairs=[public_pair for p in pairs if (public_pair := _public_language_pair(p)) is not None],
+        language_pairs=[public_pair for p in pairs if (public_pair := _public_language_pair(p)) is not None][
+            :_MAX_PUBLIC_PAIRS
+        ],
         workers=[],
     )

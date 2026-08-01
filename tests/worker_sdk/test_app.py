@@ -8,11 +8,17 @@ import respx
 from httpx import ASGITransport
 
 from acheron.core.models import Job, WorkerCapabilities, WorkerType
-from acheron.worker_sdk.app import create_worker_app
+from acheron.worker_sdk.app import _endpoint_url, create_worker_app
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 from acheron.worker_sdk.inputs import Input
 from acheron.worker_sdk.settings import WorkerSettings
+
+
+def test_endpoint_url_uses_worker_tls_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = WorkerSettings(worker_id="w", orchestrator_url="http://orchestrator", worker_host="worker")
+    monkeypatch.setattr("acheron.worker_sdk.app.uvicorn_ssl_kwargs", lambda: {"ssl_certfile": "cert"})
+    assert _endpoint_url(settings) == "https://worker:8001"
 
 
 def _all_paths(routes: object) -> set[str]:

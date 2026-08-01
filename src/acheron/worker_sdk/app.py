@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import httpx
 from fastapi import FastAPI
 
+from acheron.tls import uvicorn_ssl_kwargs
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.pricing import (
     PriceSource,
@@ -55,7 +56,8 @@ def _build_price_source(settings: WorkerSettings) -> PriceSource:
 
 def _endpoint_url(settings: WorkerSettings) -> str:
     """The URL the orchestrator will use to reach this edge container."""
-    return f"http://{settings.worker_host or 'localhost'}:{settings.listen_port}"
+    scheme = "https" if uvicorn_ssl_kwargs() else "http"
+    return f"{scheme}://{settings.worker_host or 'localhost'}:{settings.listen_port}"
 
 
 def _registration_caps(caps: WorkerCapabilities, settings: WorkerSettings) -> WorkerCapabilities:
