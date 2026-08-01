@@ -58,14 +58,19 @@ def verify(root: Path, story_id: str, head_sha: str) -> tuple[str, str]:  # noqa
             return ("PARTIAL", f"story status={story.status} is not currently verified")
         actual_head = _repository_head(root)
         marker_input = head_sha in {"HEAD", CURRENT_HEAD}
-        if marker_input and actual_head is None:
-            return ("FAIL", "repository HEAD is unavailable for CURRENT_HEAD verification")
-        requested_head = actual_head if marker_input else head_sha
+        if marker_input:
+            if actual_head is None:
+                return ("FAIL", "repository HEAD is unavailable for CURRENT_HEAD verification")
+            requested_head = actual_head
+        else:
+            requested_head = head_sha
         marker_matches = actual_head is not None and requested_head == actual_head
         verified_commit = story.last_verified_at.get("commit")
         if verified_commit == CURRENT_HEAD:
             if not marker_matches:
                 return ("PARTIAL", f"last_verified_at.commit=CURRENT_HEAD does not match head={requested_head}")
+            if actual_head is None:
+                return ("FAIL", "repository HEAD is unavailable for CURRENT_HEAD attestation")
             expected_tree = repository_tree_fingerprint(root.parent.parent, actual_head)
             attested_tree = story.last_verified_at.get("tree")
             if expected_tree is None or attested_tree != expected_tree:
