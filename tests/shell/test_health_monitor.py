@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 from unittest.mock import AsyncMock
 
 import grpc
@@ -16,7 +16,13 @@ from grpc.health.v1 import health, health_pb2, health_pb2_grpc
 
 from acheron.core.interfaces import HealthProvider
 from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
-from acheron.shell.health import HealthMonitor, HealthProbeResult, _default_health_check, _metadata_str
+from acheron.shell.health import (
+    HealthMonitor,
+    HealthProbeResult,
+    _check_grpc_health,
+    _default_health_check,
+    _metadata_str,
+)
 from acheron.shell.registry import RegisteredWorker
 from acheron.shell.stores.memory import InMemoryWorkerStore
 
@@ -213,6 +219,24 @@ class TestDefaultHealthCheck:
     @pytest.mark.asyncio
     async def test_grpc_unhealthy_worker_returns_false(self) -> None:
         result = await _default_health_check("localhost:1", "grpc")
+        assert result.healthy is False
+
+    @pytest.mark.asyncio
+    async def test_grpc_health_timeout_returns_safe_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _Channel:
+            async def __aenter__(self) -> Self:
+                return self
+
+            async def __aexit__(self, *_args: object) -> None:
+                return None
+
+        class _Stub:
+            async def Check(self, *_args: object, **_kwargs: object) -> None:  # noqa: N802
+                raise TimeoutError
+
+        monkeypatch.setattr("acheron.shell.health.grpc_channel", lambda _endpoint: _Channel())
+        monkeypatch.setattr("acheron.shell.health.health_pb2_grpc.HealthStub", lambda _channel: _Stub())
+        result = await _check_grpc_health("localhost:1")
         assert result.healthy is False
 
     @pytest.mark.asyncio

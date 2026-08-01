@@ -13,6 +13,15 @@ from acheron.shell.transports._multipart import _parse_multipart_parts, _safe_jo
 _BOUNDARY = "acheron-test"
 
 
+def _with_metrics(body: bytes, duration: float = 1.0) -> bytes:
+    closing = f"--{_BOUNDARY}--\r\n".encode()
+    metrics = (
+        f'--{_BOUNDARY}\r\nContent-Type: application/json\r\n\r\n{{"duration_seconds": {duration}}}\r\n'
+    ).encode()
+    assert body.endswith(closing)
+    return body[: -len(closing)] + metrics + closing
+
+
 def _build_body(parts: list[tuple[str, str, bytes, dict[str, str] | None]]) -> bytes:
     """Build a ``multipart/mixed`` body from a list of ``(filename, content_type, data, metadata)`` tuples."""
     out = b""
@@ -44,10 +53,12 @@ class TestParseMultipartPartsMetadata:
     """CORR-013 — per-part ``X-Acheron-Metadata`` header is preserved on the parsed part."""
 
     def test_parses_x_acheron_metadata_header(self) -> None:
-        body = _build_body(
-            [
-                ("ch1.txt", "text/plain", b"hello", {"key": "value"}),
-            ]
+        body = _with_metrics(
+            _build_body(
+                [
+                    ("ch1.txt", "text/plain", b"hello", {"key": "value"}),
+                ]
+            )
         )
         parts, _ = _parse_multipart_parts(
             f"multipart/mixed; boundary={_BOUNDARY}",
@@ -60,10 +71,12 @@ class TestParseMultipartPartsMetadata:
         assert parts[0].data == b"hello"
 
     def test_missing_metadata_header_yields_empty_dict(self) -> None:
-        body = _build_body(
-            [
-                ("ch1.txt", "text/plain", b"hello", None),
-            ]
+        body = _with_metrics(
+            _build_body(
+                [
+                    ("ch1.txt", "text/plain", b"hello", None),
+                ]
+            )
         )
         parts, _ = _parse_multipart_parts(
             f"multipart/mixed; boundary={_BOUNDARY}",
@@ -82,9 +95,6 @@ class TestParseMultipartPartsMetricsSelection:
             f'Content-Disposition: attachment; filename="ch1.txt"\r\n'
             f"Content-Type: text/plain\r\n\r\n"
             f"transcript\r\n"
-            f"--{_BOUNDARY}\r\n"
-            f"Content-Type: application/json\r\n\r\n"
-            f'{{"chapter_id":"ch1"}}\r\n'
             f"--{_BOUNDARY}\r\n"
             f"Content-Type: application/json\r\n"
             f"X-Acheron-Part-Name: metrics\r\n\r\n"
@@ -140,20 +150,12 @@ class TestParseMultipartPartsBoundary:
 
 
 class TestParseMultipartPartsNoMetrics:
-    """DATA-006 — response with no metrics part falls through to default ``JobMetrics``."""
+    """A response without its required metrics JSON is rejected."""
 
-    def test_no_metrics_part_yields_default_zero_duration(self) -> None:
-        body = _build_body(
-            [
-                ("ch1.txt", "text/plain", b"hello", None),
-            ]
-        )
-        _, metrics = _parse_multipart_parts(
-            f"multipart/mixed; boundary={_BOUNDARY}",
-            body,
-        )
-        assert metrics.duration_seconds == 0.0
-        assert metrics.cost_estimate is None
+    def test_no_metrics_part_raises_worker_error(self) -> None:
+        body = _build_body([("ch1.txt", "text/plain", b"hello", None)])
+        with pytest.raises(WorkerError, match="missing metrics"):
+            _parse_multipart_parts(f"multipart/mixed; boundary={_BOUNDARY}", body)
 
 
 class TestParseMultipartPartsMalformed:

@@ -293,6 +293,9 @@ async def test_translation_multipart_success(tmp_path: Path, chunks_file: Path) 
                 b'Content-Disposition: attachment; filename="ch1_0000.txt"\r\n'
                 b"Content-Type: text/plain\r\n\r\n"
                 b"hola\r\n"
+                b"------x\r\n"
+                b"Content-Type: application/json\r\n\r\n"
+                b'{"duration_seconds": 0.1}\r\n'
                 b"------x--\r\n"
             ),
         )
@@ -338,6 +341,9 @@ async def test_tts_multipart_success(tmp_path: Path, chunks_file: Path) -> None:
                 b'Content-Disposition: attachment; filename="ch1_0000.wav"\r\n'
                 b"Content-Type: audio/wav\r\n\r\n"
                 b"RIFF\x00\x00\x00\x00WAVE\r\n"
+                b"------x\r\n"
+                b"Content-Type: application/json\r\n\r\n"
+                b'{"duration_seconds": 0.1}\r\n'
                 b"------x--\r\n"
             ),
         )

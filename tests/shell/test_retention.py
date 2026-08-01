@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -159,6 +160,28 @@ async def test_apply_preserves_shared_input_and_refuses_active_job(tmp_path: Pat
     assert report.failures == ()
     assert (tmp_path / "inputs/id/book.epub").exists()
     assert await store.get("job-old") is not None
+
+
+@pytest.mark.asyncio
+async def test_apply_rechecks_concurrent_input_reference_under_lock(tmp_path: Path) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    source = str(tmp_path / "inputs/id/book.epub")
+    (tmp_path / "inputs/id").mkdir(parents=True)
+    (tmp_path / "inputs/id/book.epub").write_bytes(b"input")
+    old = _job("job-old", "plan-abcd1234", source, PlanStatus.COMPLETED, now)
+    concurrent = _job("job-concurrent", "plan-abcd5678", source, PlanStatus.COMPLETED, now)
+    service, store = await _service(tmp_path, [old])
+
+    class _SubmissionLock(asyncio.Lock):
+        async def __aenter__(self) -> None:
+            await super().__aenter__()
+            await store.put(concurrent)
+
+    service._input_lock = lambda _identity: _SubmissionLock()  # noqa: SLF001
+    report = await service.apply(RetentionPolicy(timedelta(days=7), timedelta(days=30)), now=now)
+
+    assert report.deleted_job_ids == ("job-old",)
+    assert (tmp_path / "inputs/id/book.epub").exists()
 
 
 @pytest.mark.asyncio

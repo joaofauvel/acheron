@@ -165,18 +165,18 @@ def test_yaml_env_var_default_syntax_used_when_unset(tmp_path: Path, monkeypatch
     monkeypatch.delenv("MY_VAR", raising=False)
     yaml_content = """
 orchestrator:
-  registration_token: "${MY_VAR:-fallback}"
+  registration_token: "${MY_VAR:-fallback-token-012345678901234567890123456789}"
 """
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml_content, encoding="utf-8")
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
-    assert settings.orchestrator.registration_token == "fallback"
+    assert settings.orchestrator.registration_token == "fallback-token-012345678901234567890123456789"
 
 
 def test_yaml_env_var_default_syntax_unused_when_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """${VAR:-default} expands to the env value when the var is set."""
-    monkeypatch.setenv("MY_VAR", "actual")
+    monkeypatch.setenv("MY_VAR", "actual-token-012345678901234567890123456789")
     yaml_content = """
 orchestrator:
   registration_token: "${MY_VAR:-fallback}"
@@ -185,12 +185,12 @@ orchestrator:
     config_file.write_text(yaml_content, encoding="utf-8")
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
-    assert settings.orchestrator.registration_token == "actual"
+    assert settings.orchestrator.registration_token == "actual-token-012345678901234567890123456789"
 
 
 def test_yaml_env_var_lowercase_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """${my_var} (lowercase) is a valid reference and expands when set."""
-    monkeypatch.setenv("my_var", "lower-value")
+    monkeypatch.setenv("my_var", "lower-value-token-012345678901234567890123456789")
     yaml_content = """
 orchestrator:
   registration_token: "${my_var}"
@@ -199,12 +199,12 @@ orchestrator:
     config_file.write_text(yaml_content, encoding="utf-8")
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
-    assert settings.orchestrator.registration_token == "lower-value"
+    assert settings.orchestrator.registration_token == "lower-value-token-012345678901234567890123456789"
 
 
 def test_yaml_env_var_expansion_nested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """${VAR} references must be expanded inside nested dicts and lists."""
-    monkeypatch.setenv("MY_VAR", "hello")
+    monkeypatch.setenv("MY_VAR", "hello-token-012345678901234567890123456789")
     yaml_content = """
 orchestrator:
   registration_token: "${MY_VAR}-suffix"
@@ -213,7 +213,7 @@ orchestrator:
     config_file.write_text(yaml_content, encoding="utf-8")
     monkeypatch.setenv("ACHERON_CONFIG_PATH", str(config_file))
     settings = load_settings()
-    assert settings.orchestrator.registration_token == "hello-suffix"
+    assert settings.orchestrator.registration_token == "hello-token-012345678901234567890123456789-suffix"
 
 
 def test_open_registration_default_false() -> None:
@@ -244,6 +244,16 @@ def test_admin_token_structured_env_beats_flat_alias(monkeypatch: pytest.MonkeyP
 
 def test_admin_token_is_optional() -> None:
     assert Settings().orchestrator.admin_token is None
+
+
+def test_orchestrator_settings_validate_both_tokens_without_echoing_values() -> None:
+    with pytest.raises(RuntimeError, match="ACHERON_REGISTRATION_TOKEN") as registration_error:
+        OrchestratorSettings(registration_token="a" * 31)
+    assert "a" * 31 not in str(registration_error.value)
+
+    with pytest.raises(RuntimeError, match="ACHERON_ADMIN_TOKEN") as admin_error:
+        OrchestratorSettings(admin_token="dev-admin-token")
+    assert "dev-admin-token" not in str(admin_error.value)
 
 
 @pytest.mark.parametrize("value", ["short", "a" * 31])

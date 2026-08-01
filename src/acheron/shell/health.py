@@ -61,11 +61,11 @@ async def _check_grpc_health(endpoint: str) -> HealthProbeResult:
     try:
         async with grpc_channel(endpoint) as channel:
             stub = health_pb2_grpc.HealthStub(channel)
-            resp = await stub.Check(health_pb2.HealthCheckRequest())
+            resp = await stub.Check(health_pb2.HealthCheckRequest(), timeout=5.0)
             if resp.status == health_pb2.HealthCheckResponse.SERVING:
                 return HealthProbeResult(healthy=True)
             return HealthProbeResult(healthy=False, error=f"gRPC status {resp.status}")
-    except (grpc.aio.AioRpcError, OSError) as exc:
+    except (TimeoutError, grpc.aio.AioRpcError, OSError) as exc:
         return HealthProbeResult(healthy=False, error=f"{type(exc).__name__}: {exc}")
 
 

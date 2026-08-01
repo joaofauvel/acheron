@@ -50,10 +50,8 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912, PLR0915
     """Parse a ``multipart/mixed`` body into non-metrics parts and a metrics part.
 
     Returns ``(parts, metrics)`` where ``parts`` is one entry per non-JSON
-    part and ``metrics`` is the selected ``JobMetrics``. The metrics part is
-    identified by an ``X-Acheron-Part-Name: metrics`` header; if no part
-    carries the header the first ``application/json`` part is used; if
-    multiple parts carry the header a ``WorkerError`` is raised.
+    part and ``metrics`` is the single required ``JobMetrics`` JSON part. A
+    ``X-Acheron-Part-Name: metrics`` header is accepted for that part.
 
     Raises ``WorkerError`` when ``content_type`` has no ``boundary=`` parameter
     or when the body is not actually multipart.
@@ -71,8 +69,8 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912, PLR0915
 
     parts: list[ParsedPart] = []
     part_count = 0
-    named_metrics_raw: bytes | None = None
-    fallback_metrics_raw: bytes | None = None
+    metrics_raw: bytes | None = None
+    json_part_count = 0
     payload = message.get_payload()
     if not isinstance(payload, list) or len(payload) > _MAX_MULTIPART_PARTS:
         raise WorkerError("Worker returned too many multipart parts")
@@ -101,15 +99,13 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912, PLR0915
         ):
             raise WorkerError("Worker returned an invalid artifact content type")
         if part_ctype == "application/json":
+            json_part_count += 1
+            if json_part_count > 1:
+                raise WorkerError("Worker returned multiple metrics JSON parts")
+            if part.get("X-Acheron-Part-Name") not in {None, _METRICS_PART_NAME}:
+                raise WorkerError("Worker returned an unsupported JSON multipart part")
             raw = part.get_payload(decode=True)
-            payload_bytes = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
-            if part.get("X-Acheron-Part-Name") == _METRICS_PART_NAME:
-                if named_metrics_raw is not None:
-                    msg = "multiple parts with X-Acheron-Part-Name: metrics"
-                    raise WorkerError(msg)
-                named_metrics_raw = payload_bytes
-            elif fallback_metrics_raw is None:
-                fallback_metrics_raw = payload_bytes
+            metrics_raw = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
             continue
         filename = part.get_filename() or "artifact.bin"
         if len(filename) > _MAX_FILENAME_LENGTH:
@@ -128,11 +124,12 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912, PLR0915
             )
         )
 
-    metrics_raw = named_metrics_raw or fallback_metrics_raw
-    if metrics_raw is not None:
+    if metrics_raw is None:
+        raise WorkerError("Worker response is missing metrics JSON")
+    try:
         metrics = _metrics_adapter.validate_json(metrics_raw)
-    else:
-        metrics = JobMetrics(duration_seconds=0.0)
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise WorkerError("Worker returned invalid metrics JSON") from exc
     return parts, metrics
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def _validate_credential_token(token: str | None, *, setting_name: str) -> None:
     env_name = f"ACHERON_{setting_name.upper()}"
     if token in _PUBLIC_TOKEN_VALUES:
         msg = (
-            f"{env_name} is set to the publicly-known value {token!r}. "
+            f"{env_name} is set to a publicly-known value. "
             "Generate a fresh token with `openssl rand -hex 32` and set it in your environment."
         )
         raise RuntimeError(msg)
@@ -85,6 +85,12 @@ class OrchestratorSettings(BaseModel):
     open_registration: bool = False
     health_check_interval_seconds: int = Field(default=30)
     shutdown_drain_seconds: float = Field(default=5.0)
+
+    @model_validator(mode="after")
+    def _validate_tokens(self) -> OrchestratorSettings:
+        _validate_credential_token(self.registration_token, setting_name="registration_token")
+        _validate_credential_token(self.admin_token, setting_name="admin_token")
+        return self
 
     @field_validator("shutdown_drain_seconds")
     @classmethod

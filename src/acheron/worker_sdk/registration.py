@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import httpx
 
+from acheron.tls import _allow_insecure
 from acheron.worker_sdk._caps import caps_to_dict
 
 if TYPE_CHECKING:
@@ -39,6 +41,13 @@ async def register_with_orchestrator(  # noqa: PLR0913
     The wide kwargs surface is intentional — this is the public SDK entry
     point; callers compose each field from a ``WorkerSettings`` instance.
     """
+    parsed_url = urlparse(orchestrator_url)
+    if token and parsed_url.scheme.casefold() == "http" and not _allow_insecure():
+        raise ValueError(
+            "Refusing bearer-authenticated worker registration over plaintext; "
+            "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
+        )
+
     headers: dict[str, str] = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"

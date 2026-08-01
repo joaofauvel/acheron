@@ -165,7 +165,17 @@ class RetentionService:
                 identity = _job_source_identity(self._data_dir, current)
                 input_guard = self._input_lock(identity) if identity is not None else _NullAsyncLock()
                 async with input_guard:
-                    retained = identity in retained_inputs
+                    # Re-read references while holding the same lock used by input
+                    # submission, so a concurrent job cannot race deletion.
+                    current_jobs = await self._job_store.list_all()
+                    concurrent_references = {
+                        referenced
+                        for job in current_jobs
+                        if job.job_id != current.job_id
+                        for referenced in (_job_source_identity(self._data_dir, job),)
+                        if referenced is not None
+                    }
+                    retained = identity in retained_inputs or identity in concurrent_references
                     paths = tuple(path for path in candidate.relative_paths if path != identity or not retained)
                     try:
                         removed = await self._delete_paths(paths, current)

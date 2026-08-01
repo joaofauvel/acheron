@@ -23,9 +23,25 @@ def _caps() -> WorkerCapabilities:
 
 
 class TestRegisterWithOrchestrator:
+    @pytest.mark.asyncio
+    async def test_rejects_token_over_plaintext_orchestrator(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(ValueError, match="plaintext"):
+                await register_with_orchestrator(
+                    client=client,
+                    orchestrator_url="http://orch:8000",
+                    token="strong-token",
+                    worker_id="w",
+                    endpoint="https://edge:8001",
+                    transport="http",
+                    capabilities=_caps(),
+                )
+
     @respx.mock
     @pytest.mark.asyncio
-    async def test_posts_payload_and_returns_on_201(self) -> None:
+    async def test_posts_payload_and_returns_on_201(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
         route = respx.post("http://orch:8000/workers").mock(return_value=httpx.Response(201, json={}))
         async with httpx.AsyncClient() as client:
             await register_with_orchestrator(
