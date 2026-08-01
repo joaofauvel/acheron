@@ -18,7 +18,7 @@ def main() -> None:
     )
     settings = load_settings()
     handler = StubTranslationHandler(settings)
-    app = create_worker_app(handler=handler, settings=settings)
+    app = create_worker_app(handler=handler, settings=settings, allow_unauthenticated_execute=True)
     uvicorn.run(app, host=settings.listen_host, port=settings.listen_port)
 
 

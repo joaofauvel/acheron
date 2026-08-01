@@ -38,7 +38,12 @@ def _build_app(price_source: str = "runpod") -> Any:
         price_source=price_source,
         price_cache_ttl_s=0.0,
     )
-    return create_worker_app(handler=StubTTSHandler(settings), settings=settings, disable_registration=True)
+    return create_worker_app(
+        handler=StubTTSHandler(settings),
+        settings=settings,
+        disable_registration=True,
+        allow_unauthenticated_execute=True,
+    )
 
 
 async def _submit(client: httpx.AsyncClient, job_id: str) -> dict[str, Any]:

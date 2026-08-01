@@ -33,7 +33,7 @@ def _settings(worker_id: str, **overrides: object) -> WorkerSettings:
 async def test_stub_health(handler_cls: type, worker_id: str) -> None:
     settings = _settings(worker_id)
     h = handler_cls(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/health")
     assert r.status_code == 200
@@ -44,7 +44,7 @@ async def test_stub_health(handler_cls: type, worker_id: str) -> None:
 async def test_tts_stub_execute_returns_multipart() -> None:
     settings = _settings("tts-local-stub")
     h = StubTTSHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.post(
             "/execute",
@@ -67,7 +67,7 @@ async def test_tts_stub_execute_returns_multipart() -> None:
 async def test_tts_stub_capabilities() -> None:
     settings = _settings("tts-local-stub")
     h = StubTTSHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/capabilities")
     assert r.status_code == 200
@@ -79,7 +79,7 @@ async def test_tts_stub_capabilities() -> None:
 async def test_asr_stub_execute_returns_text_artifact() -> None:
     settings = _settings("asr-local-stub")
     h = StubASRHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.post(
             "/execute",
@@ -101,7 +101,7 @@ async def test_asr_stub_capabilities_match_real_worker() -> None:
     Locks the regression risk for the 8b granite-speech contract."""
     settings = _settings("asr-local-stub")
     h = StubASRHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/capabilities")
     assert r.status_code == 200
@@ -118,7 +118,7 @@ async def test_asr_stub_capabilities_match_real_worker() -> None:
 async def test_translation_stub_execute_returns_text() -> None:
     settings = _settings("translation-local-stub")
     h = StubTranslationHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.post(
             "/execute",
@@ -229,7 +229,7 @@ async def test_runpod_stub_health() -> None:
     """The tts_runpod_stub and translation_runpod_stub use the same SDK + mock; smoke /health."""
     settings = _settings("tts-runpod-stub", price_source="static", dollars_per_hour=0.69)
     h = StubTTSHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/health")
     assert r.status_code == 200
@@ -240,7 +240,7 @@ async def test_translation_runpod_stub_health() -> None:
     """The translation_runpod_stub is the RunPod variant of the translation stub."""
     settings = _settings("translation-runpod-stub", price_source="static", dollars_per_hour=0.69)
     h = StubTranslationHandler(settings)
-    app = create_worker_app(handler=h, settings=settings, disable_registration=True)
+    app = create_worker_app(handler=h, settings=settings, disable_registration=True, allow_unauthenticated_execute=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/health")
     assert r.status_code == 200

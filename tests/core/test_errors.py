@@ -132,6 +132,12 @@ class TestSanitisePublicMessage:
 
         assert sanitise_public_message(message) == "request failed"
 
+    @pytest.mark.parametrize("message", ["worker\x00failed", "worker\x1bfailed", "worker\x7ffailed"])
+    def test_control_characters_fail_closed(self, message: str) -> None:
+        from acheron.core.errors import sanitise_public_message
+
+        assert sanitise_public_message(message) == "request failed"
+
     def test_preserves_ordinary_domain_message(self) -> None:
         from acheron.core.errors import sanitise_public_message
 

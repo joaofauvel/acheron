@@ -120,6 +120,7 @@ _ROOTED_WINDOWS_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])\\{1,2}(?=[^\\/\s'\"
 _ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])/(?:[^/\s'\"<>]+(?:/[^/\s'\"<>]*)*)?")
 _TRAVERSAL_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9])[^\s]*\.\.[\\/][^\s]*")
 _SAFE_FALLBACK = "request failed"
+_CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _REMEDIATION_COMMAND_PARTS = 4
 _UNSAFE_PATTERNS = (
     _CREDENTIAL_PATTERN,
@@ -141,7 +142,9 @@ def _scrub_credentials(text: str) -> str:
 
 
 def _contains_unsafe_content(text: str) -> bool:
-    return any(pattern.search(text) is not None for pattern in _UNSAFE_PATTERNS)
+    return _CONTROL_CHARACTER_PATTERN.search(text) is not None or any(
+        pattern.search(text) is not None for pattern in _UNSAFE_PATTERNS
+    )
 
 
 def _safe_fallback(fallback: str) -> str:

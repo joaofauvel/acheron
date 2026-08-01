@@ -57,6 +57,9 @@ class TestWorkerErrorSanitization:
             'worker failed: {"client_id":"client-123", "privateKey":"key-123", "refresh_token":"refresh-123"}',
             "worker failed AWS_ACCESS_KEY_ID=access-123 AWS_SECRET_ACCESS_KEY=secret-123",
             "worker failed authorization TOPSECRET credential TOPSECRET api key TOPSECRET",
+            "worker failed\x00with NUL",
+            "worker failed\x1bwith ESC",
+            "worker failed\x7fwith DEL",
         ],
     )
     def test_diagnostics_and_traceback_continuations_are_not_retained(self, message: str) -> None:

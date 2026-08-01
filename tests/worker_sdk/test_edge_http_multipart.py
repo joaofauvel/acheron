@@ -54,7 +54,7 @@ class _AsrEchoHandler(WorkerHandler):
 @pytest.fixture
 def app_and_handler() -> Any:
     h = _AsrEchoHandler()
-    edge = EdgeApp(handler=h, capabilities=h.capabilities())
+    edge = EdgeApp(handler=h, capabilities=h.capabilities(), allow_unauthenticated_execute=True)
     return edge.app, h
 
 
@@ -434,7 +434,7 @@ class TestMultipartRequest:
                 ]
 
         h = _EchoingHandler()
-        app = EdgeApp(handler=h, capabilities=h.capabilities()).app
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), allow_unauthenticated_execute=True).app
         transport = ASGITransport(app=app)
         envelope = json.dumps(
             {

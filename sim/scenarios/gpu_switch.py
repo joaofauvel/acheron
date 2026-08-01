@@ -59,7 +59,9 @@ def _build_app() -> Any:
         price_cache_ttl_s=1.0,
         secure_cloud=True,
     )
-    return create_worker_app(handler=SlowTTSHandler(), settings=settings, disable_registration=True)
+    return create_worker_app(
+        handler=SlowTTSHandler(), settings=settings, disable_registration=True, allow_unauthenticated_execute=True
+    )
 
 
 async def _submit(client: httpx.AsyncClient, job_id: str) -> dict[str, Any]:

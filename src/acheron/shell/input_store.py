@@ -21,6 +21,8 @@ _TEMP_DIR_NAME: str = ".inputs-tmp"
 _INPUTS_DIR_NAME: str = "inputs"
 _TEMP_SUFFIX: str = ".part"
 _DEFAULT_BASENAME: str = "input"
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +53,9 @@ def _check_size(current_size: int, chunk: bytes, filename: str) -> None:
 
 def _safe_basename(filename: str) -> str:
     """Return a valid final path component from a client-supplied filename."""
+    if any(ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER for char in filename):
+        msg = "Invalid input filename: control characters are not allowed"
+        raise ValueError(msg)
     normalized = filename.replace("\\", "/")
     raw_basename = normalized.rsplit("/", 1)[-1]
     basename = Path(normalized).name or _DEFAULT_BASENAME

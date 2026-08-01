@@ -80,11 +80,13 @@ def create_worker_app(
     handler: WorkerHandler,
     settings: WorkerSettings,
     disable_registration: bool = False,
+    allow_unauthenticated_execute: bool = False,
 ) -> FastAPI:
     """Build the edge FastAPI app wired with registration + price refresh.
 
     Set ``disable_registration=True`` in tests to skip the orchestrator
-    registration step. Never set it in production.
+    registration step. Set ``allow_unauthenticated_execute=True`` only for
+    deliberate local/test callers. Never set either in production.
     """
     caps = handler.capabilities()
     price_source = _build_price_source(settings)
@@ -93,6 +95,7 @@ def create_worker_app(
         capabilities=caps,
         price_source=price_source,
         registration_token=settings.registration_token,
+        allow_unauthenticated_execute=allow_unauthenticated_execute,
     )
 
     async def _register() -> None:

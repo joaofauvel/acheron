@@ -8,6 +8,7 @@ import pytest
 from httpx import ASGITransport
 
 from acheron.core.models import CostBasis, Job, WorkerCapabilities, WorkerType
+from acheron.worker_sdk import _edge_http as edge_module
 from acheron.worker_sdk._caps import public_caps_to_dict
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact
@@ -90,7 +91,7 @@ class _Stub(WorkerHandler):
 @pytest.fixture
 def app_handler() -> tuple[FastAPI, _Stub]:
     h = _Stub()
-    app = EdgeApp(handler=h, capabilities=h.capabilities()).app
+    app = EdgeApp(handler=h, capabilities=h.capabilities(), allow_unauthenticated_execute=True).app
     return app, h
 
 
@@ -105,6 +106,52 @@ class TestEdgeRoutes:
         assert r.json() == {"status": "ok"}
 
     @pytest.mark.asyncio
+    async def test_execute_rejects_oversized_json_without_content_length(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(edge_module, "_MAX_EXECUTE_BODY_BYTES", 8)
+        handler = _Stub()
+        app = EdgeApp(
+            handler=handler,
+            capabilities=handler.capabilities(),
+            allow_unauthenticated_execute=True,
+        ).app
+
+        class ChunkedBody(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield b'{"job_id":"too-large"}'
+
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/execute",
+                content=ChunkedBody(),
+                headers={"content-type": "application/json"},
+            )
+
+        assert response.status_code == 413
+        assert response.json() == {"detail": "execute request exceeds maximum size"}
+        assert handler.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_rejects_oversized_content_length(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(edge_module, "_MAX_EXECUTE_BODY_BYTES", 8)
+        handler = _Stub()
+        app = EdgeApp(
+            handler=handler,
+            capabilities=handler.capabilities(),
+            allow_unauthenticated_execute=True,
+        ).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/execute",
+                content=b"{}",
+                headers={"content-type": "application/json", "content-length": "100"},
+            )
+
+        assert response.status_code == 413
+        assert handler.calls == 0
+
+    @pytest.mark.asyncio
     async def test_capabilities_drops_unsafe_capability_labels(self) -> None:
         handler = _Stub()
         capabilities = dataclasses.replace(
@@ -112,7 +159,7 @@ class TestEdgeRoutes:
             supported_languages_in=frozenset({"en", "../etc/passwd", "token TOPSECRET"}),
             supported_formats_out=frozenset({"wav", "https://secret.example"}),
         )
-        app = EdgeApp(handler=handler, capabilities=capabilities).app
+        app = EdgeApp(handler=handler, capabilities=capabilities, allow_unauthenticated_execute=True).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/capabilities")
@@ -167,7 +214,7 @@ class TestEdgeRoutes:
                 ]
 
         handler = UnsafeHandler()
-        app = EdgeApp(handler=handler, capabilities=handler.capabilities()).app
+        app = EdgeApp(handler=handler, capabilities=handler.capabilities(), allow_unauthenticated_execute=True).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
@@ -205,7 +252,7 @@ class TestEdgeRoutes:
                 ]
 
         handler = _MetadataStub()
-        app = EdgeApp(handler=handler, capabilities=handler.capabilities()).app
+        app = EdgeApp(handler=handler, capabilities=handler.capabilities(), allow_unauthenticated_execute=True).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             response = await c.post(
@@ -326,7 +373,9 @@ class TestEdgeRoutes:
     @pytest.mark.asyncio
     async def test_unsafe_gpu_type_is_omitted_from_metrics(self) -> None:
         h = _Stub()
-        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_UnsafeGpuPrice()).app
+        app = EdgeApp(
+            handler=h, capabilities=h.capabilities(), price_source=_UnsafeGpuPrice(), allow_unauthenticated_execute=True
+        ).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             response = await c.post(
@@ -346,7 +395,9 @@ class TestEdgeRoutes:
             raise RuntimeError("OOM")
 
         monkeypatch.setattr(h, "handle", _boom)
-        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_MeasuredPrice()).app
+        app = EdgeApp(
+            handler=h, capabilities=h.capabilities(), price_source=_MeasuredPrice(), allow_unauthenticated_execute=True
+        ).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             response = await c.post(
@@ -363,7 +414,12 @@ class TestEdgeRoutes:
     @pytest.mark.asyncio
     async def test_missing_cost_cannot_expose_static_basis(self) -> None:
         h = _Stub()
-        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_MissingStaticPrice()).app
+        app = EdgeApp(
+            handler=h,
+            capabilities=h.capabilities(),
+            price_source=_MissingStaticPrice(),
+            allow_unauthenticated_execute=True,
+        ).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             response = await c.post(
@@ -381,7 +437,9 @@ class TestEdgeRoutes:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         h = _Stub()
-        app = EdgeApp(handler=h, capabilities=h.capabilities(), price_source=_BrokenPrice()).app
+        app = EdgeApp(
+            handler=h, capabilities=h.capabilities(), price_source=_BrokenPrice(), allow_unauthenticated_execute=True
+        ).app
         transport = ASGITransport(app=app)
         with caplog.at_level("WARNING", logger="acheron.worker_sdk._edge_http"):
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -517,7 +575,7 @@ class TestEdgeRoutes:
                 ]
 
         h = _MetaStub()
-        app = EdgeApp(handler=h, capabilities=h.capabilities()).app
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), allow_unauthenticated_execute=True).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             r = await c.post(
@@ -588,9 +646,22 @@ class TestEdgeExecuteAuth:
         assert h.calls == 1
 
     @pytest.mark.asyncio
-    async def test_execute_open_mode_when_token_unset(self, app_handler: tuple[FastAPI, _Stub]) -> None:
-        """When registration_token is None, /execute must remain open (back-compat with existing tests)."""
-        app, h = app_handler
+    async def test_execute_rejects_missing_configured_token(self) -> None:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert r.status_code == 401
+        assert h.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_open_mode_requires_explicit_opt_in(self) -> None:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), allow_unauthenticated_execute=True).app
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             r = await c.post(

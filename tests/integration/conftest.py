@@ -202,7 +202,12 @@ async def http_tts_stub() -> AsyncIterator[str]:
             price_source="zero",
             listen_port=0,
         )
-        return create_worker_app(handler=StubTTSHandler(settings), settings=settings, disable_registration=True)
+        return create_worker_app(
+            handler=StubTTSHandler(settings),
+            settings=settings,
+            disable_registration=True,
+            allow_unauthenticated_execute=True,
+        )
 
     url, task = await _start_uvicorn(_factory)
     yield url
@@ -227,7 +232,12 @@ async def http_translation_stub() -> AsyncIterator[str]:
             price_source="zero",
             listen_port=0,
         )
-        return create_worker_app(handler=StubTranslationHandler(settings), settings=settings, disable_registration=True)
+        return create_worker_app(
+            handler=StubTranslationHandler(settings),
+            settings=settings,
+            disable_registration=True,
+            allow_unauthenticated_execute=True,
+        )
 
     url, task = await _start_uvicorn(_factory)
     yield url

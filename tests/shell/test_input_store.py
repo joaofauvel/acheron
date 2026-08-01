@@ -57,6 +57,21 @@ class TestSave:
         assert (tmp_path / result.source_path).read_bytes() == b"data"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("filename", ["book\x00X.epub", "book\x1bX.epub", "book\x7fX.epub"])
+    async def test_save_rejects_control_filename_without_creating_destination(
+        self, tmp_path: Path, filename: str
+    ) -> None:
+        store = InputStore(tmp_path)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b"data"
+
+        with pytest.raises(ValueError, match="control characters"):
+            await store.save(filename, "text/plain", chunks())
+
+        assert not (tmp_path / "inputs").exists()
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("filename", [".", "..", "nested/..", "nested/../"])
     async def test_save_rejects_dot_basename_without_creating_destination(self, tmp_path: Path, filename: str) -> None:
         store = InputStore(tmp_path)

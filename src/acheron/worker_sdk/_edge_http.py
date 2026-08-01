@@ -69,6 +69,12 @@ _PUBLIC_ARTIFACT_METADATA_KEYS = frozenset(
 _MAX_METADATA_STRING_LENGTH = 256
 _METADATA_CONTROL_LIMIT = 32
 _METADATA_DELETE_CHARACTER = 127
+# Edge execute requests are bounded before JSON/multipart allocation (64 MiB).
+_MAX_EXECUTE_BODY_BYTES = 64 * 1024 * 1024
+
+
+class PayloadTooLargeError(WorkerError):
+    """An execute request exceeded the edge's bounded request size."""
 
 
 def _encode_metadata(metadata: dict[str, JsonValue]) -> str:
@@ -134,6 +140,7 @@ class _MultipartStreamState:
         "part_data",
         "part_metadata",
         "parts",
+        "total_bytes",
     )
 
     def __init__(self) -> None:
@@ -143,6 +150,7 @@ class _MultipartStreamState:
         self.part_content_type: str | None = None
         self.part_data = io.BytesIO()
         self.part_metadata: dict[str, JsonValue] = {}
+        self.total_bytes = 0
         self.header_name_buf: list[bytes] = []
         self.header_value_buf: list[bytes] = []
         self.parts: list[_ParsedMultipartPart] = []
@@ -170,7 +178,7 @@ class _MultipartStreamState:
         )
 
 
-def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamState) -> MultipartParser:
+def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamState) -> MultipartParser:  # noqa: C901
     """Wire the low-level multipart parser callbacks to a state object."""
 
     def _on_part_begin() -> None:
@@ -204,6 +212,10 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
             state.part_metadata.update(_decode_metadata(meta.decode("latin-1")))
 
     def _on_part_data(data: bytes, start: int, end: int) -> None:
+        chunk_size = end - start
+        if state.total_bytes + chunk_size > _MAX_EXECUTE_BODY_BYTES:
+            raise PayloadTooLargeError("execute request exceeds the maximum body size")
+        state.total_bytes += chunk_size
         state.part_data.write(bytes(data[start:end]))
 
     def _on_part_end() -> None:
@@ -375,24 +387,28 @@ class EdgeApp:
     should ``include_router`` :attr:`router` instead of copying routes.
     """
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         *,
         handler: WorkerHandler,
         capabilities: WorkerCapabilities,
         price_source: PriceSource | None = None,
         registration_token: str | None = None,
+        allow_unauthenticated_execute: bool = False,
     ) -> None:
         self.handler = handler
         self.capabilities = capabilities
         self.price_source = price_source
         self.registration_token = registration_token
+        self.allow_unauthenticated_execute = allow_unauthenticated_execute
 
         async def _verify_bearer(
             authorization: str | None = Header(default=None),
         ) -> None:
             if self.registration_token is None:
-                return
+                if self.allow_unauthenticated_execute:
+                    return
+                raise HTTPException(status_code=401, detail="Missing registration token")
             if authorization is None:
                 raise HTTPException(status_code=401, detail="Missing Authorization header")
             scheme, _, provided = authorization.partition(" ")
@@ -416,8 +432,10 @@ class EdgeApp:
             if ctype.startswith("multipart/"):
                 return await self._run_execute_multipart(request)
             try:
-                body = ExecuteRequest.model_validate(await request.json())
+                body = ExecuteRequest.model_validate(json.loads(await self._read_limited_body(request)))
                 return await self._run_execute(body)
+            except PayloadTooLargeError:
+                return JSONResponse(status_code=413, content={"detail": "execute request exceeds maximum size"})
             except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, TypeError, ValueError) as exc:
                 logger.info("Malformed JSON execute request: %s", sanitise_exc_message(exc))
                 return _malformed_execute_response()
@@ -430,6 +448,8 @@ class EdgeApp:
         """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
         try:
             job, input_obj = await self._parse_multipart_request(request)
+        except PayloadTooLargeError:
+            return JSONResponse(status_code=413, content={"detail": "execute request exceeds maximum size"})
         except (WorkerError, ValueError, KeyError, TypeError) as exc:
             logger.exception("Multipart request parsing failed")
             parser_error: WorkerError
@@ -455,6 +475,22 @@ class EdgeApp:
             )
         return await self._dispatch(job, input_obj)
 
+    async def _read_limited_body(self, request: Request) -> bytes:
+        """Read a JSON body without allocating beyond the edge request limit."""
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > _MAX_EXECUTE_BODY_BYTES:
+                    raise PayloadTooLargeError("execute request exceeds the maximum body size")
+            except ValueError:
+                pass
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > _MAX_EXECUTE_BODY_BYTES:
+                raise PayloadTooLargeError("execute request exceeds the maximum body size")
+            body.extend(chunk)
+        return bytes(body)
+
     async def _parse_multipart_request(self, request: Request) -> tuple[Job, Input | None]:
         """Parse the multipart body into a Job + optional Input. Raises WorkerError on malformed input.
 
@@ -469,9 +505,20 @@ class EdgeApp:
             msg = "Multipart body is missing boundary"
             raise WorkerError(msg)
         boundary = ctype.split("boundary=", 1)[1].split(";", 1)[0].strip().strip('"').encode("latin-1")
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > _MAX_EXECUTE_BODY_BYTES:
+                    raise PayloadTooLargeError("execute request exceeds the maximum body size")
+            except ValueError:
+                pass
         state = _MultipartStreamState()
         parser = _build_streaming_multipart_parser(boundary, state)
+        total_bytes = 0
         async for chunk in request.stream():
+            if total_bytes + len(chunk) > _MAX_EXECUTE_BODY_BYTES:
+                raise PayloadTooLargeError("execute request exceeds the maximum body size")
+            total_bytes += len(chunk)
             parser.write(chunk)
         parser.finalize()
         return _build_job_and_input(state.parts)

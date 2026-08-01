@@ -131,7 +131,12 @@ class TestCreateWorkerApp:
     async def test_execute_routes_through_app(self) -> None:
         h = _Stub()
         s = _settings(price_source="zero")
-        app = create_worker_app(handler=h, settings=s, disable_registration=True)
+        app = create_worker_app(
+            handler=h,
+            settings=s,
+            disable_registration=True,
+            allow_unauthenticated_execute=True,
+        )
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             r = await client.post(
