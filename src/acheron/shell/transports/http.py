@@ -34,6 +34,7 @@ from acheron.shell.transports._multipart import (
     _safe_join,
     _validate_content_type,
 )
+from acheron.tls import _allow_insecure
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
@@ -179,6 +180,11 @@ class HttpWorker(Worker):
             if self._registration_token_provider is not None
             else self._registration_token
         )
+        if token is not None and url.startswith("http://") and not _allow_insecure():
+            raise WorkerError(
+                "Refusing to send a bearer token over plaintext; "
+                "configure HTTPS or explicitly opt into insecure local transport"
+            )
         if token is not None:
             headers = dict(kwargs.pop("headers", {}))
             headers.setdefault("Authorization", f"Bearer {token}")

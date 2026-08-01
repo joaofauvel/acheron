@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import httpx
 from fastapi import FastAPI
 
-from acheron.tls import uvicorn_ssl_kwargs
+from acheron.tls import _allow_insecure, uvicorn_ssl_kwargs
 from acheron.worker_sdk._edge_http import EdgeApp
 from acheron.worker_sdk.pricing import (
     PriceSource,
@@ -101,13 +101,19 @@ def create_worker_app(
     )
 
     async def _register() -> None:
+        endpoint = _endpoint_url(settings)
+        if endpoint.startswith("http://") and settings.registration_token and not _allow_insecure():
+            raise RuntimeError(
+                "Refusing to register a bearer-authenticated worker over plaintext; "
+                "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
+            )
         async with httpx.AsyncClient() as client:
             await register_with_orchestrator(
                 client=client,
                 orchestrator_url=settings.orchestrator_url,
                 token=settings.registration_token,
                 worker_id=settings.worker_id,
-                endpoint=_endpoint_url(settings),
+                endpoint=endpoint,
                 transport="http",
                 capabilities=_registration_caps(caps, settings),
             )

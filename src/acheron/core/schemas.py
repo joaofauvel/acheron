@@ -277,7 +277,7 @@ class WorkerResponse(BaseModel):
 class WorkerListResponse(BaseModel):
     """Response for listing workers."""
 
-    workers: list[WorkerResponse]
+    workers: list[WorkerResponse] = Field(max_length=1000)
 
 
 class LanguagePair(BaseModel):

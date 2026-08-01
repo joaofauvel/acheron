@@ -85,7 +85,10 @@ class TestHttpWorkerHealth:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_registration_token_provider_is_read_for_each_request(self, tmp_path: Path) -> None:
+    async def test_registration_token_provider_is_read_for_each_request(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
         tokens = iter(("first-token", "rotated-token"))
         seen: list[str | None] = []
 

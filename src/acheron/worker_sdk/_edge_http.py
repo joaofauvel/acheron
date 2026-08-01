@@ -358,6 +358,7 @@ _SAFE_ARTIFACT_MIME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`
 _SAFE_GPU_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+:-]{0,127}$")
 _MAX_ARTIFACT_FILENAME_LENGTH = 255
 _MAX_ARTIFACT_MIME_LENGTH = 256
+_MAX_ARTIFACT_COUNT = 64
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
 
@@ -406,6 +407,8 @@ async def _build_multipart_response(  # noqa: C901
     in memory. Each artifact's ``stream()`` chunks are forwarded
     directly; no per-artifact ``bytes += chunk`` accumulator is used.
     """
+    if len(artifacts) > _MAX_ARTIFACT_COUNT:
+        raise PayloadTooLargeError("worker returned too many artifacts")
     boundary = f"acheron-{uuid.uuid4().hex}"
     metrics_json = metrics.model_dump_json()
 

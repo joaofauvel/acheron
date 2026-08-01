@@ -305,6 +305,7 @@ async def wired_orchestrator(
     """
     monkeypatch.setenv("ACHERON_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ACHERON_ORCHESTRATOR__DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
 
     reg = InMemoryWorkerStore()
 

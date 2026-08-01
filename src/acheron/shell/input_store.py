@@ -201,7 +201,13 @@ class InputStore:
     @staticmethod
     def _validate_source_components(source_path: str) -> None:
         parts = Path(source_path).parts
-        if any(part in _FORBIDDEN_SOURCE_COMPONENTS for part in parts):
+        folded = tuple(part.casefold() for part in parts)
+        if any(
+            part in _FORBIDDEN_SOURCE_COMPONENTS
+            or part.startswith(("plan-", "job-", "cache-"))
+            or part in {"cache", "cert", "certs", "key", "keys", "tmp", "temp"}
+            for part in folded
+        ):
             raise InputPathError("source path refers to an internal file")
         basename = Path(source_path).name.casefold()
         if basename in {".env", ".registration_token"} or basename.endswith(tuple(_FORBIDDEN_SOURCE_SUFFIXES)):
@@ -212,12 +218,13 @@ class InputStore:
         candidate = Path(source_path)
         if not source_path:
             raise InputPathError("source path must not be empty")
-        self._validate_source_components(source_path)
         resolved = (candidate if candidate.is_absolute() else self._data_dir / candidate).resolve(strict=False)
         try:
-            return resolved.relative_to(self._data_dir).as_posix()
+            relative = resolved.relative_to(self._data_dir)
         except ValueError as exc:
             raise InputPathError("source path is outside the data directory") from exc
+        self._validate_source_components(relative.as_posix())
+        return relative.as_posix()
 
     def resolve_source_path(self, source_path: str) -> Path:
         """Resolve ``source_path`` to a regular file under the data directory.
@@ -230,13 +237,13 @@ class InputStore:
         if not source_path or Path(source_path).is_absolute():
             msg = f"Invalid source path {source_path!r}: must be a non-empty relative path under {self._data_dir}"
             raise InputPathError(msg)
-        self._validate_source_components(source_path)
         resolved = (self._data_dir / source_path).resolve()
         try:
-            resolved.relative_to(self._data_dir)
+            relative = resolved.relative_to(self._data_dir)
         except ValueError as exc:
             msg = f"Invalid source path {source_path!r}: must resolve to a regular file under {self._data_dir}"
             raise InputPathError(msg) from exc
+        self._validate_source_components(relative.as_posix())
         if not resolved.is_file():
             msg = f"Invalid source path {source_path!r}: must resolve to a regular file under {self._data_dir}"
             raise InputPathError(msg)

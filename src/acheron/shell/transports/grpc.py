@@ -30,6 +30,8 @@ from acheron.shell.transports._multipart import _build_result, _materialize_arti
 
 _MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024
 _MAX_WORKER_ARTIFACTS = 64
+_MAX_WORKER_CHUNKS = 4096
+_GRPC_TIMEOUT_SECONDS = 1800.0
 
 # Alias the proto Artifact once at module top — the proto-generated name
 # is not in the mypy module's namespace, so the bare `synthesis_pb2.Artifact`
@@ -88,7 +90,7 @@ class GrpcWorker(Worker):
             model_source=None,
         )
 
-    async def execute(self, job: Job) -> JobResult:  # noqa: D102
+    async def execute(self, job: Job) -> JobResult:  # noqa: C901, D102
         if job.job_type != WorkerType.TTS:
             msg = f"GrpcWorker only supports TTS, got {job.job_type}"
             raise WorkerError(msg)
@@ -104,9 +106,17 @@ class GrpcWorker(Worker):
         artifact_parts: list[_Artifact] = []
         pcm_chunks: list[bytes] = []
         total_bytes = 0
+        total_chunks = 0
 
         try:
-            async for chunk in self._stub.Synthesize(request, metadata=self._metadata()):
+            async for chunk in self._stub.Synthesize(
+                request,
+                metadata=self._metadata(),
+                timeout=_GRPC_TIMEOUT_SECONDS,
+            ):
+                total_chunks += 1
+                if total_chunks > _MAX_WORKER_CHUNKS:
+                    raise WorkerError("Worker returned too many output chunks")
                 payload_type = chunk.WhichOneof("payload")
                 if payload_type == "artifact":
                     total_bytes += len(chunk.artifact.data)
@@ -175,7 +185,11 @@ class GrpcWorker(Worker):
 
     async def health(self) -> bool:  # noqa: D102
         try:
-            response = await self._health_stub.Check(health_pb2.HealthCheckRequest(), metadata=self._metadata())
+            response = await self._health_stub.Check(
+                health_pb2.HealthCheckRequest(),
+                metadata=self._metadata(),
+                timeout=30.0,
+            )
         except grpc.aio.AioRpcError:
             return False
         else:

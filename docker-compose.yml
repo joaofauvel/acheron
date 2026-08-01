@@ -204,6 +204,7 @@ services:
       ACHERON_WORKER__DEFAULT_SPEAKER: "Ryan"
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
+      ACHERON_ALLOW_INSECURE: "1"
     volumes:
       - ./certs:/certs:ro
     healthcheck:
@@ -240,6 +241,7 @@ services:
       ACHERON_WORKER__SECURE_CLOUD: "false"
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
+      ACHERON_ALLOW_INSECURE: "1"
     volumes:
       - ./certs:/certs:ro
     healthcheck:
@@ -277,6 +279,7 @@ services:
       ACHERON_WORKER__LISTEN_PORT: "8001"
       ACHERON_WORKER__MODEL_ID: ${TRANSLATEGEMMA_MODEL_ID:-google/translategemma-12b-it}
       SSL_CERT_FILE: /certs/acheron-ca.crt
+      ACHERON_ALLOW_INSECURE: "1"
     volumes:
       - ./certs:/certs:ro
     healthcheck:

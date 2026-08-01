@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import heapq
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -114,11 +115,12 @@ class RetentionService:
         jobs = await self._job_store.list_all()
         active = set(self._active_jobs())
         selected = tuple(
-            sorted(
+            heapq.nsmallest(
+                1000,
                 (job for job in jobs if job.job_id not in active and _eligible(job, policy, effective_now)),
                 key=lambda j: j.job_id,
             )
-        )[:1000]
+        )
         retained_sources = {
             identity
             for job in jobs

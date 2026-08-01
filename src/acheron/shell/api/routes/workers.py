@@ -93,4 +93,8 @@ async def list_workers(orch: OrchestratorDep) -> WorkerListResponse:
     """List sanitized worker lifecycle state without registration auth."""
     workers = await orch.list_workers()
     now = time.time()
-    return WorkerListResponse(workers=[_public_worker_response(worker, now) for worker in workers])
+    public_workers = [
+        _public_worker_response(worker, now)
+        for worker in sorted(workers, key=lambda item: (item.worker_id.casefold(), item.worker_id))[:1000]
+    ]
+    return WorkerListResponse(workers=public_workers)
