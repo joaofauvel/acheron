@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from acheron.core.models import WorkerType
+from acheron.core.models import WorkerStatus, WorkerType
 from acheron.core.schemas import CapabilitiesResponse, LanguagePair, WorkerCapability
 from acheron.shell.api.deps import OrchestratorDep  # noqa: TC001
+from acheron.shell.api.public import public_capability_values, public_worker_id
 
 if TYPE_CHECKING:
+    from acheron.shell.capabilities import LanguagePair as AggregatedLanguagePair
     from acheron.shell.registry import RegisteredWorker
 
 
@@ -41,12 +43,28 @@ def _public_speakers(worker: RegisteredWorker) -> list[str]:
     return sorted(speakers)[:100]
 
 
+def _public_language_pair(pair: AggregatedLanguagePair) -> LanguagePair | None:
+    """Project an aggregated pair without reflecting untrusted labels."""
+    src_values = public_capability_values([pair.src], kind="language")
+    dst_values = public_capability_values([pair.dst], kind="language")
+    if not src_values or not dst_values:
+        return None
+    return LanguagePair(
+        src=src_values[0],
+        dst=dst_values[0],
+        workers=[public_worker_id(worker_id) for worker_id in pair.workers],
+    )
+
+
 def _supported_languages(workers: tuple[RegisteredWorker, ...]) -> list[str]:
     """Return all worker input and output languages in sorted order."""
     supported = {
         language
         for worker in workers
-        for language in worker.capabilities.supported_languages_in | worker.capabilities.supported_languages_out
+        for language in public_capability_values(
+            worker.capabilities.supported_languages_in | worker.capabilities.supported_languages_out,
+            kind="language",
+        )
     }
     return sorted(supported)
 
@@ -59,7 +77,7 @@ async def get_capabilities(
     worker_type: Annotated[str | None, Query(alias="type")] = None,
 ) -> CapabilitiesResponse:
     """Return typed worker inventories or aggregated language pairs."""
-    workers = await orch.list_workers()
+    all_workers = tuple(await orch.list_workers())
 
     if worker_type is not None:
         if src is not None or dest is not None:
@@ -77,22 +95,31 @@ async def get_capabilities(
             language_pairs=[],
             workers=[
                 WorkerCapability(
-                    worker_id=worker.worker_id,
+                    worker_id=public_worker_id(worker.worker_id),
                     worker_type=worker.capabilities.worker_type.value,
-                    supported_languages_in=sorted(worker.capabilities.supported_languages_in),
-                    supported_languages_out=sorted(worker.capabilities.supported_languages_out),
-                    supported_formats_in=sorted(worker.capabilities.supported_formats_in),
-                    supported_formats_out=sorted(worker.capabilities.supported_formats_out),
+                    supported_languages_in=public_capability_values(
+                        worker.capabilities.supported_languages_in, kind="language"
+                    ),
+                    supported_languages_out=public_capability_values(
+                        worker.capabilities.supported_languages_out, kind="language"
+                    ),
+                    supported_formats_in=public_capability_values(
+                        worker.capabilities.supported_formats_in, kind="format"
+                    ),
+                    supported_formats_out=public_capability_values(
+                        worker.capabilities.supported_formats_out, kind="format"
+                    ),
                     max_payload_bytes=worker.capabilities.max_payload_bytes,
                     max_input_tokens=worker.capabilities.max_input_tokens,
                     batch_capable=worker.capabilities.batch_capable,
                     speakers=_public_speakers(worker),
                 )
-                for worker in sorted(workers, key=lambda item: item.worker_id)
+                for worker in sorted(all_workers, key=lambda item: (item.worker_id.casefold(), item.worker_id))
                 if worker.capabilities.worker_type is matching_type
             ],
         )
 
+    workers = tuple(worker for worker in all_workers if worker.status is WorkerStatus.HEALTHY)
     supported_languages = _supported_languages(workers)
     if src is not None and src not in supported_languages:
         supported = ", ".join(supported_languages)
@@ -105,6 +132,6 @@ async def get_capabilities(
 
     pairs = await orch.get_capabilities(src=src, dst=dest)
     return CapabilitiesResponse(
-        language_pairs=[LanguagePair(src=p.src, dst=p.dst, workers=list(p.workers)) for p in pairs],
+        language_pairs=[public_pair for p in pairs if (public_pair := _public_language_pair(p)) is not None],
         workers=[],
     )

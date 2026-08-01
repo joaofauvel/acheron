@@ -1,5 +1,6 @@
 """Tests for the internal edge FastAPI app."""
 
+import dataclasses
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -91,6 +92,24 @@ class TestEdgeRoutes:
             r = await c.get("/health")
         assert r.status_code == 200
         assert r.json() == {"status": "ok"}
+
+    @pytest.mark.asyncio
+    async def test_capabilities_drops_unsafe_capability_labels(self) -> None:
+        handler = _Stub()
+        capabilities = dataclasses.replace(
+            handler.capabilities(),
+            supported_languages_in=frozenset({"en", "../etc/passwd", "token TOPSECRET"}),
+            supported_formats_out=frozenset({"wav", "https://secret.example"}),
+        )
+        app = EdgeApp(handler=handler, capabilities=capabilities).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/capabilities")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["supported_languages_in"] == ["en"]
+        assert body["supported_formats_out"] == ["wav"]
+        assert "TOPSECRET" not in response.text
 
     @pytest.mark.asyncio
     async def test_capabilities_returns_shape(self, app_handler: tuple[FastAPI, _Stub]) -> None:

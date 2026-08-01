@@ -94,16 +94,17 @@ def _validate_evidence_commits(
     for commit in metadata_commits:
         if commit != CURRENT_HEAD and not _commit_exists(repo_root, commit):
             return ("FAIL", f"verification metadata names invalid Git commit: {commit}")
-    for commit in story.fixed_in:
-        if commit == CURRENT_HEAD:
-            if not marker_matches:
-                return ("PARTIAL", f"fixed_in=CURRENT_HEAD does not match head={requested_head}")
-            continue
-        resolved_commit = resolve_revision(repo_root, commit)
-        if resolved_commit is None:
-            resolved_commit = commit if _commit_exists(repo_root, commit) else None
-        if resolved_commit is None or not _is_ancestor(repo_root, resolved_commit, requested_head):
-            return ("FAIL", f"fixed_in commit {commit} is not an ancestor of head={requested_head}")
+    for field_name, commits in (("fixed_in", story.fixed_in), ("verified_in", story.verified_in)):
+        for commit in commits:
+            if commit == CURRENT_HEAD:
+                if field_name == "fixed_in" and not marker_matches:
+                    return ("PARTIAL", f"fixed_in=CURRENT_HEAD does not match head={requested_head}")
+                continue
+            resolved_commit = resolve_revision(repo_root, commit)
+            if resolved_commit is None:
+                resolved_commit = commit if _commit_exists(repo_root, commit) else None
+            if resolved_commit is None or not _is_ancestor(repo_root, resolved_commit, requested_head):
+                return ("FAIL", f"{field_name} commit {commit} is not an ancestor of head={requested_head}")
     return None
 
 

@@ -125,6 +125,22 @@ def test_explicit_head_rejects_non_commit(
     assert "valid Git commit" in message
 
 
+def test_unrelated_verified_in_commit_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_story(
+        tmp_path,
+        metadata=("fixed_in: [head-sha]\nverified_in: [unrelated-sha]\nlast_verified_at:\n  commit: head-sha\n"),
+    )
+    monkeypatch.setattr(verify_module, "_is_ancestor", lambda _root, ancestor, _head: ancestor != "unrelated-sha")
+
+    status, message = verify(tmp_path / "docs" / "ux_review", "OPS-999", _HEAD)
+
+    assert status == "FAIL"
+    assert "verified_in commit unrelated-sha" in message
+
+
 def test_verified_story_requires_fixed_commit_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

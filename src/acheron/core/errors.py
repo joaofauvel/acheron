@@ -98,15 +98,18 @@ class InvalidationTargetError(JobError):
 _CREDENTIAL_PATTERN = re.compile(
     r"(?ix)"
     r"(?<![A-Za-z0-9_-])"
-    r"([\"']?(?:(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|access[_-]?key[_-]?id)|password|passwd|secret|token|api[_-]?key|authorization|credential)[\"']?)"
+    r"([\"']?(?:(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|"
+    r"aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|access[_-]?key[_-]?id)|"
+    r"password|passwd|secret|token|api[_ -]?key|authorization|credential)[\"']?)"
     r"\s*(?:=|:)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)"
 )
 _BARE_CREDENTIAL_PATTERN = re.compile(
     r"(?ix)"
     r"(?<![A-Za-z0-9_-])"
     r"(?:client[_-]?(?:id|secret)|private[_-]?key|refresh[_-]?token|access[_-]?token|id[_-]?token|"
-    r"aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|password|passwd|secret|token|api[_-]?key)"
-    r"\s+(?:Bearer\s+)?[^\s,;}\]]+"
+    r"aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|"
+    r"password|passwd|secret|token|api[_ -]?key|authorization|credential)"
+    r"\s+(?:Bearer\s+)?(?!header\b|missing\b|invalid\b|provided\b|required\b|is\b|was\b|not\b)[^\s,;}\]]+"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}\]]+")
 _URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")

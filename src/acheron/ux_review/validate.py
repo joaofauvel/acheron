@@ -75,7 +75,8 @@ def _check_file_ref(file_path: Path, lines: str) -> list[str]:
         return [f"line range start > end: {lines!r}"]
     if end is None:
         end = start
-    total_lines = sum(1 for _ in file_path.open(encoding="utf-8"))
+    with file_path.open(encoding="utf-8") as source:
+        total_lines = sum(1 for _ in source)
     if end > total_lines:
         return [f"line range exceeds file length: {lines!r} > {total_lines}"]
     return []

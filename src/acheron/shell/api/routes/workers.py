@@ -15,6 +15,7 @@ from acheron.core.schemas import (
     WorkerResponse,
 )
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
+from acheron.shell.api.public import public_worker_id
 from acheron.shell.api.schemas import WorkerRegistrationRequest  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -34,7 +35,7 @@ def _booting_elapsed_seconds(worker: RegisteredWorker, now: float) -> float | No
 
 def _public_worker_response(worker: RegisteredWorker, now: float) -> WorkerResponse:
     return WorkerResponse(
-        worker_id=worker.worker_id,
+        worker_id=public_worker_id(worker.worker_id),
         endpoint=None,
         transport=worker.transport,
         worker_type=worker.capabilities.worker_type.value,
@@ -84,7 +85,7 @@ async def register_worker(
     worker = await orch._registry.get(body.worker_id)  # noqa: SLF001
     if worker is None:
         raise HTTPException(status_code=500, detail="worker registration did not persist")
-    return WorkerRegistrationResponse(worker_id=worker.worker_id, status=worker.status)
+    return WorkerRegistrationResponse(worker_id=public_worker_id(worker.worker_id), status=worker.status)
 
 
 @router.get("", response_model=WorkerListResponse)

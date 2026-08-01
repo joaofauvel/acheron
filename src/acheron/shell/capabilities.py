@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from acheron.core.models import WorkerType
+from acheron.core.models import WorkerStatus, WorkerType
 
 if TYPE_CHECKING:
     from acheron.shell.registry import RegisteredWorker
@@ -28,6 +28,8 @@ def _collect_worker_caps(
     tts_langs: set[str] = set()
     translation_pairs: set[tuple[str, str]] = set()
     for w in workers:
+        if w.status is not WorkerStatus.HEALTHY:
+            continue
         match w.capabilities.worker_type:
             case WorkerType.TTS:
                 tts_langs.update(w.capabilities.supported_languages_out)
@@ -76,9 +78,11 @@ class CapabilityAggregator:
         requirements = _collect_worker_caps(workers)
         pairs: dict[tuple[str, str], list[str]] = {}
 
-        for w in workers:
-            for lang_in in w.capabilities.supported_languages_in:
-                for lang_out in w.capabilities.supported_languages_out:
+        for w in sorted(workers, key=lambda item: (item.worker_id.casefold(), item.worker_id)):
+            if w.status is not WorkerStatus.HEALTHY:
+                continue
+            for lang_in in sorted(w.capabilities.supported_languages_in):
+                for lang_out in sorted(w.capabilities.supported_languages_out):
                     if not _pair_is_achievable(lang_in, lang_out, src, dst, requirements):
                         continue
                     key = (lang_in, lang_out)
@@ -86,4 +90,11 @@ class CapabilityAggregator:
                         pairs[key] = []
                     pairs[key].append(w.worker_id)
 
-        return [LanguagePair(src=k[0], dst=k[1], workers=tuple(v)) for k, v in pairs.items()]
+        return [
+            LanguagePair(
+                src=src_lang,
+                dst=dst_lang,
+                workers=tuple(sorted(worker_ids, key=lambda worker_id: (worker_id.casefold(), worker_id))),
+            )
+            for (src_lang, dst_lang), worker_ids in sorted(pairs.items())
+        ]

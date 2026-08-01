@@ -116,6 +116,11 @@ class TestSanitisePublicMessage:
             "token xyz",
             "password xyz",
             "secret xyz",
+            "authorization TOPSECRET",
+            "credential TOPSECRET",
+            "api key TOPSECRET",
+            "authorization: Bearer TOPSECRET",
+            '{"authorization": "TOPSECRET"}',
         ],
     )
     def test_unsafe_message_uses_stable_fallback(self, message: str) -> None:

@@ -30,6 +30,8 @@ def caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
 _PUBLIC_METADATA_KEYS = frozenset({"default_speaker", "health_endpoint_id", "health_provider", "speakers", "voice"})
 _SAFE_SPEAKER_RE = re.compile(r"^[\w .'-]{1,64}$", re.UNICODE)
 _SAFE_ENDPOINT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$")
+_SAFE_FORMAT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9.+_-]{0,31})?$")
 _INVALID_PUBLIC_VALUE = "__invalid_public_value__"
 
 
@@ -75,5 +77,21 @@ def public_caps_to_dict(caps: WorkerCapabilities) -> dict[str, JsonValue]:
     result = caps_to_dict(caps)
     model_source = _safe_text(caps.model_source, pattern=re.compile(r"^[\w./:@-]{1,256}$"))
     result["model_source"] = model_source
+    result["supported_languages_in"] = [
+        value
+        for value in sorted(caps.supported_languages_in)
+        if _safe_text(value, pattern=_SAFE_LANGUAGE_RE) is not None
+    ]
+    result["supported_languages_out"] = [
+        value
+        for value in sorted(caps.supported_languages_out)
+        if _safe_text(value, pattern=_SAFE_LANGUAGE_RE) is not None
+    ]
+    result["supported_formats_in"] = [
+        value for value in sorted(caps.supported_formats_in) if _safe_text(value, pattern=_SAFE_FORMAT_RE) is not None
+    ]
+    result["supported_formats_out"] = [
+        value for value in sorted(caps.supported_formats_out) if _safe_text(value, pattern=_SAFE_FORMAT_RE) is not None
+    ]
     result["metadata"] = _safe_public_metadata(caps.metadata)
     return result

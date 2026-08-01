@@ -32,6 +32,21 @@ class TestWorkerRoutes:
         assert data == {"worker_id": "asr-1", "status": "healthy"}
 
     @pytest.mark.asyncio
+    async def test_public_worker_projection_redacts_untrusted_id(self, client) -> None:  # type: ignore[no-untyped-def]
+        payload = {
+            **_WORKER_PAYLOAD,
+            "worker_id": "../token TOPSECRET",
+        }
+        response = await client.post("/workers", json=payload)
+        assert response.status_code == 201
+        assert response.json()["worker_id"] == "<redacted>"
+
+        listed = await client.get("/workers")
+        assert listed.status_code == 200
+        assert "<redacted>" in {worker["worker_id"] for worker in listed.json()["workers"]}
+        assert "TOPSECRET" not in listed.text
+
+    @pytest.mark.asyncio
     async def test_register_worker_invalid_type(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.post(
             "/workers",

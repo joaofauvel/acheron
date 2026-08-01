@@ -1,6 +1,6 @@
 ---
 program: ux-review
-last_updated_date: 2026-07-31
+last_updated_date: 2026-08-01
 version: 6
 initial_review_commit: 59458ba
 last_updated_commit: CURRENT_HEAD
@@ -70,7 +70,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 ## Notes
 
 - Task 10 recovery evidence covers stuck-job discovery/reaping, archive and cleanup controls, worker history rendering, and CLI/dashboard filters via `harness:phase-4d-task-10-recovery`.
-- Refresh performed against `30aa846d7a0bea64b0589525f27e84d1c43e4ca0` using file/line re-resolution and independent journey checks.
+- Refresh performed against `CURRENT_HEAD` using file/line re-resolution and independent journey checks.
 - `discovered_via` ordering was preserved; existing verified metadata was not rewritten. Stage 1 cost-truth stories MAINT-002, MAINT-014, MAINT-015, OPS-005, and OPS-031 were verified by focused tests and deterministic simulation evidence.
 - `fixed_in` placeholders were resolved only where the review evidence supplied a matching Conventional Commit SHA.
 - `just first-run`, selected `just first-run --step` checks, all three simulation scenarios, and `just ux-validate` passed during the refresh.
@@ -83,8 +83,8 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (subject: `docs(ux-review): refresh final acceptance evidence`).
-- Evidence: focused sanitizer, edge-contract, verifier, deterministic-selection, and stream-cleanup regressions pass; `just validate` is the final gate with 1608 passing tests and 9 expected skips, with no pytest warnings.
+- Commit: `CURRENT_HEAD` (subject: `fix(phase-4d): harden final acceptance surfaces`).
+- Evidence: focused sanitizer, edge-contract, verifier, deterministic-selection, and stream-cleanup regressions pass; `just validate` is the final gate with 1618 passing tests and 9 expected skips, with no pytest warnings.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.
 - UX gate: all 15 required Phase 4D `just ux-verify` commands and `just ux-validate` pass after this commit; parsed metadata is 16 verified overall (OPS 6, MAINT 10) and 6 obsolete.

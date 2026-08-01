@@ -36,7 +36,8 @@ _WORKER_SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 _WORKER_BARE_SECRET_RE = re.compile(
-    r"\b(?:token|password|secret|api[_ -]?key)\b\s+(?:bearer\s+)?[^\s,;]+",
+    r"\b(?:token|password|secret|api[_ -]?key|authorization|credential)\b\s+(?:bearer\s+)?"
+    r"(?!header\b|missing\b|invalid\b|provided\b|required\b|is\b|was\b|not\b)[^\s,;]+",
     re.IGNORECASE,
 )
 _WORKER_JSON_SECRET_RE = re.compile(

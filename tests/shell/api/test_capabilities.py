@@ -28,6 +28,33 @@ class TestCapabilitiesRoute:
 
 class TestTypedCapabilitiesRoute:
     @pytest.mark.asyncio
+    async def test_public_projection_drops_untrusted_registration_values(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = await client.post(
+            "/workers",
+            json={
+                "worker_id": "https://token:secret@evil/../worker",
+                "endpoint": "http://worker:8000",
+                "transport": "http",
+                "capabilities": {
+                    "worker_type": "tts",
+                    "supported_languages_in": ["en", "token TOPSECRET", "../etc/passwd"],
+                    "supported_languages_out": ["en"],
+                    "supported_formats_in": ["audio/wav", "https://secret.example"],
+                    "supported_formats_out": ["audio/wav", "api key TOPSECRET"],
+                },
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["worker_id"] == "<redacted>"
+
+        typed = await client.get("/capabilities", params={"type": "tts"})
+        assert typed.status_code == 200
+        worker = next(item for item in typed.json()["workers"] if item["worker_id"] == "<redacted>")
+        assert worker["supported_languages_in"] == ["en"]
+        assert worker["supported_formats_in"] == ["audio/wav"]
+        assert worker["supported_formats_out"] == ["audio/wav"]
+
+    @pytest.mark.asyncio
     async def test_tts_speakers_drop_unsafe_metadata(self, client) -> None:  # type: ignore[no-untyped-def]
         response = await client.post(
             "/workers",

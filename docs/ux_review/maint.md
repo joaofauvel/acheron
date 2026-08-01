@@ -1,12 +1,12 @@
 ---
 theme: MAINT
-last_updated_date: 2026-07-30
+last_updated_date: 2026-08-01
 version: 3
 ---
 
 # MAINT
 
-**Grade**: C (12 high + 4 medium-severity open stories)
+**Grade**: C (3 high + 2 medium-severity open stories)
 **Calibration target**: an on-call engineer should be able to recover from a 2am page without paging someone else.
 
 ## MAINT-001 — No admin endpoints to reap stuck `RUNNING` jobs
