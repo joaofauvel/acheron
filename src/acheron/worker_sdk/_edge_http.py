@@ -67,6 +67,10 @@ _PUBLIC_ARTIFACT_METADATA_KEYS = frozenset(
     }
 )
 _MAX_METADATA_STRING_LENGTH = 256
+_MAX_METADATA_HEADER_BYTES = 8 * 1024
+_MAX_METADATA_ITEMS = 32
+_MAX_METADATA_DEPTH = 4
+_MAX_MULTIPART_PARTS = 64
 _METADATA_CONTROL_LIMIT = 32
 _METADATA_DELETE_CHARACTER = 127
 # Edge execute requests and streamed responses share a bounded 64 MiB envelope.
@@ -97,14 +101,41 @@ def _encode_metadata(metadata: dict[str, JsonValue]) -> str:
     return json.dumps(safe, separators=(",", ":"))
 
 
-def _decode_metadata(header: str | None) -> dict[str, JsonValue]:
+def _decode_metadata(header: str | None) -> dict[str, JsonValue]:  # noqa: C901
     if not header:
         return {}
-    parsed = json.loads(header)
+    if len(header.encode("utf-8")) > _MAX_METADATA_HEADER_BYTES:
+        raise TypeError("X-Acheron-Metadata is too large")
+    try:
+        parsed = json.loads(header)
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise TypeError("X-Acheron-Metadata is invalid") from exc
+
+    def validate(value: object, depth: int = 0) -> None:  # noqa: C901
+        if depth > _MAX_METADATA_DEPTH:
+            raise TypeError("X-Acheron-Metadata is too deeply nested")
+        if isinstance(value, dict):
+            if len(value) > _MAX_METADATA_ITEMS:
+                raise TypeError("X-Acheron-Metadata has too many fields")
+            for key, item in value.items():
+                if not isinstance(key, str) or len(key) > _MAX_METADATA_STRING_LENGTH:
+                    raise TypeError("X-Acheron-Metadata has an invalid field")
+                validate(item, depth + 1)
+        elif isinstance(value, list):
+            if len(value) > _MAX_METADATA_ITEMS:
+                raise TypeError("X-Acheron-Metadata has too many items")
+            for item in value:
+                validate(item, depth + 1)
+        elif isinstance(value, str):
+            if len(value) > _MAX_METADATA_STRING_LENGTH:
+                raise TypeError("X-Acheron-Metadata has an oversized value")
+        elif value is not None and not isinstance(value, (bool, int, float)):
+            raise TypeError("X-Acheron-Metadata has an invalid value")
+
+    validate(parsed)
     if not isinstance(parsed, dict):
-        msg = "X-Acheron-Metadata must contain a JSON object"
-        raise TypeError(msg)
-    return {str(k): cast("JsonValue", v) for k, v in parsed.items()}
+        raise TypeError("X-Acheron-Metadata must contain a JSON object")
+    return cast("dict[str, JsonValue]", parsed)
 
 
 @dataclass(frozen=True)
@@ -168,6 +199,8 @@ class _MultipartStreamState:
     def commit_part(self) -> None:
         if self.field_name is None:
             return
+        if len(self.parts) >= _MAX_MULTIPART_PARTS:
+            raise PayloadTooLargeError("execute request contains too many multipart parts")
         self.parts.append(
             _ParsedMultipartPart(
                 field_name=self.field_name,

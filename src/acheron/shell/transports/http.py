@@ -37,6 +37,7 @@ from acheron.shell.transports._multipart import (
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
+_MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 _MAX_WORKER_RESPONSE_BYTES = 64 * 1024 * 1024
@@ -65,6 +66,8 @@ def _validate_legacy_result(result: JobResult, data_dir: Path) -> JobResult:
     """Reject legacy output paths that cannot be safely read by the orchestrator."""
     root = data_dir.resolve()
     for output in result.outputs:
+        if output.size_bytes < 0 or output.size_bytes > _MAX_WORKER_OUTPUT_BYTES:
+            raise WorkerError("Worker returned an invalid output size")
         path = Path(output.path)
         try:
             resolved = path.resolve(strict=True)

@@ -18,6 +18,8 @@ from acheron.core.models import (
     WorkerType,
 )
 
+_MAX_PUBLIC_VOICE_LENGTH = 128
+
 
 class OutputSummary(BaseModel):
     """Operator-relevant metadata for a produced artifact."""
@@ -167,7 +169,7 @@ class JobResponse(BaseModel):
     target_language: str
     asr_model: str | None
     voice: str | None = None
-    voice_map: list[dict[str, str | int]] = Field(default_factory=list)
+    voice_map: list[dict[str, str | int]] = Field(default_factory=list, max_length=128)
     executor_strategy: ExecutorStrategy
     created_at: datetime
     last_persisted_at: datetime
@@ -179,6 +181,15 @@ class JobResponse(BaseModel):
     outputs: list[OutputSummary]
     errors: list[StepError]
     warnings: list[str]
+
+    @field_validator("voice_map")
+    @classmethod
+    def _validate_voice_map(cls, value: list[dict[str, str | int]]) -> list[dict[str, str | int]]:
+        for item in value:
+            voice = item.get("voice")
+            if isinstance(voice, str) and len(voice) > _MAX_PUBLIC_VOICE_LENGTH:
+                raise ValueError("voice map values must be at most 128 characters")
+        return value
 
     @field_validator("created_at", "last_persisted_at", "archived_at")
     @classmethod

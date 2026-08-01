@@ -25,6 +25,7 @@ from acheron.proto import synthesis_pb2, synthesis_pb2_grpc
 from acheron.shell.transports._multipart import _build_result, _materialize_artifact
 
 _MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024
+_MAX_WORKER_ARTIFACTS = 64
 
 # Alias the proto Artifact once at module top — the proto-generated name
 # is not in the mypy module's namespace, so the bare `synthesis_pb2.Artifact`
@@ -94,6 +95,8 @@ class GrpcWorker(Worker):
                 if payload_type == "artifact":
                     total_bytes += len(chunk.artifact.data)
                     artifact_parts.append(chunk.artifact)
+                    if len(artifact_parts) > _MAX_WORKER_ARTIFACTS:
+                        raise WorkerError("Worker returned too many artifacts")
                 elif payload_type == "pcm_data":
                     total_bytes += len(chunk.pcm_data)
                     pcm_chunks.append(chunk.pcm_data)

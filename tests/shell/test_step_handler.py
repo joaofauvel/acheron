@@ -531,6 +531,32 @@ class TestHttpWorkerStepCache:
         assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
         assert worker._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
 
+    def test_factory_reads_registration_token_at_worker_creation(self) -> None:
+        from acheron.shell.registry import RegisteredWorker
+
+        reg = RegisteredWorker(
+            worker_id="tts-token",
+            endpoint="http://worker:8000",
+            transport="http",
+            capabilities=_tts_caps(),
+        )
+        token: str | None = None
+        worker_before = default_worker_factory(
+            reg,
+            data_dir=_TEST_DATA_DIR,
+            registration_token_provider=lambda: token,
+        )
+        assert isinstance(worker_before, HttpWorker)
+        assert worker_before._registration_token is None  # noqa: SLF001
+        token = "generated-after-start"
+        worker_after = default_worker_factory(
+            reg,
+            data_dir=_TEST_DATA_DIR,
+            registration_token_provider=lambda: token,
+        )
+        assert isinstance(worker_after, HttpWorker)
+        assert worker_after._registration_token == token  # noqa: SLF001
+
     @pytest.mark.asyncio
     async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(
         self, monkeypatch: pytest.MonkeyPatch

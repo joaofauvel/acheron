@@ -24,6 +24,7 @@ _MAX_FILENAME_LENGTH = 255
 _MAX_METADATA_BYTES = 8 * 1024
 _MAX_METADATA_ITEMS = 32
 _MAX_METADATA_VALUE_LENGTH = 256
+_MAX_MULTIPART_PARTS = 64
 _CONTROL_CHARACTER_LIMIT = 32
 _DELETE_CHARACTER = 127
 
@@ -69,7 +70,10 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912
     parts: list[ParsedPart] = []
     named_metrics_raw: bytes | None = None
     fallback_metrics_raw: bytes | None = None
-    for part in message.get_payload():
+    payload = message.get_payload()
+    if not isinstance(payload, list) or len(payload) > _MAX_MULTIPART_PARTS:
+        raise WorkerError("Worker returned too many multipart parts")
+    for part in payload:
         # `message.get_payload()` is typed as the union of `str | Message | list[...]`
         # by email.message; at runtime in a multipart body it returns a list of
         # ``Message`` instances.
@@ -107,6 +111,8 @@ def _parse_multipart_parts(  # noqa: C901, PLR0912
         raw = part.get_payload(decode=True)
         data = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
         metadata = _decode_metadata(part.get("X-Acheron-Metadata"))
+        if len(parts) >= _MAX_MULTIPART_PARTS:
+            raise WorkerError("Worker returned too many artifact parts")
         parts.append(
             ParsedPart(
                 content_type=part_ctype,

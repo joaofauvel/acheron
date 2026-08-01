@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 type WorkerFactory = Callable[[RegisteredWorker], Worker]
+type RegistrationTokenProvider = Callable[[], str | None]
 
 
 def default_worker_factory(
@@ -35,6 +36,7 @@ def default_worker_factory(
     *,
     data_dir: Path | str,
     registration_token: str | None = None,
+    registration_token_provider: RegistrationTokenProvider | None = None,
 ) -> Worker:
     """Create a worker from a registered worker's endpoint and transport.
 
@@ -64,7 +66,8 @@ def default_worker_factory(
                 supported_languages_out=registered.capabilities.supported_languages_out,
             )
         case _:
-            return HttpWorker(registered.endpoint, data_dir=data_dir, registration_token=registration_token)
+            token = registration_token_provider() if registration_token_provider is not None else registration_token
+            return HttpWorker(registered.endpoint, data_dir=data_dir, registration_token=token)
 
 
 def _language_matches(step_type: WorkerType, caps: WorkerCapabilities, src: str, dst: str) -> bool:
@@ -152,7 +155,7 @@ class CachingStepHandler:
     removed between plans is picked up on the next dispatch.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         registry: WorkerStore,
         worker_factory: WorkerFactory | None = None,
@@ -160,17 +163,27 @@ class CachingStepHandler:
         *,
         data_dir: Path | str,
         registration_token: str | None = None,
+        registration_token_provider: RegistrationTokenProvider | None = None,
     ) -> None:
         self._registry = registry
         self._data_dir = data_dir
-        self._factory = worker_factory or (
-            lambda reg: default_worker_factory(
+        if worker_factory is not None:
+            self._factory = worker_factory
+        elif registration_token_provider is None:
+            self._factory = lambda reg: default_worker_factory(
                 reg,
                 local_handlers,
                 data_dir=data_dir,
                 registration_token=registration_token,
             )
-        )
+        else:
+            self._factory = lambda reg: default_worker_factory(
+                reg,
+                local_handlers,
+                data_dir=data_dir,
+                registration_token=registration_token,
+                registration_token_provider=registration_token_provider,
+            )
         self._cached_workers: tuple[RegisteredWorker, ...] | None = None
         self._cached_plan_id: str | None = None
         self._worker_instances: dict[str, Worker] = {}
@@ -262,13 +275,14 @@ class CachingStepHandler:
         await self._invalidate_worker_cache()
 
 
-def create_step_handler(
+def create_step_handler(  # noqa: PLR0913
     registry: WorkerStore,
     worker_factory: WorkerFactory | None = None,
     local_handlers: dict[str, LocalJobHandler] | None = None,
     *,
     data_dir: Path | str,
     registration_token: str | None = None,
+    registration_token_provider: RegistrationTokenProvider | None = None,
 ) -> StepHandler:
     """Create a step handler that dispatches to registered workers.
 
@@ -289,4 +303,5 @@ def create_step_handler(
         local_handlers=local_handlers,
         data_dir=data_dir,
         registration_token=registration_token,
+        registration_token_provider=registration_token_provider,
     )

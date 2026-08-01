@@ -38,7 +38,7 @@ class VoiceRangeRequest(_StrictRequest):
 
     start_chapter: int
     end_chapter: int
-    voice: str
+    voice: str = Field(max_length=128)
 
 
 class SubmitJobRequest(_StrictRequest):
@@ -52,7 +52,7 @@ class SubmitJobRequest(_StrictRequest):
     asr_model: str | None = None
     label: str | None = None
     voice: str | None = None
-    voice_map: list[VoiceRangeRequest] = Field(default_factory=list)
+    voice_map: list[VoiceRangeRequest] = Field(default_factory=list, max_length=128)
     input_id: str | None = None
 
 
@@ -66,7 +66,7 @@ class RetryJobRequest(_StrictRequest):
     asr_model: str | None = None
     label: str | None = None
     voice: str | None = None
-    voice_map: list[VoiceRangeRequest] | None = None
+    voice_map: list[VoiceRangeRequest] | None = Field(default=None, max_length=128)
 
 
 class ResumeJobRequest(_StrictRequest):
@@ -88,6 +88,7 @@ _MAX_ADMIN_DURATION_SECONDS = 100 * 365 * 24 * 60 * 60
 _MAX_CAPABILITY_METADATA_STRING = 256
 _MAX_CAPABILITY_METADATA_ITEMS = 128
 _MAX_CAPABILITY_METADATA_KEYS = 64
+_MAX_CAPABILITY_METADATA_DEPTH = 4
 
 
 class _AdminDurationRequest(_StrictRequest):
@@ -199,14 +200,16 @@ class WorkerCapabilitiesRequest(_StrictRequest):
     supported_formats_out: list[Annotated[str, Field(max_length=64)]] = Field(default_factory=list, max_length=128)
     max_payload_bytes: int | None = Field(default=None, ge=0, le=_MAX_CAPABILITY_PAYLOAD_BYTES)
     batch_capable: bool = False
-    model_source: str | None = None
+    model_source: str | None = Field(default=None, max_length=256)
     max_input_tokens: int | None = Field(default=None, ge=0, le=_MAX_CAPABILITY_INPUT_TOKENS)
     metadata: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
 
     @field_validator("metadata")
     @classmethod
     def _validate_metadata_values(cls, value: dict[str, JsonValue]) -> dict[str, JsonValue]:
-        def validate(item: JsonValue) -> None:
+        def validate(item: JsonValue, depth: int = 0) -> None:
+            if depth > _MAX_CAPABILITY_METADATA_DEPTH:
+                raise ValueError("metadata nesting must be at most 4 levels")
             match item:
                 case str() if len(item) > _MAX_CAPABILITY_METADATA_STRING:
                     raise ValueError("metadata string values must be at most 256 characters")
@@ -216,10 +219,10 @@ class WorkerCapabilitiesRequest(_StrictRequest):
                     raise ValueError("metadata mappings must contain at most 64 items")
                 case list() as items:
                     for nested in items:
-                        validate(nested)
+                        validate(nested, depth + 1)
                 case dict() as mapping:
                     for nested in mapping.values():
-                        validate(nested)
+                        validate(nested, depth + 1)
                 case _:
                     return
 
@@ -263,7 +266,7 @@ __all__ = [
 class WorkerRegistrationRequest(_StrictRequest):
     """Request body for worker registration."""
 
-    worker_id: str
-    endpoint: str
-    transport: str
+    worker_id: str = Field(max_length=128)
+    endpoint: str = Field(max_length=2048)
+    transport: str = Field(max_length=64)
     capabilities: WorkerCapabilitiesRequest

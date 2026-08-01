@@ -183,7 +183,7 @@ class Orchestrator:
             registry,
             local_handlers=self._local_handlers,
             data_dir=self._settings.orchestrator.data_dir,
-            registration_token=self._settings.orchestrator.registration_token,
+            registration_token_provider=lambda: self._settings.orchestrator.registration_token,
         )
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)
@@ -1129,7 +1129,7 @@ class Orchestrator:
             now=effective_now,
         )
         reaped: list[str] = []
-        for candidate in sorted(candidates, key=lambda job: job.job_id):
+        for candidate in sorted(candidates, key=lambda job: job.job_id)[:1000]:
             if candidate.job_id in self._active_jobs:
                 continue
             try:

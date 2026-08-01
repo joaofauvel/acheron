@@ -118,7 +118,7 @@ class RetentionService:
                 (job for job in jobs if job.job_id not in active and _eligible(job, policy, effective_now)),
                 key=lambda j: j.job_id,
             )
-        )
+        )[:1000]
         retained_sources = {
             identity
             for job in jobs
