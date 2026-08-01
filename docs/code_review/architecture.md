@@ -1,10 +1,10 @@
 ---
 branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
 last_staleness_scan:
-  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 ---
 
 # Architecture
@@ -319,16 +319,16 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e0246e0
-  date: 2026-07-23
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 1-5
+    lines: 1-6, 20-21
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 10-12
+    lines: 8-12
   - path: src/acheron/worker_sdk/_runpod_client.py
-    lines: 12-12
+    lines: 10-12
 related:
 - CORR-016
 ```
@@ -349,14 +349,14 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e0246e0
-  date: 2026-06-26
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
-- path: src/acheron/worker_sdk/app.py
-   lines: 132-135
-- path: src/acheron/worker_sdk/_edge_http.py
-   lines: 315-336
+  - path: src/acheron/worker_sdk/app.py
+    lines: 146-149
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 453-460, 491-518
 related:
 - CORR-015
 - MAINT-011
@@ -1128,7 +1128,7 @@ reviewed_at: 77aadcd
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: ["pending"]
+fixed_in: [3a04ece]
 files:
   - path: src/acheron/worker_sdk/settings.py
     lines: 16-22
@@ -1159,7 +1159,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 0eab5cf
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [2c44856]
 files:
   - path: src/acheron/api_client.py
     lines: 10-17
@@ -1186,7 +1186,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 129db9d
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [0635bfb]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 263-278
@@ -1213,7 +1213,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [61574e5]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 53, 419-420
@@ -1238,7 +1238,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [e8732b0]
 files:
   - path: src/acheron/worker_sdk/pricing.py
     lines: 29-38, 121-128
@@ -1261,16 +1261,16 @@ severity: high
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 168-174
+    lines: 180-187
   - path: src/acheron/shell/step_handler.py
-    lines: 48-65
+    lines: 47-49, 79-86, 306-311
   - path: src/acheron/shell/transports/http.py
-    lines: 92-104
+    lines: 158-169, 227-245
 related: [ARCH-006, ARCH-008, CORR-009]
 ```
 
@@ -1290,16 +1290,16 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/app.py
-    lines: 45-69
+    lines: 87-106
   - path: src/acheron/shell/cache.py
-    lines: 43-48
+    lines: 172-193
   - path: src/acheron/shell/api/routes/job_outputs.py
-    lines: 124-142
+    lines: 61-77, 145
 related: [REPRO-007]
 ```
 
@@ -1310,3 +1310,53 @@ related: [REPRO-007]
 **Recommendation.** Derive all owned caches from one canonical data root, or reject a caller-supplied cache whose root differs from the orchestrator data directory.
 
 **Verification.** Construct an app with mismatched cache and settings roots and assert construction rejects the mismatch, or verify all plan, artifact, and output paths resolve beneath the single canonical root.
+
+### ARCH-029 — AcheronClient still imports the server-only CleanupResponse schema after response-schema extraction
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/api_client.py
+    lines: 14-30, 237-256
+  - path: src/acheron/shell/api/schemas.py
+    lines: 178-205
+related: [ARCH-024]
+```
+
+**Issue.** `CleanupResponse` remains defined in `shell/api/schemas.py` and is imported directly by the public client, while the other shared response models now live in `core/schemas.py`.
+
+**Why it matters.** The client remains coupled to the server's HTTP layer, recreating the boundary regression tracked by ARCH-024 for the cleanup API.
+
+**Recommendation.** Move `CleanupResponse` and its nested response models to `core/schemas.py`, then import them from both the client and admin route.
+
+**Verification.** Remove the `shell/api.schemas` import from `api_client.py`, verify one definition in `core/schemas.py`, then run client/admin tests and `just type-check`.
+
+### ARCH-030 — New retention and orchestration paths import module-private helpers across module boundaries
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/retention.py
+    lines: 13-16, 275-323
+  - path: src/acheron/shell/orchestrator.py
+    lines: 49-52, 359-363
+related: [ARCH-005, ARCH-023]
+```
+
+**Issue.** `RetentionService` imports private cache helpers, and `Orchestrator` imports private credential validation across module boundaries.
+
+**Why it matters.** These implicit cross-module contracts can drift or break during refactoring, repeating the private-import pattern tracked by ARCH-005 and ARCH-023.
+
+**Recommendation.** Expose focused public helper APIs or move the behavior behind public service methods.
+
+**Verification.** Ensure no new cross-module imports contain leading-underscore names; run `just lint-strict` and `just type-check`.

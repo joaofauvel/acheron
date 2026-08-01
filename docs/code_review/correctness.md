@@ -1,10 +1,10 @@
 ---
 branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
 last_staleness_scan:
-  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 ---
 
 # Correctness
@@ -328,7 +328,7 @@ reviewed_at: 63faed4
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [c723592]
 files:
   - path: src/acheron/shell/health.py
     lines: 27, 98-99, 183-195
@@ -355,7 +355,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [7ff0832]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 143-179
@@ -442,12 +442,12 @@ severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: e0246e0
-  date: 2026-07-23
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 133-135
+    lines: 147-149
 related:
 - ARCH-012
 - MAINT-011
@@ -959,20 +959,20 @@ severity: medium
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 77aadcd
-  date: 2026-06-26
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 206
+    lines: 302-306
   - path: src/acheron/shell/cache.py
-    lines: 116
+    lines: 273-281
   - path: src/acheron/shell/executors/streaming.py
-    lines: 144
+    lines: 171-174
   - path: src/acheron/shell/local_handlers.py
-    lines: 317
+    lines: 186-191
   - path: src/acheron/worker_sdk/app.py
-    lines: 116
+    lines: 128-132
 related: [CORR-031, MAINT-009, MAINT-020, EXC-004]
 ```
 
@@ -1021,7 +1021,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 7711af9
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [e0dd116]
 files:
   - path: workers/translategemma/handler.py
     lines: 265-295
@@ -1046,7 +1046,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 5f8f0d8
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [463e6f4]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 264-272
@@ -1071,7 +1071,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: b492de0
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [7c950a7]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 278-292
@@ -1096,7 +1096,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 7c950a7
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [5f8f0d8]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 356-377
@@ -1227,12 +1227,12 @@ severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 332-360
+    lines: 547-578
   - path: src/acheron/shell/job_events.py
     lines: 39-54
 related: [MAINT-024, PERF-012]
@@ -1254,14 +1254,14 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/core/schemas.py
-    lines: 53-58
+    lines: 26-30
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 456-485
+    lines: 732-740
 related: [CORR-013]
 ```
 
@@ -1272,3 +1272,51 @@ related: [CORR-013]
 **Recommendation.** Add a typed metadata field to `OutputSummary` and preserve `output.metadata` in `_tracked_to_response()`.
 
 **Verification.** Create a result with non-empty output metadata, call `GET /jobs/{id}`, and assert that the metadata is present.
+
+### CORR-047 — RunPod pricing returns UNKNOWN after a usable rate is available
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/pricing.py
+    lines: 264-290
+related: []
+```
+
+**Issue.** `RunPodPrice.estimate()` computes a cost only when a stale refresh fails. When the rate is valid and either a refresh succeeds or the cached rate is still fresh, execution falls through to `cost=None` and `basis=UNKNOWN`.
+
+**Why it matters.** Healthy RunPod executions are reported as unknown or zero-cost in persisted totals even though a valid GPU rate is present; the `MEASURED` basis is never emitted.
+
+**Recommendation.** Compute the estimate for every valid-rate path. Return `MEASURED` when no refresh failure occurred and `CACHED` only when refresh failed.
+
+**Verification.** Test successful refresh and unexpired-cache paths for a finite cost and `MEASURED`; test failed refresh with a prior rate for `CACHED`.
+
+### CORR-048 — Redis JobStore.put can erase an established archive marker
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/stores/redis.py
+    lines: 930-937
+  - path: src/acheron/shell/stores/memory.py
+    lines: 173-180
+related: []
+```
+
+**Issue.** `RedisJobStore.put()` serializes a supplied `TrackedJob` directly, so a stale copy with `archived_at=None` can overwrite a previously archived record. `InMemoryJobStore.put()` explicitly preserves an existing archive marker.
+
+**Why it matters.** A delayed update can make an archived job reappear in the default unarchived list, violating archive persistence and memory/Redis parity.
+
+**Recommendation.** Preserve an existing non-null `archived_at` during Redis writes or reject stale writes, and add a parity test.
+
+**Verification.** Load a job before archive, archive it, then write the pre-archive copy in both stores; assert `archived_at` remains set and the default list excludes the job.

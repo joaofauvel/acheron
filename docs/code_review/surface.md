@@ -1,17 +1,17 @@
 ---
 branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
 last_staleness_scan:
-  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 ---
 
 # Surface
 
 ## DX — Developer experience
 
-**Grade:** B
+**Grade:** A
 
 DX-001 is verified. DX-002 (medium) transitioned to `fixed` in 5b55e6f (README Quick Start replaced `acheron submit` with the canonical `acheron job ...` form). DX-003 (medium) remains open and re-resolved: the new `workers/granite_speech` workspace member widens the gap. No new DX findings at high threshold. **2026-06-26 refresh**: DX-004 added — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members.
 
@@ -325,16 +325,12 @@ severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: e0246e0
-  date: 2026-07-23
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: README.md
-    lines: 120-122
-  - path: README.md
-    lines: 187-191
-  - path: README.md
-    lines: 220
+    lines: 151, 194-196, 237-239, 274
 related: [DOC-003]
 ```
 
@@ -546,7 +542,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [55a11ea]
 files:
   - path: README.md
     lines: 24-27
@@ -716,6 +712,33 @@ related: [DOC-007]
 
 **Verification.** `rg -n '^\"\"\"' src/acheron/worker_sdk/_io.py` returns a single line (no blank line after the opening `'''`); the closing `'''` is on the same line as the summary; `just lint-strict` passes.
 
+## DOC (current refresh)
+
+### DOC-014 — README describes administrative mutations under the wrong CLI namespace
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: README.md
+    lines: 31-34, 92-97
+  - path: src/acheron/cli.py
+    lines: 608-680
+related: []
+```
+
+**Issue.** The README says administrative mutations use `acheron admin ...`, but archive is `acheron job archive`, cleanup is top-level `acheron cleanup`, and only stale-job recovery uses `acheron admin reap-stuck`.
+
+**Why it matters.** Operators following the README can try a nonexistent command namespace and cannot determine the required retention or recovery flags.
+
+**Recommendation.** Document the actual command groups with minimal runnable examples and explain cleanup preview versus `--apply`.
+
+**Verification.** Compare documented commands with `acheron --help`, `acheron job --help`, `acheron cleanup --help`, and `acheron admin --help`.
+
 ## DX (current refresh)
 
 ### DX-008 — Dashboard output links may expose an internal orchestrator hostname
@@ -726,14 +749,14 @@ severity: high
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: dashboard/app.py
-    lines: 43-57
+    lines: 153-160
   - path: dashboard/templates/partials/job_detail.html
-    lines: 26-34
+    lines: 27-34
 related: []
 ```
 
@@ -773,17 +796,17 @@ related: []
 ### DX-010 — Dry-run submission persists an uploaded source despite claiming no submission
 
 ```yaml
-status: open
+status: stale
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/cli.py
-    lines: 397-413
+    lines: 764-814
 related: []
 ```
 

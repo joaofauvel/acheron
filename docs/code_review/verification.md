@@ -1,10 +1,10 @@
 ---
 branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
 last_staleness_scan:
-  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 ---
 
 # Verification
@@ -938,7 +938,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: c832a73
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [56a2c67]
 files:
   - path: tests/integration/conftest.py
     lines: 376-405
@@ -1019,7 +1019,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [fe63e96]
 files:
   - path: tests/integration/test_worker_integration.py
     lines: 237-269
@@ -1038,7 +1038,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [298229a]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 575-637
@@ -1059,7 +1059,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [2569539]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 96-108
@@ -1080,7 +1080,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [0226b03]
 files:
   - path: src/acheron/worker_sdk/app.py
     lines: 109-131
@@ -1101,7 +1101,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [17465be]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 189-219
@@ -1247,14 +1247,14 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/job_outputs.py
-    lines: 67-87
+    lines: 61-88
   - path: tests/shell/api/test_job_outputs.py
-    lines: 90-220
+    lines: 188-200, 259-272
 related: []
 ```
 
@@ -1274,14 +1274,14 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/local_handlers.py
-    lines: 266-303
+    lines: 267-317
   - path: tests/shell/test_local_handlers.py
-    lines: 1-260
+    lines: 44-57, 217-227
 related: []
 ```
 
@@ -1330,14 +1330,14 @@ severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/cache.py
-    lines: 43-230
+    lines: 175-193, 236-258
   - path: tests/shell/test_cache.py
-    lines: 49-230
+    lines: 48-96, 99-237
 related: [ARCH-028]
 ```
 
@@ -1359,14 +1359,14 @@ severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/job_outputs.py
-    lines: 124-145
+    lines: 61-90, 126-152
   - path: src/acheron/core/models.py
-    lines: 20-38
+    lines: 220-228
 related: []
 ```
 

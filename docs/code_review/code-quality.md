@@ -1,10 +1,10 @@
 ---
 branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
 last_staleness_scan:
-  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 ---
 
 # Code quality
@@ -846,7 +846,7 @@ reviewed_at: dbec2be
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [5da1c71]
 files:
 - path: src/acheron/worker_sdk/cloud.py
   lines: 44-48
@@ -1056,20 +1056,20 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: e0246e0
-  date: 2026-06-26
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 206
+    lines: 305
   - path: src/acheron/shell/local_handlers.py
-    lines: 317
+    lines: 190
   - path: src/acheron/shell/executors/streaming.py
-    lines: 144
+    lines: 173
   - path: src/acheron/shell/cache.py
-    lines: 116
+    lines: 280
   - path: src/acheron/worker_sdk/app.py
-    lines: 117
+    lines: 131
 related: [MAINT-009, EXC-004, CORR-034]
 ```
 
@@ -1136,7 +1136,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 7711af9
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [76c2ea4]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 202-206
@@ -1167,7 +1167,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 76c2ea4
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [0eab5cf]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 29-49
@@ -1238,7 +1238,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [a50de1a]
 files:
   - path: src/acheron/shell/stores/redis.py
     lines: 29-143
@@ -1286,14 +1286,14 @@ severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/job_events.py
     lines: 25-54
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 354-360
+    lines: 537-586
 related: [CORR-045, PERF-012, TEST-033]
 ```
 
@@ -1305,6 +1305,29 @@ related: [CORR-045, PERF-012, TEST-033]
 
 **Verification.** Complete many jobs and disconnect follow streams; assert finished-job buffers and subscriber registrations are removed and memory remains bounded.
 
+### MAINT-025 — `jobs.py` has grown into a 747-line multi-concern route module
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/routes/jobs.py
+    lines: 194-409, 411-638, 675-747
+related: []
+```
+
+**Issue.** The route module combines source/path validation, voice handling, submit/retry construction, streaming logs, lifecycle mutations, list filtering, and response serialization. Its request builders contain large branching functions and repeat source/voice normalization decisions.
+
+**Why it matters.** Unrelated lifecycle changes are coupled in one route module, while duplicated branching can drift and makes focused testing harder.
+
+**Recommendation.** Split source/voice preflight, streaming, lifecycle routes, and response mapping into focused modules, extracting shared submit/retry normalization helpers.
+
+**Verification.** Run `just test` and `just type-check`; verify submit, preview, retry, log streaming, and list endpoint contracts after the split.
+
 ## EXC (current refresh)
 
 ### EXC-006 — Optional BOOTING warnings swallow unexpected failures
@@ -1315,12 +1338,12 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 84-94
+    lines: 442-446
 related: []
 ```
 
@@ -1332,6 +1355,31 @@ related: []
 
 **Verification.** Inject an expected store failure and an unexpected programming error separately; verify only the expected failure is downgraded and unexpected errors remain visible.
 
+### EXC-007 — Retention cleanup converts every job-store deletion error into an unlogged per-job failure
+
+```yaml
+status: open
+severity: medium
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/retention.py
+    lines: 182-197
+  - path: src/acheron/shell/stores/base.py
+    lines: 19-20, 172-173
+related: []
+```
+
+**Issue.** `RetentionService.apply()` catches every `Exception` around `job_store.delete()` and appends `CleanupFailure` without logging or preserving the exception. `StoreError` is the defined backend failure boundary, so programming errors are treated like expected deletion outages.
+
+**Why it matters.** The cleanup API can hide defects behind a generic retry message and provides no traceback or distinction between backend failure and a cleanup regression.
+
+**Recommendation.** Catch documented backend exceptions such as `StoreError`, preserve diagnostic context, and let unexpected exceptions propagate through the admin error boundary.
+
+**Verification.** Test `StoreError` as a retryable `CleanupFailure` and `AttributeError` as an unexpected failure; run `just test` and `just type-check`.
+
 ## TYPE (current refresh)
 
 ### TYPE-015 — Health response parsing bypasses the typed boundary
@@ -1342,14 +1390,12 @@ severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/api_client.py
-    lines: 164-170
-  - path: src/acheron/cli.py
-    lines: 102-110
+    lines: 412-417
 related: []
 ```
 
@@ -1360,3 +1406,26 @@ related: []
 **Recommendation.** Validate health responses with a typed schema or adapter and remove the ignore by correcting the generator annotation or adding a minimal stub.
 
 **Verification.** Return malformed health JSON and assert validation fails with the client error contract; run basedpyright without the ignore.
+
+### TYPE-016 — Dashboard orchestrator JSON is cast to structured mappings without runtime validation
+
+```yaml
+status: open
+severity: low
+effort: S
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: dashboard/app.py
+    lines: 61-73, 163-173, 211-223
+related: []
+```
+
+**Issue.** `_fetch_orchestrator()` casts arbitrary `resp.json()` output to `dict[str, object]` without checking that it is an object. Callers immediately use `.get`, and cost rendering further casts jobs to `list[dict[str, object]]` without validating the shape.
+
+**Why it matters.** Malformed responses can cause `AttributeError` or invalid template data, turning a fetch problem into a dashboard 500 instead of a safe fallback.
+
+**Recommendation.** Validate response shapes with `TypedDict`/Pydantic adapters or explicit checks before passing data to templates.
+
+**Verification.** Test scalar/list orchestrator responses and malformed job entries; assert safe partial responses without 500 errors.

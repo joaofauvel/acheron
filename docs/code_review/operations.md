@@ -1,17 +1,17 @@
 ---
 branch: docs/code-review-refresh
 initial_review_commit: 23c29e1
-last_updated_commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
+last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
 last_staleness_scan:
-  commit: 49747dd53a5c4114dc2ac82452315bd8502c34a3
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 ---
 
 # Operations
 
 ## PERF — Performance
 
-**Grade:** A
+**Grade:** B
 
 PERF-001, PERF-002, PERF-003 remain verified. PERF-004, PERF-005 remain open and kept (code unchanged since 63faed4). Two new PERF findings: PERF-006 (medium) — edge `/execute` buffers entire multipart body in memory with O(n²) append for `FileArtifact` streams; PERF-007 (medium) — per-call `httpx.AsyncClient` construction in health probes and pricing refresh (no connection reuse). PERF-008 (medium) remains open (per-call client in `_post_multipart`). **2026-06-26 round 2 refresh**: no new PERF findings; PERF-007 line numbers re-resolved (DOC-007 trimmed the pricing.py module docstring by 6 lines).
 
@@ -109,7 +109,7 @@ reviewed_at: 63faed4
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: ["pending"]
+fixed_in: [3f26c30]
 files:
   - path: src/acheron/shell/health.py
     lines: 113-145
@@ -134,7 +134,7 @@ reviewed_at: 63faed4
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: ["pending"]
+fixed_in: [09befd9]
 files:
   - path: src/acheron/shell/health.py
     lines: 122-145
@@ -186,7 +186,7 @@ reviewed_at: dbec2be
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: ["pending"]
+fixed_in: [86c62bb]
 files:
 - path: src/acheron/shell/health.py
   lines: 44-54, 82-123
@@ -375,7 +375,7 @@ reviewed_at: dbec2be
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: ["pending"]
+fixed_in: [12d12ae, a5e8556]
 files:
   - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 74-127
@@ -1015,12 +1015,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: a9298e0473399a3db86a33b164f0cf6263834195
-  date: 2026-06-24
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 105-123
+    lines: 153-221
 related: [PERF-007]
 ```
 
@@ -1200,7 +1200,7 @@ reviewed_at: 77aadcd
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: ["pending"]
+fixed_in: [c53da1d]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
     lines: 338-364
@@ -1225,7 +1225,7 @@ reviewed_at: 59458ba
 last_verified_at:
   commit: 0635bfb
   date: 2026-07-22
-fixed_in: ["pending"]
+fixed_in: [b492de0]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 263-278
@@ -1250,7 +1250,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [671c6ad]
 files:
   - path: src/acheron/shell/step_handler.py
     lines: 143-179
@@ -1273,7 +1273,7 @@ reviewed_at: c53da1d
 last_verified_at:
   commit: pending
   date: 2026-07-23
-fixed_in: [pending]
+fixed_in: [d4ce578]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 215, 493-525
@@ -1369,6 +1369,31 @@ related: [OBS-014, CORR-042]
 
 **Verification.** Use a `JobStore` whose `put()` never completes, invoke `close()`, and assert it returns within the configured shutdown bound with an unresolved-write warning.
 
+### OBS-016 — Administrative audit events are process-local and never emitted to durable observability
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/api/admin_audit.py
+    lines: 33-52
+  - path: src/acheron/shell/orchestrator.py
+    lines: 214-245
+related: []
+```
+
+**Issue.** Administrative audit records are stored only in a bounded in-memory deque; no logger, persistent store, stream, or export exists.
+
+**Why it matters.** Administrative actions disappear on restart and cannot be reconstructed through external observability systems.
+
+**Recommendation.** Emit structured audit logs and/or persist audit records with an explicit retention policy.
+
+**Verification.** Run successful and failed admin actions, restart the service, and verify audit records remain queryable.
+
 ## PERF (current refresh)
 
 ### PERF-012 — Job event buffers and subscriber queues can grow with job volume
@@ -1379,14 +1404,14 @@ severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/job_events.py
     lines: 25-54
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 354-360
+    lines: 580-586
 related: [MAINT-024, CORR-045]
 ```
 
@@ -1398,24 +1423,103 @@ related: [MAINT-024, CORR-045]
 
 **Verification.** Run a high-volume job/event test with disconnects and assert buffer, subscriber, and process-memory counts remain bounded.
 
+### PERF-013 — Dashboard cost polling performs two full job queries every two seconds
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: dashboard/app.py
+    lines: 163-175
+  - path: dashboard/templates/index.html
+    lines: 80-84
+  - path: src/acheron/shell/orchestrator.py
+    lines: 1200-1240
+related: []
+```
+
+**Issue.** Each cost poll performs separate `/cost` and `/jobs` upstream calls, and both endpoints scan job state.
+
+**Why it matters.** Load grows with retained jobs and dashboard clients, increasing Redis and serialization overhead during the dashboard's steady-state polling loop.
+
+**Recommendation.** Combine the cost summary and bounded job snapshot into one endpoint or cache the shared job query for the poll interval.
+
+**Verification.** Instrument store reads during polling and assert one bounded query per poll after optimization.
+
+### PERF-014 — Per-job cache invalidation defeats cross-job HTTP and gRPC connection reuse
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/orchestrator.py
+    lines: 547-550, 807-817
+  - path: src/acheron/shell/step_handler.py
+    lines: 215-239, 253-264
+  - path: src/acheron/shell/transports/http.py
+    lines: 153-174
+related: [PERF-003]
+```
+
+**Issue.** Every new submission clears the worker-instance pool even when the registry is unchanged, recreating HTTP clients and gRPC channels.
+
+**Why it matters.** Sequential and concurrent jobs repeatedly pay connection setup and handshake costs, defeating cross-job transport reuse.
+
+**Recommendation.** Invalidate only when worker registration state changes, retaining reference-counted retirement for changed workers.
+
+**Verification.** Count client/channel construction across two jobs with an unchanged registry; expect one instance per endpoint.
+
+### PERF-015 — Edge multipart parsing buffers each large input part and copies it again
+
+```yaml
+status: open
+severity: medium
+effort: M
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 183-214, 265-270
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 567-597
+related: [PERF-006]
+```
+
+**Issue.** Multipart data is accumulated in `BytesIO` and copied by `getvalue()` into retained bytes, allowing roughly two in-memory copies of a near-limit part even though the request body is streamed in chunks.
+
+**Why it matters.** Large concurrent uploads can cause substantial RSS spikes in the edge container and reintroduce the memory pressure addressed by the earlier multipart buffering fix.
+
+**Recommendation.** Use bounded spooled temporary files or a file-backed handler input abstraction for large parts.
+
+**Verification.** Measure peak RSS under concurrent near-limit multipart uploads and verify bounded scaling without duplicating each part in memory.
+
 ## SEC (current refresh)
 
 ### SEC-024 — Public error sanitization preserves internal paths and URLs
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/core/errors.py
-    lines: 105-127
+    lines: 145-162, 178-191
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 359-405
+    lines: 631-653
 related: [SEC-006, SEC-012]
 ```
 
@@ -1435,14 +1539,14 @@ severity: low
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/input_store.py
-    lines: 143-150
+    lines: 216-250
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 106-126
+    lines: 108-135, 275-282
 related: [SEC-007]
 ```
 
@@ -1457,17 +1561,17 @@ related: [SEC-007]
 ### SEC-026 — Input validation errors disclose the absolute data directory
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
+  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 77-88
+    lines: 108-135
 related: []
 ```
 
@@ -1478,3 +1582,28 @@ related: []
 **Recommendation.** Return a relative logical path or generic input-location message instead of the absolute server path.
 
 **Verification.** Submit a missing input and assert the response contains no absolute data-directory component while retaining actionable remediation.
+
+### SEC-027 — Input deletion remains vulnerable to a symlink replacement race
+
+```yaml
+status: open
+severity: low
+effort: M
+reviewed_at: 22d20f5
+last_verified_at:
+fixed_in: []
+files:
+  - path: src/acheron/shell/input_store.py
+    lines: 181-199
+  - path: src/acheron/shell/orchestrator.py
+    lines: 467-474
+related: [SEC-025]
+```
+
+**Issue.** The input directory is checked with ordinary `Path` operations before enumeration; a local writer can replace it with a symlink between the check and child deletion. This violates the symlink-safe filesystem rule in `.agentic-rules/python/python-security-patterns-rules_v1.md`.
+
+**Why it matters.** A TOCTOU race can make authenticated input deletion remove files outside the configured data directory.
+
+**Recommendation.** Use descriptor-relative `O_NOFOLLOW` deletion primitives or pin the directory descriptor before enumeration.
+
+**Verification.** Race replacement of `inputs/<id>` with an external symlink and assert the external target remains untouched.
