@@ -96,17 +96,22 @@ def grpc_channel(target: str, *, require_tls: bool = False) -> grpc.aio.Channel:
     ``require_tls`` is used for production worker dispatch. Local tests and
     explicitly opted-in development use ``ACHERON_ALLOW_INSECURE=1``.
     """
+    if _allow_insecure():
+        return grpc.aio.insecure_channel(
+            target,
+            options=(("grpc.max_receive_message_length", _GRPC_MAX_RECEIVE_MESSAGE_BYTES),),
+        )
+
     creds = grpc_channel_credentials()
     if creds is None:
-        if require_tls and not _allow_insecure():
+        if require_tls:
             raise RuntimeError("ACHERON_TLS_CA_FILE is required for authenticated gRPC dispatch")
-        if not _allow_insecure():
-            _LOG.warning(
-                "ACHERON_TLS_CA_FILE is unset — opening insecure gRPC channel to %s. "
-                "Set ACHERON_TLS_CA_FILE to enable verification, or "
-                "set ACHERON_ALLOW_INSECURE=1 for local development.",
-                target,
-            )
+        _LOG.warning(
+            "ACHERON_TLS_CA_FILE is unset — opening insecure gRPC channel to %s. "
+            "Set ACHERON_TLS_CA_FILE to enable verification, or "
+            "set ACHERON_ALLOW_INSECURE=1 for local development.",
+            target,
+        )
         return grpc.aio.insecure_channel(
             target,
             options=(("grpc.max_receive_message_length", _GRPC_MAX_RECEIVE_MESSAGE_BYTES),),

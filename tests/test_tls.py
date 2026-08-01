@@ -109,6 +109,21 @@ class TestGrpcCredentials:
             grpc_channel("worker:9000")
         assert factory.call_args.kwargs["options"] == (("grpc.max_receive_message_length", 64 * 1024 * 1024),)
 
+    def test_grpc_channel_insecure_opt_in_takes_precedence_over_ca(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.setenv("SSL_CERT_FILE", "/ambient-system-ca.pem")
+        with (
+            patch("acheron.tls.grpc.aio.insecure_channel", return_value=object()) as insecure,
+            patch("acheron.tls.grpc.aio.secure_channel") as secure,
+        ):
+            grpc_channel("worker:9000")
+        insecure.assert_called_once()
+        secure.assert_not_called()
+        assert insecure.call_args.kwargs["options"] == (("grpc.max_receive_message_length", 64 * 1024 * 1024),)
+
     def test_grpc_channel_credentials_returns_none_when_unset(
         self,
         monkeypatch: pytest.MonkeyPatch,
