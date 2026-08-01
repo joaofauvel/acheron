@@ -82,11 +82,11 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 
 ## Task 18 report
 
-- Commit: `CURRENT_HEAD` (`chore(ux-review): satisfy verifier lint complexity`).
-- Evidence: focused sanitizer and verifier regressions pass; `just validate` is the final gate with 1572 passing tests and 9 expected skips.
+- Commit: `CURRENT_HEAD` (`fix(cli): close streamed error generators`).
+- Evidence: focused sanitizer, edge-contract, verifier, deterministic-selection, and stream-cleanup regressions pass; `just validate` is the final gate with 1591 passing tests and 9 expected skips, with no warnings.
 - Type-check: baseline type errors in pricing, schema tests, retention, and route optional narrowing were remediated in the final acceptance pass.
 - Full gate: `just validate` is the required final acceptance command for this checkout.
 - UX gate: all 15 required Phase 4D `just ux-verify` commands and `just ux-validate` pass after this commit; parsed metadata is 16 verified overall (OPS 6, MAINT 10) and 6 obsolete.
 - Residual risks: sanitisation intentionally returns the constant `request failed` when caller fallbacks contain sensitive patterns; no other public-message behavior changed.
-- Metadata rationale: tracked UX metadata uses `CURRENT_HEAD` plus a tree fingerprint excluding the UX metadata files themselves; later code/test/docs commits invalidate the attestation without a self-referential commit SHA.
+- Metadata rationale: tracked UX metadata uses `CURRENT_HEAD` plus an unambiguous tree fingerprint of each non-metadata Git entry (mode, type, object ID, and exact path bytes); later code/test/docs commits invalidate the attestation without a self-referential commit SHA.
 - Regression gate: `git diff --check` passed; final acceptance remediation is covered by focused type, integration, stream-cleanup, and verifier tests.
