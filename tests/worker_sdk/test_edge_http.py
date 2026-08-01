@@ -174,6 +174,62 @@ class TestEdgeRoutes:
         assert b"Content-Type: application/octet-stream" in response.content
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    async def test_execute_metadata_drops_untrusted_values(self) -> None:
+        class _MetadataStub(_Stub):
+            async def handle(self, job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
+                return [
+                    BytesArtifact(
+                        filename="out.wav",
+                        content_type="audio/wav",
+                        data=b"audio",
+                        metadata={
+                            "chapter_id": "ch1",
+                            "sequence_id": 0,
+                            "token": "TOPSECRET",
+                            "path": "/etc/passwd",
+                            "nested": {"url": "https://user:pw@example/x"},
+                        },
+                    )
+                ]
+
+        handler = _MetadataStub()
+        app = EdgeApp(handler=handler, capabilities=handler.capabilities()).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/execute",
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert response.status_code == 200
+        assert b'X-Acheron-Metadata: {"chapter_id":"ch1","sequence_id":0}' in response.content
+        assert b"TOPSECRET" not in response.content
+        assert b"/etc/passwd" not in response.content
+        assert b"user:pw@example" not in response.content
+
+    @pytest.mark.asyncio
+    async def test_execute_failure_sanitizes_arbitrary_job_id(
+        self,
+        app_handler: tuple[FastAPI, _Stub],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app, handler = app_handler
+
+        async def _boom(job: Job, input: Input | None = None) -> list[Artifact]:  # noqa: A002
+            raise RuntimeError("failed")
+
+        monkeypatch.setattr(handler, "handle", _boom)
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post(
+                "/execute",
+                json={"job_id": "/tmp/token=TOPSECRET", "job_type": "tts", "payload": {}},
+            )
+        assert response.status_code == 500
+        assert response.json()["job_id"] == "<unknown>"
+        assert "TOPSECRET" not in response.text
+
+    @pytest.mark.asyncio
     async def test_execute_returns_multipart(self, app_handler: tuple[FastAPI, _Stub]) -> None:
         app, h = app_handler
         transport = ASGITransport(app=app)

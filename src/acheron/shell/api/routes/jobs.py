@@ -694,7 +694,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         {
             "start_chapter": item.start_chapter,
             "end_chapter": item.end_chapter,
-            "voice": item.voice,
+            "voice": public_label(item.voice) or "<redacted>",
         }
         for item in voice_map
     ]
@@ -708,7 +708,7 @@ def _tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None)
         source_language=source_language,
         target_language=target_language,
         asr_model=asr_model,
-        voice=voice,
+        voice=public_label(voice),
         voice_map=voice_map_payload,
         executor_strategy=tracked.strategy,
         created_at=tracked.created_at,

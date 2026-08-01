@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 from fastapi import APIRouter, Request
 
 from acheron.core.schemas import VersionResponse
+from acheron.shell.api.public import public_label
 
 if TYPE_CHECKING:
     from acheron.version import VersionInfo
@@ -24,6 +25,6 @@ async def get_version(request: Request) -> VersionResponse:
         build_time=version.build_time,
         branch=version.branch,
         dirty=version.dirty,
-        image=version.image,
-        registry=version.registry,
+        image=public_label(version.image),
+        registry=public_label(version.registry),
     )

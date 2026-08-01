@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from acheron.shell.api.app import create_app
 from acheron.shell.cache import PlanCache
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
-from acheron.version import build_version
+from acheron.version import VersionInfo, build_version
 
 
 def test_version_response_uses_explicit_build_identity(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -41,6 +41,35 @@ async def test_version_endpoint_omits_environment_dump_and_unset_build_values(cl
     assert set(body) == {"version", "sha", "build_time", "branch", "dirty", "image", "registry"}
     assert "environment" not in body
     assert "ACHERON_BUILD_SHA" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_version_endpoint_redacts_unsafe_image_and_registry(tmp_path: Path) -> None:
+    app = create_app(
+        registry=InMemoryWorkerStore(),
+        job_store=InMemoryJobStore(),
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
+    app.state.version = VersionInfo(
+        version="1.0.0",
+        sha="abc123",
+        build_time=None,
+        branch="main",
+        dirty=False,
+        image="https://registry.example/private?token=TOPSECRET",
+        registry="/etc/acheron/credentials",
+    )
+    from httpx import ASGITransport
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/version")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["image"] is None
+    assert body["registry"] is None
+    assert "TOPSECRET" not in response.text
 
 
 def test_malformed_dirty_value_is_rejected_during_app_construction(

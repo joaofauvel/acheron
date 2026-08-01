@@ -19,6 +19,7 @@ from acheron.core.models import (
     AudioRequest,
     EpubRequest,
     ExecutorStrategy,
+    VoiceRange,
     WorkerCapabilities,
     WorkerStatus,
     WorkerType,
@@ -391,6 +392,42 @@ class TestJobRoutes:
 
         assert response.progress.completed_steps == 0
         assert response.progress.total_steps == 5
+
+    def test_response_sanitizes_voice_values(self) -> None:
+        from datetime import UTC, datetime
+
+        from acheron.core.models import PlanResult, PlanStatus
+        from acheron.shell.job_store import JobProgressState, TrackedJob
+
+        tracked = TrackedJob(
+            job_id="job-voice",
+            request=EpubRequest(
+                source_path="/input/book.epub",
+                source_language="en",
+                target_language="es",
+                voice="https://user:pw@example/voice",
+                voice_map=(VoiceRange(1, 1, "/etc/passwd"),),
+            ),
+            strategy=ExecutorStrategy.SEQUENTIAL,
+            created_at=datetime(2026, 7, 29, tzinfo=UTC),
+            last_persisted_at=datetime(2026, 7, 29, tzinfo=UTC),
+            progress=JobProgressState(completed_steps=0, total_steps=1),
+            result=PlanResult(
+                plan_id="plan-voice",
+                status=PlanStatus.COMPLETED,
+                completed_steps=1,
+                total_steps=1,
+                outputs=(),
+                total_cost=0.0,
+                total_duration_seconds=0.0,
+            ),
+            status=PlanStatus.COMPLETED,
+        )
+
+        response = _tracked_to_response(tracked)
+
+        assert response.voice is None
+        assert response.voice_map == [{"start_chapter": 1, "end_chapter": 1, "voice": "<redacted>"}]
 
     @pytest.mark.asyncio
     async def test_submit_job(self, client) -> None:  # type: ignore[no-untyped-def]

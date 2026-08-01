@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 from python_multipart.multipart import MultipartParser, parse_options_header
 
-from acheron.core.errors import WorkerError, sanitise_exc_message
+from acheron.core.errors import WorkerError, sanitise_exc_message, sanitise_public_message
 from acheron.core.models import (
     CostBasis,
     CostEstimate,
@@ -53,8 +53,41 @@ def _job_from_request(body: ExecuteRequest) -> Job:
     )
 
 
+_PUBLIC_ARTIFACT_METADATA_KEYS = frozenset(
+    {
+        "chapter_id",
+        "sequence_id",
+        "source_language",
+        "target_language",
+        "model",
+        "speaker",
+        "speaker_id",
+        "speaker_hint",
+        "voice",
+    }
+)
+_MAX_METADATA_STRING_LENGTH = 256
+_METADATA_CONTROL_LIMIT = 32
+_METADATA_DELETE_CHARACTER = 127
+
+
 def _encode_metadata(metadata: dict[str, JsonValue]) -> str:
-    return json.dumps(metadata, separators=(",", ":"))
+    """Encode only bounded, known artifact metadata for the public header."""
+    safe: dict[str, JsonValue] = {}
+    for key, value in metadata.items():
+        if key not in _PUBLIC_ARTIFACT_METADATA_KEYS:
+            continue
+        if isinstance(value, (bool, int)):
+            safe[key] = value
+            continue
+        if not isinstance(value, str) or len(value) > _MAX_METADATA_STRING_LENGTH:
+            continue
+        if any(ord(char) < _METADATA_CONTROL_LIMIT or ord(char) == _METADATA_DELETE_CHARACTER for char in value):
+            continue
+        if sanitise_public_message(value, fallback="__invalid_metadata__") == "__invalid_metadata__":
+            continue
+        safe[key] = value
+    return json.dumps(safe, separators=(",", ":"))
 
 
 def _decode_metadata(header: str | None) -> dict[str, JsonValue]:
@@ -238,6 +271,11 @@ def _jobresult_to_json(result: JobResult) -> dict[str, JsonValue]:
     in JSON — the orchestrator's parser expects a list.
     """
     decoded: dict[str, JsonValue] = json.loads(result.model_dump_json().decode("utf-8"))
+    job_id = result.job_id
+    safe_job_id = sanitise_public_message(job_id, fallback="<unknown>")
+    if any(ord(char) < _METADATA_CONTROL_LIMIT or ord(char) == _METADATA_DELETE_CHARACTER for char in job_id):
+        safe_job_id = "<unknown>"
+    decoded["job_id"] = safe_job_id
     return decoded
 
 
