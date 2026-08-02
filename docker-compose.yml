@@ -20,10 +20,10 @@ services:
       retries: 3
       start_period: 5s
 
-  # One-shot: generates dev certs into the shared `certs/` bind mount on first
-  # `docker compose up` so a fresh clone works without a separate `just certs` step.
-  # Re-running on an existing certs/ overwrites the files (idempotent), so this is
-  # safe on every `up`.
+  # One-shot: generates development certs into the shared `certs/` bind mount on
+  # first `docker compose up`, so a fresh clone needs no separate `just certs` step.
+  # A complete marked bundle is reused on later starts; operator-owned or partial
+  # material fails safely before dependent services can start.
   certs-init:
     build:
       context: .

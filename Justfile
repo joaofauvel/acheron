@@ -45,9 +45,10 @@ validate: lint-strict lint-imports type-check type-check-pyright test
 install:
     uv sync --all-extras --all-packages
 
-# Generate local Acheron CA + per-service dev certs in ./certs/
-certs:
-    uv run python scripts/generate_dev_certs.py
+# Generate local Acheron CA + per-service dev certs in ./certs/.
+# Pass --force only to replace a complete marked development bundle.
+certs *args:
+    uv run python scripts/generate_dev_certs.py {{args}}
 
 # Build a worker image locally for dev iteration. CI does the real publish.
 build-worker name:

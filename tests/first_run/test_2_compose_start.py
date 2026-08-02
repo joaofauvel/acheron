@@ -23,6 +23,76 @@ def test_step_2_compose_start(compose_stack: ComposeStack) -> None:
     assert "Acheron" in dashboard, "step 2: dashboard did not render its index page"
 
 
+def _run_certs_init(project: FirstRunProject) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["docker", "compose", "run", "--rm", "--no-deps", "certs-init"],
+        cwd=project.checkout,
+        env=project.env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _mutate_cert_material(project: FirstRunProject, command: str) -> None:
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "run",
+            "--rm",
+            "--no-deps",
+            "--entrypoint",
+            "sh",
+            "certs-init",
+            "-c",
+            command,
+        ],
+        cwd=project.checkout,
+        env=project.env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_step_2_compose_reuses_marked_development_bundle(
+    compose_stack: ComposeStack,
+    prepared_project: FirstRunProject,
+) -> None:
+    certs = prepared_project.checkout / "certs"
+    ca_file = certs / "acheron-ca.crt"
+    marker = certs / ".dev-ca"
+    before_bytes = ca_file.read_bytes()
+    before_mtime = ca_file.stat().st_mtime_ns
+    assert marker.exists(), "step 2: certs-init did not create the development marker"
+
+    result = _run_certs_init(prepared_project)
+
+    assert result.returncode == 0, result.stderr
+    assert ca_file.read_bytes() == before_bytes
+    assert ca_file.stat().st_mtime_ns == before_mtime
+
+
+def test_step_2_compose_rejects_unmarked_certificate_material(prepared_project: FirstRunProject) -> None:
+    initial = _run_certs_init(prepared_project)
+    assert initial.returncode == 0, initial.stderr
+    sentinel = b"operator-owned-ca"
+    _mutate_cert_material(
+        prepared_project,
+        "rm -f /certs/.dev-ca && printf operator-owned-ca > /certs/acheron-ca.crt && "
+        "printf operator-owned-key > /certs/acheron-ca.key",
+    )
+
+    result = _run_certs_init(prepared_project)
+
+    assert result.returncode != 0
+    assert (prepared_project.checkout / "certs" / "acheron-ca.crt").read_bytes() == sentinel
+
+
 def _assert_edge_override(
     services: dict[str, dict[str, object]],
     service_name: str,
