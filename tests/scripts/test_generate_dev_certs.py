@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import socket
 import ssl
 import subprocess
@@ -11,6 +12,7 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
 from cryptography import x509
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "generate_dev_certs.py"
@@ -55,6 +57,15 @@ def _run(
         capture_output=True,
         text=True,
     )
+
+
+def _load_generator():
+    spec = importlib.util.spec_from_file_location("generate_dev_certs", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_creates_ca_and_per_service_certs(tmp_path: Path) -> None:
@@ -156,6 +167,29 @@ def test_incomplete_marked_bundle_fails_without_rewriting(tmp_path: Path) -> Non
     assert result.returncode != 0
     assert missing_cert.name in result.stderr
     assert _snapshot(_managed_paths(tmp_path)) == before
+
+
+def test_failed_force_publication_preserves_complete_bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _run(tmp_path)
+    paths = _managed_paths(tmp_path)
+    before = _snapshot(paths)
+    generator = _load_generator()
+    original_replace = Path.replace
+    injected = False
+
+    def fail_publication_once(self: Path, target: Path) -> Path:
+        nonlocal injected
+        if self.name == "orchestrator.crt" and not injected:
+            injected = True
+            raise OSError("injected publication failure")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_publication_once)
+    with pytest.raises(OSError, match="injected publication failure"):
+        generator.generate(tmp_path, force=True)
+
+    assert injected
+    assert _snapshot(paths) == before
 
 
 def test_san_includes_service_and_localhost(tmp_path: Path) -> None:

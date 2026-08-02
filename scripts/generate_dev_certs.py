@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import ipaddress
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -179,6 +180,32 @@ def _write_marker(path: Path) -> None:
     path.chmod(0o644)
 
 
+def _publish_bundle(staging_dir: Path, out_dir: Path) -> None:
+    """Publish a complete bundle while preserving the previous bundle on failure."""
+    destinations = (*_managed_paths(out_dir), out_dir / DEV_CA_MARKER)
+    backup_dir = Path(tempfile.mkdtemp(prefix=".dev-ca-backup-", dir=out_dir))
+    published: list[Path] = []
+    try:
+        for destination in destinations:
+            if destination.is_file():
+                shutil.copy2(destination, backup_dir / destination.name)
+        try:
+            for staged_path in (*_managed_paths(staging_dir), staging_dir / DEV_CA_MARKER):
+                destination = out_dir / staged_path.name
+                staged_path.replace(destination)
+                published.append(destination)
+        except OSError:
+            for destination in reversed(published):
+                backup = backup_dir / destination.name
+                if backup.is_file():
+                    backup.rename(destination)
+                else:
+                    destination.unlink(missing_ok=True)
+            raise
+    finally:
+        shutil.rmtree(backup_dir, ignore_errors=True)
+
+
 def generate(out_dir: Path, *, force: bool = False) -> None:
     """Generate the Acheron CA and per-service certs in `out_dir`."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -195,9 +222,7 @@ def generate(out_dir: Path, *, force: bool = False) -> None:
         for service in SERVICES:
             _build_server_cert(service, staging_dir, ca_cert, ca_key)
         _write_marker(staging_dir / DEV_CA_MARKER)
-        for path in _managed_paths(staging_dir):
-            path.replace(out_dir / path.name)
-        (staging_dir / DEV_CA_MARKER).replace(out_dir / DEV_CA_MARKER)
+        _publish_bundle(staging_dir, out_dir)
 
 
 def main() -> None:
