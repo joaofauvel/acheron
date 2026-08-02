@@ -24,11 +24,16 @@ SERVICES = [
 ]
 
 
-def _run(tmp_path: Path) -> None:
-    subprocess.run(
-        [sys.executable, str(SCRIPT), "--out-dir", str(tmp_path)],
-        check=True,
+def _run(
+    tmp_path: Path,
+    *args: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--out-dir", str(tmp_path), *args],
+        check=check,
         capture_output=True,
+        text=True,
     )
 
 
@@ -41,12 +46,76 @@ def test_creates_ca_and_per_service_certs(tmp_path: Path) -> None:
         assert (tmp_path / f"{svc}.key").exists(), f"missing {svc}.key"
 
 
-def test_idempotent(tmp_path: Path) -> None:
+def test_second_generation_is_a_noop_without_rewriting_files(tmp_path: Path) -> None:
     _run(tmp_path)
-    first_mtime = (tmp_path / "acheron-ca.crt").stat().st_mtime_ns
+    ca_cert = tmp_path / "acheron-ca.crt"
+    service_cert = tmp_path / "orchestrator.crt"
+    first_state = (
+        ca_cert.read_bytes(),
+        ca_cert.stat().st_mtime_ns,
+        service_cert.read_bytes(),
+        service_cert.stat().st_mtime_ns,
+    )
+
     _run(tmp_path)
-    second_mtime = (tmp_path / "acheron-ca.crt").stat().st_mtime_ns
-    assert first_mtime != second_mtime  # overwritten
+
+    second_state = (
+        ca_cert.read_bytes(),
+        ca_cert.stat().st_mtime_ns,
+        service_cert.read_bytes(),
+        service_cert.stat().st_mtime_ns,
+    )
+    assert second_state == first_state
+
+
+def test_first_generation_creates_dev_marker(tmp_path: Path) -> None:
+    _run(tmp_path)
+
+    assert (tmp_path / ".dev-ca").is_file()
+    assert (tmp_path / "acheron-ca.crt").is_file()
+    assert (tmp_path / "acheron-ca.key").is_file()
+    for service in SERVICES:
+        assert (tmp_path / f"{service}.crt").is_file()
+        assert (tmp_path / f"{service}.key").is_file()
+
+
+def test_unmarked_existing_ca_refuses_to_overwrite(tmp_path: Path) -> None:
+    ca_cert = tmp_path / "acheron-ca.crt"
+    ca_key = tmp_path / "acheron-ca.key"
+    ca_cert.write_bytes(b"operator-owned certificate")
+    ca_key.write_bytes(b"operator-owned private key")
+
+    result = _run(tmp_path, check=False)
+
+    assert result.returncode != 0
+    assert ca_cert.read_bytes() == b"operator-owned certificate"
+    assert ca_key.read_bytes() == b"operator-owned private key"
+
+
+def test_marked_dev_bundle_can_be_forced(tmp_path: Path) -> None:
+    _run(tmp_path)
+    orchestrator_cert = tmp_path / "orchestrator.crt"
+    original = orchestrator_cert.read_bytes()
+
+    _run(tmp_path)
+    assert orchestrator_cert.read_bytes() == original
+
+    _run(tmp_path, "--force")
+    assert orchestrator_cert.read_bytes() != original
+
+
+def test_incomplete_marked_bundle_fails_without_rewriting(tmp_path: Path) -> None:
+    _run(tmp_path)
+    missing_cert = tmp_path / "tts-stub.crt"
+    missing_cert.unlink()
+    existing_cert = tmp_path / "orchestrator.crt"
+    existing_bytes = existing_cert.read_bytes()
+
+    result = _run(tmp_path, check=False)
+
+    assert result.returncode != 0
+    assert missing_cert.name in result.stderr
+    assert existing_cert.read_bytes() == existing_bytes
 
 
 def test_san_includes_service_and_localhost(tmp_path: Path) -> None:
