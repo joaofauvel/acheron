@@ -26,7 +26,9 @@ ENV ACHERON_BUILD_SHA=${ACHERON_BUILD_SHA} \
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
-RUN useradd --create-home --shell /bin/bash acheron
+RUN useradd --create-home --uid 1000 --shell /bin/bash acheron \
+    && mkdir -p /data/jobs \
+    && chown acheron:root /data /data/jobs
 USER acheron
 CMD ["python", "-m", "acheron.shell.api"]
 
