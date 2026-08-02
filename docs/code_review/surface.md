@@ -717,15 +717,17 @@ related: [DOC-007]
 ### DOC-014 — README describes administrative mutations under the wrong CLI namespace
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-fixed_in: []
+  commit: 5ba5e48
+  date: 2026-08-01
+fixed_in: ["5ba5e48"]
 files:
   - path: README.md
-    lines: 31-34, 92-97
+    lines: 31-34, 92-113
   - path: src/acheron/cli.py
     lines: 608-680
 related: []
@@ -771,17 +773,19 @@ related: []
 ### DX-009 — `just validate` omits UX rubric validation
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
-fixed_in: []
+  commit: 5ba5e48
+  date: 2026-08-01
+fixed_in: ["5ba5e48"]
 files:
   - path: Justfile
-    lines: 42-64
+    lines: 39-42, 62-71
+  - path: README.md
+    lines: 117-120
 related: []
 ```
 
