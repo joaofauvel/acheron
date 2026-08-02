@@ -24,6 +24,26 @@ SERVICES = [
 ]
 
 
+def _managed_paths(tmp_path: Path) -> list[Path]:
+    return [
+        tmp_path / ".dev-ca",
+        tmp_path / "acheron-ca.crt",
+        tmp_path / "acheron-ca.key",
+        *(tmp_path / f"{service}.{suffix}" for service in SERVICES for suffix in ("crt", "key")),
+    ]
+
+
+def _snapshot(paths: list[Path]) -> dict[str, tuple[bool, bytes | None, int | None]]:
+    return {
+        path.name: (
+            path.exists(),
+            path.read_bytes() if path.exists() else None,
+            path.stat().st_mtime_ns if path.exists() else None,
+        )
+        for path in paths
+    }
+
+
 def _run(
     tmp_path: Path,
     *args: str,
@@ -88,8 +108,29 @@ def test_unmarked_existing_ca_refuses_to_overwrite(tmp_path: Path) -> None:
     result = _run(tmp_path, check=False)
 
     assert result.returncode != 0
+    assert "unmarked" in result.stderr.lower()
+    assert "force" in result.stderr.lower()
+    assert b"operator-owned certificate" not in result.stderr.encode()
+    assert b"operator-owned private key" not in result.stderr.encode()
     assert ca_cert.read_bytes() == b"operator-owned certificate"
     assert ca_key.read_bytes() == b"operator-owned private key"
+
+
+def test_force_refuses_unmarked_operator_material_without_mutation(tmp_path: Path) -> None:
+    ca_cert = tmp_path / "acheron-ca.crt"
+    ca_key = tmp_path / "acheron-ca.key"
+    ca_cert.write_bytes(b"force-path operator certificate")
+    ca_key.write_bytes(b"force-path operator private key")
+    before = _snapshot(_managed_paths(tmp_path))
+
+    result = _run(tmp_path, "--force", check=False)
+
+    assert result.returncode != 0
+    assert "unmarked" in result.stderr.lower()
+    assert "force" in result.stderr.lower()
+    assert b"force-path operator certificate" not in result.stderr.encode()
+    assert b"force-path operator private key" not in result.stderr.encode()
+    assert _snapshot(_managed_paths(tmp_path)) == before
 
 
 def test_marked_dev_bundle_can_be_forced(tmp_path: Path) -> None:
@@ -108,14 +149,13 @@ def test_incomplete_marked_bundle_fails_without_rewriting(tmp_path: Path) -> Non
     _run(tmp_path)
     missing_cert = tmp_path / "tts-stub.crt"
     missing_cert.unlink()
-    existing_cert = tmp_path / "orchestrator.crt"
-    existing_bytes = existing_cert.read_bytes()
+    before = _snapshot(_managed_paths(tmp_path))
 
     result = _run(tmp_path, check=False)
 
     assert result.returncode != 0
     assert missing_cert.name in result.stderr
-    assert existing_cert.read_bytes() == existing_bytes
+    assert _snapshot(_managed_paths(tmp_path)) == before
 
 
 def test_san_includes_service_and_localhost(tmp_path: Path) -> None:
