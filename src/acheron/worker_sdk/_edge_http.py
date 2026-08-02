@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import re
 import secrets
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, BinaryIO, cast
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -31,12 +31,12 @@ from acheron.core.models import (
 )
 from acheron.worker_sdk._caps import public_caps_to_dict
 from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, StreamArtifact
-from acheron.worker_sdk.inputs import BytesInput, Input
+from acheron.worker_sdk.inputs import Input, StreamInput
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
 from acheron.worker_sdk.schemas import ExecuteRequest
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
     from acheron.worker_sdk.handler import WorkerHandler
 
@@ -74,6 +74,7 @@ _MAX_MULTIPART_PARTS = 64
 _MAX_MULTIPART_FIELD_BYTES = 256
 _MAX_MULTIPART_FILENAME_BYTES = 255
 _MAX_MULTIPART_CONTENT_TYPE_BYTES = 256
+_MAX_MULTIPART_SPOOL_MEMORY_BYTES = 1024 * 1024
 _MULTIPART_CONTROL_CHARACTER_LIMIT = 32
 _MULTIPART_DELETE_CHARACTER = 127
 _METADATA_CONTROL_LIMIT = 32
@@ -81,6 +82,13 @@ _METADATA_DELETE_CHARACTER = 127
 # Edge execute requests and streamed responses share a bounded 64 MiB envelope.
 _MAX_EXECUTE_BODY_BYTES = 64 * 1024 * 1024
 _MAX_EXECUTE_RESPONSE_BYTES = 64 * 1024 * 1024
+
+
+def _new_part_data() -> BinaryIO:
+    return cast(
+        "BinaryIO",
+        tempfile.SpooledTemporaryFile(max_size=_MAX_MULTIPART_SPOOL_MEMORY_BYTES, mode="w+b"),
+    )
 
 
 class PayloadTooLargeError(WorkerError):
@@ -145,18 +153,12 @@ def _decode_metadata(header: str | None) -> dict[str, JsonValue]:  # noqa: C901
 
 @dataclass(frozen=True)
 class _ParsedMultipartPart:
-    """A single parsed part of the ``multipart/form-data`` request body.
-
-    Built by the streaming parser in :meth:`EdgeApp._parse_multipart_request`
-    from the low-level :class:`MultipartParser` callbacks. The audio or
-    chunks part is later converted to a :class:`BytesInput` so the handler API
-    is unchanged from the caller's perspective.
-    """
+    """A single parsed part backed by a bounded spooled file."""
 
     field_name: bytes
     file_name: bytes | None
     content_type: str
-    data: bytes
+    data: BinaryIO
     metadata: dict[str, JsonValue] = field(default_factory=dict)
 
 
@@ -177,6 +179,7 @@ class _MultipartStreamState:
         "part_data",
         "part_metadata",
         "parts",
+        "saw_end",
         "total_bytes",
     )
 
@@ -185,20 +188,22 @@ class _MultipartStreamState:
         self.field_name: bytes | None = None
         self.file_name: bytes | None = None
         self.part_content_type: str | None = None
-        self.part_data = io.BytesIO()
+        self.part_data = _new_part_data()
         self.part_metadata: dict[str, JsonValue] = {}
         self.total_bytes = 0
-        self.header_name_buf: list[bytes] = []
-        self.header_value_buf: list[bytes] = []
+        self.header_name_buf = bytearray()
+        self.header_value_buf = bytearray()
         self.parts: list[_ParsedMultipartPart] = []
+        self.saw_end = False
 
     def reset_part(self) -> None:
         self.headers.clear()
+        self.saw_end = False
         self.field_name = None
         self.file_name = None
         self.part_content_type = None
-        self.part_data.seek(0)
-        self.part_data.truncate()
+        self.part_data.close()
+        self.part_data = _new_part_data()
         self.part_metadata.clear()
 
     def commit_part(self) -> None:
@@ -206,15 +211,23 @@ class _MultipartStreamState:
             return
         if len(self.parts) >= _MAX_MULTIPART_PARTS:
             raise PayloadTooLargeError("execute request contains too many multipart parts")
+        self.part_data.seek(0)
         self.parts.append(
             _ParsedMultipartPart(
                 field_name=self.field_name,
                 file_name=self.file_name,
                 content_type=self.part_content_type or "application/octet-stream",
-                data=self.part_data.getvalue(),
+                data=self.part_data,
                 metadata=dict(self.part_metadata),
             )
         )
+        self.part_data = _new_part_data()
+
+    def close(self) -> None:
+        """Close all spooled part data, including the current part."""
+        self.part_data.close()
+        for part in self.parts:
+            part.data.close()
 
 
 def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamState) -> MultipartParser:  # noqa: C901
@@ -224,14 +237,18 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
         state.reset_part()
 
     def _on_header_field(data: bytes, start: int, end: int) -> None:
-        state.header_name_buf.append(bytes(data[start:end]))
+        if len(state.header_name_buf) + end - start > _MAX_MULTIPART_FIELD_BYTES:
+            raise WorkerError("multipart header is oversized")
+        state.header_name_buf.extend(data[start:end])
 
     def _on_header_value(data: bytes, start: int, end: int) -> None:
-        state.header_value_buf.append(bytes(data[start:end]))
+        if len(state.header_value_buf) + end - start > _MAX_MULTIPART_FIELD_BYTES:
+            raise WorkerError("multipart header is oversized")
+        state.header_value_buf.extend(data[start:end])
 
     def _on_header_end() -> None:
-        name = b"".join(state.header_name_buf).lower()
-        value = b"".join(state.header_value_buf)
+        name = bytes(state.header_name_buf).lower()
+        value = bytes(state.header_value_buf)
         if not name or len(name) > _MAX_MULTIPART_FIELD_BYTES or len(value) > _MAX_MULTIPART_FIELD_BYTES:
             raise WorkerError("multipart header is oversized")
         if any(
@@ -272,6 +289,9 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
     def _on_part_end() -> None:
         state.commit_part()
 
+    def _on_end() -> None:
+        state.saw_end = True
+
     return MultipartParser(
         boundary,
         {
@@ -282,40 +302,71 @@ def _build_streaming_multipart_parser(boundary: bytes, state: _MultipartStreamSt
             "on_headers_finished": _on_headers_finished,
             "on_part_data": _on_part_data,
             "on_part_end": _on_part_end,
+            "on_end": _on_end,
         },
     )
 
 
-def _build_job_and_input(parts: list[_ParsedMultipartPart]) -> tuple[Job, BytesInput | None]:
+async def _consume_multipart_request(request: Request, parser: MultipartParser) -> None:
+    """Feed bounded request chunks into the multipart parser."""
+    total_bytes = 0
+    async for chunk in request.stream():
+        if total_bytes + len(chunk) > _MAX_EXECUTE_BODY_BYTES:
+            raise PayloadTooLargeError("execute request exceeds the maximum body size")
+        total_bytes += len(chunk)
+        parser.write(chunk)
+
+
+def _require_multipart_end(state: _MultipartStreamState) -> None:
+    if not state.saw_end:
+        raise WorkerError("Multipart body is missing its closing boundary")
+
+
+async def _stream_part_data(data: BinaryIO) -> AsyncIterator[bytes]:
+    """Yield a spooled multipart part without materializing the full payload."""
+    data.seek(0)
+    while chunk := data.read(64 * 1024):
+        yield chunk
+
+
+def _part_producer(data: BinaryIO) -> Callable[[], AsyncIterator[bytes]]:
+    def produce() -> AsyncIterator[bytes]:
+        return _stream_part_data(data)
+
+    return produce
+
+
+def _part_input(part: _ParsedMultipartPart) -> StreamInput:
+    return StreamInput(
+        content_type=part.content_type,
+        producer=_part_producer(part.data),
+        metadata=part.metadata,
+    )
+
+
+def _build_job_and_input(parts: list[_ParsedMultipartPart]) -> tuple[Job, StreamInput | None]:
     """Classify the parsed parts into a Job and optional worker input."""
     envelope_json: bytes | None = None
-    input_obj: BytesInput | None = None
-    for p in parts:
-        content_type = p.content_type.split(";", 1)[0].strip().lower()
+    input_obj: StreamInput | None = None
+    for part in parts:
+        content_type = part.content_type.split(";", 1)[0].strip().lower()
         if content_type == "application/json":
             if envelope_json is None:
-                envelope_json = p.data
+                part.data.seek(0)
+                envelope_json = part.data.read()
                 continue
             if input_obj is not None:
                 msg = "Multipart body contains more than one worker input part"
                 raise WorkerError(msg)
-            input_obj = BytesInput(
-                content_type=p.content_type,
-                data=p.data,
-                metadata=p.metadata,
-            )
+            input_obj = _part_input(part)
             continue
         if content_type.startswith("audio/"):
             if input_obj is not None:
                 msg = "Multipart body contains more than one worker input part"
                 raise WorkerError(msg)
-            input_obj = BytesInput(
-                content_type=p.content_type,
-                data=p.data,
-                metadata=p.metadata,
-            )
+            input_obj = _part_input(part)
             continue
-        msg = f"Multipart part has unsupported Content-Type: {p.content_type} (expected application/json or audio/*)"
+        msg = f"Multipart part has unsupported Content-Type: {part.content_type} (expected application/json or audio/*)"
         raise WorkerError(msg)
 
     if envelope_json is None:
@@ -520,7 +571,7 @@ class EdgeApp:
     async def _run_execute_multipart(self, request: Request) -> Response:
         """Parse a ``multipart/form-data`` body, build Job + Input, dispatch to handler."""
         try:
-            job, input_obj = await self._parse_multipart_request(request)
+            job, input_obj, state = await self._parse_multipart_request(request)
         except PayloadTooLargeError:
             return JSONResponse(status_code=413, content={"detail": "execute request exceeds maximum size"})
         except (WorkerError, ValueError, KeyError, TypeError) as exc:
@@ -546,7 +597,10 @@ class EdgeApp:
                 status_code=500,
                 content=_jobresult_to_json(result),
             )
-        return await self._dispatch(job, input_obj)
+        try:
+            return await self._dispatch(job, input_obj)
+        finally:
+            state.close()
 
     async def _read_limited_body(self, request: Request) -> bytes:
         """Read a JSON body without allocating beyond the edge request limit."""
@@ -564,7 +618,7 @@ class EdgeApp:
             body.extend(chunk)
         return bytes(body)
 
-    async def _parse_multipart_request(self, request: Request) -> tuple[Job, Input | None]:
+    async def _parse_multipart_request(self, request: Request) -> tuple[Job, StreamInput | None, _MultipartStreamState]:
         """Parse the multipart body into a Job + optional Input. Raises WorkerError on malformed input.
 
         Streams the request body in chunks via python-multipart's
@@ -586,15 +640,17 @@ class EdgeApp:
             except ValueError:
                 pass
         state = _MultipartStreamState()
-        parser = _build_streaming_multipart_parser(boundary, state)
-        total_bytes = 0
-        async for chunk in request.stream():
-            if total_bytes + len(chunk) > _MAX_EXECUTE_BODY_BYTES:
-                raise PayloadTooLargeError("execute request exceeds the maximum body size")
-            total_bytes += len(chunk)
-            parser.write(chunk)
-        parser.finalize()
-        return _build_job_and_input(state.parts)
+        try:
+            parser = _build_streaming_multipart_parser(boundary, state)
+            await _consume_multipart_request(request, parser)
+            parser.finalize()
+            _require_multipart_end(state)
+            job, input_obj = _build_job_and_input(state.parts)
+        except BaseException:
+            state.close()
+            raise
+        else:
+            return job, input_obj, state
 
     async def _run_execute(self, body: ExecuteRequest) -> Response:
         job = _job_from_request(body)

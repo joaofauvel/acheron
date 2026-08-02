@@ -269,19 +269,10 @@ class RunPodPrice:
         if self._rate is None or not _is_valid_rate(self._rate):
             return PriceEstimate(cost=None, basis=CostBasis.UNKNOWN)
         cache_age = 0.0 if refreshed is True else self._cache_age_seconds()
-        if refreshed is False:
-            return PriceEstimate(
-                cost=round(gpu_seconds * self._rate / 3600.0, 6),
-                basis=CostBasis.CACHED,
-                rate_per_hour=self._rate,
-                gpu_type=self._gpu_type,
-                secure_cloud=self.secure_cloud,
-                queried_at=self._rate_queried_at,
-                cache_age_seconds=cache_age,
-            )
+        basis = CostBasis.CACHED if refreshed is False else CostBasis.MEASURED
         return PriceEstimate(
-            cost=None,
-            basis=CostBasis.UNKNOWN,
+            cost=round(gpu_seconds * self._rate / 3600.0, 6),
+            basis=basis,
             rate_per_hour=self._rate,
             gpu_type=self._gpu_type,
             secure_cloud=self.secure_cloud,

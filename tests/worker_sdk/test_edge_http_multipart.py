@@ -110,6 +110,90 @@ class TestMultipartRequest:
         assert "multipart/mixed" in resp.headers["content-type"]
 
     @pytest.mark.asyncio
+    async def test_large_multipart_part_spools_and_streams_complete_input(
+        self, app_and_handler: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from acheron.worker_sdk import _edge_http as edge_module
+
+        app, handler = app_and_handler
+        from typing import BinaryIO
+
+        created: list[BinaryIO] = []
+        original_new_part_data = edge_module._new_part_data  # noqa: SLF001
+
+        def tracked_part_data() -> BinaryIO:
+            spool = original_new_part_data()
+            created.append(spool)
+            return spool
+
+        monkeypatch.setattr(edge_module, "_new_part_data", tracked_part_data)
+        envelope = json.dumps(
+            {
+                "job_id": "j-large",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        audio = b"a" * (1024 * 1024 + 1)
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/execute",
+                files={
+                    "request": ("", envelope, "application/json"),
+                    "audio": ("large.mp3", audio, "audio/mpeg"),
+                },
+            )
+
+        assert response.status_code == 200
+        assert handler.received == [audio]
+        assert any(getattr(spool, "_rolled", False) for spool in created)
+
+    @pytest.mark.asyncio
+    async def test_truncated_multipart_body_is_rejected(self, app_and_handler: Any) -> None:
+        app, handler = app_and_handler
+        boundary = "acheron-truncated"
+        envelope = json.dumps(
+            {
+                "job_id": "j-truncated",
+                "job_type": "asr",
+                "payload": {"source_language": "en"},
+                "chapter_id": "ch1",
+                "sequence_ids": None,
+            }
+        ).encode("utf-8")
+        body = (
+            (
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="request"\r\n'
+                "Content-Type: application/json\r\n\r\n"
+            ).encode()
+            + envelope
+            + b"\r\n"
+            + (
+                (
+                    f"--{boundary}\r\n"
+                    'Content-Disposition: form-data; name="audio"; filename="truncated.mp3"\r\n'
+                    "Content-Type: audio/mpeg\r\n\r\n"
+                ).encode()
+                + b"partial-audio"
+            )
+        )
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/execute",
+                content=body,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+
+        assert response.status_code == 500
+        assert "closing boundary" in response.json()["error"]
+        assert handler.received == []
+
+    @pytest.mark.asyncio
     async def test_multipart_request_without_audio_still_works(self, app_and_handler: Any) -> None:
         """Multipart with only the JSON part (no audio) → handler receives input=None."""
         app, handler = app_and_handler
