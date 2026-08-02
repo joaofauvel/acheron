@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Protocol, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -14,6 +15,8 @@ from acheron.core.errors import (
 )
 from acheron.core.schemas import (
     AdminJobResponse,
+    CertificateReloadResponse,
+    CertificateStatusResponse,
     CleanupCandidateResponse,
     CleanupFailureResponse,
     CleanupResponse,
@@ -30,6 +33,7 @@ from acheron.shell.api.schemas import (
     ReapStaleRequest,
 )
 from acheron.shell.retention import CleanupReport, RetentionPolicy
+from acheron.tls import CertificateError, CertificateStatus
 
 router = APIRouter()
 
@@ -52,6 +56,83 @@ def _not_implemented(action: str) -> HTTPException:
         remediation="Use the supported administrative operation for this deployment.",
     )
     return HTTPException(status_code=501, detail=error.model_dump())
+
+
+class _CertificateAdminManager(Protocol):
+    def status(self) -> CertificateStatus | None:
+        """Return the current certificate status."""
+
+    def reload(self) -> CertificateStatus:
+        """Reload the active certificate context."""
+
+
+def _certificate_manager(request: Request) -> _CertificateAdminManager:
+    manager = getattr(request.app.state, "certificate_manager", None)
+    if manager is None:
+        raise _admin_error(
+            CertificateError(
+                "TLS is not enabled",
+                remediation="Configure ACHERON_TLS_CERT_FILE and ACHERON_TLS_KEY_FILE before retrying",
+            ),
+            status_code=503,
+        )
+    return cast("_CertificateAdminManager", manager)
+
+
+def _certificate_response(status: CertificateStatus | None) -> CertificateStatusResponse:
+    if status is None:
+        return CertificateStatusResponse(enabled=False)
+    return CertificateStatusResponse(
+        enabled=True,
+        name=status.name,
+        subject=status.subject,
+        expires_at=status.expires_at,
+        remaining_seconds=status.remaining.total_seconds(),
+        remaining_display=status.remaining_display,
+        severity=status.severity,
+    )
+
+
+@router.get("/certs/status", response_model=CertificateStatusResponse)
+async def certificate_status(
+    request: Request,
+    orch: OrchestratorDep,
+    _token: AdminTokenDep,
+) -> CertificateStatusResponse:
+    """Return sanitized certificate expiry metadata."""
+
+    async def operation() -> CertificateStatusResponse:
+        manager = _certificate_manager(request)
+        try:
+            return _certificate_response(manager.status())
+        except CertificateError as exc:
+            raise _admin_error(exc, status_code=503) from exc
+
+    return await execute_admin_action(request, orch, operation)
+
+
+@router.post("/certs/reload", response_model=CertificateReloadResponse)
+async def reload_certificate(
+    request: Request,
+    orch: OrchestratorDep,
+    _token: AdminTokenDep,
+) -> CertificateReloadResponse:
+    """Reload the active certificate context after validating its replacement."""
+
+    async def operation() -> CertificateReloadResponse:
+        manager = _certificate_manager(request)
+        try:
+            status = manager.reload()
+        except CertificateError as exc:
+            raise _admin_error(exc, status_code=422) from exc
+        return CertificateReloadResponse(reloaded=True, certificate=_certificate_response(status))
+
+    return await execute_admin_action(
+        request,
+        orch,
+        operation,
+        details=AdminAuditDetails(reason="certificate reload"),
+    )
 
 
 @router.post("/jobs/reap-stale", response_model=ReapStaleResponse)

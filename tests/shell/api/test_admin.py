@@ -17,6 +17,7 @@ from acheron.shell.job_store import AdminActionAudit, JobQuery, TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.retention import CleanupFailure, CleanupReport
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+from acheron.tls import CertificateError, CertificateStatus
 
 
 def _app(client: AsyncClient) -> FastAPI:
@@ -556,3 +557,119 @@ async def test_job_store_query_filters_stale_jobs_deterministically() -> None:
         now=now,
     )
     assert [job.job_id for job in jobs] == ["old"]
+
+
+class _CertificateManagerStub:
+    def __init__(self, status: CertificateStatus) -> None:
+        self._status = status
+
+    def status(self) -> CertificateStatus:
+        return self._status
+
+    def reload(self) -> CertificateStatus:
+        return self._status
+
+
+class _InvalidCertificateManagerStub:
+    def status(self) -> CertificateStatus:
+        raise CertificateError(
+            "Unable to parse TLS certificate at /run/secrets/private-key.pem",
+            remediation="Check the replacement certificate and key before retrying",
+        )
+
+    def reload(self) -> CertificateStatus:
+        raise CertificateError(
+            "Unable to reload TLS certificate pair at /run/secrets/private-key.pem",
+            remediation="Check the replacement certificate and key before retrying",
+        )
+
+
+@pytest.mark.asyncio
+async def test_cert_status_requires_admin_token(client: AsyncClient) -> None:
+    response = await client.get("/admin/certs/status")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["type"] == "AdminConfigurationUnavailable"
+
+
+@pytest.mark.asyncio
+async def test_cert_status_reports_disabled_tls(client: AsyncClient) -> None:
+    app = _app(client)
+    app.state.orchestrator.settings.orchestrator.admin_token = "a" * 32
+
+    response = await client.get(
+        "/admin/certs/status",
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["type"] == "CertificateError"
+    assert response.json()["detail"]["remediation"]
+
+
+@pytest.mark.asyncio
+async def test_cert_status_returns_expiry_metadata(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+    expires_at = datetime(2026, 8, 12, 10, 30, tzinfo=UTC)
+    app.state.certificate_manager = _CertificateManagerStub(
+        CertificateStatus(
+            name="orchestrator.crt",
+            subject="CN=orchestrator",
+            expires_at=expires_at,
+            remaining=timedelta(days=9, hours=2),
+            severity="warning",
+        )
+    )
+
+    response = await client.get(
+        "/admin/certs/status",
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "enabled": True,
+        "name": "orchestrator.crt",
+        "subject": "CN=orchestrator",
+        "expires_at": "2026-08-12T10:30:00Z",
+        "remaining_seconds": 784800.0,
+        "remaining_display": "9d 2h 0m",
+        "severity": "warning",
+    }
+    assert "private-key" not in json.dumps(body)
+    assert len(orch.admin_audits) == 1
+    assert orch.admin_audits[0].action == "certs/status"
+
+
+@pytest.mark.asyncio
+async def test_cert_reload_requires_admin_token(client: AsyncClient) -> None:
+    response = await client.post("/admin/certs/reload")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["type"] == "AdminConfigurationUnavailable"
+
+
+@pytest.mark.asyncio
+async def test_cert_reload_preserves_structured_error_on_invalid_pair(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+    app.state.certificate_manager = _InvalidCertificateManagerStub()
+
+    response = await client.post(
+        "/admin/certs/reload",
+        headers={"Authorization": "Bearer " + "a" * 32, "x-request-id": "cert-reload-failure"},
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["type"] == "CertificateError"
+    assert detail["remediation"] == "Check the replacement certificate and key before retrying"
+    assert "/run/secrets" not in json.dumps(detail)
+    assert len(orch.admin_audits) == 1
+    assert orch.admin_audits[0].request_id == "cert-reload-failure"
+    assert orch.admin_audits[0].action == "certs/reload"
+    assert orch.admin_audits[0].result == "failure"

@@ -202,6 +202,35 @@ class ErrorResponse(BaseModel):
     remediation: str | None = None
 
 
+class CertificateStatusResponse(BaseModel):
+    """Sanitized certificate status for administrative consumers."""
+
+    enabled: bool
+    name: str | None = None
+    subject: str | None = None
+    expires_at: datetime | None = None
+    remaining_seconds: FiniteFloat | None = None
+    remaining_display: str | None = None
+    severity: Literal["ok", "warning", "error", "critical"] | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "certificate expiry must be timezone-aware"
+            raise ValueError(msg)
+        return value.astimezone(UTC)
+
+
+class CertificateReloadResponse(BaseModel):
+    """Result of an administrative certificate reload."""
+
+    reloaded: bool
+    certificate: CertificateStatusResponse
+
+
 class JobResponse(BaseModel):
     """Complete operator-facing response for a tracked job."""
 

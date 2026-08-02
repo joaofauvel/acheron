@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 from acheron.core.models import JsonValue  # noqa: TC001
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    CertificateReloadResponse,
+    CertificateStatusResponse,
     CleanupCandidateResponse,
     CleanupFailureResponse,
     CleanupResponse,
@@ -226,6 +228,8 @@ __all__ = [
     "AdminErrorResponse",
     "ArchiveRequest",
     "CapabilitiesResponse",
+    "CertificateReloadResponse",
+    "CertificateStatusResponse",
     "CleanupCandidateResponse",
     "CleanupFailureResponse",
     "CleanupRequest",
