@@ -1,7 +1,7 @@
 ---
 theme: OPS
-last_updated_date: 2026-08-01
-version: 4
+last_updated_date: 2026-08-02
+version: 5
 ---
 
 # OPS
@@ -555,15 +555,15 @@ journey_stage: t1
 user_journey: "Operator runs `acheron capabilities --type tts` expecting each registered TTS worker's model and available voice; the typed response omits those fields and the CLI renders `-` for both."
 files:
   - path: src/acheron/shell/api/routes/capabilities.py
-    lines: 18-121
+    lines: 96-121
   - path: src/acheron/core/schemas.py
-    lines: 330-344
+    lines: 374-388
   - path: src/acheron/api_client.py
-    lines: 472-477
+    lines: 456-472
   - path: src/acheron/cli.py
-    lines: 1237-1257
+    lines: 1244-1255
   - path: tests/shell/api/test_capabilities.py
-    lines: 53-113
+    lines: 151-162
   - path: tests/test_api_client.py
     lines: 331-400
   - path: tests/shell/test_cli.py
@@ -571,6 +571,7 @@ files:
   - path: README.md
     lines: 60-68
 related: [OPS-024, OPS-028]
+bundle: 04-ops-cli
 fixed_in: [007a0427498ebb921f9273a4bdb9b3f0a66eee15]
 verified_in: []
 last_verified_at: {}
@@ -1150,10 +1151,11 @@ journey_stage: t1
 user_journey: "Operator runs `acheron job tail missing-job`, expects a concise non-zero error with remediation to inspect `acheron jobs`, but receives a structured HTTP error without that remediation."
 files:
   - path: src/acheron/cli.py
-    lines: 239-307
+    lines: 288-307
   - path: src/acheron/api_client.py
     lines: 265-285
 related: []
+bundle: 04-ops-cli
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -1186,10 +1188,11 @@ journey_stage: t1
 user_journey: "Operator clicks a job row, reloads or shares the resulting URL, and expects the full dashboard shell with the selected detail view; the URL returns only the partial fragment."
 files:
   - path: dashboard/templates/partials/jobs.html
-    lines: 11-17
+    lines: 13-17
   - path: dashboard/app.py
-    lines: 200-220
+    lines: 246-264
 related: [OPS-001]
+bundle: 06-dashboard
 fixed_in: []
 verified_in: []
 last_verified_at: {}

@@ -1,12 +1,12 @@
 ---
 theme: MAINT
-last_updated_date: 2026-08-01
-version: 4
+last_updated_date: 2026-08-02
+version: 5
 ---
 
 # MAINT
 
-**Grade**: C (2 high + 1 medium-severity open story)
+**Grade**: C (1 high-severity open story; 4 additional stale stories remain)
 **Calibration target**: an on-call engineer should be able to recover from a 2am page without paging someone else.
 
 ## MAINT-001 — No admin endpoints to reap stuck `RUNNING` jobs
@@ -103,10 +103,11 @@ journey_stage: t2
 user_journey: "On-call at 2am is paged because all worker → orchestrator gRPC calls fail. Engineer runs `acheron certs status` and sees `orchestrator.crt expires in 0d 0h 14m`, plus warnings emitted to the orchestrator's log at the 30/7/0 day marks; rotates the cert via `acheron certs renew`, workers reconnect within 5s."
 files:
   - path: src/acheron/tls.py
-    lines: 36-52
+    lines: 37-53
   - path: scripts/generate_dev_certs.py
     lines: 21-31
 related: []
+bundle: 01-cert-tls
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -129,7 +130,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-004
 title: "Dev cert SAN list is `localhost` / `127.0.0.1` only — production deploy with the orchestrator's real hostname fails TLS verify on every worker handshake"
-status: open
+status: obsolete
 severity: high
 effort: M
 discovered_via: [on-call, first-run, code-review]
@@ -153,13 +154,7 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** `scripts/generate_dev_certs.py:120-129` hard-codes the SAN list to `[service, "localhost", 127.0.0.1]` per-service. A real deploy with the orchestrator's DNS name fails with `ssl: hostname 'orch.example.com' doesn't match 'orchestrator'` on every worker gRPC call.
-
-**Why it matters.** The dev cert generator is the only cert generator. There is no production-cert path documented.
-
-**Recommendation.** `scripts/generate_dev_certs.py` accepts `--san` (repeatable) and `--service` (repeatable) CLI flags. The default for `--san` is `localhost,127.0.0.1`.
-
-**Verification.** `just certs --san orch.example.com` regenerates `orchestrator.crt` with `DNS:orch.example.com`. The orchestrator running on `orch.example.com` accepts a gRPC connection from a worker on a different host.
+**Resolution.** The production deployment documentation already directs operators to mount externally managed certificates with the correct SANs and states that no Acheron code change is required. `just certs` is documented as a development-only generator, so the production hostname journey in this story is not a supported workflow. Keep the concern closed unless operator-supplied SAN management for dev or staging becomes an explicit product requirement.
 
 ## MAINT-005 — Cert rotation requires orchestrator restart
 
@@ -177,10 +172,11 @@ journey_stage: t2
 user_journey: "On-call rotates `orchestrator.crt` and `orchestrator.key` on disk after the 30-day warning fires (MAINT-003). Operator runs `acheron certs reload`; the orchestrator's `uvicorn` server reloads the cert/key without bouncing (no downtime); workers continue to connect."
 files:
   - path: src/acheron/tls.py
-    lines: 36-52
+    lines: 37-53
   - path: src/acheron/worker_sdk/_server.py
     lines: 42-50
 related: [MAINT-003]
+bundle: 01-cert-tls
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -202,7 +198,7 @@ incident_ref: TBD-pagerduty
 ```yaml
 ---
 id: MAINT-006
-title: "Registration-token auto-mint is unreachable in compose — `ACHERON_REGISTRATION_TOKEN` is `required` in `docker-compose.yml:48`, so the auto-mint path at `orchestrator.py:370-397` is dead code in the supported deploy"
+title: "Registration-token auto-mint is unreachable in Compose"
 status: stale
 severity: medium
 effort: S
@@ -215,31 +211,32 @@ files:
   - path: docker-compose.yml
     lines: 45-49
   - path: src/acheron/shell/orchestrator.py
-    lines: 370-397
+    lines: 564-601
 related: []
+bundle: 02-token-auth
 fixed_in: []
 verified_in: []
 last_verified_at: {}
 verified_by: ""
-drift_note: "The compose requirement and auto-mint implementation moved to new line ranges; the compose contract still prevents the auto-mint journey."
+drift_note: "Compose still requires a token during interpolation, while auto-mint persists to <data_dir>/.registration_token; worker profiles receive a static startup token."
 incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** `docker-compose.yml:48` declares `ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}` — the `?:` form aborts compose startup if the env var is unset. `_load_or_create_registration_token` is structured to auto-mint when the env var is unset, but in the supported deploy the env var is *required* by compose, so the mint branch is unreachable.
+**Issue.** `docker-compose.yml:48` declares `ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}`, so Compose aborts before the orchestrator reaches `_load_or_create_registration_token` at `src/acheron/shell/orchestrator.py:564-601`. The auto-mint branch is therefore unreachable in the supported Compose deployment.
 
 **Why it matters.** The auto-mint path is the documented on-ramp for a fresh deploy.
 
 **Recommendation.** Change `docker-compose.yml:48` from `${VAR:?...}` to `${VAR:-}` so compose starts with the env var unset, and the orchestrator's auto-mint path fires. Persist the minted token; the workers read the same path via a shared volume.
 
-**Verification.** Fresh `docker compose up` with `.env` unset starts cleanly. `cat certs/.registration_token` shows a 32-char hex string. The workers register successfully.
+**Verification.** With the project token unset, `docker compose up` starts cleanly, the orchestrator persists a 32-character token at `<data_dir>/.registration_token` ( `/data/jobs/.registration_token` in Compose), and every worker edge registers with the same value.
 
 ## MAINT-007 — No `acheron token rotate` command and no audit trail
 
 ```yaml
 ---
 id: MAINT-007
-title: "No `acheron token rotate` command and no audit trail — the on-disk `.registration_token` has no creation timestamp and no rotation history"
+title: "No safe registration-token rotation or audit trail; rotating the shared token requires updating and restarting every worker edge"
 status: stale
 severity: high
 effort: M
@@ -247,13 +244,22 @@ discovered_via: [on-call, code-review, audit]
 user_facing_surface: cli
 silent: true
 journey_stage: t2
-user_journey: "On-call at 2am runs `acheron token status` and sees `created_at=2024-01-15 rotations=0 current_token=ab12...`. Engineer runs `acheron token rotate --reason incident-2026-07-24-worker-401`; a new token is generated, persisted to `.registration_token` (mode 0600), the previous token is appended to `.registration_token.history` with `rotated_at` and `reason`."
+user_journey: "On-call at 2am checks the registration-token status and sees its creation time and rotation history. Engineer runs `acheron token rotate --reason incident-2026-07-24-worker-401`; the new token is recorded under `<data_dir>/.registration_token`, every worker edge receives the new `ACHERON_WORKER__REGISTRATION_TOKEN` and is restarted or reloaded, and a health check confirms dispatch still succeeds."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 370-397
-  - path: src/acheron/worker_sdk/registration.py
-    lines: 23-77
+    lines: 574-601
+  - path: src/acheron/shell/api/routes/admin.py
+    lines: 57-225
+  - path: src/acheron/cli.py
+    lines: 603-686
+  - path: src/acheron/worker_sdk/app.py
+    lines: 104-121
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 529-540
+  - path: docker-compose.yml
+    lines: 48-61
 related: [MAINT-006, SEC-008]
+bundle: 02-token-auth
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -262,13 +268,13 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** The registration token is loaded with no creation timestamp, no rotation history, and no audit log. There is no `acheron token rotate` command, no `/admin/token/rotate` HTTP endpoint.
+**Issue.** Auto-minted tokens are persisted at `<data_dir>/.registration_token` without creation metadata or rotation history. There is no token status or rotation workflow, and Compose supplies a static token to each edge at startup (`docker-compose.yml:48,83,112`). Worker registration and execution validate that startup token (`src/acheron/worker_sdk/app.py:104-121`; `_edge_http.py:529-540`), so changing the orchestrator-side file alone would not rotate the shared credential.
 
-**Why it matters.** Token rotation is a security-incident response procedure.
+**Why it matters.** Token rotation is a security-incident response procedure. A partial rotation can strand worker edges with an old credential or interrupt dispatch without an auditable record.
 
-**Recommendation.** Persist the token to `<data_dir>/.registration_token` with a header `created_at=ISO8601\ntoken=HEX\n`. On every rotate, append a JSONL line to `<data_dir>/.registration_token.history` with `{ts, old_token_sha256_prefix8, new_token_sha256_prefix8, reason}`. Add `POST /admin/token/rotate`.
+**Recommendation.** Provide an admin-protected token status and rotation workflow with creation metadata and audit history. It must handle both environment-supplied and file-backed tokens and coordinate distribution plus restart or reload of every worker edge before retiring the old token.
 
-**Verification.** `acheron token rotate --reason "test"` returns a new token; the history file has one JSONL line; `cat .registration_token` shows the new value.
+**Verification.** `acheron token rotate --reason "test"` records a new token and an audit entry under the configured data directory; all worker edges receive the new credential, re-register or reload successfully, and a test job dispatches after rotation.
 
 ## MAINT-008 — No "stuck > N minutes" filter in `list_jobs`
 
@@ -686,10 +692,11 @@ journey_stage: t2
 user_journey: "An operator restarts the orchestrator after a schema deployment and lists an older persisted job; deserialization fails because the record lacks newly required fields, blocking recovery and visibility."
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 463-575
+    lines: 557-580
   - path: src/acheron/shell/stores/redis.py
-    lines: 585-745
+    lines: 708-733
 related: []
+bundle: 03-redis-schema
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -698,7 +705,7 @@ drift_note: "Job serialization and deserialization moved; the current loader sti
 ---
 ```
 
-**Issue.** Redis deserialization directly requires newer label, progress, timestamps, and structured-error fields that older records do not contain.
+**Issue.** Redis serialization has no persisted schema version (`src/acheron/shell/stores/redis.py:557-580`), while deserialization directly requires fields such as `progress`, `label`, and timestamps (`:708-733`). Representative older records therefore fail with `CacheCorruptedError` instead of remaining visible.
 
 **Why it matters.** A deployment can make existing jobs unreadable, preventing operators from recovering or inspecting work already in progress.
 
@@ -712,7 +719,7 @@ drift_note: "Job serialization and deserialization moved; the current loader sti
 ---
 id: MAINT-019
 title: "Completed job event buffers are retained indefinitely"
-status: open
+status: obsolete
 severity: medium
 effort: M
 discovered_via: [code-review]
@@ -733,10 +740,4 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `JobEventBroker.finish()` removes subscribers but does not evict the completed job's buffered events.
-
-**Why it matters.** Long-lived services accumulate terminal-job history in memory even after no client can consume it.
-
-**Recommendation.** Bound or evict completed event buffers after terminal delivery while preserving active subscribers.
-
-**Verification.** Complete jobs and confirm their buffers are released according to the retention policy.
+**Resolution.** Terminal event history is bounded by the broker's `max_terminal_jobs` limit and oldest entries are evicted. `tests/shell/test_job_events.py` covers the bounded terminal registry and eviction behavior, so the original indefinite-retention concern is no longer valid.

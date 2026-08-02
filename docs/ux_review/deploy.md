@@ -1,12 +1,12 @@
 ---
 theme: DEPLOY
-last_updated_date: 2026-08-01
-version: 4
+last_updated_date: 2026-08-02
+version: 5
 ---
 
 # DEPLOY
 
-**Grade**: C (1 high + 3 medium + 1 low unresolved story)
+**Grade**: C (3 medium + 1 low unresolved story)
 **Calibration target**: a developer who has used Docker but never used RunPod, given 1 day, should succeed without help.
 
 ## DEPLOY-001 — Asymmetric edge env-var defaults across the three worker profiles
@@ -52,7 +52,7 @@ verified_by: ""
 ---
 id: DEPLOY-002
 title: Dev cert CN/SAN list does not match the compose worker hostnames; orchestrator→stub TLS handshakes fail on a fresh clone
-status: stale
+status: obsolete
 severity: high
 effort: S
 discovered_via: [code-review, first-run]
@@ -75,13 +75,7 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `scripts/generate_dev_certs.py:21-27` defines `SERVICES = ["orchestrator", "tts-stub", "asr-stub", "translation-stub", "tts-grpc-stub"]` and each entry's SAN list is `[service, "localhost", 127.0.0.1]`. The compose worker services are named `tts-local-stub`, `asr-local-stub`, `translation-local-stub`, and `tts-grpc-stub` (docker-compose.yml:86, 118, 144, 332), and the orchestrator's `HttpWorker` reaches them via the `WORKER_HOST` env var. The CN/SAN for three of the five certs is therefore unreachable by the orchestrator's HTTPS client. The hostnames don't match, the cert is rejected, and the job hangs silently.
-
-**Why it matters.** This breaks the canonical local-dev happy path: every first-time deployer who follows the Quick Start and submits a job hits this. The failure is silent — the orchestrator's health probe to the local stub never errors, but the orchestrator's `/execute` to it errors out per-call and the job never progresses.
-
-**Recommendation.** Make the `SERVICES` list the single source of truth for both cert names AND the compose `WORKER_HOST` values. Either change the cert script's `SERVICES` list to match the actual compose names, or leave the cert names as historical artifacts and add a wildcard `x509.DNSName("*.local-stub")` SAN. Pair with a CI smoke test that POSTs `/health` from the orchestrator to each stub.
-
-**Verification.** After the fix, `docker compose exec orchestrator python -c "…urlopen('https://tts-local-stub:8001/health'…)"` returns 200 from all four local stubs. `acheron job submit book.epub --src en --dest es` produces a successful TTS step.
+**Resolution.** The default Compose stub services do not enable TLS server certificates; they set `SSL_CERT_FILE` only, while the TLS integration tests explicitly provide certificate and key files. The reported hostname-mismatch journey is therefore not exercised by the supported fresh-clone path. Keep this concern closed unless Compose stubs become TLS-enabled.
 
 ## DEPLOY-003 — `just build-edge` and `docker compose --profile runpod-* up --build` fail on a fresh clone
 
@@ -289,6 +283,7 @@ files:
   - path: scripts/generate_dev_certs.py
     lines: 140-148
 related: [SEC-001]
+bundle: 01-cert-tls
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -355,6 +350,7 @@ files:
   - path: workers/translategemma/README.md
     lines: 102-106
 related: []
+bundle: 05-translategemma-docs
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -429,6 +425,7 @@ files:
   - path: docker-compose.yml
     lines: 45-49
 related: [DX-005]
+bundle: 02-token-auth
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -441,7 +438,7 @@ feedback_ref: "TBD-pagerduty"
 
 **Why it matters.** A common deployer workflow (edit code, restart compose in a new terminal) is broken by this. Cost: 1-2 min per occurrence.
 
-**Recommendation.** Replace README.md:25-27 with `echo "ACHERON_REGISTRATION_TOKEN=$(openssl rand -hex 32)" >> .env && docker compose up --build` (writes the token to `.env`, idempotent).
+**Recommendation.** Persist exactly one registration-token value in the project configuration, or use the orchestrator's auto-mint path, so a new shell reuses the same Compose input without appending duplicate assignments. Document the token's source of truth.
 
 **Verification.** A deployer who follows the updated Quick Start in terminal A, closes it, opens terminal B, and runs `docker compose up --build` succeeds without re-exporting. The token persists in `.env` across shell restarts.
 
@@ -450,7 +447,7 @@ feedback_ref: "TBD-pagerduty"
 ```yaml
 ---
 id: DEPLOY-013
-title: TranslateGemma README's "container disk ≥ 30 GB" guidance is ambiguous about whether the 26GB of weights count toward the limit; a deployer provisions a 30GB disk and OOMs the snapshot
+title: TranslateGemma docs conflate container-disk and HF-cache sizing
 status: open
 severity: low
 effort: S
@@ -458,11 +455,16 @@ discovered_via: [code-review]
 user_facing_surface: worker-image
 silent: true
 journey_stage: t0
-user_journey: "Deployer reads translategemma/README.md:14-30 and provisions a RunPod serverless template with `containerDiskInGb: 30` based on the '≥ 30 GB (the snapshot is ~26GB)' hint. If the image layers or runtime artifacts push the total over 30GB (torch 2.5.1 + cu121 + transformers + runpod is ~5GB, the image base is ~1GB, working files during inference can be ~2GB), the first cold start OOMs."
+user_journey: "Deployer reads the TranslateGemma worker README and the top-level README before creating a RunPod template. One document says container disk is ≥30 GB because the snapshot is ~26GB, while the other says container disk is ≥10 GB; the deployer cannot tell whether model weights belong on the container disk or the network volume."
 files:
   - path: workers/translategemma/README.md
-    lines: 45-49
+    lines: 24-49
+  - path: workers/translategemma/Dockerfile.runpod
+    lines: 62-64
+  - path: README.md
+    lines: 250-250
 related: [DOC-013]
+bundle: 05-translategemma-docs
 fixed_in: []
 verified_in: []
 last_verified_at: {}
@@ -470,13 +472,13 @@ verified_by: ""
 ---
 ```
 
-**Issue.** `workers/translategemma/README.md:30` says "Disk / container disk: ≥ 30 GB (the snapshot is ~26GB)". The "snapshot" is the TranslateGemma model weights. The container image itself is small. The HF weights live on the network volume at `/runpod-volume/huggingface-cache`, NOT in the container disk. The README's "the snapshot is ~26GB" is misleading: it conflates the HF weights (on the volume) with the container disk (separate).
+**Issue.** `workers/translategemma/README.md:24-49` describes the model snapshot beside a container-disk recommendation, while `workers/translategemma/Dockerfile.runpod:62-64` places the HF cache on `/runpod-volume/huggingface-cache`. The top-level README separately gives a 10GB container-disk value, so the documents conflate the network-volume weights with image and runtime storage.
 
-**Why it matters.** A deployer who reads "≥ 30 GB (the snapshot is ~26GB)" and provisions a 30GB container disk is right at the limit.
+**Why it matters.** A deployer cannot translate the conflicting guidance into separate `containerDiskInGb` and network-volume allocations before creating the endpoint.
 
-**Recommendation.** Update `workers/translategemma/README.md:14-30` to separate the two concerns: "Network volume: pre-warm the 26GB weights. Container disk: ≥ 10 GB (the image is `python:3.12-slim` + torch + transformers; working files during inference are <2GB). The 26GB of weights live on the network volume, not the container disk."
+**Recommendation.** State the container-disk requirement and HF-cache/network-volume requirement separately, and explain that the model weights consume the network volume rather than the container disk. Do not claim a lower disk floor without a measured image/runtime budget.
 
-**Verification.** A deployer who follows the updated translategemma README provisions a 10-15GB container disk and a 30GB+ network volume. The first cold start succeeds on a 10GB disk.
+**Verification.** The worker and top-level READMEs agree on the two storage resources, identify where the weights live, and let a deployer configure both values without inference from conflicting numbers.
 
 ## DEPLOY-014 — Top-level README's pre-warm lacks `HF_HUB_ENABLE_HF_TRANSFER=1`
 
