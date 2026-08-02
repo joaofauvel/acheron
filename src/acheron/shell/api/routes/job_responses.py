@@ -111,6 +111,7 @@ def tracked_to_response(tracked: TrackedJob, warnings: list[str] | None = None) 
                     filename=public_filename(output.filename),
                     size_bytes=output.size_bytes,
                     content_type=public_content_type(output.content_type),
+                    metadata=dict(output.metadata),
                 )
                 for index, output in enumerate(result.outputs[:1000])
             ]

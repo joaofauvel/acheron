@@ -322,6 +322,7 @@ class TestJobRoutes:
                             size_bytes=1234,
                             checksum="checksum",
                             content_type="audio/mp4",
+                            metadata={"chapter": "final", "duration_seconds": "12.5"},
                         ),
                     ),
                     total_cost=0.25,
@@ -364,6 +365,7 @@ class TestJobRoutes:
                 "filename": "output.bin",
                 "size_bytes": 1234,
                 "content_type": "audio/mp4",
+                "metadata": {"chapter": "final", "duration_seconds": "12.5"},
             }
         ]
         assert "path" not in data["outputs"][0]

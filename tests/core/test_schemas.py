@@ -128,16 +128,37 @@ def test_cost_breakdown_response_round_trips_estimate() -> None:
     assert response.basis is CostBasis.MEASURED
 
 
-def test_output_summary_exposes_download_url_only() -> None:
+def test_output_summary_defaults_metadata_and_serializes_empty_mapping() -> None:
     output = OutputSummary(
         download_url="/jobs/job-1/outputs/0",
         filename="result.m4b",
         size_bytes=5,
         content_type="audio/mp4",
     )
+    other = OutputSummary(
+        download_url="/jobs/job-2/outputs/0",
+        filename="other.m4b",
+        size_bytes=6,
+        content_type="audio/mp4",
+    )
+
+    assert output.model_dump(mode="json")["metadata"] == {}
+    output.metadata["chapter"] = 1
+    assert other.metadata == {}
+
+
+def test_output_summary_preserves_typed_metadata_without_internal_path() -> None:
+    output = OutputSummary(
+        download_url="/jobs/job-1/outputs/0",
+        filename="result.m4b",
+        size_bytes=5,
+        content_type="audio/mp4",
+        metadata={"chapter": 1, "tags": ["final"]},
+    )
 
     dumped = output.model_dump()
     assert dumped["download_url"] == "/jobs/job-1/outputs/0"
+    assert dumped["metadata"] == {"chapter": 1, "tags": ["final"]}
     assert "path" not in dumped
 
 

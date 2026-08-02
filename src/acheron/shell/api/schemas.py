@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 from acheron.core.models import JsonValue  # noqa: TC001
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    CleanupCandidateResponse,
+    CleanupFailureResponse,
+    CleanupResponse,
     ErrorResponse,
     InputResponse,
     JobListResponse,
@@ -173,36 +176,6 @@ class CleanupRequest(_AdminDurationRequest):
         ):
             raise ValueError("keep_successful_seconds and keep_failed_seconds are required")
         return self
-
-
-class CleanupCandidateResponse(BaseModel):
-    """Public cleanup candidate."""
-
-    job_id: str
-    status: str
-    archived: bool = False
-    relative_paths: list[str]
-    reclaimable_bytes: int
-
-
-class CleanupFailureResponse(BaseModel):
-    """Public cleanup failure."""
-
-    job_id: str
-    relative_paths: list[str]
-    message: str
-
-
-class CleanupResponse(BaseModel):
-    """Public cleanup preview or application report."""
-
-    apply: bool
-    candidates: list[CleanupCandidateResponse] = Field(max_length=1000)
-    deleted_job_ids: list[str] = Field(max_length=1000)
-    failures: list[CleanupFailureResponse] = Field(max_length=1000)
-    deleted_count: int
-    deleted_bytes: int
-    reclaimable_bytes: int
 
 
 _MAX_CAPABILITY_PAYLOAD_BYTES = 1 << 40

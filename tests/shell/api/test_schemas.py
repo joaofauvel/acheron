@@ -5,6 +5,9 @@ from pydantic import ValidationError
 
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    CleanupCandidateResponse,
+    CleanupFailureResponse,
+    CleanupResponse,
     ErrorResponse,
     JobListResponse,
     JobLogEvent,
@@ -22,6 +25,9 @@ from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJ
 
 def test_response_models_keep_their_public_import_path() -> None:
     assert schemas.CapabilitiesResponse is CapabilitiesResponse
+    assert schemas.CleanupCandidateResponse is CleanupCandidateResponse
+    assert schemas.CleanupFailureResponse is CleanupFailureResponse
+    assert schemas.CleanupResponse is CleanupResponse
     assert schemas.ErrorResponse is ErrorResponse
     assert schemas.JobListResponse is JobListResponse
     assert schemas.JobLogEvent is JobLogEvent
@@ -77,6 +83,9 @@ def test_public_schema_exports_include_phase_4c_models() -> None:
     from acheron.core import schemas as core_schemas
 
     assert {
+        "CleanupCandidateResponse",
+        "CleanupFailureResponse",
+        "CleanupResponse",
         "ErrorResponse",
         "JobLogEvent",
         "JobProgress",
@@ -84,6 +93,9 @@ def test_public_schema_exports_include_phase_4c_models() -> None:
         "StepError",
     } <= set(core_schemas.__all__)
     assert {
+        "CleanupCandidateResponse",
+        "CleanupFailureResponse",
+        "CleanupResponse",
         "ErrorResponse",
         "JobLogEvent",
         "JobProgress",

@@ -14,6 +14,7 @@ import httpx
 from acheron.core.schemas import (
     AdminJobResponse,
     CapabilitiesResponse,
+    CleanupResponse,
     CostSummaryResponse,
     InputResponse,
     JobCostResponse,
@@ -27,7 +28,6 @@ from acheron.core.schemas import (
     WorkerListResponse,
     WorkerResponse,
 )
-from acheron.shell.api.schemas import CleanupResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Sequence

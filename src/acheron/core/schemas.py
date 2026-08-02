@@ -30,6 +30,37 @@ class OutputSummary(BaseModel):
     filename: str
     size_bytes: int = Field(ge=0)
     content_type: str
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class CleanupCandidateResponse(BaseModel):
+    """Public cleanup candidate."""
+
+    job_id: str
+    status: str
+    archived: bool = False
+    relative_paths: list[str]
+    reclaimable_bytes: int
+
+
+class CleanupFailureResponse(BaseModel):
+    """Public cleanup failure."""
+
+    job_id: str
+    relative_paths: list[str]
+    message: str
+
+
+class CleanupResponse(BaseModel):
+    """Public cleanup preview or application report."""
+
+    apply: bool
+    candidates: list[CleanupCandidateResponse] = Field(max_length=1000)
+    deleted_job_ids: list[str] = Field(max_length=1000)
+    failures: list[CleanupFailureResponse] = Field(max_length=1000)
+    deleted_count: int
+    deleted_bytes: int
+    reclaimable_bytes: int
 
 
 class CostEstimateResponse(BaseModel):
@@ -401,6 +432,9 @@ class PlanResponse(BaseModel):
 __all__ = [
     "AdminJobResponse",
     "CapabilitiesResponse",
+    "CleanupCandidateResponse",
+    "CleanupFailureResponse",
+    "CleanupResponse",
     "CostBreakdownResponse",
     "CostEstimateResponse",
     "CostSummaryResponse",

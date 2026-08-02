@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +21,21 @@ from pydantic import ValidationError
 
 from acheron.api_client import AcheronClient
 from acheron.core.models import PlanStatus, VoiceRange
-from acheron.core.schemas import WorkerCapability
+from acheron.core.schemas import CleanupResponse, WorkerCapability
+
+
+def test_api_client_import_does_not_load_shell_schemas() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import acheron.api_client; assert 'acheron.shell.api.schemas' not in sys.modules",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
 
 
 def _job_response_payload(
@@ -59,6 +76,43 @@ def _job_response_payload(
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_cleanup_returns_core_response_schema() -> None:
+    route = respx.post("http://test/admin/cleanup").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "apply": False,
+                "candidates": [
+                    {
+                        "job_id": "job-1",
+                        "status": "completed",
+                        "archived": False,
+                        "relative_paths": ["output.m4b"],
+                        "reclaimable_bytes": 12,
+                    }
+                ],
+                "deleted_job_ids": [],
+                "failures": [],
+                "deleted_count": 0,
+                "deleted_bytes": 0,
+                "reclaimable_bytes": 12,
+            },
+        )
+    )
+
+    result = await AcheronClient("http://test", admin_token="admin-token").cleanup(
+        keep_successful_seconds=60,
+        keep_failed_seconds=120,
+    )
+
+    assert type(result) is CleanupResponse
+    assert result.candidates[0].job_id == "job-1"
+    assert result.reclaimable_bytes == 12
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_submit_job_serializes_typed_voice_selection() -> None:
     route = respx.post("http://test/jobs").mock(return_value=httpx.Response(201, json=_job_response_payload()))
     await AcheronClient("http://test").submit_job(
@@ -72,6 +126,32 @@ async def test_submit_job_serializes_typed_voice_selection() -> None:
     body = json.loads(route.calls.last.request.content)
     assert body["voice"] == "Vivian"
     assert body["voice_map"] == [{"start_chapter": 1, "end_chapter": 3, "voice": "Vivian"}]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_job_round_trips_output_metadata() -> None:
+    respx.get("http://test/jobs/job-1").mock(
+        return_value=httpx.Response(
+            200,
+            json=_job_response_payload(
+                status="completed",
+                outputs=[
+                    {
+                        "download_url": "/jobs/job-1/outputs/0",
+                        "filename": "result.m4b",
+                        "size_bytes": 5,
+                        "content_type": "audio/mp4",
+                        "metadata": {"chapter": 1, "tags": ["final"]},
+                    }
+                ],
+            ),
+        )
+    )
+
+    result = await AcheronClient("http://test").get_job("job-1")
+
+    assert result.outputs[0].metadata == {"chapter": 1, "tags": ["final"]}
 
 
 @pytest.mark.asyncio
