@@ -1296,17 +1296,17 @@ related: []
 ### TEST-033 — Late event-broker subscribers lack a terminal-sentinel regression test
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 49747dd
-  date: 2026-07-30
-fixed_in: []
+  commit: pending
+  date: 2026-08-01
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/job_events.py
-    lines: 39-54
+    lines: 20-130
   - path: tests/shell/test_job_events.py
     lines: 1-220
 related: [CORR-045, MAINT-024]

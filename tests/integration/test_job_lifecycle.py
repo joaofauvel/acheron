@@ -511,19 +511,21 @@ async def test_event_broker_publishes_terminal_event(wired_app: FastAPI, tmp_pat
     source.mkdir(exist_ok=True)
     (source / "book.epub").write_bytes(b"epub")
 
+    from acheron.shell.job_events import iter_events
+
     tracked = await orch.submit_job(
         EpubRequest("input/book.epub", "en", "es"),
         ExecutorStrategy.SEQUENTIAL,
     )
+    stream = await orch.events.subscribe(tracked.job_id)
 
     terminal = await _wait_for_terminal(orch, tracked.job_id)
     assert terminal.status in {PlanStatus.COMPLETED, PlanStatus.FAILED}
 
-    # Check the broker's buffer for terminal events
-    buf = orch.events._buffer.get(tracked.job_id)  # noqa: SLF001
-    assert buf is not None
-    terminal_events = [e for e in buf if e.status in {PlanStatus.COMPLETED, PlanStatus.FAILED}]
-    assert len(terminal_events) >= 1
+    events = [event async for event in iter_events(stream)]
+    assert any(event.status in {PlanStatus.COMPLETED, PlanStatus.FAILED} for event in events)
+    assert tracked.job_id not in orch.events._buffer  # noqa: SLF001
+    assert tracked.job_id not in orch.events._subscribers  # noqa: SLF001
 
 
 @pytest.mark.asyncio

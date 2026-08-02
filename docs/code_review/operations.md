@@ -1384,7 +1384,7 @@ files:
   - path: src/acheron/shell/api/admin_audit.py
     lines: 33-52
   - path: src/acheron/shell/orchestrator.py
-    lines: 231-263
+    lines: 231-262
 related: []
 ```
 
@@ -1401,19 +1401,19 @@ related: []
 ### PERF-012 — Job event buffers and subscriber queues can grow with job volume
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/job_events.py
-    lines: 25-54
+    lines: 20-130
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 580-586
+    lines: 579-588
 related: [MAINT-024, CORR-045]
 ```
 
@@ -1442,7 +1442,7 @@ files:
   - path: dashboard/templates/index.html
     lines: 80-84
   - path: src/acheron/shell/orchestrator.py
-    lines: 1207-1245
+    lines: 1235-1269
 related: []
 ```
 
@@ -1545,14 +1545,14 @@ severity: low
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/input_store.py
     lines: 216-250
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 108-135, 275-282
+    lines: 108-136, 275-282
 related: [SEC-007]
 ```
 
@@ -1572,12 +1572,12 @@ severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 108-135
+    lines: 108-136
 related: []
 ```
 

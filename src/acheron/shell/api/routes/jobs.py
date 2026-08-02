@@ -577,11 +577,15 @@ async def job_logs(
             media_type="application/x-ndjson",
         )
 
-    queue = await orch.events.subscribe(job_id)
+    events = orch.events
+    queue = await events.subscribe(job_id)
 
     async def _stream() -> AsyncIterator[bytes]:
-        async for event in iter_events(queue):
-            yield event.model_dump_json().encode() + b"\n"
+        try:
+            async for event in iter_events(queue):
+                yield event.model_dump_json().encode() + b"\n"
+        finally:
+            await events.unsubscribe(job_id, queue)
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 

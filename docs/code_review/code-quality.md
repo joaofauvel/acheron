@@ -1281,19 +1281,19 @@ related: [TYPE-012, TYPE-013, CORR-043, TEST-028]
 ### MAINT-024 — Completed job event buffers and subscribers are not reclaimed
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/job_events.py
-    lines: 25-54
+    lines: 20-130
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 537-586
+    lines: 579-588
 related: [CORR-045, PERF-012, TEST-033]
 ```
 
@@ -1313,10 +1313,12 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
+  commit: pending
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 194-409, 411-638, 675-747
+    lines: 194-409, 411-638, 644-751
 related: []
 ```
 
@@ -1338,7 +1340,7 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:

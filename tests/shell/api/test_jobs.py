@@ -31,6 +31,7 @@ from acheron.shell.registry import RegisteredWorker
 if TYPE_CHECKING:
     from acheron.shell.config import Settings
     from acheron.shell.job_store import TrackedJob
+    from acheron.shell.orchestrator import Orchestrator
 
 
 def _worker(
@@ -1111,7 +1112,6 @@ class TestJobRoutes:
         from acheron.shell.api.schemas import SubmitJobRequest
         from acheron.shell.config import Settings
         from acheron.shell.job_store import TrackedJob
-        from acheron.shell.orchestrator import Orchestrator
 
         input_dir = tmp_path / "input"
         input_dir.mkdir()
@@ -1256,6 +1256,111 @@ class TestJobRoutes:
         event = JobLogEvent.model_validate_json(lines[0])
         assert event.job_id == job_id
         assert event.status is PlanStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_job_logs_follow_race_terminates_when_job_finishes_before_subscribe(self) -> None:
+        from datetime import UTC, datetime
+
+        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+        from acheron.core.schemas import JobLogEvent, JobProgress
+        from acheron.shell.job_events import JobEventBroker
+        from acheron.shell.job_store import TrackedJob
+
+        broker = JobEventBroker(max_events=8)
+        event = JobLogEvent(
+            job_id="job-race",
+            timestamp=datetime.now(UTC),
+            status=PlanStatus.RUNNING,
+            step_id="step-1",
+            progress=JobProgress(),
+            message="step step-1 started",
+        )
+        await broker.publish(event)
+        subscribe_started = asyncio.Event()
+        allow_subscribe = asyncio.Event()
+
+        class BarrierEvents:
+            async def subscribe(self, job_id: str) -> asyncio.Queue[object]:
+                subscribe_started.set()
+                await allow_subscribe.wait()
+                return await broker.subscribe(job_id)
+
+            async def unsubscribe(self, job_id: str, queue: asyncio.Queue[object]) -> None:
+                await broker.unsubscribe(job_id, queue)
+
+        tracked = TrackedJob(
+            job_id="job-race",
+            request=EpubRequest("input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            status=PlanStatus.RUNNING,
+        )
+
+        class FakeOrchestrator:
+            events = BarrierEvents()
+
+            async def get_job(self, job_id: str) -> TrackedJob | None:
+                return tracked if job_id == tracked.job_id else None
+
+        route_task = asyncio.create_task(
+            jobs_module.job_logs("job-race", cast("Orchestrator", FakeOrchestrator()), None)
+        )
+        await asyncio.wait_for(subscribe_started.wait(), timeout=1.0)
+        await broker.finish("job-race")
+        allow_subscribe.set()
+        response = await asyncio.wait_for(route_task, timeout=1.0)
+
+        async def collect_chunks() -> list[bytes | str | memoryview[int]]:
+            return [chunk async for chunk in response.body_iterator]
+
+        chunks = await asyncio.wait_for(collect_chunks(), timeout=1.0)
+        assert len(chunks) == 1
+        assert JobLogEvent.model_validate_json(cast("bytes", chunks[0])).step_id == "step-1"
+
+    @pytest.mark.asyncio
+    async def test_job_logs_disconnect_unregisters_subscriber(self) -> None:
+        from contextlib import suppress
+        from datetime import UTC, datetime
+
+        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
+        from acheron.shell.job_events import JobEventBroker
+        from acheron.shell.job_store import TrackedJob
+
+        broker = JobEventBroker(max_events=4)
+        await broker.start("job-disconnect")
+        tracked = TrackedJob(
+            job_id="job-disconnect",
+            request=EpubRequest("input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            status=PlanStatus.RUNNING,
+            created_at=datetime.now(UTC),
+        )
+
+        class FakeOrchestrator:
+            events = broker
+
+            async def get_job(self, job_id: str) -> TrackedJob | None:
+                return tracked if job_id == tracked.job_id else None
+
+        response = await jobs_module.job_logs(
+            "job-disconnect",
+            cast("Orchestrator", FakeOrchestrator()),
+            None,
+        )
+
+        async def consume() -> None:
+            async for _chunk in response.body_iterator:
+                pass
+
+        consumer = asyncio.create_task(consume())
+        await asyncio.sleep(0)
+        assert len(broker._subscribers["job-disconnect"]) == 1  # noqa: SLF001
+        consumer.cancel()
+        with suppress(asyncio.CancelledError):
+            await consumer
+
+        assert broker._subscribers == {}  # noqa: SLF001
+        await broker.finish("job-disconnect")
+        assert broker._buffer == {}  # noqa: SLF001
 
 
 class TestJobRouteAuth:

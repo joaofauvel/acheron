@@ -1222,19 +1222,19 @@ related: [CORR-012, TEST-029, PERF-011]
 ### CORR-045 — Late job-log subscriber can hang forever
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 547-578
+    lines: 579-588
   - path: src/acheron/shell/job_events.py
-    lines: 39-54
+    lines: 69-128
 related: [MAINT-024, PERF-012]
 ```
 
@@ -1254,14 +1254,14 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/core/schemas.py
     lines: 26-30
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 732-740
+    lines: 736-743
 related: [CORR-013]
 ```
 

@@ -490,7 +490,14 @@ class Orchestrator:
                 raise InputPathError("input is referenced by a job")
             InputStore(self._settings.orchestrator.data_dir, create=False).delete(input_id)
 
-    async def _rollback_submission(self, job_id: str, plan: Plan | None, *, task: asyncio.Task[None] | None) -> None:
+    async def _rollback_submission(
+        self,
+        job_id: str,
+        plan: Plan | None,
+        *,
+        task: asyncio.Task[None] | None,
+        broker_started: bool,
+    ) -> None:
         """Remove all state created by an incomplete submission."""
         self._active_jobs.discard(job_id)
         self._operator_cancellation_requested.discard(job_id)
@@ -506,6 +513,8 @@ class Orchestrator:
             await self._job_store.delete(job_id)
         except Exception as exc:  # noqa: BLE001
             _log_unexpected(f"Failed to roll back persisted job {job_id}", exc)
+        if broker_started:
+            await self._events.finish(job_id)
         if plan is not None:
             try:
                 self._cache.delete_plan(plan.plan_id)
@@ -554,6 +563,7 @@ class Orchestrator:
         input_identity = self._input_identity(request.source_path)
         plan: Plan | None = None
         execution_task: asyncio.Task[None] | None = None
+        broker_started = False
         try:
             async with self._input_reference_lock(input_identity):
                 if input_id is not None:
@@ -578,6 +588,8 @@ class Orchestrator:
                     if self._shutting_down:
                         msg = "Orchestrator is shutting down; new jobs are not accepted"
                         raise RuntimeError(msg)  # noqa: TRY301
+                    await self._events.start(tracked.job_id)
+                    broker_started = True
                     await self._job_store.put(tracked)
                     self._active_jobs.add(tracked.job_id)
                     self._track_execution_task(tracked)
@@ -585,7 +597,12 @@ class Orchestrator:
 
                 return tracked
         except BaseException:
-            await self._rollback_submission(job_id, plan, task=execution_task)
+            await self._rollback_submission(
+                job_id,
+                plan,
+                task=execution_task,
+                broker_started=broker_started,
+            )
             raise
 
     async def submit_retry(
@@ -648,6 +665,13 @@ class Orchestrator:
         """Load a persisted plan without exposing the cache implementation."""
         return await asyncio.to_thread(self._cache.load_plan, plan_id)
 
+    @staticmethod
+    async def _await_shielded_cleanup(task: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            await asyncio.shield(task)
+
     async def _execute(self, tracked: TrackedJob) -> None:
         """Run the plan executor and update job status.
 
@@ -666,6 +690,7 @@ class Orchestrator:
             self._record_cancellation(tracked, reason=reason)
             try:
                 await self._persist_shielded(tracked)
+                await self._publish_event(tracked, "job cancelled")
             except Exception as persist_exc:
                 _log_unexpected(f"Failed to persist job {tracked.job_id} after cancellation", persist_exc)
                 if operator_cancelled or not isinstance(persist_exc, (OSError, ConnectionError, StoreError)):
@@ -697,14 +722,17 @@ class Orchestrator:
                 _log_unexpected(f"Failed to persist job {tracked.job_id} after execution failure", persist_exc)
             raise
         finally:
-            release_job = getattr(self._handler, "release_job", None)
-            if release_job is not None:
-                release_task = asyncio.create_task(release_job(tracked.job_id))
+            try:
+                finish_task = asyncio.create_task(self._events.finish(tracked.job_id))
+                await self._await_shielded_cleanup(finish_task)
+            finally:
                 try:
-                    await asyncio.shield(release_task)
-                except asyncio.CancelledError:
-                    await asyncio.shield(release_task)
-            self._active_jobs.discard(tracked.job_id)
+                    release_job = getattr(self._handler, "release_job", None)
+                    if release_job is not None:
+                        release_task = asyncio.create_task(release_job(tracked.job_id))
+                        await self._await_shielded_cleanup(release_task)
+                finally:
+                    self._active_jobs.discard(tracked.job_id)
 
     def _track_execution_task(self, tracked: TrackedJob) -> None:
         task = asyncio.create_task(self._execute(tracked))
@@ -837,39 +865,39 @@ class Orchestrator:
             self._active_jobs.add(tracked.job_id)
 
         logger.info("Executing %s (%s strategy)", tracked.job_id, tracked.strategy.value)
+        operator_cancelled = False
         try:
-            try:
-                if tracked.plan is None:
+            if tracked.plan is None:
+                tracked.status = PlanStatus.FAILED
+                logger.error("No plan for %s", tracked.job_id)
+            else:
+                executor = self._create_executor(tracked)
+                result = await executor.run(tracked.plan)
+                operator_cancelled = tracked.job_id in self._operator_cancellation_requested
+                if operator_cancelled:
                     tracked.status = PlanStatus.FAILED
-                    logger.error("No plan for %s", tracked.job_id)
+                    self._record_cancellation(tracked, reason="cancelled by operator")
                 else:
-                    executor = self._create_executor(tracked)
-                    result = await executor.run(tracked.plan)
-                    if tracked.job_id in self._operator_cancellation_requested:
-                        tracked.status = PlanStatus.FAILED
-                        self._record_cancellation(tracked, reason="cancelled by operator")
-                    else:
-                        tracked.result = result
-                        tracked.status = result.status
-                    logger.info(
-                        "Completed %s: %s (%d/%d steps)",
-                        tracked.job_id,
-                        result.status,
-                        result.completed_steps,
-                        result.total_steps,
-                    )
-            except Exception as exc:  # noqa: BLE001
-                label = (
-                    f"Plan execution failed for {tracked.job_id}"
-                    if isinstance(exc, AcheronError)
-                    else f"Unexpected error executing {tracked.job_id}"
+                    tracked.result = result
+                    tracked.status = result.status
+                logger.info(
+                    "Completed %s: %s (%d/%d steps)",
+                    tracked.job_id,
+                    result.status,
+                    result.completed_steps,
+                    result.total_steps,
                 )
-                _log_unexpected(label, exc)
-                self._record_failure(tracked, exc)
-            await self._job_store.put(tracked)
-            await self._publish_event(tracked, f"job {tracked.status.value}")
-        finally:
-            await self._events.finish(tracked.job_id)
+        except Exception as exc:  # noqa: BLE001
+            label = (
+                f"Plan execution failed for {tracked.job_id}"
+                if isinstance(exc, AcheronError)
+                else f"Unexpected error executing {tracked.job_id}"
+            )
+            _log_unexpected(label, exc)
+            self._record_failure(tracked, exc)
+        await self._job_store.put(tracked)
+        message = "job cancelled" if operator_cancelled else f"job {tracked.status.value}"
+        await self._publish_event(tracked, message)
 
     def _create_executor(self, tracked: TrackedJob) -> Executor:
         handler = self._handler
@@ -1289,8 +1317,6 @@ class Orchestrator:
             if final is None:
                 msg = f"Job not found: {job_id}"
                 raise JobNotFoundError(msg)
-            await self._publish_event(final, "job cancelled")
-            await self._events.finish(job_id)
             return final
 
     async def resume_job(
@@ -1349,11 +1375,17 @@ class Orchestrator:
                 if self._shutting_down:
                     msg = "Orchestrator is shutting down; jobs cannot be resumed"
                     raise RuntimeError(msg)
-                self._active_jobs.add(job_id)
-                tracked.status = PlanStatus.RUNNING
-                tracked.result = None
-                await self._job_store.put(tracked)
-                self._track_execution_task(tracked)
+                prior_terminal = await self._events.start(job_id)
+                try:
+                    self._active_jobs.add(job_id)
+                    tracked.status = PlanStatus.RUNNING
+                    tracked.result = None
+                    await self._job_store.put(tracked)
+                    self._track_execution_task(tracked)
+                except BaseException:
+                    self._active_jobs.discard(job_id)
+                    await self._events.restore(job_id, prior_terminal)
+                    raise
             return tracked
 
     async def list_jobs(self, query: JobQuery = JobQuery()) -> tuple[TrackedJob, ...]:  # noqa: B008

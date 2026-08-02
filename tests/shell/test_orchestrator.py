@@ -43,8 +43,10 @@ from acheron.core.models import (
     StepStatus,
     WorkerType,
 )
+from acheron.core.schemas import JobLogEvent
 from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache
 from acheron.shell.config import Settings
+from acheron.shell.job_events import iter_events
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.base import StoreError
@@ -483,8 +485,15 @@ class TestOrchestrator:
         allow_release.set()
         await resumed
         await resumed_started.wait()
+        resumed_stream = await orch.events.subscribe(plan.job_id)
         allow_resumed.set()
         await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+
+        async def collect_resumed_events() -> list[JobLogEvent]:
+            return [event async for event in iter_events(resumed_stream)]
+
+        resumed_events = await asyncio.wait_for(collect_resumed_events(), timeout=1.0)
+        assert any(event.step_id == "synthesize" for event in resumed_events)
         assert calls == 2
         assert plan.job_id not in orch._active_jobs  # noqa: SLF001
         await orch.close()
@@ -622,6 +631,124 @@ class TestOrchestrator:
         assert tracked.job_id.startswith("job-")
         assert tracked.status == PlanStatus.RUNNING
         assert tracked.plan is not None
+
+    @pytest.mark.asyncio
+    async def test_submit_starts_broker_before_persisting_running_job(self, tmp_path: Path) -> None:
+        from acheron.shell.job_events import JobEventBroker
+
+        class ObservingJobStore(InMemoryJobStore):
+            def __init__(self) -> None:
+                super().__init__()
+                self.broker: JobEventBroker | None = None
+                self.observed_active: bool | None = None
+
+            async def put(self, job: TrackedJob) -> None:
+                if self.observed_active is None and job.status is PlanStatus.RUNNING:
+                    assert self.broker is not None
+                    self.observed_active = job.job_id in self.broker._active_jobs  # noqa: SLF001
+                await super().put(job)
+
+        jobs = ObservingJobStore()
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(registry, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        jobs.broker = orch.events
+        await orch.start()
+        try:
+            await orch.submit_job(
+                EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+                ExecutorStrategy.STREAMING,
+            )
+        finally:
+            await orch.shutdown()
+            await orch.close()
+
+        assert jobs.observed_active is True
+
+    @pytest.mark.asyncio
+    async def test_submit_persistence_failure_finishes_broker_state(self, tmp_path: Path) -> None:
+        class FailingJobStore(InMemoryJobStore):
+            async def put(self, job: TrackedJob) -> None:
+                if job.status is PlanStatus.RUNNING:
+                    raise RuntimeError("persistence failed")
+                await super().put(job)
+
+        jobs = FailingJobStore()
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(registry, PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        try:
+            with pytest.raises(RuntimeError, match="persistence failed"):
+                await orch.submit_job(
+                    EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
+                    ExecutorStrategy.STREAMING,
+                )
+            assert orch.events._active_jobs == set()  # noqa: SLF001
+        finally:
+            await orch.shutdown()
+            await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_resume_persistence_failure_restores_terminal_replay(self, tmp_path: Path) -> None:
+        class FailingResumeStore(InMemoryJobStore):
+            def __init__(self) -> None:
+                super().__init__()
+                self.persist_started = asyncio.Event()
+                self.allow_failure = asyncio.Event()
+
+            async def put(self, job: TrackedJob) -> None:
+                if job.status is PlanStatus.RUNNING:
+                    self.persist_started.set()
+                    await self.allow_failure.wait()
+                    raise RuntimeError("resume persistence failed")
+                await super().put(job)
+
+        job_id = "job-resume-restore"
+        plan = _single_step_plan(job_id)
+        tracked = TrackedJob(
+            job_id=job_id,
+            request=EpubRequest("/input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            plan=plan,
+            status=PlanStatus.FAILED,
+        )
+        jobs = FailingResumeStore()
+        await jobs.put(tracked)
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, job_store=jobs)
+        await orch.start()
+        try:
+            await orch._publish_event(tracked, "old terminal")  # noqa: SLF001
+            await orch.events.finish(job_id)
+
+            resume_task = asyncio.create_task(orch.resume_job(job_id))
+            await asyncio.wait_for(jobs.persist_started.wait(), timeout=1.0)
+            stream = await orch.events.subscribe(job_id)
+            jobs.allow_failure.set()
+            with pytest.raises(RuntimeError, match="resume persistence failed"):
+                await resume_task
+
+            async def collect_events() -> list[JobLogEvent]:
+                return [event async for event in iter_events(stream)]
+
+            events = await asyncio.wait_for(collect_events(), timeout=1.0)
+            assert [event.message for event in events] == ["old terminal"]
+            assert orch.events._subscribers == {}  # noqa: SLF001
+            assert orch.events._active_jobs == set()  # noqa: SLF001
+
+            late_stream = await orch.events.subscribe(job_id)
+
+            async def collect_late_events() -> list[JobLogEvent]:
+                return [event async for event in iter_events(late_stream)]
+
+            late_events = await asyncio.wait_for(collect_late_events(), timeout=1.0)
+            assert [event.message for event in late_events] == ["old terminal"]
+        finally:
+            jobs.allow_failure.set()
+            await orch.shutdown()
+            await orch.close()
 
     @pytest.mark.asyncio
     async def test_submit_retry_creates_linked_fresh_job(self, tmp_path: Path) -> None:
@@ -991,15 +1118,74 @@ class TestOrchestrator:
         )
         await handler_started.wait()
 
+        stream = await orch.events.subscribe(tracked.job_id)
         cancelled = await orch.cancel_job(tracked.job_id)
 
+        async def collect_events() -> list[JobLogEvent]:
+            return [event async for event in iter_events(stream)]
+
+        events = await asyncio.wait_for(collect_events(), timeout=1.0)
+
         assert cancelled.status is PlanStatus.FAILED
+        assert events[-1].message == "job cancelled"
+        assert sum(event.status is PlanStatus.FAILED for event in events) == 1
         assert cancelled.result is not None
         assert cancelled.result.errors[0].message == "cancelled by operator"
         assert cancelled.result.completed_steps < cancelled.result.total_steps
         persisted = await jobs.get(tracked.job_id)
         assert persisted is not None
         assert persisted.status is PlanStatus.FAILED
+        await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_execute_cleanup_survives_cancellation_during_finish(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        handler_started = asyncio.Event()
+        finish_started = asyncio.Event()
+        allow_finish = asyncio.Event()
+
+        async def _blocking_handler(_step: PlanStep, _plan: Plan) -> JobResult:
+            handler_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-1", "http://127.0.0.1:1", "http", tts_caps())
+        await registry.register("trans-1", "http://127.0.0.1:2", "http", translation_caps())
+        orch = Orchestrator(registry, PlanCache(tmp_path), _blocking_handler)
+        await orch.start()
+        tracked = await orch.submit_job(
+            EpubRequest(str(tmp_path / "book.epub"), "en", "es"),
+            ExecutorStrategy.STREAMING,
+        )
+        await handler_started.wait()
+        stream = await orch.events.subscribe(tracked.job_id)
+        original_finish = orch.events.finish
+
+        async def delayed_finish(job_id: str) -> None:
+            finish_started.set()
+            await allow_finish.wait()
+            await original_finish(job_id)
+
+        monkeypatch.setattr(orch.events, "finish", delayed_finish)
+        task = orch._execution_tasks[tracked.job_id]  # noqa: SLF001
+        task.cancel("shutdown")
+        await finish_started.wait()
+        task.cancel("cancellation during cleanup")
+        allow_finish.set()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        async def collect_events() -> list[JobLogEvent]:
+            return [event async for event in iter_events(stream)]
+
+        events = await asyncio.wait_for(collect_events(), timeout=1.0)
+        assert events[-1].message == "job cancelled"
+        assert tracked.job_id not in orch._active_jobs  # noqa: SLF001
+        assert tracked.job_id not in orch.events._subscribers  # noqa: SLF001
         await orch.close()
 
     @pytest.mark.asyncio
