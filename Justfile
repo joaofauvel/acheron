@@ -48,7 +48,7 @@ install:
 # Generate local Acheron CA + per-service dev certs in ./certs/.
 # Pass --force only to replace a complete marked development bundle.
 certs *args:
-    uv run python scripts/generate_dev_certs.py {{args}}
+    {{ if args == "" { "uv run python scripts/generate_dev_certs.py" } else if args == "--force" { "uv run python scripts/generate_dev_certs.py --force" } else { "echo 'usage: just certs [--force]' >&2; exit 2" } }}
 
 # Build a worker image locally for dev iteration. CI does the real publish.
 build-worker name:

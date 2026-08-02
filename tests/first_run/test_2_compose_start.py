@@ -1,5 +1,6 @@
 import json
 import subprocess
+from pathlib import Path
 from typing import cast
 
 from tests.first_run.helpers import ComposeStack, FirstRunProject
@@ -91,6 +92,75 @@ def test_step_2_compose_rejects_unmarked_certificate_material(prepared_project: 
 
     assert result.returncode != 0
     assert (prepared_project.checkout / "certs" / "acheron-ca.crt").read_bytes() == sentinel
+
+
+def test_step_2_just_certs_rejects_shell_expression_without_execution(
+    prepared_project: FirstRunProject,
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "substitution-executed"
+    result = subprocess.run(
+        ["just", "certs", f"$(touch {marker})"],
+        cwd=prepared_project.checkout,
+        env=prepared_project.env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert not marker.exists()
+    assert "usage: just certs [--force]" in result.stderr
+
+
+def _run_orchestrator_startup(project: FirstRunProject) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            [
+                "docker",
+                "compose",
+                "up",
+                "--build",
+                "--abort-on-container-exit",
+                "--no-log-prefix",
+                "orchestrator",
+            ],
+            cwd=project.checkout,
+            env=project.env,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    finally:
+        subprocess.run(
+            ["docker", "compose", "down", "--volumes", "--remove-orphans"],
+            cwd=project.checkout,
+            env=project.env,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+
+def test_step_2_compose_dependency_gate_blocks_orchestrator_startup(
+    prepared_project: FirstRunProject,
+) -> None:
+    initial = _run_certs_init(prepared_project)
+    assert initial.returncode == 0, initial.stderr
+    _mutate_cert_material(
+        prepared_project,
+        "rm -f /certs/.dev-ca && printf operator-owned-ca > /certs/acheron-ca.crt && "
+        "printf operator-owned-key > /certs/acheron-ca.key",
+    )
+
+    result = _run_orchestrator_startup(prepared_project)
+    output = result.stdout + result.stderr
+
+    assert result.returncode != 0
+    assert "dependency failed to start" in output
+    assert "orchestrator" not in [line for line in output.splitlines() if " Started" in line]
 
 
 def _assert_edge_override(
