@@ -1,7 +1,7 @@
 ---
 theme: DEPLOY
 last_updated_date: 2026-08-02
-version: 5
+version: 6
 ---
 
 # DEPLOY
