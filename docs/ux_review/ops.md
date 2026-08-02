@@ -90,8 +90,8 @@ user_journey: "Operator runs `acheron job submit book.epub --src en --dest xx` (
 files:
   - path: src/acheron/cli.py
     lines: 113-133
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 57-64
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 390-427
 related: [SEC-006, SEC-012, SEC-019]
 fixed_in: ["6992588"]
 verified_in: []
@@ -122,8 +122,8 @@ user_journey: "Operator submits a job with `--src en --dest es --asr whisper-v3`
 files:
   - path: src/acheron/core/schemas.py
     lines: 70-99
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 433-489
+  - path: src/acheron/shell/api/routes/job_responses.py
+    lines: 49-123
 related: [TYPE-005]
 fixed_in: [7201c4c, 09ab91a, e08bb25, 1cefba5]
 verified_in: []
@@ -161,7 +161,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
+  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
@@ -372,7 +372,7 @@ fixed_in: ["4750302", "1f5514c", "CURRENT_HEAD"]
 verified_in: ["1f5514c", "CURRENT_HEAD"]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
+  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
   date: "2026-07-30"
 verified_by: "harness:pytest+just-validate"
 feedback_ref: "TBD-pagerduty"
@@ -459,7 +459,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
+  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 drift_note: "Time-window/status/archive controls and archive metadata are covered by the Task 10 recovery journey."
@@ -492,8 +492,8 @@ user_journey: "Operator runs a 5-step job, step 3 fails, runs `acheron job statu
 files:
   - path: src/acheron/core/schemas.py
     lines: 12-23
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 96-108
+  - path: src/acheron/shell/api/routes/job_responses.py
+    lines: 38-123
 related: [OPS-001, OPS-011, OPS-023]
 fixed_in: [ea768e6, 5f10f6a, d32c494]
 verified_in: []
@@ -607,8 +607,8 @@ files:
     lines: 270-312
   - path: src/acheron/api_client.py
     lines: 99-122
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 73-150
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 155-227
   - path: src/acheron/shell/orchestrator.py
     lines: 405-435
   - path: tests/shell/test_cli.py
@@ -683,8 +683,8 @@ user_journey: "Operator runs `acheron job submit book.epub --src en --dest es --
 files:
   - path: src/acheron/cli.py
     lines: 242-286
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 69-95
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 365-427
   - path: tests/shell/api/test_jobs.py
     lines: 585-611
 related: [OPS-029, OPS-003]
@@ -719,10 +719,10 @@ silent: true
 journey_stage: t1
 user_journey: "Operator submits a job while all TTS workers are in `BOOTING`, sees `Job submitted: job-abc12345` and a `RUNNING` status badge, expects the response or the status badge to read 'queued: TTS workers BOOTING (202s elapsed); cold-start typical 30-90s'."
 files:
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 68-73
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 111-133
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 365-427
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 365-427
   - path: src/acheron/core/schemas.py
     lines: 12-24
   - path: src/acheron/cli.py
@@ -832,7 +832,7 @@ fixed_in: [8357163c, 8c0f119, d08dafc, 6ae39df, 0e6ab4e, 16898af, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
+  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-12-correlation"
 feedback_ref: "TBD-pagerduty"
@@ -939,8 +939,8 @@ files:
     lines: 242-286
   - path: src/acheron/shell/api/routes/inputs.py
     lines: 15-52
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 25-93
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 72-227
   - path: src/acheron/shell/input_store.py
     lines: 49-150
   - path: src/acheron/shell/local_handlers.py
@@ -1021,10 +1021,10 @@ files:
     lines: 674-820
   - path: src/acheron/api_client.py
     lines: 316-343
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 185-265
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 465-490
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 155-227
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 449-467
   - path: src/acheron/core/planner.py
     lines: 69-82
   - path: src/acheron/core/planner.py
@@ -1042,7 +1042,7 @@ fixed_in: [8aea0cb, CURRENT_HEAD]
 verified_in: [8aea0cb, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
+  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
   date: "2026-07-31"
 verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
@@ -1072,8 +1072,8 @@ user_journey: "Operator runs `acheron job submit recording.mp3 --src en --dest e
 files:
   - path: src/acheron/cli.py
     lines: 247-280
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 84-95
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 155-227
   - path: tests/shell/api/test_jobs.py
     lines: 557-583
   - path: tests/shell/test_cli.py
@@ -1119,7 +1119,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 587fcf17ea0031a94d852483a040b20f905e05acdb75a76dc14fa76a4fc8da86
+  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"

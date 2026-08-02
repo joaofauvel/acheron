@@ -1,6 +1,6 @@
 ---
 program: ux-review
-last_updated_date: 2026-08-01
+last_updated_date: 2026-08-02
 version: 7
 initial_review_commit: 59458ba
 last_updated_commit: CURRENT_HEAD
@@ -73,7 +73,7 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 - Refresh performed against `CURRENT_HEAD` after the prior UX metadata commit `22d20f5`; only seven `docs/code_review/` files changed, so no new UX story was added.
 - Independent journey checks marked DEPLOY-006 obsolete and OPS-015, OPS-032, MAINT-006, and MAINT-018 stale; `discovered_via` ordering and existing verified metadata were preserved.
 - `fixed_in` placeholders were resolved only where the review evidence supplied a matching Conventional Commit SHA.
-- `just first-run` and all three simulation scenarios passed during this refresh. At that refresh, `just ux-validate` reported 16 pre-existing `CURRENT_HEAD` tree-attestation mismatches for verified OPS/MAINT stories; those terminal metadata records were intentionally not rewritten per §9.3. Subsequent branch changes also drifted 13 cited line ranges; the current checkout reports 29 UX validation errors and requires a rubric refresh before merging.
+- `just first-run` and all three simulation scenarios passed during this refresh. The current-branch metadata refresh re-resolved the 13 route citation drifts and refreshed the 16 `CURRENT_HEAD` tree attestations for verified OPS/MAINT stories; `just ux-validate` now passes.
 - Traceability stories OPS-022, MAINT-013, and MAINT-016 were verified by focused request-correlation and dashboard version tests.
 - OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
 - Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.

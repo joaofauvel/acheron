@@ -288,7 +288,7 @@
 - [x] **Step 5: Run the CLI/help tests and `just validate`; record any pre-existing `just ux-validate` rubric drift explicitly.**
 - [x] **Step 6: Completed in implementation commit `5ba5e48`; metadata follow-up `0cbc2d8` and UX-gate decision `1ef2524` followed.**
 
-**Execution note:** The story permits a separate UX gate. The branch keeps `just validate` green as the authoritative code gate and documents strict `just ux-validate` as required before merge. The current UX failure comprises 16 pre-existing attestation mismatches plus 13 citation drifts introduced by subsequent branch changes; refreshing that rubric remains outside this code-review scope.
+**Execution note:** The story permits a separate UX gate. The branch keeps `just validate` green as the authoritative code gate and documents strict `just ux-validate` as required before merge. The UX metadata refresh re-resolved 13 route citation drifts and refreshed 16 tree attestations; `just ux-validate` now passes.
 
 ---
 
@@ -309,5 +309,5 @@ After Task 9:
 - Plan finalization and traceability commits: `1ef2524` (UX-gate decision), `b6d51f8`, `1c56dfe`, `1914b1c`, `21a57b9`, `69416ea`, and `fdd91ce`; subsequent plan-only edits remain represented by this canonical handoff artifact.
 - Final verification: `just validate` passed with 1,756 tests passed and 9 skipped; final broad review found no blocker/high/medium residuals. The post-correction rerun also exited 0 with Ruff, import-linter, mypy, basedpyright, and coverage passing.
 - Review inventory: 276 total stories; 196 verified, 61 fixed, 7 open low-severity, and 12 stale.
-- Deferred gate: strict `just ux-validate` remains a required separate pre-merge gate and currently reports 29 errors: 16 pre-existing attestation mismatches plus 13 later citation drifts. Refreshing that rubric is outside this code-review plan.
+- UX gate: strict `just ux-validate` remains a required separate pre-merge gate; the current metadata refresh re-resolved 13 route citations and refreshed 16 tree attestations, and the gate now passes.
 - Canonical artifacts: the tracked plan is `docs/superpowers/plans/2026-08-01-code-review-medium-high-tackle-plan.md`; the execution ledger is the ignored `.superpowers/sdd/2026-08-01-code-review-medium-high-tackle-plan/progress.md`.
