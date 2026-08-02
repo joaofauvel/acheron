@@ -65,7 +65,7 @@ The UX rubric remains a separate required pre-merge gate; its current checkout r
 
 **Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers, local handlers, and Redis or in-memory stores.
 
-**Branch / HEAD**: `fix/code-review-medium-high` at `f772fee` (final metadata and citation refresh).
+**Branch / HEAD**: `fix/code-review-medium-high`; review metadata was last scanned at `f772fee`, followed by plan finalization commits.
 
 **Top-level layout**: `src/` contains `acheron`; `tests/` mirrors core, shell, worker SDK, integration, first-run, simulation, scripts, and UX-review surfaces; `dashboard/`, `workers/`, `stubs/`, `proto/`, `sim/`, `compose/`, `scripts/`, and `docs/` provide supporting applications, deployment, tooling, and plans/specs.
 
