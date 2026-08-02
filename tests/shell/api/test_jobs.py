@@ -24,9 +24,15 @@ from acheron.core.models import (
     WorkerStatus,
     WorkerType,
 )
-from acheron.shell.api.routes import jobs as jobs_module
-from acheron.shell.api.routes.jobs import _booting_tts_warnings, _build_retry_request, _tracked_to_response
+from acheron.shell.api.routes.job_requests import (
+    booting_tts_warnings as _booting_tts_warnings,
+    build_retry_request as _build_retry_request,
+    submit_job,
+)
+from acheron.shell.api.routes.job_responses import tracked_to_response as _tracked_to_response
+from acheron.shell.api.routes.job_streams import job_logs
 from acheron.shell.registry import RegisteredWorker
+from acheron.shell.stores.base import StoreError
 
 if TYPE_CHECKING:
     from acheron.shell.config import Settings
@@ -1079,7 +1085,7 @@ class TestJobRoutes:
             data_dir=tmp_path,
         )
         await app.state.orchestrator.start()
-        monkeypatch.setattr("acheron.shell.api.routes.jobs.time.time", lambda: 1000.0)
+        monkeypatch.setattr("acheron.shell.api.routes.job_requests.time.time", lambda: 1000.0)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -1108,7 +1114,49 @@ class TestJobRoutes:
         from typing import cast
 
         from acheron.core.models import PlanStatus
-        from acheron.shell.api.routes import jobs as jobs_route
+        from acheron.shell.api.schemas import SubmitJobRequest
+        from acheron.shell.config import Settings
+        from acheron.shell.job_store import TrackedJob
+
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "book.epub").write_bytes(b"epub-fixture-bytes")
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+
+        class FailingInspectionOrchestrator:
+            def __init__(self) -> None:
+                self.settings = settings
+
+            async def submit_job(self, request: EpubRequest, strategy: ExecutorStrategy) -> TrackedJob:
+                return TrackedJob(
+                    job_id="job-accepted",
+                    request=request,
+                    strategy=strategy,
+                    status=PlanStatus.RUNNING,
+                )
+
+            async def list_workers(self) -> tuple[RegisteredWorker, ...]:
+                raise StoreError("registry unavailable")
+
+        result = await submit_job(
+            SubmitJobRequest(
+                source_type="epub",
+                source_path="input/book.epub",
+                source_language="en",
+                target_language="es",
+            ),
+            cast("Orchestrator", FailingInspectionOrchestrator()),
+            None,
+        )
+        assert result.status is PlanStatus.RUNNING
+        assert result.warnings == []
+
+    @pytest.mark.asyncio
+    async def test_submit_job_unexpected_warning_inspection_failure_propagates(self, tmp_path: Path) -> None:
+        from typing import cast
+
+        from acheron.core.models import PlanStatus
         from acheron.shell.api.schemas import SubmitJobRequest
         from acheron.shell.config import Settings
         from acheron.shell.job_store import TrackedJob
@@ -1134,18 +1182,17 @@ class TestJobRoutes:
             async def list_workers(self) -> tuple[RegisteredWorker, ...]:
                 raise RuntimeError("registry unavailable")
 
-        result = await jobs_route.submit_job(
-            SubmitJobRequest(
-                source_type="epub",
-                source_path="input/book.epub",
-                source_language="en",
-                target_language="es",
-            ),
-            cast("Orchestrator", FailingInspectionOrchestrator()),
-            None,
-        )
-        assert result.status is PlanStatus.RUNNING
-        assert result.warnings == []
+        with pytest.raises(RuntimeError, match="registry unavailable"):
+            await submit_job(
+                SubmitJobRequest(
+                    source_type="epub",
+                    source_path="input/book.epub",
+                    source_language="en",
+                    target_language="es",
+                ),
+                cast("Orchestrator", FailingInspectionOrchestrator()),
+                None,
+            )
 
     @pytest.mark.asyncio
     async def test_job_logs_ndjson_stream(self, client: AsyncClient) -> None:
@@ -1189,11 +1236,11 @@ class TestJobRoutes:
 
         from httpx import ASGITransport, AsyncClient
 
-        from acheron.core.models import PlanStatus
+        from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
         from acheron.core.schemas import JobLogEvent
         from acheron.shell.api.app import create_app
         from acheron.shell.cache import PlanCache
-        from acheron.shell.job_store import JobProgressState
+        from acheron.shell.job_store import JobProgressState, TrackedJob
         from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
         from tests.shell.conftest import asr_caps, translation_caps, tts_caps
 
@@ -1217,29 +1264,19 @@ class TestJobRoutes:
         try:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as c:
-                resp = await c.post(
-                    "/jobs",
-                    json={
-                        "source_type": "epub",
-                        "source_path": "input/book.epub",
-                        "source_language": "en",
-                        "target_language": "es",
-                    },
-                )
-                assert resp.status_code == 201
-                job_id = resp.json()["job_id"]
-
-                # Force the job to a terminal state.
-                tracked = await jobs.get(job_id)
-                assert tracked is not None
+                job_id = "job-terminal"
                 now = datetime.now(UTC)
-                tracked.status = PlanStatus.COMPLETED
-                tracked.last_persisted_at = now
-                tracked.progress = JobProgressState(
-                    completed_steps=1,
-                    total_steps=1,
+                await jobs.put(
+                    TrackedJob(
+                        job_id=job_id,
+                        request=EpubRequest("input/book.epub", "en", "es"),
+                        strategy=ExecutorStrategy.STREAMING,
+                        status=PlanStatus.COMPLETED,
+                        created_at=now,
+                        last_persisted_at=now,
+                        progress=JobProgressState(completed_steps=1, total_steps=1),
+                    )
                 )
-                await jobs.put(tracked)
 
                 # follow=true must NOT hang on a terminal job.
                 logs_resp = await asyncio.wait_for(
@@ -1301,9 +1338,7 @@ class TestJobRoutes:
             async def get_job(self, job_id: str) -> TrackedJob | None:
                 return tracked if job_id == tracked.job_id else None
 
-        route_task = asyncio.create_task(
-            jobs_module.job_logs("job-race", cast("Orchestrator", FakeOrchestrator()), None)
-        )
+        route_task = asyncio.create_task(job_logs("job-race", cast("Orchestrator", FakeOrchestrator()), None))
         await asyncio.wait_for(subscribe_started.wait(), timeout=1.0)
         await broker.finish("job-race")
         allow_subscribe.set()
@@ -1341,7 +1376,7 @@ class TestJobRoutes:
             async def get_job(self, job_id: str) -> TrackedJob | None:
                 return tracked if job_id == tracked.job_id else None
 
-        response = await jobs_module.job_logs(
+        response = await job_logs(
             "job-disconnect",
             cast("Orchestrator", FakeOrchestrator()),
             None,
@@ -1547,7 +1582,7 @@ class TestJobRoutePreflight:
         def fail_inspect(_source: Path) -> list[str]:
             raise OSError("/private/data/book.epub: permission denied")
 
-        monkeypatch.setattr(jobs_module, "read_epub_chapters", fail_inspect)
+        monkeypatch.setattr("acheron.shell.api.routes.job_requests.read_epub_chapters", fail_inspect)
         response = await client.post(
             "/jobs",
             json={

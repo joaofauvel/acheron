@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from acheron.core.errors import JobNotFoundError
 from acheron.core.schemas import CostSummaryResponse, CostWindowQuery, JobCostResponse
 from acheron.shell.api.deps import OrchestratorDep, RegistrationTokenDep  # noqa: TC001
-from acheron.shell.api.routes.jobs import _error_response
+from acheron.shell.api.routes.job_responses import error_response
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ async def get_job_cost(job_id: str, orch: OrchestratorDep, _token: RegistrationT
     cost = await orch.get_job_cost(job_id)
     if cost is None:
         error = JobNotFoundError("job not found")
-        raise HTTPException(status_code=404, detail=_error_response(error).model_dump()) from error
+        raise HTTPException(status_code=404, detail=error_response(error).model_dump()) from error
     return cost
 
 

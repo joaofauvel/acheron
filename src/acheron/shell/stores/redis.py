@@ -818,13 +818,16 @@ class RedisWorkerStore(WorkerStore):
 
     async def list_all(self) -> tuple[RegisteredWorker, ...]:
         """Return all registered workers, sorted by id for deterministic ordering."""
-        ids = sorted(await self._redis.smembers(_WORKERS_SET))
-        if not ids:
-            return ()
-        async with self._redis.pipeline(transaction=False) as pipe:
-            for wid in ids:
-                pipe.hgetall(_WORKER_KEY.format(worker_id=wid))
-            results = await pipe.execute()
+        try:
+            ids = sorted(await self._redis.smembers(_WORKERS_SET))
+            if not ids:
+                return ()
+            async with self._redis.pipeline(transaction=False) as pipe:
+                for wid in ids:
+                    pipe.hgetall(_WORKER_KEY.format(worker_id=wid))
+                results = await pipe.execute()
+        except RedisError as exc:
+            raise StoreError("Failed to list workers") from exc
         worker_results = cast("list[dict[str, str]]", results)
         return tuple(
             _deserialize_worker(wid, fields) for wid, fields in zip(ids, worker_results, strict=True) if fields

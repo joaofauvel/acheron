@@ -65,13 +65,11 @@ last_verified_at:
 fixed_in: ["f129ae2"]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 65-87
+    lines: 307-319
   - path: src/acheron/shell/stores/redis.py
-    lines: 104-105
+    lines: 393-453
   - path: src/acheron/shell/stores/redis.py
-    lines: 117
-  - path: src/acheron/shell/stores/redis.py
-    lines: 129
+    lines: 463-753
 related: [DATA-002, MAINT-015]
 ```
 
@@ -708,7 +706,7 @@ last_verified_at:
 fixed_in: ["fa59797"]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 18-49
+    lines: 60-89
 related: [TYPE-012]
 ```
 
@@ -761,14 +759,10 @@ last_verified_at:
   date: 2026-06-25
 fixed_in: [00222e1]
 files:
-  - path: src/acheron/shell/api/schemas.py
-    lines: 31
-  - path: src/acheron/shell/api/schemas.py
-    lines: 38
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 90
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 96
+  - path: src/acheron/core/schemas.py
+    lines: 161-190
+  - path: src/acheron/shell/api/routes/job_responses.py
+    lines: 49-122
 related: [TYPE-004]
 ```
 
@@ -1170,11 +1164,13 @@ last_verified_at:
 fixed_in: [0eab5cf]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 29-49
+    lines: 60-89
   - path: src/acheron/shell/stores/redis.py
-    lines: 311-316
+    lines: 278-303
   - path: src/acheron/shell/stores/redis.py
-    lines: 423-428
+    lines: 760-762
+  - path: src/acheron/shell/stores/redis.py
+    lines: 922-924
 related: [TYPE-003]
 ```
 
@@ -1241,7 +1237,7 @@ last_verified_at:
 fixed_in: [a50de1a]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 29-143
+    lines: 38-155
 related: [TYPE-012]
 ```
 
@@ -1262,9 +1258,11 @@ last_verified_at:
 fixed_in: [aecd1aa]
 files:
   - path: src/acheron/shell/stores/redis.py
-    lines: 83-96
+    lines: 108-130
   - path: src/acheron/shell/stores/redis.py
-    lines: 108-126
+    lines: 136-155
+  - path: src/acheron/shell/stores/redis.py
+    lines: 278-303
 related: [TYPE-012, TYPE-013, CORR-043, TEST-028]
 ```
 
@@ -1286,14 +1284,14 @@ severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 75d5b7e
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["75d5b7e"]
 files:
   - path: src/acheron/shell/job_events.py
     lines: 20-130
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 579-588
+  - path: src/acheron/shell/api/routes/job_streams.py
+    lines: 21-72
 related: [CORR-045, PERF-012, TEST-033]
 ```
 
@@ -1308,17 +1306,25 @@ related: [CORR-045, PERF-012, TEST-033]
 ### MAINT-025 — `jobs.py` has grown into a 747-line multi-concern route module
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
-    lines: 194-409, 411-638, 644-751
+    lines: 1-21
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 1-467
+  - path: src/acheron/shell/api/routes/job_streams.py
+    lines: 1-72
+  - path: src/acheron/shell/api/routes/job_lifecycle.py
+    lines: 1-97
+  - path: src/acheron/shell/api/routes/job_responses.py
+    lines: 1-122
 related: []
 ```
 
@@ -1335,17 +1341,17 @@ related: []
 ### EXC-006 — Optional BOOTING warnings swallow unexpected failures
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 442-446
+  - path: src/acheron/shell/api/routes/job_requests.py
+    lines: 390-427
 related: []
 ```
 

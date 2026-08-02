@@ -15,7 +15,7 @@ from acheron.core.errors import (
 from acheron.core.schemas import AdminJobResponse, ReapStaleResponse
 from acheron.shell.api.admin_audit import AdminAuditDetails, execute_admin_action
 from acheron.shell.api.deps import AdminTokenDep, OrchestratorDep  # noqa: TC001
-from acheron.shell.api.routes.jobs import _tracked_to_response
+from acheron.shell.api.routes.job_responses import tracked_to_response
 from acheron.shell.api.schemas import (
     AdminErrorResponse,
     ArchiveRequest,
@@ -103,7 +103,7 @@ async def mark_failed(
         except AcheronError as exc:
             status_code = 404 if isinstance(exc, JobNotFoundError) else 409
             raise _admin_error(exc, status_code=status_code) from exc
-        return AdminJobResponse(job=_tracked_to_response(tracked))
+        return AdminJobResponse(job=tracked_to_response(tracked))
 
     return await execute_admin_action(
         request,
@@ -133,7 +133,7 @@ async def archive(
         except AcheronError as exc:
             status_code = 404 if isinstance(exc, JobNotFoundError) else 409
             raise _admin_error(exc, status_code=status_code) from exc
-        return AdminJobResponse(job=_tracked_to_response(tracked))
+        return AdminJobResponse(job=tracked_to_response(tracked))
 
     return await execute_admin_action(
         request,

@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import cast
+from typing import Self, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,7 +12,8 @@ import redis.asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from acheron.core.models import JsonValue, WorkerCapabilities, WorkerStatus, WorkerType
-from acheron.shell.stores.redis import RedisWorkerStore
+from acheron.shell.stores.base import StoreError
+from acheron.shell.stores.redis import RedisWorkerStore, _RedisAwaitable
 
 
 def _tts_caps() -> WorkerCapabilities:
@@ -195,11 +196,37 @@ class TestCorruption:
             await store.get("w-bad-status")
 
     @pytest.mark.asyncio
+    async def test_list_all_invalid_worker_status_is_not_store_error(
+        self, store: RedisWorkerStore, redis_url: str
+    ) -> None:
+        """Malformed worker hashes must preserve deserialization errors through list_all."""
+        from acheron.core.errors import CacheCorruptedError
+        from acheron.shell.stores.redis import _WORKER_KEY, _WORKERS_SET, _serialize_capabilities
+
+        r = aioredis.Redis.from_url(redis_url)
+        await r.hset(  # type: ignore[misc]
+            _WORKER_KEY.format(worker_id="w-list-bad-status"),
+            mapping={
+                "metadata_json": "{}",
+                "capabilities_json": _serialize_capabilities(_tts_caps()),
+                "status": "garbage",
+                "endpoint": "http://h",
+                "transport": "http",
+            },
+        )
+        await r.sadd(_WORKERS_SET, "w-list-bad-status")  # type: ignore[misc]
+        await r.aclose()
+
+        with pytest.raises(CacheCorruptedError, match="invalid status: garbage") as exc_info:
+            await store.list_all()
+        assert not isinstance(exc_info.value, StoreError)
+
+    @pytest.mark.asyncio
     async def test_booting_without_timestamp_raises_chained_cache_corrupted(
         self, store: RedisWorkerStore, redis_url: str
     ) -> None:
         from acheron.core.errors import CacheCorruptedError
-        from acheron.shell.stores.redis import _WORKER_KEY, _RedisAwaitable, _serialize_capabilities
+        from acheron.shell.stores.redis import _WORKER_KEY, _serialize_capabilities
 
         r = cast("_RedisAwaitable", aioredis.Redis.from_url(redis_url, decode_responses=True))
         await r.hset(
@@ -352,6 +379,39 @@ class TestFailFast:
         store = RedisWorkerStore("redis://localhost:1")
         with pytest.raises((RedisConnectionError, redis.RedisError)):
             await store.connect()
+
+
+class TestFailureNormalization:
+    @pytest.mark.asyncio
+    async def test_list_all_chains_redis_error_as_store_error(self) -> None:
+        class _FailingPipeline:
+            async def __aenter__(self) -> Self:
+                return self
+
+            async def __aexit__(self, *_args: object) -> None:
+                return None
+
+            def hgetall(self, *_args: object) -> _FailingPipeline:
+                return self
+
+            async def execute(self) -> list[object]:
+                raise redis.RedisError("worker registry unavailable")
+
+        class _FailingRedis:
+            async def smembers(self, _name: str) -> set[str]:
+                return {"w-1"}
+
+            def pipeline(self, **_kwargs: object) -> _FailingPipeline:
+                return _FailingPipeline()
+
+        store = object.__new__(RedisWorkerStore)
+        store._redis = cast("_RedisAwaitable", _FailingRedis())  # noqa: SLF001
+
+        with pytest.raises(StoreError, match="Failed to list workers") as exc_info:
+            await store.list_all()
+
+        assert isinstance(exc_info.value.__cause__, redis.RedisError)
+        assert str(exc_info.value) == "Failed to list workers"
 
 
 class TestConnectIdempotency:
