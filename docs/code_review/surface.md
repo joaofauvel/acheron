@@ -749,9 +749,9 @@ severity: high
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 6aa2f8a
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["6aa2f8a"]
 files:
   - path: dashboard/app.py
     lines: 162-209

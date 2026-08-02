@@ -1433,9 +1433,9 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 6aa2f8a
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["6aa2f8a"]
 files:
   - path: dashboard/app.py
     lines: 212-225
@@ -1597,7 +1597,7 @@ severity: low
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 6aa2f8a
   date: 2026-08-01
 fixed_in: []
 files:

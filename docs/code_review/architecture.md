@@ -1352,7 +1352,7 @@ severity: low
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 6aa2f8a
   date: 2026-08-01
 fixed_in: []
 files:
