@@ -1,10 +1,10 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: 5ba5e48
+last_updated_commit: f772fee
 last_staleness_scan:
-  commit: 5ba5e48
-  date: 2026-08-01
+  commit: f772fee
+  date: 2026-08-02
 ---
 
 # Code Review Summary
@@ -57,7 +57,7 @@ No open high- or medium-severity code-review stories remain.
 
 ## Changes Since Last Review
 
-The review was refreshed through `5ba5e48`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, durable administrative audits, dashboard URL separation, combined cost polling, measured RunPod pricing, spooled multipart input handling, nested output-directory symlink coverage, malformed-WAV rejection coverage, administrative CLI documentation, and validation-gate documentation; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
+The review was refreshed through `f772fee`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, durable administrative audits, dashboard URL separation, combined cost polling, measured RunPod pricing, spooled multipart input handling, nested output-directory symlink coverage, malformed-WAV rejection coverage, administrative CLI documentation, and validation-gate documentation; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
 
 The UX rubric remains a separate required pre-merge gate; its current checkout reports 29 metadata errors: 16 pre-existing attestation mismatches plus 13 later citation drifts. It requires a rubric refresh before merge.
 
@@ -65,7 +65,7 @@ The UX rubric remains a separate required pre-merge gate; its current checkout r
 
 **Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers, local handlers, and Redis or in-memory stores.
 
-**Branch / HEAD**: `fix/code-review-medium-high` at `5ba5e48` (implementation commit; review-metadata follow-up may be newer).
+**Branch / HEAD**: `fix/code-review-medium-high` at `f772fee` (final metadata and citation refresh).
 
 **Top-level layout**: `src/` contains `acheron`; `tests/` mirrors core, shell, worker SDK, integration, first-run, simulation, scripts, and UX-review surfaces; `dashboard/`, `workers/`, `stubs/`, `proto/`, `sim/`, `compose/`, `scripts/`, and `docs/` provide supporting applications, deployment, tooling, and plans/specs.
 

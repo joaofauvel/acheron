@@ -1,10 +1,10 @@
 ---
-branch: docs/code-review-refresh
+branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+last_updated_commit: f772fee
 last_staleness_scan:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
-  date: 2026-08-01
+  commit: f772fee
+  date: 2026-08-02
 ---
 
 # Surface
