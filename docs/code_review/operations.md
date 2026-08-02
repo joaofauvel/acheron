@@ -1467,9 +1467,9 @@ last_verified_at:
 fixed_in: ["2a11136"]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 563-564, 1392-1395
+    lines: 917-920
   - path: src/acheron/shell/step_handler.py
-    lines: 215-247, 258-299
+    lines: 215-303
   - path: src/acheron/shell/transports/http.py
     lines: 157-186
 related: [PERF-003]
