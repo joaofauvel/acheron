@@ -8,10 +8,11 @@ and the malformed-PEM paths that the integration tests skip.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -136,6 +137,21 @@ class TestCertificateManager:
         assert status is not None
         assert status.remaining_display == "0d 1h 2m"
 
+    def test_certificate_status_normalizes_utc_timestamps(
+        self,
+        certificate_bundle: CertificateFactory,
+    ) -> None:
+        offset = timezone(timedelta(hours=2))
+        local_now = datetime(2026, 8, 2, 2, tzinfo=offset)
+        bundle = certificate_bundle(local_now + timedelta(days=31))
+
+        status = _manager(bundle).status(now=local_now)
+
+        assert status is not None
+        assert status.expires_at == bundle.expires_at.astimezone(UTC)
+        assert status.remaining == timedelta(days=31)
+        assert status.expires_at.tzinfo is UTC
+
     def test_certificate_monitor_logs_startup_info(
         self,
         certificate_bundle: CertificateFactory,
@@ -258,6 +274,66 @@ class TestCertificateManager:
             manager.reload()
 
         assert manager.ssl_context is context_before
+
+    def test_certificate_manager_reload_keeps_old_context_when_status_fails_late(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class TrackingContext:
+            active_certificate = "old"
+
+            def load_cert_chain(self, *, certfile: str, keyfile: str) -> None:
+                del certfile, keyfile
+                self.active_certificate = "replacement"
+
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=31))
+        manager = _manager(bundle)
+        context = TrackingContext()
+        manager.ssl_context = context
+
+        def fail_status(*args: object, **kwargs: object) -> tls.CertificateStatus:
+            del args, kwargs
+            raise tls.CertificateError("status failed")
+
+        monkeypatch.setattr(manager, "_status_for_certificate", fail_status)
+
+        with pytest.raises(tls.CertificateError, match="reload"):
+            manager.reload()
+
+        assert context.active_certificate == "old"
+
+    @pytest.mark.asyncio
+    async def test_certificate_monitor_start_and_stop_are_deterministic(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=31))
+        manager = _manager(bundle)
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def controlled_monitor() -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        monkeypatch.setattr(manager, "_monitor", controlled_monitor)
+
+        await manager.start()
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        await manager.stop()
+
+        assert cancelled.is_set()
 
     def test_manager_is_disabled_when_tls_pair_is_unset(
         self,

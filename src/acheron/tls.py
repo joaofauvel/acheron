@@ -105,9 +105,11 @@ class CertificateManager:
             return "warning"
         return "ok"
 
-    def status(self, now: datetime | None = None) -> CertificateStatus | None:
-        """Return current certificate metadata and expiry severity."""
-        certificate = self._certificate()
+    def _status_for_certificate(
+        self,
+        certificate: x509.Certificate,
+        now: datetime | None = None,
+    ) -> CertificateStatus:
         expires_at = certificate.not_valid_after_utc.astimezone(UTC)
         remaining = expires_at - self._utc_now(now)
         return CertificateStatus(
@@ -117,6 +119,10 @@ class CertificateManager:
             remaining=remaining,
             severity=self._severity(remaining),
         )
+
+    def status(self, now: datetime | None = None) -> CertificateStatus | None:
+        """Return current certificate metadata and expiry severity."""
+        return self._status_for_certificate(self._certificate(), now=now)
 
     def _threshold(self, status: CertificateStatus) -> tuple[int, int, str] | None:
         remaining = status.remaining
@@ -152,18 +158,13 @@ class CertificateManager:
                 self._emitted_thresholds.add(marker)
         return status
 
-    @staticmethod
-    def _require_status(status: CertificateStatus | None) -> CertificateStatus:
-        if status is None:
-            raise CertificateError("TLS certificate status is unavailable")
-        return status
-
     def reload(self) -> CertificateStatus:
         """Validate and activate the current certificate/key pair."""
-        self._load_context()
         try:
+            certificate = self._certificate()
+            status = self._status_for_certificate(certificate)
+            self._load_context()
             self.ssl_context.load_cert_chain(certfile=str(self.cert_path), keyfile=str(self.key_path))
-            status = self._require_status(self.status())
         except (OSError, ssl.SSLError, ValueError, CertificateError) as exc:
             message = f"Unable to reload TLS certificate pair for {self.name}"
             raise CertificateError(
