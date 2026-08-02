@@ -36,7 +36,9 @@ proto:
 first-run *args:
     uv run pytest tests/first_run --first-run --no-cov -n 0 -q {{args}}
 
-# Full validation pipeline: lint, type-check, then test
+# Full code validation pipeline: lint, type-check, then test.
+# `just ux-validate` is a required separate pre-merge gate; refresh stale
+# rubric citations or tree attestations before merging when it reports errors.
 validate: lint-strict lint-imports type-check type-check-pyright test
 
 # Install all dependencies including dev

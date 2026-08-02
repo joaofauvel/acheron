@@ -29,9 +29,9 @@ docker compose up --build
 ```
 
 The stack comes up with these default services. Administrative mutations
-(`acheron admin ...`) require a separate `ACHERON_ADMIN_TOKEN`; set it in `.env`
-when using cleanup, archive, or recovery commands. It must not be reused as the
-worker registration token.
+require a separate `ACHERON_ADMIN_TOKEN`; set it in `.env` before using the
+operator commands below. It must not be reused as the worker registration
+token.
 
 - **Orchestrator** at `https://localhost:8000`. TLS is auto-enabled because the `certs-init` one-shot service generates a self-signed CA and per-service certs into `./certs/` on first run, and the compose file mounts them into every container.
 - **Dashboard** at `http://localhost:8080`.
@@ -91,16 +91,33 @@ The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8
 
 ## Administrative Operations
 
-Operator-only mutations such as job archive, cleanup, and stale-job recovery use
-`ACHERON_ADMIN_TOKEN`, not `ACHERON_REGISTRATION_TOKEN`. Set the admin token in
-`.env` before running these commands; leaving it unset disables administrative
+Operator-only mutations use `ACHERON_ADMIN_TOKEN`, not
+`ACHERON_REGISTRATION_TOKEN`. Compose reads this token from `.env`; when running
+the host CLI, export it in the process environment (for example,
+`export ACHERON_ADMIN_TOKEN="..."`). Leaving it unset disables administrative
 mutations.
+
+```bash
+# Archive one or more completed or failed jobs without deleting their records.
+acheron job archive job-xyz job-abc
+
+# Preview terminal-job cleanup; durations accept bare/decimal seconds or
+# s, m, h, and d suffixes (for example, 90, 30s, or 1.5h).
+acheron cleanup --keep-successful 30d --keep-failed 90d
+
+# Apply the same retention cleanup.
+acheron cleanup --keep-successful 30d --keep-failed 90d --apply
+
+# Reap jobs that have been running longer than the given duration.
+acheron admin reap-stuck --older-than 30m --reason "worker stopped reporting"
+```
 
 ## Development
 
 The `Justfile` defines the development workflow. Run `just` to list all targets.
 
-- `just validate` — full pipeline: `lint-strict`, `lint-imports`, `type-check` (mypy), `type-check-pyright` (basedpyright), `test`.
+- `just validate` — code pipeline: `lint-strict`, `lint-imports`, `type-check` (mypy), `type-check-pyright` (basedpyright), `test`.
+- `just ux-validate` — required separate pre-merge gate for the `docs/ux_review/` rubric; run it after `just validate`. If it reports stale rubric citations or tree attestations, refresh the rubric before merging.
 - `just lint-strict` — auto-format and ruff check.
 - `just lint-imports` — enforce import boundaries (no `core/` → `shell/`, no `worker_sdk/` → `shell/`, no `workers/` → `shell/`).
 - `just type-check` — mypy on `src/`, `tests/`, and worker packages.
