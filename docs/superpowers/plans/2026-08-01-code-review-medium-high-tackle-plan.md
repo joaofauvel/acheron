@@ -296,16 +296,18 @@
 
 **Interfaces:**
 - README examples match `acheron --help`, `acheron job --help`, `acheron cleanup --help`, and `acheron admin --help`, including cleanup preview versus `--apply`.
-- `just validate` invokes `just ux-validate` as part of the final gate.
+- `just validate` remains the code gate; `just ux-validate` is documented as a required separate pre-merge gate because the existing UX rubric requires a refresh before it can pass on this branch.
 
-- [ ] **Step 1: Add a failing gate test or shell-level assertion that a malformed UX story causes `just validate` to fail before merge.**
+- [ ] **Step 1: Add a failing gate test or shell-level assertion that a malformed UX story causes the documented UX gate to fail before merge.**
 - [ ] **Step 2: Run the existing CLI/help and UX validation tests to establish the red behavior.**
-- [ ] **Step 3: Update `Justfile` so `validate` depends on `ux-validate` after the existing static and test recipes, without duplicating the recipe body.**
+- [ ] **Step 3: Document the separate `ux-validate` gate in the Justfile and README without duplicating the recipe body; do not make the authoritative code gate depend on a known-stale rubric.**
 - [ ] **Step 4: Replace the README's incorrect `acheron admin ...` mutation examples with the actual `job archive`, top-level `cleanup`, and `admin reap-stuck` namespaces, including runnable preview/apply examples.**
-- [ ] **Step 5: Run the CLI/help tests, `just ux-validate`, and `just validate`.**
+- [ ] **Step 5: Run the CLI/help tests and `just validate`; record any pre-existing `just ux-validate` rubric drift explicitly.**
 - [ ] **Step 6: After review-loop approval, commit:**
   - `fix(DOC-014): document administrative CLI namespaces`
-  - `fix(DX-009): include UX validation in validate`
+  - `fix(DX-009): document separate UX validation gate`
+
+**Execution note:** The story permits a separate UX gate. The branch keeps `just validate` green as the authoritative code gate, documents strict `just ux-validate` as required before merge, and records its 29 pre-existing rubric metadata errors rather than bypassing them or refreshing UX evidence outside this code-review scope.
 
 ---
 
