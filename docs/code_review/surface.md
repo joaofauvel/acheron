@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: f772fee
+last_updated_commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
 last_staleness_scan:
-  commit: f772fee
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
   date: 2026-08-02
 ---
 
@@ -14,6 +14,8 @@ last_staleness_scan:
 **Grade:** A
 
 DX-001 is verified. DX-002 (medium) transitioned to `fixed` in 5b55e6f (README Quick Start replaced `acheron submit` with the canonical `acheron job ...` form). DX-003 (medium) remains open and re-resolved: the new `workers/granite_speech` workspace member widens the gap. No new DX findings at high threshold. **2026-06-26 refresh**: DX-004 added — `.envrc.example:5` uses `uv sync --all-extras` without `--all-packages`, so direnv-activated venvs also miss workspace members.
+
+**2026-08-02 status reconciliation:** `DOC-004` and `DX-010` are verified against the README and CLI cleanup fixes. No active medium-or-higher DX/PKG/DOC stories remain.
 
 ### DX-001 — Quick Start omits `just certs` — fresh clone breaks `docker compose up`
 
@@ -320,27 +322,27 @@ related:
 ### DOC-004 — README architecture tree, CI section, and Test paths omit the new `granite_speech` worker
 
 ```yaml
-status: stale
+status: verified
 severity: medium
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
-  date: 2026-08-01
-fixed_in: []
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
+fixed_in: [5517d3b]
 files:
   - path: README.md
-    lines: 151, 194-196, 237-239, 274
+    lines: 168, 211-213, 254-256, 291
 related: [DOC-003]
 ```
 
-**Issue.** The cited README omission no longer matches the current file: all three worker packages are named at README.md:122, all three published images are listed at README.md:189-191, and all three edge services are listed at README.md:220. The former test-path list is no longer present.
+**Issue.** Before `5517d3b`, the README architecture, image, and edge-service sections omitted the `granite_speech` worker and its deployment references.
 
-**Why it matters.** The previous documentation drift has been addressed, so the original finding remains stale rather than reopening.
+**Why it matters.** Missing worker documentation made the supported ASR deployment surface undiscoverable to operators and developers.
 
-**Recommendation.** No change required for this story; retain it as stale unless a future README revision reintroduces the omission.
+**Recommendation.** Keep the worker, image, and edge-service lists synchronized when adding or renaming worker packages.
 
-**Verification.** Confirm README.md lists qwen3tts, granite_speech, and translategemma in the worker, image, and edge-service references.
+**Verification.** README.md now lists `granite_speech` with the other workers at lines 168, 211-213, 254-256, and 291.
 
 ## DOC (8c delta)
 
@@ -800,17 +802,19 @@ related: []
 ### DX-010 — Dry-run submission persists an uploaded source despite claiming no submission
 
 ```yaml
-status: stale
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
-  date: 2026-08-01
-fixed_in: []
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
+fixed_in: [f7ea57a]
 files:
   - path: src/acheron/cli.py
-    lines: 764-814
+    lines: 789-814
+  - path: tests/shell/test_cli.py
+    lines: 699-725
 related: []
 ```
 
@@ -818,6 +822,6 @@ related: []
 
 **Why it matters.** Operators can unintentionally consume storage and assume dry-run is side-effect free.
 
-**Recommendation.** Avoid persisting the source during dry-run, or state and clean up the upload side effect explicitly.
+**Recommendation.** Keep the upload needed for plan construction, but delete the temporary input in the dry-run cleanup path.
 
-**Verification.** Run dry-run with a local source and assert whether the input store changes according to the documented contract, including cleanup of any temporary upload.
+**Verification.** `src/acheron/cli.py:789-814` deletes `uploaded.input_id` in the dry-run cleanup path; `tests/shell/test_cli.py:699-725` covers the preview/no-submission behavior.

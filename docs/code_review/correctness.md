@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: f772fee
+last_updated_commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
 last_staleness_scan:
-  commit: f772fee
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
   date: 2026-08-02
 ---
 
@@ -11,9 +11,11 @@ last_staleness_scan:
 
 ## CORR — Correctness
 
-**Grade:** B
+**Grade:** A
 
 Layer 8b added the ASR path on the orchestrator (the new `_execute_asr_multipart` HTTP worker method and the matching `Input` Protocol with `StreamInput`/`FileInput` variants in `worker_sdk/inputs.py`) and refactored the SDK edge into a clean `_dispatch` + `_parse_multipart_request` + `_build_multipart_response` split. Eight new CORR findings: CORR-018 (medium) — `HttpWorker._execute_asr_multipart` reads the entire audio file into RAM and embeds the bytes in an httpx `files=` form, the request-side mirror of the response-side buffer (CORR-017); CORR-019 (medium) — SDK `_parse_multipart_request` materialises the whole request body via `await request.body()` plus a synthetic-header concatenation, so the edge never sees an audio chunk smaller than the full upload; CORR-020 (medium) — `make_runpod_handler` silently coerces a missing `input_audio.data` to empty bytes, so wire-format errors upstream become a successful empty artifact; CORR-021 (low) — `make_runpod_handler` does not validate that `input_audio` is a dict, so a non-dict payload crashes with `AttributeError` instead of `WorkerError`; CORR-022 (low) — `make_runpod_handler` does not validate `content_type` is a string, so `str(42)` silently coerces a wrong-typed content type; CORR-023 (low) — `_run_execute_multipart` only catches `WorkerError`, so `JSONDecodeError` / `ValidationError` from the envelope parser leak as opaque 500s; CORR-024 (low) — `_parse_multipart_request` hardcodes `BytesInput.metadata={}` and never parses the per-part `X-Acheron-Metadata` header (the request-side mirror of CORR-013); CORR-025 (low) — `_parse_multipart_request` treats any non-`application/json` part as audio, regardless of content type, so a legitimate sidecar part would be misinterpreted as the audio input. Carry-overs: CORR-009 (medium, step-handler worker cache) re-resolved — cited code unchanged in spirit, line numbers shifted; CORR-013 (medium, per-part metadata discarded) re-resolved and now has a request-side mirror in CORR-024; CORR-016 (low, `worker_sdk` import-time runpod load) re-resolved — docstring/re-export still violates the contract; CORR-017 (low, response materialisation) re-resolved — `_build_multipart_response` line range updated, behavior unchanged. CORR-014 (high, RunPodClient.run silent FAILED) remains open and is unaffected by the diff. All other stories remain verified. **2026-06-26 refresh**: CORR-034 (medium) — Python 2 `except E1, E2:` syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031). CORR-035 (high) — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary). **2026-06-26 round 2 refresh**: CORR-035 verified (commit `b34ced9`); CORR-015 marked stale (cherry-pick pattern fully resolved by `dcebea6`); CORR-029 verified in spirit (partial-success handling added in `e9faa0d`); CORR-032, CORR-033 verified in spirit (TYPE-010 rewrote the handler); CORR-036 added (medium) — translategemma `_translate_all` partial-success catch only covers `(RuntimeError, ValueError)`, so `IndexError`/`KeyError`/`AttributeError`/`MemoryError`/`TypeError`/`CancelledError` from `_translate_batch` bypass the partial-success contract and silently discard accumulated batches; CORR-037 (medium) — `Orchestrator._drain_inflight_tasks` docstring claims a `finally` block and `asyncio.wait` that don't exist in the code (see `asyncio.gather(..., return_exceptions=True)` and the lack of any `finally`); CORR-038 (medium) — the 5s drain timeout can abort mid-shutdown, cancelling the post-cancel `_job_store.put` and leaving the job in RUNNING; CORR-039 (medium) — `_execute`'s `except Exception` branch logs+re-raises without setting FAILED, so non-cancel exception paths can still leave jobs in RUNNING; CORR-040 (low) — `_execute`'s CancelledError handler persists FAILED but discards the partial `PlanResult`, under-counting cost for any in-flight job.
+
+**2026-08-02 status reconciliation:** `CORR-015` is verified against the `dcebea6` router fix and its regression test. `CORR-034` is `wontfix`: the project targets Python 3.14, where PEP 758 makes the syntax valid. No active medium-or-higher CORR/ML/MATH stories remain; `CORR-048` is the only active correctness story.
 
 ### CORR-001 — StreamingExecutor ignores JobResult.status — FAILED results silently treated as SUCCESS
 
@@ -437,23 +439,25 @@ related: [EXC-001]
 ### CORR-015 — `create_worker_app` cherry-picks routes from `EdgeApp` via hardcoded `inner_paths`; new routes silently dropped
 
 ```yaml
-status: stale
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
-  date: 2026-08-01
-fixed_in: []
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
+fixed_in: [dcebea6]
 files:
   - path: src/acheron/worker_sdk/app.py
     lines: 147-149
+  - path: tests/worker_sdk/test_app.py
+    lines: 80-101
 related:
 - ARCH-012
 - MAINT-011
 ```
 
-**Issue.** The cited `inner_paths` hardcoded whitelist is gone. The fix is in place at app.py:133-135 (`app.include_router(inner.router)`), and the cherry-pick pattern described in the original issue remains resolved. The stale status is retained until a future tackle pass confirms the existing regression test is green.
+**Issue.** The cited `inner_paths` hardcoded whitelist is gone. The fix is in place at app.py:147-149 (`app.include_router(inner.router)`), and the regression test at test_app.py:80-101 confirms that newly added edge routes propagate to the outer app. The fix is verified.
 
 ### CORR-016 — `worker_sdk` package docstring falsely claims it is GPU-SDK-free at import time
 
@@ -951,38 +955,40 @@ related:
 
 **Verification.** Add a test in `workers/translategemma/tests/test_handler.py` that calls `_translate_batch` twice and asserts `self._processor.tokenizer.pad_token_id` is set only after `startup()`, not changed between calls. A simple way: assert the assignment is not in `_translate_batch`'s body via `inspect.getsource`.
 
-### CORR-034 — Python 2 'except E1, E2:' syntax re-introduced across 5 sites by 'fix: styling' commit (regression of CORR-031)
+### CORR-034 — Unparenthesized exception tuples are valid under the Python 3.14 target
 
 ```yaml
-status: stale
+status: wontfix
 severity: medium
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: f9ae89b
-  date: 2026-08-01
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 324-325
+    lines: 324
   - path: src/acheron/shell/cache.py
-    lines: 273-281
+    lines: 280
   - path: src/acheron/shell/executors/streaming.py
-    lines: 171-174
+    lines: 173
   - path: src/acheron/shell/local_handlers.py
-    lines: 186-191
+    lines: 190
   - path: src/acheron/worker_sdk/app.py
-    lines: 128-132
+    lines: 131
+  - path: pyproject.toml
+    lines: 6, 43
 related: [CORR-031, MAINT-009, MAINT-020, EXC-004]
 ```
 
-**Issue.** Commit a7aaf1e ('fix: styling') reverted the CORR-031 / MAINT-009 parenthesised-except fix at all 4 sites that were previously corrected (http.py:206, cache.py:116, streaming.py:155, local_handlers.py:317), re-introducing the Python 2 'except A, B:' syntax that raises a SyntaxWarning on every Python 3.10+ import. A 5th site at app.py:116 was never fixed by the original B19 commit (it was added later by EXC-004 / OBS-008 in 285e5e4) so it has been in the Python 2 form since its introduction.
+**Issue.** The five cited sites use unparenthesized exception tuples. This was originally recorded as a Python 2 compatibility hazard, but the repository now targets Python 3.14 and the syntax is valid under PEP 758.
 
-**Why it matters.** The parenthesised form is the only one that pyupgrade and ruff will accept long-term. ruff B033/E999-adjacent rules and the future-Python-removal notice make the deprecation more visible over time. A new contributor who copies one of these sites perpetuates the deprecation. The cost of fixing is one pair of parentheses per site, but the regression commit explicitly undid the B19 effort.
+**Why it matters.** Rewriting valid Python 3.14 syntax would add churn without changing behavior. The project’s configured interpreter and Ruff target establish the supported grammar, so this finding is not actionable unless that target changes.
 
-**Recommendation.** Re-apply the parenthesised form at all 5 sites. Add a CI lint check (ruff E999 or 'syntax-warning-as-error' via -W error::SyntaxWarning) to prevent further reverts.
+**Recommendation.** Keep the current syntax under the Python 3.14 target. Re-evaluate only if the supported Python version or Ruff target changes.
 
-**Verification.** Run 'python3 -W error -c "from acheron.shell.executors.streaming import StreamingExecutor"' (and the other 4 modules) — no SyntaxWarning should be raised. Add a test that imports each affected module under -W error::SyntaxWarning and asserts no warning. Run `just test` to confirm no behavioural regression.
+**Verification.** Confirm `pyproject.toml` continues to target Python 3.14, run `just lint-strict`, and run `just test`; no compatibility warning or behavior change is expected.
 
 ### CORR-035 — Redis JobStore round-trip drops OutputFile.metadata (per-artifact contract from CORR-013 is broken at the persistence boundary)
 

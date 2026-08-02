@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: f772fee
+last_updated_commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
 last_staleness_scan:
-  commit: f772fee
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
   date: 2026-08-02
 ---
 
@@ -11,9 +11,11 @@ last_staleness_scan:
 
 ## TEST — Test discipline
 
-**Grade:** B
+**Grade:** A
 
 TEST-001, TEST-003, TEST-004 remain verified. TEST-002, TEST-005, TEST-006, TEST-007 kept open (code unchanged since 63faed4, gaps remain). One new TEST finding: TEST-008 (low) — `worker_sdk/app._build_price_source` static/runpod-missing-key branches and `_registration_caps` no-op branch have no direct test. Layer 8a added strong 1:1 test coverage for the new `worker_sdk/` (14 test files mirror the 13 source modules) and the qwen3tts worker (`_FakeModel` pattern), but the static-fallback pricing branch and the non-RunPod passthrough metadata assertion are untested. **2026-06-26 refresh**: TEST-018 (low) — `test_app.py` still missing static-without-rate and registration_caps-passthrough tests (TEST-008 fix incomplete, regression of TEST-008). TEST-019 (low) — TestFileArtifact class is undertested relative to TestBytesArtifact (1 test vs 4). TEST-020 (low) — `test_pricing.py` has no tests for `ZeroPrice.refresh()` and `StaticPrice.refresh()` (the no-op contract). **2026-06-26 round 2 refresh**: TEST-002, TEST-007, TEST-015 verified; TEST-021 added (medium, untested `_io.py`); TEST-022 added (medium, duplicated `redis_container`/`redis_url` fixtures across conftest files); TEST-014 remains stale but the underlying concerns are now addressed by the e9faa0d + 299f08c rewrite of translategemma test_handler.py; DATA-010 added (low, defensive isinstance contract test for `RedisJobStore._deserialize_job`).
+
+**2026-08-02 status reconciliation:** `TEST-014` is verified against the expanded translategemma tests and current handler branches. No active medium-or-higher TEST/REPRO/DATA stories remain; `REPRO-007` and `DATA-011` are low-severity open follow-ups.
 
 ### TEST-001 — local_handlers.py has zero direct unit tests
 
@@ -691,23 +693,23 @@ related: [DATA-006, CORR-013, CORR-028, CORR-031]
 ### TEST-014 — `workers/translategemma/tests/test_handler.py` does not cover the model.generate error path, partial-success, or pad_token_id init
 
 ```yaml
-status: stale
+status: verified
 severity: medium
 effort: M
 reviewed_at: eb6849c85d83f2277eb450f18a11e63cae2defd1
 last_verified_at:
-  commit: c53da1d
-  date: 2026-07-23
-fixed_in: []
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
+fixed_in: [edbed02, 04f358b, a23db61, e0dd116]
 files:
   - path: workers/translategemma/tests/test_handler.py
-    lines: 362-437
+    lines: 367-460
   - path: workers/translategemma/handler.py
-    lines: 144-147, 268-298, 330-345
+    lines: 163-184, 265-298, 307-350
 related: [TEST-016]
 ```
 
-**Issue.** The cited 269-line test_handler.py and 305-line handler.py were substantially rewritten in the e9faa0d + 299f08c fixes (TYPE-010 + TEST-016): handler.py is now 357 lines and test_handler.py is now 437 lines. Of TEST-014's 4 recommended tests, 3 are now covered by the new `TestPartialSuccess` class (test_handler.py:389-436) with `test_translate_all_raises_worker_error_on_batch_failure` and `test_translate_all_logs_failed_batch_warning`, and the `TestTokenizerMutation` class (test_handler.py:367-387) with `test_translate_batch_does_not_mutate_tokenizer` and `test_startup_initialises_pad_token_id_once`. The 4th (`test_handle_chunk_text_not_str_raises`) is covered by the pre-existing `test_handle_chunk_with_no_text_raises`. TEST-014 stays stale because the cited file content is no longer present, but the underlying concern is now fully addressed. Recommend transitioning to `fixed` (verified once the next tackle pass lands).
+**Issue.** The cited 269-line test_handler.py and 305-line handler.py were substantially rewritten in the e9faa0d + 299f08c fixes (TYPE-010 + TEST-016): handler.py is now 357 lines and test_handler.py is now 437 lines. Of TEST-014's 4 recommended tests, 3 are now covered by the new `TestPartialSuccess` class (test_handler.py:389-436) with `test_translate_all_raises_worker_error_on_batch_failure` and `test_translate_all_logs_failed_batch_warning`, and the `TestTokenizerMutation` class (test_handler.py:367-387) with `test_translate_batch_does_not_mutate_tokenizer` and `test_startup_initialises_pad_token_id_once`. The 4th (`test_handle_chunk_text_not_str_raises`) is covered by the pre-existing `test_handle_chunk_with_no_text_raises`. The underlying concern is fully addressed and verified by the current test suite.
 
 ### TEST-015 — `src/acheron/tls.py` (new top-level module, 114 lines) has no direct unit tests — only subprocess happy-path coverage
 

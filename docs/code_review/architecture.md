@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: f772fee
+last_updated_commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
 last_staleness_scan:
-  commit: f772fee
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
   date: 2026-08-02
 ---
 
@@ -11,9 +11,11 @@ last_staleness_scan:
 
 ## ARCH — Architecture
 
-**Grade:** B
+**Grade:** A
 
 Layer 8b widened `worker_sdk` (8b granite-speech worker) and the HTTP transport (ASR multipart fan-in). The hexagonal layering remains clean, but the new code surfaced three new ARCH findings: ARCH-014 (medium) — `HttpWorker.execute()` now branches on `WorkerType.ASR` to add a transport-specific audio pipeline, inverting the transport-neutral Worker boundary; ARCH-015 (medium) — `step_cache` is threaded through `default_worker_factory` even though only the HTTP branch consumes it, leaking an HTTP/ASR concern into the dispatch signature; ARCH-016 (low) — `workers/_shared` is a module file co-located with a same-name test directory and an out-of-workspace `pyproject.toml`, a latent package-vs-module footgun. ARCH-008, ARCH-009, ARCH-010, ARCH-011, ARCH-012, ARCH-013 re-resolved (lines shifted). All other stories remain verified at e544584. ARCH-011 marked stale in the 2026-06-26 refresh: the original false claim is gone, the unconditional `from acheron.worker_sdk.cloud import ...` is the documented behavior now, not a bug. One new finding: ARCH-023 (low) — cross-module import of module-private `_ENV_ONLY_FIELDS` is the same PLC2701 anti-pattern as the original ARCH-005. **2026-06-26 round 2 refresh**: ARCH-012 marked stale (the `inner_paths` cherry-pick pattern is fully resolved by `dcebea6`); ARCH-024 (medium) added — `api_client.py` imports wire-format response schemas from `shell/api/schemas.py` (a server-internal HTTP module), tying the public client to the server's HTTP layer; CFG-013 (low) added — the 5.0-second drain timeout in `Orchestrator._drain_inflight_tasks` is hard-coded and `OrchestratorSettings` has no equivalent field (silent knob per AGENTS.md).
+
+**2026-08-02 status reconciliation:** The medium stories were resolved by the tackle branch: `ARCH-011` and `ARCH-012` are verified with their fixing commits and current citations. No active medium-or-higher ARCH/CFG stories remain; `ARCH-030` is the only active architecture story.
 
 ### ARCH-001 — BatchAsyncExecutor is a no-op duplicate of AsyncExecutor; ExecutorStrategy.BATCH_ASYNC controls nothing
 
@@ -314,20 +316,18 @@ related: []
 ### ARCH-011 — `worker_sdk/__init__.py` docstring falsely claims the module is GPU-SDK-free at import time
 
 ```yaml
-status: stale
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
-  date: 2026-08-01
-fixed_in: []
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
+fixed_in: [45599f0, 3a04ece]
 files:
   - path: src/acheron/worker_sdk/__init__.py
-    lines: 1-6, 20-21
+    lines: 1, 6
   - path: src/acheron/worker_sdk/cloud.py
-    lines: 8-12
-  - path: src/acheron/worker_sdk/_runpod_client.py
     lines: 10-12
 related:
 - CORR-016
@@ -344,25 +344,27 @@ related:
 ### ARCH-012 — `create_worker_app` cherry-picks routes from `EdgeApp.app.routes` via a hardcoded `inner_paths` set
 
 ```yaml
-status: stale
+status: verified
 severity: medium
 effort: S
 reviewed_at: dbec2be
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
-  date: 2026-08-01
-fixed_in: []
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
+  date: 2026-08-02
+fixed_in: [dcebea6]
 files:
   - path: src/acheron/worker_sdk/app.py
-    lines: 146-149
+    lines: 147-149
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 453-460, 491-518
+    lines: 504-567
+  - path: tests/worker_sdk/test_app.py
+    lines: 80-101
 related:
 - CORR-015
 - MAINT-011
 ```
 
-**Issue.** The `inner_paths` hardcoded set is gone in commit `dcebea6` (replaced by `app.include_router(inner.router)` at app.py:131-132, with `EdgeApp.router` exposed at _edge_http.py:303-324). The cherry-pick pattern described in the original issue is fully resolved. The duplicate docstring on the old app.py:98 was also removed in the same commit. Marking stale so a future tackle pass can verify and confirm `fixed`.
+**Issue.** The `inner_paths` hardcoded set is gone in commit `dcebea6`; `create_worker_app` mounts `inner.router`, and the regression test confirms newly added edge routes propagate automatically. The duplicate docstring on the old app.py:98 was also removed in the same commit. The fix is verified.
 
 ### ARCH-013 — `transports/grpc.py` and `transports/http.py` both duplicate the `data_dir` env-var fallback to `ACHERON_DATA_DIR`
 

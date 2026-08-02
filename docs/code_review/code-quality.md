@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: f772fee
+last_updated_commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
 last_staleness_scan:
-  commit: f772fee
+  commit: 0e96df3bd1d1bbd538c5ea849a4707c1d9dad521
   date: 2026-08-02
 ---
 
