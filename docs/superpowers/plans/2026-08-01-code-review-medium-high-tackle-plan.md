@@ -305,7 +305,7 @@ After Task 9:
 ### Completion record
 
 - Implementation bundles: `2a11136`, `75d5b7e`, `74fdf0d`, `092ef77`, `001ee71`, `6aa2f8a`, `fc257a1`, `f9ae89b`, `5ba5e48`.
-- Review metadata and plan-finalization commits: `26cdf83`, `4097cbd`, `d7c3fdd`, `8db14b8`, `cf02184`, `03e7c38`, `0cbc2d8`, `0ebf9b8`, `1ef2524`.
+- Review metadata and plan-finalization commits: `26cdf83`, `4097cbd`, `d7c3fdd`, `8db14b8`, `cf02184`, `03e7c38`, `0cbc2d8`, `0ebf9b8`, `1ef2524`, `f772fee`, `1c56dfe`.
 - Final verification: `just validate` passed with 1,756 tests passed and 9 skipped; final broad review found no blocker/high/medium residuals. The post-correction rerun also exited 0 with Ruff, import-linter, mypy, basedpyright, and coverage passing.
 - Review inventory: 276 total stories; 196 verified, 61 fixed, 7 open low-severity, and 12 stale.
 - Deferred gate: strict `just ux-validate` remains a required separate pre-merge gate and currently reports 29 errors: 16 pre-existing attestation mismatches plus 13 later citation drifts. Refreshing that rubric is outside this code-review plan.
