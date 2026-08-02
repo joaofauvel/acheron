@@ -6,7 +6,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -45,6 +45,17 @@ if TYPE_CHECKING:
 
     from acheron.shell.stores.base import JobStore, WorkerStore
 
+
+class CertificateMonitor(Protocol):
+    """Lifecycle contract for the application certificate monitor."""
+
+    async def start(self) -> None:
+        """Start certificate monitoring."""
+
+    async def stop(self) -> None:
+        """Stop certificate monitoring."""
+
+
 logger = logging.getLogger(__name__)
 _REQUEST_ID_MAX_LENGTH = 128
 _PRINTABLE_ASCII_MIN = 0x20
@@ -63,7 +74,7 @@ def _safe_request_id(value: str) -> bool:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage orchestrator and certificate-monitor lifecycles."""
     orch: Orchestrator = app.state.orchestrator
-    certificate_manager: CertificateManager | None = app.state.certificate_manager
+    certificate_manager: CertificateMonitor | None = app.state.certificate_manager
     await orch.start()
     try:
         if certificate_manager is not None:
@@ -90,7 +101,7 @@ def create_app(  # noqa: C901, PLR0913, PLR0915
     cache: PlanCache | None = None,
     data_dir: Path | str | None = None,
     settings: Settings | None = None,
-    certificate_manager: CertificateManager | None = None,
+    certificate_manager: CertificateMonitor | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 

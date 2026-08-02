@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -96,14 +98,22 @@ async def test_app_starts_and_stops_certificate_monitor_without_leaking_task(
 
     class _FakeCertificateManager:
         def __init__(self) -> None:
-            self.monitor_task = object()
+            self.monitor_task: asyncio.Task[None] | None = None
+
+        async def _monitor(self) -> None:
+            await asyncio.Future[None]()
 
         async def start(self) -> None:
             events.append("certificate.start")
+            self.monitor_task = asyncio.create_task(self._monitor())
+            await asyncio.sleep(0)
 
         async def stop(self) -> None:
             events.append("certificate.stop")
-            self.monitor_task = None
+            assert self.monitor_task is not None
+            self.monitor_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.monitor_task
 
     manager = _FakeCertificateManager()
     monkeypatch.setattr(app_module, "Orchestrator", _FakeOrchestrator)
@@ -121,7 +131,105 @@ async def test_app_starts_and_stops_certificate_monitor_without_leaking_task(
         "orchestrator.shutdown",
         "orchestrator.close",
     ]
-    assert manager.monitor_task is None
+    assert manager.monitor_task is not None
+    assert manager.monitor_task.done()
+    assert manager.monitor_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_certificate_monitor_start_failure_does_not_skip_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from acheron.shell.api import app as app_module
+
+    events: list[str] = []
+
+    class _FakeOrchestrator:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def start(self) -> None:
+            events.append("orchestrator.start")
+
+        async def shutdown(self) -> None:
+            events.append("orchestrator.shutdown")
+
+        async def close(self) -> None:
+            events.append("orchestrator.close")
+
+    class _FailingCertificateManager:
+        async def start(self) -> None:
+            events.append("certificate.start")
+            raise RuntimeError("start failed")
+
+        async def stop(self) -> None:
+            events.append("certificate.stop")
+
+    monkeypatch.setattr(app_module, "Orchestrator", _FakeOrchestrator)
+    app = app_module.create_app(
+        data_dir=tmp_path / "data",
+        certificate_manager=_FailingCertificateManager(),
+    )
+
+    async with app.router.lifespan_context(app):
+        assert events == ["orchestrator.start", "certificate.start"]
+
+    assert events == [
+        "orchestrator.start",
+        "certificate.start",
+        "certificate.stop",
+        "orchestrator.shutdown",
+        "orchestrator.close",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_certificate_monitor_stop_failure_does_not_skip_orchestrator_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from acheron.shell.api import app as app_module
+
+    events: list[str] = []
+
+    class _FakeOrchestrator:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def start(self) -> None:
+            events.append("orchestrator.start")
+
+        async def shutdown(self) -> None:
+            events.append("orchestrator.shutdown")
+
+        async def close(self) -> None:
+            events.append("orchestrator.close")
+
+    class _FailingCertificateManager:
+        async def start(self) -> None:
+            events.append("certificate.start")
+
+        async def stop(self) -> None:
+            events.append("certificate.stop")
+            raise RuntimeError("stop failed")
+
+    monkeypatch.setattr(app_module, "Orchestrator", _FakeOrchestrator)
+    app = app_module.create_app(
+        data_dir=tmp_path / "data",
+        certificate_manager=_FailingCertificateManager(),
+    )
+
+    async with app.router.lifespan_context(app):
+        assert events == ["orchestrator.start", "certificate.start"]
+
+    assert events == [
+        "orchestrator.start",
+        "certificate.start",
+        "certificate.stop",
+        "orchestrator.shutdown",
+        "orchestrator.close",
+    ]
 
 
 @pytest.mark.asyncio
