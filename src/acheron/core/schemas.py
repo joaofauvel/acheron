@@ -120,6 +120,18 @@ class JobCostResponse(BaseModel):
     cost_breakdown: list[CostBreakdownResponse]
 
 
+class CostJobSnapshot(BaseModel):
+    """Bounded job data needed to render a dashboard cost table."""
+
+    job_id: str
+    status: PlanStatus
+    total_cost: FiniteFloat = Field(ge=0)
+    total_duration_seconds: FiniteFloat = Field(ge=0)
+    completed_steps: int = Field(ge=0)
+    total_steps: int = Field(ge=0)
+    total_cost_basis: CostBasis | None = None
+
+
 class CostSummaryResponse(BaseModel):
     """Aggregated execution-time estimates for a selected window."""
 
@@ -129,6 +141,7 @@ class CostSummaryResponse(BaseModel):
     total_cost: FiniteFloat = Field(ge=0)
     job_count: int = Field(ge=0)
     unknown_cost_jobs: int = Field(ge=0)
+    jobs: list[CostJobSnapshot] = Field(default_factory=list, max_length=1000)
 
     @field_validator("since", "until")
     @classmethod
@@ -437,6 +450,7 @@ __all__ = [
     "CleanupResponse",
     "CostBreakdownResponse",
     "CostEstimateResponse",
+    "CostJobSnapshot",
     "CostSummaryResponse",
     "CostWindowQuery",
     "ErrorResponse",

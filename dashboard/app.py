@@ -7,14 +7,16 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from starlette.requests import Request  # noqa: TC002
 
+from acheron.core.schemas import CostSummaryResponse
 from dashboard.booting_progress import clamp_booting_elapsed, format_booting_elapsed
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,6 +26,9 @@ _HOURS_PER_DAY = 24
 _VERSION_MAX_LENGTH = 64
 _SHA_MAX_LENGTH = 64
 _REQUEST_ID_MAX_LENGTH = 128
+_CONTROL_CHARACTER_LIMIT = 32
+_DELETE_CHARACTER = 127
+_MAX_URL_PORT = 65535
 _VERSION_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-!")
 _SHA_CHARS = frozenset("0123456789abcdefABCDEF")
 _REQUEST_ID_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-")
@@ -67,7 +72,11 @@ async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, obj
             resp = await client.get(path, headers=headers)
             resp.raise_for_status()
             payload = resp.json()
-            return cast("dict[str, object]", payload)
+            match payload:
+                case dict() as data:
+                    return cast("dict[str, object]", data)
+                case _:
+                    return {}
     except Exception:  # noqa: BLE001
         _LOGGER.warning("Dashboard cannot reach orchestrator at %s%s", orchestrator_url, path)
         return {}
@@ -150,24 +159,68 @@ def _jobs_path(request: Request) -> str:
     return f"/jobs?{urlencode(params)}" if params else "/jobs"
 
 
-async def _job_detail_partial(orchestrator_url: str, request: Request, job_id: str) -> HTMLResponse:
+def _normalise_base_url(value: str, *, setting_name: str) -> str:
+    """Validate and normalize an absolute HTTP(S) base URL."""
+    normalized = value.strip()
+    try:
+        parsed = urlsplit(normalized)
+        port = parsed.port
+    except ValueError:
+        parsed = None
+        port = None
+    hostname = parsed.hostname if parsed is not None else None
+    if (
+        parsed is None
+        or parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or hostname is None
+        or "\\" in parsed.netloc
+        or "%" in parsed.netloc
+        or parsed.netloc.endswith(":")
+        or "?" in normalized
+        or "#" in normalized
+        or (port is not None and not 1 <= port <= _MAX_URL_PORT)
+        or any(
+            char.isspace() or ord(char) < _CONTROL_CHARACTER_LIMIT or ord(char) == _DELETE_CHARACTER
+            for char in normalized
+        )
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        msg = f"{setting_name} must be an absolute HTTP(S) URL without credentials, query, or fragment"
+        raise ValueError(msg)
+    return normalized.rstrip("/")
+
+
+async def _job_detail_partial(
+    orchestrator_url: str,
+    browser_url: str,
+    request: Request,
+    job_id: str,
+) -> HTMLResponse:
     """Render a job detail fragment from the orchestrator response."""
     data = await _fetch_orchestrator(orchestrator_url, f"/jobs/{quote(job_id, safe='')}")
     return _TEMPLATES.TemplateResponse(
         request,
         "partials/job_detail.html",
-        context={"job": data, "orchestrator_url": orchestrator_url},
+        context={"job": data, "orchestrator_url": browser_url},
     )
 
 
 async def _cost_partial(orchestrator_url: str, request: Request) -> HTMLResponse:
-    """Render cost windows and aggregate execution-time estimates."""
+    """Render cost windows and the bounded job snapshot from one response."""
     window = request.query_params.get("window", "7d")
     if window not in {"24h", "7d", "30d", "all"}:
         window = "7d"
-    summary = await _fetch_orchestrator(orchestrator_url, f"/cost?window={window}")
-    jobs_data = await _fetch_orchestrator(orchestrator_url, "/jobs")
-    jobs = cast("list[dict[str, object]]", jobs_data.get("jobs", []))
+    raw_summary = await _fetch_orchestrator(orchestrator_url, f"/cost?window={window}")
+    try:
+        summary = CostSummaryResponse.model_validate(raw_summary).model_dump(mode="json")
+    except ValidationError:
+        summary = {}
+    raw_jobs = summary.get("jobs", [])
+    jobs = cast("list[dict[str, object]]", raw_jobs) if isinstance(raw_jobs, list) else []
     return _TEMPLATES.TemplateResponse(
         request,
         "partials/cost.html",
@@ -175,15 +228,19 @@ async def _cost_partial(orchestrator_url: str, request: Request) -> HTMLResponse
     )
 
 
-def create_app(orchestrator_url: str | None = None) -> FastAPI:
+def create_app(orchestrator_url: str | None = None, browser_url: str | None = None) -> FastAPI:
     """Create the Acheron dashboard FastAPI application.
 
-    Reads the orchestrator URL from the ``ACHERON_URL`` environment variable
-    when not provided explicitly.
+    Reads the internal orchestrator URL from ``ACHERON_URL`` and the
+    browser-facing URL from ``ACHERON_BROWSER_URL`` when not provided explicitly.
+    The browser-facing URL defaults to the internal URL for local deployments.
     """
     if orchestrator_url is None:
         orchestrator_url = os.environ.get("ACHERON_URL", "http://localhost:8000")
-    orchestrator_url = orchestrator_url.rstrip("/")
+    orchestrator_url = _normalise_base_url(orchestrator_url, setting_name="orchestrator_url")
+    if browser_url is None:
+        browser_url = os.environ.get("ACHERON_BROWSER_URL", orchestrator_url)
+    browser_url = _normalise_base_url(browser_url, setting_name="browser_url")
     app = FastAPI(title="Acheron Dashboard")
 
     @app.get("/", response_class=HTMLResponse)
@@ -204,7 +261,7 @@ def create_app(orchestrator_url: str | None = None) -> FastAPI:
 
     @app.get("/partials/jobs/{job_id}", response_class=HTMLResponse)
     async def job_detail_partial(request: Request, job_id: str) -> HTMLResponse:
-        return await _job_detail_partial(orchestrator_url, request, job_id)
+        return await _job_detail_partial(orchestrator_url, browser_url, request, job_id)
 
     @app.get("/partials/workers", response_class=HTMLResponse)
     async def workers_partial(request: Request) -> HTMLResponse:

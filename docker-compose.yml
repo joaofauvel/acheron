@@ -79,6 +79,7 @@ services:
       - "8080:8080"
     environment:
       ACHERON_URL: https://orchestrator:8000
+      ACHERON_BROWSER_URL: https://localhost:8000
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:

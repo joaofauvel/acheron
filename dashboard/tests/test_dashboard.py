@@ -93,6 +93,54 @@ class TestEnvConfig:
         app = create_app(orchestrator_url="http://explicit:2222")
         assert app is not None
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_browser_url_environment_controls_rendered_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        internal_url = "http://internal:8000"
+        browser_url = "https://public.example.test"
+        monkeypatch.setenv("ACHERON_URL", internal_url)
+        monkeypatch.setenv("ACHERON_BROWSER_URL", browser_url)
+        payload = _job_payload(
+            outputs=[
+                {
+                    "download_url": "/jobs/job-1/outputs/0",
+                    "filename": "result.m4b",
+                    "size_bytes": 5,
+                    "content_type": "audio/mp4",
+                }
+            ]
+        )
+        respx.get(f"{internal_url}/jobs/job-1").mock(return_value=httpx.Response(200, json=payload))
+        app = create_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/partials/jobs/job-1")
+        assert response.status_code == 200
+        assert f'href="{browser_url}/jobs/job-1/outputs/0"' in response.text
+
+    @pytest.mark.parametrize(
+        "invalid_url",
+        [
+            "internal:8000",
+            "https://user:secret@example.test",
+            "https://example.test?x=1",
+            "http://example.test:abc",
+            "http://example.test:99999",
+            "http://foo\\bar",
+            "http://foo%bar",
+            "https://example.test:",
+            "https://example.test?",
+            "https://example.test#",
+        ],
+    )
+    def test_rejects_invalid_browser_url(self, invalid_url: str) -> None:
+        with pytest.raises(ValueError, match="browser_url"):
+            create_app(orchestrator_url=_ORCH_URL, browser_url=invalid_url)
+
+    def test_rejects_invalid_browser_host(self) -> None:
+        with pytest.raises(ValueError, match="browser_url"):
+            create_app(orchestrator_url=_ORCH_URL, browser_url="http://example .test")
+
 
 class TestIndexPage:
     @pytest.mark.asyncio
@@ -397,28 +445,17 @@ class TestCostPartial:
                     "total_cost": 0.42,
                     "job_count": 1,
                     "unknown_cost_jobs": 0,
-                },
-            )
-        )
-        respx.get(f"{_ORCH_URL}/jobs").mock(
-            return_value=httpx.Response(
-                200,
-                json={
                     "jobs": [
-                        _job_payload(
-                            status="completed",
-                            total_cost=0.42,
-                            total_cost_basis="measured",
-                            progress={
-                                "completed_steps": 5,
-                                "total_steps": 5,
-                                "current_step_id": None,
-                                "current_worker_type": None,
-                                "current_worker_id": None,
-                                "eta_seconds": None,
-                            },
-                        )
-                    ]
+                        {
+                            "job_id": "job-1",
+                            "status": "completed",
+                            "total_cost": 0.42,
+                            "total_duration_seconds": 0.0,
+                            "completed_steps": 5,
+                            "total_steps": 5,
+                            "total_cost_basis": "measured",
+                        }
+                    ],
                 },
             )
         )
@@ -427,16 +464,12 @@ class TestCostPartial:
         assert "Estimated cost, last 7d" in resp.text
         assert "job-1" in resp.text
         assert "$0.42" in resp.text
-        assert {str(call.request.url) for call in respx.calls} == {
-            f"{_ORCH_URL}/cost?window=7d",
-            f"{_ORCH_URL}/jobs",
-        }
+        assert {str(call.request.url) for call in respx.calls} == {f"{_ORCH_URL}/cost?window=7d"}
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_cost_partial_empty(self, client):
-        respx.get(f"{_ORCH_URL}/cost").mock(return_value=httpx.Response(200, json={}))
-        respx.get(f"{_ORCH_URL}/jobs").mock(return_value=httpx.Response(200, json={"jobs": []}))
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(return_value=httpx.Response(200, json={}))
         resp = await client.get("/partials/cost")
         assert resp.status_code == 200
         assert "No cost" in resp.text
@@ -458,6 +491,22 @@ class TestForwardAuth:
 
 
 class TestErrorHandling:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_cost_partial_returns_empty_on_malformed_success_payload(self, client):
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(return_value=httpx.Response(200, json=[]))
+        response = await client.get("/partials/cost")
+        assert response.status_code == 200
+        assert "No cost" in response.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_cost_partial_returns_empty_on_malformed_json_payload(self, client):
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(return_value=httpx.Response(200, text="{not-json"))
+        response = await client.get("/partials/cost")
+        assert response.status_code == 200
+        assert "No cost" in response.text
+
     @respx.mock
     @pytest.mark.asyncio
     async def test_jobs_partial_returns_empty_on_connection_error(self, client):

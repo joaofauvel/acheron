@@ -744,19 +744,19 @@ related: []
 ### DX-008 — Dashboard output links may expose an internal orchestrator hostname
 
 ```yaml
-status: open
+status: verified
 severity: high
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: dashboard/app.py
-    lines: 153-160
+    lines: 162-209
   - path: dashboard/templates/partials/job_detail.html
-    lines: 27-34
+    lines: 30-34
 related: []
 ```
 

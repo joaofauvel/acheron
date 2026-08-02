@@ -1428,21 +1428,21 @@ related: [MAINT-024, CORR-045]
 ### PERF-013 — Dashboard cost polling performs two full job queries every two seconds
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: 001ee71
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: dashboard/app.py
-    lines: 163-175
+    lines: 212-225
   - path: dashboard/templates/index.html
     lines: 80-84
   - path: src/acheron/shell/orchestrator.py
-    lines: 1409-1448, 1565-1567
+    lines: 1422-1469
 related: []
 ```
 
@@ -1597,14 +1597,14 @@ severity: low
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: 001ee71
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/input_store.py
     lines: 181-199
   - path: src/acheron/shell/orchestrator.py
-    lines: 658-665
+    lines: 671-678
 related: [SEC-025]
 ```
 

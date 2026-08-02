@@ -1352,14 +1352,14 @@ severity: low
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: 001ee71
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/retention.py
-    lines: 16, 292-303, 322-332
+    lines: 16, 295-304, 327-332
   - path: src/acheron/shell/orchestrator.py
-    lines: 55, 180-181, 551-553
+    lines: 55, 193-194, 565-566
 related: [ARCH-005, ARCH-023]
 ```
 

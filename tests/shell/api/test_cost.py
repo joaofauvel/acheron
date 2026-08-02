@@ -108,6 +108,57 @@ async def test_missing_job_cost_uses_structured_sanitized_error(
 
 
 @pytest.mark.asyncio
+async def test_cost_summary_includes_bounded_job_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_OPEN_REGISTRATION", "1")
+    jobs = InMemoryJobStore()
+    app = create_app(
+        registry=InMemoryWorkerStore(),
+        job_store=jobs,
+        cache=PlanCache(tmp_path),
+        data_dir=tmp_path,
+    )
+    await app.state.orchestrator.start()
+    await jobs.put(
+        TrackedJob(
+            job_id="job-summary",
+            request=EpubRequest("input/book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            status=PlanStatus.FAILED,
+            result=PlanResult(
+                plan_id="plan-summary",
+                status=PlanStatus.FAILED,
+                completed_steps=2,
+                total_steps=3,
+                outputs=(),
+                total_cost=0.12,
+                total_duration_seconds=4.0,
+                total_cost_basis=CostBasis.MEASURED,
+                cost_breakdown=(),
+            ),
+        )
+    )
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/cost", params={"window": "all"})
+        assert response.status_code == 200
+        assert response.json()["total_cost"] == 0.12
+        assert response.json()["jobs"] == [
+            {
+                "job_id": "job-summary",
+                "status": "failed",
+                "total_cost": 0.12,
+                "total_duration_seconds": 4.0,
+                "completed_steps": 2,
+                "total_steps": 3,
+                "total_cost_basis": "measured",
+            }
+        ]
+    finally:
+        await app.state.orchestrator.shutdown()
+        await app.state.orchestrator.close()
+
+
+@pytest.mark.asyncio
 async def test_cost_window_is_query_parameter_and_unknown_counted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -125,6 +176,7 @@ async def test_cost_window_is_query_parameter_and_unknown_counted(
         assert response.status_code == 200
         assert response.json()["window"] == "7d"
         assert response.json()["unknown_cost_jobs"] == 0
+        assert response.json()["jobs"] == []
     finally:
         await app.state.orchestrator.shutdown()
         await app.state.orchestrator.close()

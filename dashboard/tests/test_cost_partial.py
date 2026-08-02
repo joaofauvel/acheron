@@ -9,8 +9,16 @@ import respx
 _ORCH_URL = "http://orchestrator:8000"
 
 
-def _jobs_response(jobs: list[dict]) -> dict:
-    return {"jobs": jobs}
+def _cost_response(jobs: list[dict]) -> dict:
+    return {
+        "window": "7d",
+        "since": "2026-07-22T12:00:00Z",
+        "until": "2026-07-29T12:00:00Z",
+        "total_cost": 0.42,
+        "job_count": len(jobs),
+        "unknown_cost_jobs": sum(job.get("total_cost_basis") in (None, "unknown") for job in jobs),
+        "jobs": jobs,
+    }
 
 
 class TestCostPartialBasis:
@@ -27,6 +35,7 @@ class TestCostPartialBasis:
                     "total_cost": 0.0,
                     "job_count": 2,
                     "unknown_cost_jobs": 2,
+                    "jobs": [],
                 },
             )
         )
@@ -44,10 +53,10 @@ class TestCostPartialBasis:
     @respx.mock
     @pytest.mark.asyncio
     async def test_measured_basis_renders_measured_badge(self, client) -> None:
-        respx.get(f"{_ORCH_URL}/jobs").mock(
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(
             return_value=httpx.Response(
                 200,
-                json=_jobs_response(
+                json=_cost_response(
                     [
                         {
                             "job_id": "j-measured",
@@ -74,10 +83,10 @@ class TestCostPartialBasis:
         """Unknown cost basis must NOT render as $0.00 — that conflates
         "we don't know" with "it was free".
         """
-        respx.get(f"{_ORCH_URL}/jobs").mock(
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(
             return_value=httpx.Response(
                 200,
-                json=_jobs_response(
+                json=_cost_response(
                     [
                         {
                             "job_id": "j-unknown",
@@ -103,10 +112,10 @@ class TestCostPartialBasis:
     @respx.mock
     @pytest.mark.asyncio
     async def test_cached_basis_renders_cached_badge_and_runpod_note(self, client) -> None:
-        respx.get(f"{_ORCH_URL}/jobs").mock(
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(
             return_value=httpx.Response(
                 200,
-                json=_jobs_response(
+                json=_cost_response(
                     [
                         {
                             "job_id": "j-cached",
@@ -130,10 +139,10 @@ class TestCostPartialBasis:
     @respx.mock
     @pytest.mark.asyncio
     async def test_static_basis_renders_static_badge(self, client) -> None:
-        respx.get(f"{_ORCH_URL}/jobs").mock(
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(
             return_value=httpx.Response(
                 200,
-                json=_jobs_response(
+                json=_cost_response(
                     [
                         {
                             "job_id": "j-static",
@@ -159,10 +168,10 @@ class TestCostPartialBasis:
         """Jobs without ``total_cost_basis`` (older orchestrator) should
         render as Unknown with the dash glyph — never as $0.00.
         """
-        respx.get(f"{_ORCH_URL}/jobs").mock(
+        respx.get(f"{_ORCH_URL}/cost", params={"window": "7d"}).mock(
             return_value=httpx.Response(
                 200,
-                json=_jobs_response(
+                json=_cost_response(
                     [
                         {
                             "job_id": "j-old",

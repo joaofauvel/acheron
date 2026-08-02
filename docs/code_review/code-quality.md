@@ -1418,7 +1418,7 @@ related: []
 ### TYPE-016 — Dashboard orchestrator JSON is cast to structured mappings without runtime validation
 
 ```yaml
-status: open
+status: stale
 severity: low
 effort: S
 reviewed_at: 22d20f5

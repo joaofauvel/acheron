@@ -110,6 +110,24 @@ async def test_job_detail_renders_outputs_and_step_error(client: AsyncClient) ->
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_job_detail_fetches_internal_and_links_browser_url() -> None:
+    internal_url = "http://orchestrator:8000"
+    browser_url = "https://dashboard.example.test/orchestrator"
+    app = create_app(orchestrator_url=internal_url, browser_url=browser_url)
+    route = respx.get(f"{internal_url}/jobs/job-1").mock(return_value=httpx.Response(200, json=_job_payload()))
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/partials/jobs/job-1")
+
+    assert response.status_code == 200
+    assert route.called
+    assert f'href="{browser_url}/jobs/job-1/outputs/0"' in response.text
+    assert f'href="{internal_url}/jobs/job-1/outputs/0"' not in response.text
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_job_detail_normalizes_trailing_orchestrator_slash() -> None:
     app = create_app(orchestrator_url=f"{_ORCH_URL}/")
     respx.get(f"{_ORCH_URL}/jobs/job-1").mock(return_value=httpx.Response(200, json=_job_payload()))

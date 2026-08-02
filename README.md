@@ -345,7 +345,8 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 
 | Group | Variable | Default | Description |
 | ---- | -------- | ------- | ----------- |
-| Orchestrator / URLs | `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard: orchestrator URL. Use `http://` to skip TLS. |
+| Orchestrator / URLs | `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard server-side orchestrator URL. Use `http://` to skip TLS. |
+| Dashboard | `ACHERON_BROWSER_URL` | `ACHERON_URL` | Browser-facing orchestrator URL used in dashboard output links; set this when the dashboard reaches the orchestrator through an internal hostname. |
 | Orchestrator / Registration | `ACHERON_REGISTRATION_TOKEN` | (auto-generated) | Worker registration shared secret. If unset, the orchestrator generates a secure token on startup and writes it to `{data_dir}/.registration_token` (`src/acheron/shell/orchestrator.py:207-225`). |
 | Orchestrator / Administration | `ACHERON_ADMIN_TOKEN` | (unset) | Separate bearer token for `/admin/*` mutations such as archive, cleanup, and stuck-job recovery. Unset disables administrative mutations; never use the worker registration token. |
 | Orchestrator / Registration | `ACHERON_OPEN_REGISTRATION` | (unset) | Set to `1` to enable open worker registration (bypasses token checks, useful for local dev). |

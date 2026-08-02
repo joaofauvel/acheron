@@ -48,7 +48,7 @@ from acheron.core.models import (
     WorkerType,
 )
 from acheron.core.planner import ChunkingLimits, compile_plan
-from acheron.core.schemas import CostBreakdownResponse, CostSummaryResponse, JobCostResponse
+from acheron.core.schemas import CostBreakdownResponse, CostJobSnapshot, CostSummaryResponse, JobCostResponse
 from acheron.shell.api.public import public_gpu_type, public_optional_worker_id, public_worker_id
 from acheron.shell.cache import InMemoryStepCache, StepCache
 from acheron.shell.capabilities import CapabilityAggregator, LanguagePair
@@ -169,6 +169,19 @@ def _parse_admin_audit(line: str) -> AdminActionAudit | None:
         job_ids=tuple(cast("list[str]", job_ids)),
         affected_count=affected_count,
         result=cast("Literal['success', 'failure']", result),
+    )
+
+
+def _known_result_cost(result: PlanResult | None) -> float:
+    """Return known cost while retaining measured components of mixed results."""
+    if result is None:
+        return 0.0
+    if result.total_cost_basis not in {None, CostBasis.UNKNOWN}:
+        return result.total_cost
+    return sum(
+        item.estimate.cost
+        for item in result.cost_breakdown
+        if item.estimate.basis is not CostBasis.UNKNOWN and item.estimate.cost is not None
     )
 
 
@@ -1432,12 +1445,7 @@ class Orchestrator:
             result = job.result
             if result is None or result.total_cost_basis in {None, CostBasis.UNKNOWN}:
                 unknown_cost_jobs += 1
-            if result is not None:
-                total_cost += sum(
-                    item.estimate.cost
-                    for item in result.cost_breakdown
-                    if item.estimate.basis is not CostBasis.UNKNOWN and item.estimate.cost is not None
-                )
+            total_cost += _known_result_cost(result)
         return CostSummaryResponse(
             window=window,
             since=since,
@@ -1445,6 +1453,19 @@ class Orchestrator:
             total_cost=total_cost,
             job_count=len(selected),
             unknown_cost_jobs=unknown_cost_jobs,
+            jobs=[
+                CostJobSnapshot(
+                    job_id=job.job_id,
+                    status=job.status,
+                    total_cost=_known_result_cost(result),
+                    total_duration_seconds=result.total_duration_seconds if result is not None else 0.0,
+                    completed_steps=result.completed_steps if result is not None else job.progress.completed_steps,
+                    total_steps=result.total_steps if result is not None else job.progress.total_steps,
+                    total_cost_basis=(result.total_cost_basis if result and result.total_cost_basis else None),
+                )
+                for job in selected[:1000]
+                for result in (job.result,)
+            ],
         )
 
     async def cancel_job(self, job_id: str) -> TrackedJob:
