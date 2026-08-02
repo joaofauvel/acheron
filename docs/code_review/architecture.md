@@ -1263,9 +1263,9 @@ severity: high
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 2a11136
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["2a11136"]
 files:
   - path: src/acheron/shell/orchestrator.py
     lines: 171-204
@@ -1292,9 +1292,9 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 2a11136
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["2a11136"]
 files:
   - path: src/acheron/shell/api/app.py
     lines: 95-110

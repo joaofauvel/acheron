@@ -1301,9 +1301,9 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 75d5b7e
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["75d5b7e"]
 files:
   - path: src/acheron/shell/job_events.py
     lines: 20-130

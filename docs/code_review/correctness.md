@@ -1227,14 +1227,14 @@ severity: medium
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 75d5b7e
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["75d5b7e"]
 files:
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 579-588
+  - path: src/acheron/shell/api/routes/job_streams.py
+    lines: 15-75
   - path: src/acheron/shell/job_events.py
-    lines: 69-128
+    lines: 86-128
 related: [MAINT-024, PERF-012]
 ```
 
