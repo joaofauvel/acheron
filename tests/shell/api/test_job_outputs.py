@@ -49,6 +49,10 @@ async def client_with_output(
     second_output_path.write_bytes(b"chapter")
     malformed_type_path = output_dir / "malformed.bin"
     malformed_type_path.write_bytes(b"binary")
+    nested_output_dir = output_dir / "nested"
+    nested_output_dir.mkdir()
+    nested_path = nested_output_dir / "nested.m4b"
+    nested_path.write_bytes(b"nested")
     outside_path = tmp_path / "external" / "outside.m4b"
     outside_path.parent.mkdir()
     outside_path.write_bytes(b"secret")
@@ -117,6 +121,13 @@ async def client_with_output(
                         size_bytes=0,
                         checksum="checksum",
                         content_type="application/octet-stream",
+                    ),
+                    OutputFile(
+                        path=str(nested_path),
+                        filename="nested.m4b",
+                        size_bytes=6,
+                        checksum="checksum",
+                        content_type="audio/mp4",
                     ),
                 ),
                 total_cost=0.0,
@@ -202,6 +213,32 @@ async def test_output_route_rejects_fifo_without_blocking(client_with_output: As
 
     assert response.status_code == 404
     assert response.json()["detail"]["type"] == "OutputNotFoundError"
+
+
+@pytest.mark.asyncio
+async def test_output_route_rejects_intermediate_directory_symlink(
+    client_with_output: AsyncClient,
+) -> None:
+    transport = cast("ASGITransport", client_with_output._transport)  # noqa: SLF001
+    app = cast("FastAPI", transport.app)
+    data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+    nested_dir = data_dir / "job-1" / "package" / "nested"
+    target_dir = data_dir / "external" / "nested-target"
+    target_dir.mkdir()
+    (target_dir / "nested.m4b").write_bytes(b"secret")
+    (nested_dir / "nested.m4b").unlink()
+    nested_dir.rmdir()
+    nested_dir.symlink_to(target_dir, target_is_directory=True)
+
+    job_response = await client_with_output.get("/jobs/job-1")
+    assert job_response.status_code == 200
+    nested_output = next(output for output in job_response.json()["outputs"] if output["filename"] == "nested.m4b")
+
+    response = await client_with_output.get(nested_output["download_url"])
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["type"] == "OutputNotFoundError"
+    assert not response.content.startswith(b"secret")
 
 
 @pytest.mark.asyncio

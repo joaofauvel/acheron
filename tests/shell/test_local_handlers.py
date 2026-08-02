@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import struct
 import zipfile
 from pathlib import Path
@@ -8,10 +9,10 @@ from unittest.mock import patch
 
 import pytest
 
-from acheron.core.errors import PathNotAllowedError
+from acheron.core.errors import PathNotAllowedError, WorkerError
 from acheron.core.models import Job, OutputFile, WorkerType
 from acheron.shell.cache import StepCache
-from acheron.shell.local_handlers import ChunkingHandler, ExtractionHandler, PackagingHandler
+from acheron.shell.local_handlers import ChunkingHandler, ExtractionHandler, PackagingHandler, read_wav_duration
 
 
 def _create_dummy_epub(path: Path) -> None:
@@ -56,6 +57,24 @@ def _create_dummy_wav(path: Path, duration_sec: float = 1.0) -> None:
         + b"\x00" * data_size
     )
     path.write_bytes(header)
+
+
+def _wav_with_chunks(
+    *,
+    audio_format: int = 1,
+    byte_rate: int = 44100,
+    include_fmt: bool = True,
+    include_data: bool = True,
+) -> bytes:
+    chunks: list[bytes] = []
+    if include_fmt:
+        fmt = struct.pack("<HHIIHH", audio_format, 1, 22050, byte_rate, 2, 16)
+        chunks.append(b"fmt " + struct.pack("<I", len(fmt)) + fmt)
+    if include_data:
+        data = b"\x00\x00"
+        chunks.append(b"data" + struct.pack("<I", len(data)) + data)
+    body = b"WAVE" + b"".join(chunks)
+    return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
 @pytest.mark.asyncio
@@ -211,6 +230,28 @@ async def test_packaging_handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     cmd = mock_run_called[0]
     assert "-b:a" in cmd
     assert "128k" in cmd
+
+
+@pytest.mark.parametrize(
+    ("name", "payload", "message"),
+    [
+        ("non_pcm", _wav_with_chunks(audio_format=3), "Unsupported non-PCM WAV format"),
+        ("zero_byte_rate", _wav_with_chunks(byte_rate=0), "Invalid byte rate in WAV format"),
+        ("malformed_riff", b"NOT-A-WAV", "Invalid WAV file format (missing RIFF/WAVE magic)"),
+        ("missing_chunks", _wav_with_chunks(include_fmt=False, include_data=False), "Missing fmt or data chunk in WAV"),
+    ],
+)
+def test_read_wav_duration_rejects_malformed_wav(
+    tmp_path: Path,
+    name: str,
+    payload: bytes,
+    message: str,
+) -> None:
+    path = tmp_path / f"{name}.wav"
+    path.write_bytes(payload)
+
+    with pytest.raises(WorkerError, match=re.escape(message)):
+        read_wav_duration(path)
 
 
 @pytest.mark.asyncio
