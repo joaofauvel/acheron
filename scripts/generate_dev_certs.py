@@ -1,9 +1,10 @@
 """Generate a local Acheron CA and per-service dev certs.
 
-Idempotent. Re-running overwrites existing certs in the output directory.
+Generation is non-destructive for existing certificate material. A complete
+marked development bundle is reused unless ``--force`` is supplied.
 
 Usage:
-    uv run python scripts/generate_dev_certs.py [--out-dir ./certs]
+    uv run python scripts/generate_dev_certs.py [--out-dir ./certs] [--force]
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import ipaddress
+import tempfile
 from pathlib import Path
 
 from cryptography import x509
@@ -26,6 +28,7 @@ SERVICES = [
     "tts-grpc-stub",
 ]
 
+DEV_CA_MARKER = ".dev-ca"
 CA_CN = "Acheron Dev CA"
 VALIDITY_DAYS = 365
 KEY_SIZE = 2048
@@ -137,15 +140,64 @@ def _build_server_cert(
     _write_pem_key(out_dir / f"{service}.key", key)
 
 
-def generate(out_dir: Path) -> None:
+def _managed_paths(out_dir: Path) -> tuple[Path, ...]:
+    """Return all files owned by a generated development bundle."""
+    return (
+        out_dir / "acheron-ca.crt",
+        out_dir / "acheron-ca.key",
+        *(out_dir / f"{service}.{suffix}" for service in SERVICES for suffix in ("crt", "key")),
+    )
+
+
+def _preflight(out_dir: Path) -> str:
+    """Classify the output directory before generating any material."""
+    marker = out_dir / DEV_CA_MARKER
+    managed = _managed_paths(out_dir)
+    present = tuple(path for path in managed if path.is_file())
+    if not marker.exists() and not present:
+        return "fresh"
+    if marker.is_file() and len(present) == len(managed):
+        return "complete-marked"
+    if marker.exists():
+        missing = ", ".join(path.name for path in managed if not path.is_file())
+        message = (
+            "marked development certificate bundle is incomplete; "
+            f"missing {missing}. Remove the partial development material and retry. "
+            "--force is only allowed for a complete marked bundle."
+        )
+        raise RuntimeError(message)
+    raise RuntimeError(
+        "unmarked certificate material already exists; refusing to overwrite it. "
+        "Remove the existing development material or pass --force only after "
+        "creating a complete marked development bundle."
+    )
+
+
+def _write_marker(path: Path) -> None:
+    """Mark a fully generated bundle as development-owned."""
+    path.write_text("Acheron development certificate bundle.\n", encoding="utf-8")
+    path.chmod(0o644)
+
+
+def generate(out_dir: Path, *, force: bool = False) -> None:
     """Generate the Acheron CA and per-service certs in `out_dir`."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    state = _preflight(out_dir)
+    if state == "complete-marked" and not force:
+        return
+
     # World-executable dir so workers can `ls` and `stat` files; file-level
     # permissions (0600 for keys, 0644 for certs) are set at write time.
     out_dir.chmod(0o755)
-    ca_cert, ca_key = _build_ca(out_dir)
-    for service in SERVICES:
-        _build_server_cert(service, out_dir, ca_cert, ca_key)
+    with tempfile.TemporaryDirectory(prefix=".dev-ca-", dir=out_dir) as staging:
+        staging_dir = Path(staging)
+        ca_cert, ca_key = _build_ca(staging_dir)
+        for service in SERVICES:
+            _build_server_cert(service, staging_dir, ca_cert, ca_key)
+        _write_marker(staging_dir / DEV_CA_MARKER)
+        for path in _managed_paths(staging_dir):
+            path.replace(out_dir / path.name)
+        (staging_dir / DEV_CA_MARKER).replace(out_dir / DEV_CA_MARKER)
 
 
 def main() -> None:
@@ -157,8 +209,16 @@ def main() -> None:
         default=Path("certs"),
         help="Output directory for certs (default: ./certs)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Regenerate a complete marked development bundle",
+    )
     args = parser.parse_args()
-    generate(args.out_dir)
+    try:
+        generate(args.out_dir, force=args.force)
+    except RuntimeError as exc:
+        parser.error(str(exc))
     print(f"Generated Acheron CA and {len(SERVICES)} service certs in {args.out_dir}")  # noqa: T201
 
 
