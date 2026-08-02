@@ -34,6 +34,7 @@ from acheron.shell.config import Settings, load_settings
 from acheron.shell.logging_context import ContextFilter, bind_request_id
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores import create_job_store, create_worker_store
+from acheron.tls import CertificateManager
 from acheron.version import build_version
 
 if TYPE_CHECKING:
@@ -60,24 +61,36 @@ def _safe_request_id(value: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage orchestrator lifecycle — start on startup, stop on shutdown."""
+    """Manage orchestrator and certificate-monitor lifecycles."""
     orch: Orchestrator = app.state.orchestrator
+    certificate_manager: CertificateManager | None = app.state.certificate_manager
     await orch.start()
     try:
+        if certificate_manager is not None:
+            try:
+                await certificate_manager.start()
+            except Exception:
+                logger.exception("Failed to start certificate monitor")
         yield
     finally:
+        if certificate_manager is not None:
+            try:
+                await certificate_manager.stop()
+            except Exception:
+                logger.exception("Failed to stop certificate monitor")
         try:
             await orch.shutdown()
         finally:
             await orch.close()
 
 
-def create_app(  # noqa: C901, PLR0915
+def create_app(  # noqa: C901, PLR0913, PLR0915
     registry: WorkerStore | None = None,
     job_store: JobStore | None = None,
     cache: PlanCache | None = None,
     data_dir: Path | str | None = None,
     settings: Settings | None = None,
+    certificate_manager: CertificateManager | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -115,6 +128,8 @@ def create_app(  # noqa: C901, PLR0915
         job_store=job_store,
         settings=settings,
     )
+    if certificate_manager is None:
+        certificate_manager = CertificateManager.from_env()
 
     app = FastAPI(
         title="Acheron",
@@ -122,6 +137,7 @@ def create_app(  # noqa: C901, PLR0915
         lifespan=lifespan,
     )
     app.state.orchestrator = orchestrator
+    app.state.certificate_manager = certificate_manager
     app.state.version = version_info
     app.add_middleware(InputRequestBoundary)
     app.add_middleware(RequestBodyBoundary)

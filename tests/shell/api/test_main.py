@@ -70,3 +70,89 @@ def test_main_invokes_uvicorn_without_tls_when_unset(
     config = captured["config"]
     assert config.ssl_certfile is None
     assert config.ssl_keyfile is None
+
+
+@pytest.mark.asyncio
+async def test_app_starts_and_stops_certificate_monitor_without_leaking_task(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from acheron.shell.api import app as app_module
+
+    events: list[str] = []
+
+    class _FakeOrchestrator:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def start(self) -> None:
+            events.append("orchestrator.start")
+
+        async def shutdown(self) -> None:
+            events.append("orchestrator.shutdown")
+
+        async def close(self) -> None:
+            events.append("orchestrator.close")
+
+    class _FakeCertificateManager:
+        def __init__(self) -> None:
+            self.monitor_task = object()
+
+        async def start(self) -> None:
+            events.append("certificate.start")
+
+        async def stop(self) -> None:
+            events.append("certificate.stop")
+            self.monitor_task = None
+
+    manager = _FakeCertificateManager()
+    monkeypatch.setattr(app_module, "Orchestrator", _FakeOrchestrator)
+
+    app = app_module.create_app(data_dir=tmp_path / "data", certificate_manager=manager)
+    assert app.state.certificate_manager is manager
+
+    async with app.router.lifespan_context(app):
+        assert events == ["orchestrator.start", "certificate.start"]
+
+    assert events == [
+        "orchestrator.start",
+        "certificate.start",
+        "certificate.stop",
+        "orchestrator.shutdown",
+        "orchestrator.close",
+    ]
+    assert manager.monitor_task is None
+
+
+@pytest.mark.asyncio
+async def test_app_without_tls_keeps_existing_startup_behavior(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from acheron.shell.api import app as app_module
+
+    monkeypatch.delenv("ACHERON_TLS_CERT_FILE", raising=False)
+    monkeypatch.delenv("ACHERON_TLS_KEY_FILE", raising=False)
+    events: list[str] = []
+
+    class _FakeOrchestrator:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def start(self) -> None:
+            events.append("orchestrator.start")
+
+        async def shutdown(self) -> None:
+            events.append("orchestrator.shutdown")
+
+        async def close(self) -> None:
+            events.append("orchestrator.close")
+
+    monkeypatch.setattr(app_module, "Orchestrator", _FakeOrchestrator)
+    app = app_module.create_app(data_dir=tmp_path / "data")
+
+    assert app.state.certificate_manager is None
+    async with app.router.lifespan_context(app):
+        assert events == ["orchestrator.start"]
+
+    assert events == ["orchestrator.start", "orchestrator.shutdown", "orchestrator.close"]
