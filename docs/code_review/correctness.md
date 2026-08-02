@@ -1249,19 +1249,21 @@ related: [MAINT-024, PERF-012]
 ### CORR-046 — Public job responses omit per-artifact metadata
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 092ef77
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["092ef77"]
 files:
   - path: src/acheron/core/schemas.py
-    lines: 26-30
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 736-743
+    lines: 26-33
+  - path: src/acheron/shell/api/routes/job_responses.py
+    lines: 107-122
+  - path: tests/shell/api/test_jobs.py
+    lines: 274-375
 related: [CORR-013]
 ```
 

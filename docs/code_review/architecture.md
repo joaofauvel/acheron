@@ -1102,9 +1102,9 @@ files:
   - path: src/acheron/worker_sdk/_caps.py
     lines: 26-30
   - path: src/acheron/shell/api/schemas.py
-    lines: 58-66
-  - path: src/acheron/shell/api/schemas.py
-    lines: 80-90
+    lines: 185-207
+  - path: src/acheron/core/schemas.py
+    lines: 292-306
   - path: src/acheron/shell/api/routes/workers.py
     lines: 31-50
 related: [CFG-011]
@@ -1162,9 +1162,11 @@ last_verified_at:
 fixed_in: [2c44856]
 files:
   - path: src/acheron/api_client.py
-    lines: 10-17
+    lines: 13-29
+  - path: src/acheron/core/schemas.py
+    lines: 192-340
   - path: src/acheron/shell/api/schemas.py
-    lines: 30-103
+    lines: 11-29
 related: []
 ```
 
@@ -1314,17 +1316,23 @@ related: [REPRO-007]
 ### ARCH-029 — AcheronClient still imports the server-only CleanupResponse schema after response-schema extraction
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-fixed_in: []
+  commit: 092ef77
+  date: 2026-08-01
+fixed_in: ["092ef77"]
 files:
+  - path: src/acheron/core/schemas.py
+    lines: 36-68
   - path: src/acheron/api_client.py
-    lines: 14-30, 237-256
-  - path: src/acheron/shell/api/schemas.py
-    lines: 178-205
+    lines: 13-29, 237-256
+  - path: src/acheron/shell/api/routes/admin.py
+    lines: 15-28, 153-191
+  - path: tests/test_api_client.py
+    lines: 20-106
 related: [ARCH-024]
 ```
 

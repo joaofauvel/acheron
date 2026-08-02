@@ -392,7 +392,7 @@ related:
 
 **Issue.** Two functions produce the same `{worker_type, supported_languages_in, supported_languages_out, supported_formats_in, supported_formats_out, max_payload_bytes, batch_capable, model_source, metadata}` dict from a `WorkerCapabilities` value. The only difference is the return-type annotation: `_caps_to_response` → `dict[str, Any]`, `_caps_to_dict` → `dict[str, object]`. Both use `sorted(frozenset)` for the language/format fields and `dict(metadata)` for the metadata.
 
-**Why it matters.** The orchestrator's `POST /workers` request schema (`WorkerCapabilitiesRequest` in `shell/api/schemas.py:45-56`) is the consumer of `_caps_to_dict`; the SDK's `GET /capabilities` response uses `_caps_to_response`. Adding a field to `WorkerCapabilities` (cf. MAINT-012) now requires editing two serialisers in lockstep — the third copy of the same shape. A `WorkerCapabilities.model_dump()` (pydantic) or a single `_caps_to_dict` imported by both call sites removes the duplication.
+**Why it matters.** The orchestrator's `POST /workers` request schema (`WorkerCapabilitiesRequest` in `shell/api/schemas.py:185-207`) is the consumer of `_caps_to_dict`; the SDK's `GET /capabilities` response uses `_caps_to_response`. Adding a field to `WorkerCapabilities` (cf. MAINT-012) now requires editing two serialisers in lockstep — the third copy of the same shape. A `WorkerCapabilities.model_dump()` (pydantic) or a single `_caps_to_dict` imported by both call sites removes the duplication.
 
 **Recommendation.** Promote `_caps_to_dict` (registration.py) to the canonical form (it has the better `dict[str, object]` annotation) and import it from `_edge_http.py`. Drop `_caps_to_response`. If pydantic interop is desired, derive both from a single `pydantic.TypeAdapter(WorkerCapabilities).dump_python` call site.
 
@@ -642,9 +642,9 @@ last_verified_at:
 fixed_in: ["1e569d5"]
 files:
 - path: src/acheron/api_client.py
-  lines: 45-129
+  lines: 151-480
 - path: src/acheron/cli.py
-  lines: 165-291
+  lines: 616-1075
 related:
 - ARCH-004
 ```
@@ -730,12 +730,8 @@ last_verified_at:
   date: 2026-06-25
 fixed_in: [725c202]
 files:
-  - path: src/acheron/shell/api/schemas.py
-    lines: 70-78
-  - path: src/acheron/shell/api/routes/workers.py
-    lines: 51
-  - path: src/acheron/shell/api/routes/workers.py
-    lines: 68
+  - path: src/acheron/core/schemas.py
+    lines: 292-306
 related: [TYPE-005]
 ```
 
@@ -760,9 +756,11 @@ last_verified_at:
 fixed_in: [00222e1]
 files:
   - path: src/acheron/core/schemas.py
-    lines: 161-190
+    lines: 192-248
   - path: src/acheron/shell/api/routes/job_responses.py
     lines: 49-122
+  - path: tests/shell/api/test_jobs.py
+    lines: 274-375
 related: [TYPE-004]
 ```
 

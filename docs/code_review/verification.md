@@ -342,7 +342,7 @@ fixed_in:
   - cf3a658b518124a878021400ed3e2c1dfcfad7c4
 files:
   - path: src/acheron/shell/api/schemas.py
-    lines: 1-88
+    lines: 62-78, 185-207, 258-280
 related: []
 ```
 
@@ -1061,10 +1061,10 @@ last_verified_at:
   date: 2026-07-23
 fixed_in: [2569539]
 files:
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 96-108
+  - path: src/acheron/shell/api/routes/job_responses.py
+    lines: 49-122
   - path: tests/shell/api/test_jobs.py
-    lines: 11-56
+    lines: 274-375
 related: []
 ```
 
