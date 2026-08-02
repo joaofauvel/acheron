@@ -1242,19 +1242,19 @@ related: [ARCH-025]
 ### TEST-031 — Nested output-directory symlink rejection lacks coverage
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: f9ae89b
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["f9ae89b"]
 files:
   - path: src/acheron/shell/api/routes/job_outputs.py
-    lines: 61-88
+    lines: 61-90
   - path: tests/shell/api/test_job_outputs.py
-    lines: 188-200, 259-272
+    lines: 215-243
 related: []
 ```
 
@@ -1269,19 +1269,19 @@ related: []
 ### TEST-032 — PCM WAV rejection branches lack behavioral coverage
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: f9ae89b
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["f9ae89b"]
 files:
   - path: src/acheron/shell/local_handlers.py
     lines: 267-317
   - path: tests/shell/test_local_handlers.py
-    lines: 44-57, 217-227
+    lines: 59-82, 235-254
 related: []
 ```
 
@@ -1359,12 +1359,14 @@ severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: f9ae89b
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/routes/job_outputs.py
-    lines: 61-90, 126-152
+    lines: 80-82
+  - path: src/acheron/shell/api/routes/job_outputs.py
+    lines: 145-150
   - path: src/acheron/core/models.py
     lines: 220-228
 related: []

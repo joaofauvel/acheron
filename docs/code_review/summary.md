@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: fc257a1
+last_updated_commit: f9ae89b
 last_staleness_scan:
-  commit: fc257a1
+  commit: f9ae89b
   date: 2026-08-01
 ---
 
@@ -26,7 +26,7 @@ last_staleness_scan:
 | PKG | A | 0 critical, 0 high, 0 medium, 0 low |
 | REPRO | A | 0 critical, 0 high, 0 medium, 1 low |
 | SEC | A | 0 critical, 0 high, 0 medium, 4 low |
-| TEST | B | 0 critical, 0 high, 3 medium, 0 low |
+| TEST | B | 0 critical, 0 high, 1 medium, 0 low |
 | TYPE | A | 0 critical, 0 high, 0 medium, 2 low |
 | ML | A | 0 critical, 0 high, 0 medium, 0 low |
 | MATH | A | 0 critical, 0 high, 0 medium, 0 low |
@@ -35,8 +35,6 @@ last_staleness_scan:
 
 1. **DOC-014** — README describes administrative mutations under the wrong CLI namespace [medium, S] — `surface.md`
 2. **DX-009** — `just validate` omits UX rubric validation [medium, S] — `surface.md`
-3. **TEST-031** — Nested output-directory symlink rejection lacks coverage [medium, S] — `verification.md`
-4. **TEST-032** — PCM WAV rejection branches lack behavioral coverage [medium, S] — `verification.md`
 
 ## Quick wins
 
@@ -47,29 +45,28 @@ last_staleness_scan:
 5. **TYPE-015** — keep health response parsing behind the typed boundary [low, S] — `code-quality.md`
 6. **DOC-014** — document the actual administrative CLI namespaces [medium, S] — `surface.md`
 7. **DX-009** — include UX rubric validation in `just validate` [medium, S] — `surface.md`
-8. **CORR-047** — return measured RunPod pricing when a valid rate is available [medium, S] — `correctness.md`
 
 ## Story Counts
 
 | Status | Count |
 |---|---|
-| open | 11 |
+| open | 9 |
 | in-progress | 0 |
 | fixed | 61 |
-| verified | 192 |
+| verified | 194 |
 | stale | 12 |
 | wontfix | 0 |
 | **total filed** | **276** |
 
 ## Changes Since Last Review
 
-The review was refreshed through `fc257a1`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, durable administrative audits, dashboard URL separation, combined cost polling, measured RunPod pricing, and spooled multipart input handling; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
+The review was refreshed through `f9ae89b`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, durable administrative audits, dashboard URL separation, combined cost polling, measured RunPod pricing, spooled multipart input handling, nested output-directory symlink coverage, and malformed-WAV rejection coverage; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
 
 ## Last orientation snapshot
 
 **Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers, local handlers, and Redis or in-memory stores.
 
-**Branch / HEAD**: `fix/code-review-medium-high` at `fc257a1` (implementation commit; review-metadata follow-up may be newer).
+**Branch / HEAD**: `fix/code-review-medium-high` at `f9ae89b` (implementation commit; review-metadata follow-up may be newer).
 
 **Top-level layout**: `src/` contains `acheron`; `tests/` mirrors core, shell, worker SDK, integration, first-run, simulation, scripts, and UX-review surfaces; `dashboard/`, `workers/`, `stubs/`, `proto/`, `sim/`, `compose/`, `scripts/`, and `docs/` provide supporting applications, deployment, tooling, and plans/specs.
 

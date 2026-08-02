@@ -1048,7 +1048,7 @@ severity: low
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: pending
+  commit: f9ae89b
   date: 2026-08-01
 fixed_in: []
 files:
