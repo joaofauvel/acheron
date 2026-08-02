@@ -1377,9 +1377,9 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 001ee71
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["001ee71"]
 files:
   - path: src/acheron/shell/api/admin_audit.py
     lines: 33-52
@@ -1433,7 +1433,7 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 001ee71
   date: 2026-08-01
 fixed_in: []
 files:
@@ -1597,7 +1597,7 @@ severity: low
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 001ee71
   date: 2026-08-01
 fixed_in: []
 files:

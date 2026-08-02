@@ -1369,9 +1369,9 @@ severity: medium
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 001ee71
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["001ee71"]
 files:
   - path: src/acheron/shell/retention.py
     lines: 195-206

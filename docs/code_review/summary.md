@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: pending
+last_updated_commit: 001ee71
 last_staleness_scan:
-  commit: pending
+  commit: 001ee71
   date: 2026-08-01
 ---
 
@@ -68,13 +68,13 @@ last_staleness_scan:
 
 ## Changes Since Last Review
 
-The review was refreshed through `pending`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, and durable administrative audits; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
+The review was refreshed through `001ee71`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, and durable administrative audits; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
 
 ## Last orientation snapshot
 
 **Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers, local handlers, and Redis or in-memory stores.
 
-**Branch / HEAD**: `fix/code-review-medium-high` at `pending` (implementation commit; review-metadata follow-up may be newer).
+**Branch / HEAD**: `fix/code-review-medium-high` at `001ee71` (implementation commit; review-metadata follow-up may be newer).
 
 **Top-level layout**: `src/` contains `acheron`; `tests/` mirrors core, shell, worker SDK, integration, first-run, simulation, scripts, and UX-review surfaces; `dashboard/`, `workers/`, `stubs/`, `proto/`, `sim/`, `compose/`, `scripts/`, and `docs/` provide supporting applications, deployment, tooling, and plans/specs.
 
