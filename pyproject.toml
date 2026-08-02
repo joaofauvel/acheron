@@ -9,6 +9,7 @@ authors = [{ name = "Julia" }]
 dependencies = [
     "aiofiles~=24.0",
     "click~=8.4",
+    "cryptography~=46.0",
     "fastapi~=0.137",
     "grpcio~=1.81",
     "grpcio-health-checking~=1.81",
@@ -205,7 +206,6 @@ forbidden_modules = ["acheron.shell"]
 [dependency-groups]
 dev = [
     "basedpyright~=1.39",
-    "cryptography~=46.0",
     "grpcio-tools~=1.81",
     "import-linter~=2.11",
     "inline-snapshot~=0.34",

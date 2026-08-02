@@ -25,6 +25,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "click" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "grpcio" },
     { name = "grpcio-health-checking" },
@@ -48,7 +49,6 @@ dashboard = [
 [package.dev-dependencies]
 dev = [
     { name = "basedpyright" },
-    { name = "cryptography" },
     { name = "grpcio-tools" },
     { name = "import-linter" },
     { name = "inline-snapshot" },
@@ -73,6 +73,7 @@ dev = [
 requires-dist = [
     { name = "aiofiles", specifier = "~=24.0" },
     { name = "click", specifier = "~=8.4" },
+    { name = "cryptography", specifier = "~=46.0" },
     { name = "fastapi", specifier = "~=0.137" },
     { name = "grpcio", specifier = "~=1.81" },
     { name = "grpcio-health-checking", specifier = "~=1.81" },
@@ -93,7 +94,6 @@ provides-extras = ["dashboard"]
 [package.metadata.requires-dev]
 dev = [
     { name = "basedpyright", specifier = "~=1.39" },
-    { name = "cryptography", specifier = "~=46.0" },
     { name = "grpcio-tools", specifier = "~=1.81" },
     { name = "import-linter", specifier = "~=2.11" },
     { name = "inline-snapshot", specifier = "~=0.34" },
