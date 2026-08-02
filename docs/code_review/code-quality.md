@@ -1311,9 +1311,9 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-  commit: pending
+  commit: 74fdf0d
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["74fdf0d"]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
     lines: 1-21
@@ -1346,9 +1346,9 @@ severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: pending
+  commit: 74fdf0d
   date: 2026-08-01
-fixed_in: ["pending"]
+fixed_in: ["74fdf0d"]
 files:
   - path: src/acheron/shell/api/routes/job_requests.py
     lines: 390-427
