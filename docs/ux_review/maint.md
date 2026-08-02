@@ -33,8 +33,8 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
@@ -72,8 +72,8 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
 ---
@@ -294,8 +294,8 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
@@ -393,8 +393,8 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
@@ -426,8 +426,8 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
@@ -463,8 +463,8 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
 ---
@@ -500,8 +500,8 @@ fixed_in: [8357163c, 3f5b537, 8c0f119, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
 ---
@@ -539,8 +539,8 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
 ---
@@ -580,8 +580,8 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
 ---
@@ -625,8 +625,8 @@ fixed_in: [808353f, CURRENT_HEAD]
 verified_in: [808353f, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty
 ---

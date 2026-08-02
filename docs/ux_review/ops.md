@@ -161,8 +161,8 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
 ---
@@ -372,8 +372,8 @@ fixed_in: ["4750302", "1f5514c", "CURRENT_HEAD"]
 verified_in: ["1f5514c", "CURRENT_HEAD"]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:pytest+just-validate"
 feedback_ref: "TBD-pagerduty"
 ---
@@ -459,8 +459,8 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 drift_note: "Time-window/status/archive controls and archive metadata are covered by the Task 10 recovery journey."
 feedback_ref: "TBD-pagerduty"
@@ -832,8 +832,8 @@ fixed_in: [8357163c, 8c0f119, d08dafc, 6ae39df, 0e6ab4e, 16898af, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-30"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:phase-4d-task-12-correlation"
 feedback_ref: "TBD-pagerduty"
 incident_ref: "TBD-pagerduty"
@@ -1042,8 +1042,8 @@ fixed_in: [8aea0cb, CURRENT_HEAD]
 verified_in: [8aea0cb, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
 ---
@@ -1119,8 +1119,8 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
-  date: "2026-07-31"
+  tree: e1353df61182a819f58dac86c051db45dd736c3ec6be8a268d1d7ce1d8e27c48
+  date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
 ---

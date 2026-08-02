@@ -70,10 +70,10 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 ## Notes
 
 - Task 10 recovery evidence covers stuck-job discovery/reaping, archive and cleanup controls, worker history rendering, and CLI/dashboard filters via `harness:phase-4d-task-10-recovery`.
-- Refresh performed against `CURRENT_HEAD` after the prior UX metadata commit `22d20f5`; only seven `docs/code_review/` files changed, so no new UX story was added.
+- Current-head metadata was refreshed after `de02825`; the Dockerfile data-volume fix and code-review metadata changed, but no UX-facing story or citation drift was introduced.
 - Independent journey checks marked DEPLOY-006 obsolete and OPS-015, OPS-032, MAINT-006, and MAINT-018 stale; `discovered_via` ordering and existing verified metadata were preserved.
 - `fixed_in` placeholders were resolved only where the review evidence supplied a matching Conventional Commit SHA.
-- `just first-run` and all three simulation scenarios passed during this refresh. The current-branch metadata refresh re-resolved the 13 route citation drifts and refreshed the 16 `CURRENT_HEAD` tree attestations for verified OPS/MAINT stories; `just ux-validate` now passes.
+- `just first-run` passed all 9 journey tests after the data-volume fix, and all three simulation scenarios remain green. The refresh updated the 16 `CURRENT_HEAD` tree attestations for verified OPS/MAINT stories; `just ux-validate` passes.
 - Traceability stories OPS-022, MAINT-013, and MAINT-016 were verified by focused request-correlation and dashboard version tests.
 - OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
 - Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.
@@ -90,4 +90,4 @@ A theme with 0 stories is graded `—` (untested); this summary has no such them
 - UX gate: all 15 required Phase 4D `just ux-verify` commands and `just ux-validate` pass after this commit; parsed metadata is 16 verified overall (OPS 6, MAINT 10) and 6 obsolete.
 - Residual risks: sanitisation intentionally returns the constant `request failed` when caller fallbacks contain sensitive patterns; no other public-message behavior changed.
 - Metadata rationale: tracked UX metadata uses `CURRENT_HEAD` plus an unambiguous tree fingerprint of each non-metadata Git entry (mode, type, object ID, and exact path bytes); later code/test/docs commits invalidate the attestation without a self-referential commit SHA.
-- Regression gate: `git diff --check` passed; final acceptance remediation is covered by focused type, integration, stream-cleanup, and verifier tests. This historical report predates the current branch's 29 UX metadata errors; run `just ux-validate` against the current checkout before merging.
+- Regression gate: `git diff --check` passed; final acceptance remediation is covered by focused type, integration, stream-cleanup, and verifier tests. The post-merge current-head attestation refresh is green under `just ux-validate`.
