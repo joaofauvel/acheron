@@ -1486,17 +1486,21 @@ related: [PERF-003]
 ### PERF-015 — Edge multipart parsing buffers each large input part and copies it again
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-fixed_in: []
+  commit: fc257a1
+  date: 2026-08-01
+fixed_in: ["fc257a1"]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 183-214, 265-270
+    lines: 186-230
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 567-597
+    lines: 325-345
+  - path: src/acheron/worker_sdk/_edge_http.py
+    lines: 621-653
 related: [PERF-006]
 ```
 

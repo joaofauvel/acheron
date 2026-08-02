@@ -1278,15 +1278,17 @@ related: [CORR-013]
 ### CORR-047 — RunPod pricing returns UNKNOWN after a usable rate is available
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-fixed_in: []
+  commit: fc257a1
+  date: 2026-08-01
+fixed_in: ["fc257a1"]
 files:
   - path: src/acheron/worker_sdk/pricing.py
-    lines: 264-290
+    lines: 261-280
 related: []
 ```
 
