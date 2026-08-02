@@ -159,7 +159,7 @@ def test_step_2_compose_dependency_gate_blocks_orchestrator_startup(
     output = result.stdout + result.stderr
 
     assert result.returncode != 0
-    assert "dependency failed to start" in output
+    assert 'service "certs-init" didn\'t complete successfully' in output
     assert "orchestrator" not in [line for line in output.splitlines() if " Started" in line]
 
 
