@@ -33,7 +33,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -72,7 +72,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
@@ -294,7 +294,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -393,7 +393,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-31"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -426,7 +426,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -463,7 +463,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -500,7 +500,7 @@ fixed_in: [8357163c, 3f5b537, 8c0f119, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-30"
 verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
@@ -539,7 +539,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-31"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
@@ -580,7 +580,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-31"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
@@ -625,7 +625,7 @@ fixed_in: [808353f, CURRENT_HEAD]
 verified_in: [808353f, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 968f4102ed57e89d8aff239a5970d5e759ab7146311b4f07eabbe312bc1dad65
+  tree: ba6675e38c4e9b6bcbd62a424b425887553b86c8cb85f67cb176c29e114deaac
   date: "2026-07-31"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty
