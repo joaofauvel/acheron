@@ -149,12 +149,21 @@ class TestCertificateManager:
         with caplog.at_level(logging.INFO, logger="acheron.tls"):
             manager.check_and_log(now=now)
 
-        assert any(
-            record.levelno == logging.INFO
+        startup_records = [
+            record
+            for record in caplog.records
+            if record.levelno == logging.INFO
             and "orchestrator.crt" in record.message
             and "CN=orchestrator" in record.message
-            for record in caplog.records
-        )
+        ]
+        assert len(startup_records) == 1
+        startup_message = startup_records[0].message
+        assert f"expires={bundle.expires_at.isoformat()}" in startup_message
+        assert "remaining=31d 0h 0m" in startup_message
+        assert str(bundle.cert_path) not in startup_message
+        assert str(bundle.key_path) not in startup_message
+        assert "BEGIN CERTIFICATE" not in startup_message
+        assert "PRIVATE KEY" not in startup_message
 
     def test_certificate_monitor_emits_30_day_warning(
         self,
@@ -165,10 +174,16 @@ class TestCertificateManager:
         now = mutable_utc_clock[0]
         bundle = certificate_bundle(now + timedelta(days=30))
 
+        manager = _manager(bundle)
         with caplog.at_level(logging.WARNING, logger="acheron.tls"):
-            _manager(bundle).check_and_log(now=now)
+            manager.check_and_log(now=now)
+            manager.check_and_log(now=now)
 
-        assert any(record.levelno == logging.WARNING and "30" in record.message for record in caplog.records)
+        threshold_records = [
+            record for record in caplog.records if record.message == "Certificate orchestrator.crt expires in 30 days"
+        ]
+        assert len(threshold_records) == 1
+        assert threshold_records[0].levelno == logging.WARNING
 
     def test_certificate_monitor_emits_7_day_warning_once(
         self,
@@ -184,8 +199,11 @@ class TestCertificateManager:
             manager.check_and_log(now=now)
             manager.check_and_log(now=now)
 
-        warnings = [record for record in caplog.records if record.levelno == logging.WARNING and "7" in record.message]
+        warnings = [
+            record for record in caplog.records if record.message == "Certificate orchestrator.crt expires in 7 days"
+        ]
         assert len(warnings) == 1
+        assert warnings[0].levelno == logging.WARNING
 
     def test_certificate_monitor_emits_1_day_error(
         self,
@@ -196,10 +214,16 @@ class TestCertificateManager:
         now = mutable_utc_clock[0]
         bundle = certificate_bundle(now + timedelta(days=1))
 
+        manager = _manager(bundle)
         with caplog.at_level(logging.ERROR, logger="acheron.tls"):
-            _manager(bundle).check_and_log(now=now)
+            manager.check_and_log(now=now)
+            manager.check_and_log(now=now)
 
-        assert any(record.levelno == logging.ERROR and "1" in record.message for record in caplog.records)
+        errors = [
+            record for record in caplog.records if record.message == "Certificate orchestrator.crt expires in 1 day"
+        ]
+        assert len(errors) == 1
+        assert errors[0].levelno == logging.ERROR
 
     def test_certificate_monitor_emits_expiry_critical(
         self,
@@ -208,14 +232,16 @@ class TestCertificateManager:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         now = mutable_utc_clock[0]
-        bundle = certificate_bundle(now - timedelta(seconds=1))
+        bundle = certificate_bundle(now)
+        manager = _manager(bundle)
 
         with caplog.at_level(logging.CRITICAL, logger="acheron.tls"):
-            _manager(bundle).check_and_log(now=now)
+            manager.check_and_log(now=now)
+            manager.check_and_log(now=now)
 
-        assert any(
-            record.levelno == logging.CRITICAL and "expired" in record.message.lower() for record in caplog.records
-        )
+        critical = [record for record in caplog.records if record.message == "Certificate orchestrator.crt has expired"]
+        assert len(critical) == 1
+        assert critical[0].levelno == logging.CRITICAL
 
     def test_certificate_manager_reload_rejects_invalid_pair_without_mutation(
         self,
