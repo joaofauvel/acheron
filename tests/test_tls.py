@@ -9,11 +9,19 @@ and the malformed-PEM paths that the integration tests skip.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
+from acheron import tls
 from acheron.core.errors import AcheronError
 from acheron.tls import (
     _require_pair,
@@ -23,6 +31,216 @@ from acheron.tls import (
     resolve_ca_path,
     uvicorn_ssl_kwargs,
 )
+
+
+@dataclass(frozen=True)
+class CertificateBundle:
+    ca_path: Path
+    cert_path: Path
+    key_path: Path
+    expires_at: datetime
+
+
+CertificateFactory = Callable[[datetime], CertificateBundle]
+
+
+@pytest.fixture
+def certificate_bundle(tmp_path: Path) -> CertificateFactory:
+    def build(expires_at: datetime) -> CertificateBundle:
+        ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Acheron Test CA")])
+        ca_cert = (
+            x509.CertificateBuilder()
+            .subject_name(ca_name)
+            .issuer_name(ca_name)
+            .public_key(ca_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(expires_at - timedelta(days=365))
+            .not_valid_after(expires_at + timedelta(days=1))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(ca_key, hashes.SHA256())
+        )
+
+        server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        server_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "orchestrator")])
+        server_cert = (
+            x509.CertificateBuilder()
+            .subject_name(server_name)
+            .issuer_name(ca_name)
+            .public_key(server_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(expires_at - timedelta(days=365))
+            .not_valid_after(expires_at)
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.SubjectAlternativeName([x509.DNSName("orchestrator")]), critical=False)
+            .sign(ca_key, hashes.SHA256())
+        )
+
+        ca_path = tmp_path / "ca.pem"
+        cert_path = tmp_path / "orchestrator.crt"
+        key_path = tmp_path / "orchestrator.key"
+        ca_path.write_bytes(ca_cert.public_bytes(serialization.Encoding.PEM))
+        cert_path.write_bytes(server_cert.public_bytes(serialization.Encoding.PEM))
+        key_path.write_bytes(
+            server_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            )
+        )
+        return CertificateBundle(ca_path, cert_path, key_path, expires_at)
+
+    return build
+
+
+@pytest.fixture
+def mutable_utc_clock() -> list[datetime]:
+    return [datetime(2026, 8, 2, tzinfo=UTC)]
+
+
+def _manager(bundle: CertificateBundle) -> tls.CertificateManager:
+    return tls.CertificateManager(
+        cert_path=bundle.cert_path,
+        key_path=bundle.key_path,
+        name="orchestrator.crt",
+    )
+
+
+class TestCertificateManager:
+    def test_certificate_status_reports_subject_and_remaining_time(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=31))
+        status = _manager(bundle).status(now=now)
+
+        assert status is not None
+        assert status.name == "orchestrator.crt"
+        assert status.subject == "CN=orchestrator"
+        assert status.expires_at == bundle.expires_at
+        assert status.remaining == timedelta(days=31)
+        assert status.severity == "ok"
+
+    def test_certificate_status_formats_sub_day_remaining_time(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(hours=1, minutes=2, seconds=3))
+
+        status = _manager(bundle).status(now=now)
+
+        assert status is not None
+        assert status.remaining_display == "0d 1h 2m"
+
+    def test_certificate_monitor_logs_startup_info(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=31))
+        manager = _manager(bundle)
+
+        with caplog.at_level(logging.INFO, logger="acheron.tls"):
+            manager.check_and_log(now=now)
+
+        assert any(
+            record.levelno == logging.INFO
+            and "orchestrator.crt" in record.message
+            and "CN=orchestrator" in record.message
+            for record in caplog.records
+        )
+
+    def test_certificate_monitor_emits_30_day_warning(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=30))
+
+        with caplog.at_level(logging.WARNING, logger="acheron.tls"):
+            _manager(bundle).check_and_log(now=now)
+
+        assert any(record.levelno == logging.WARNING and "30" in record.message for record in caplog.records)
+
+    def test_certificate_monitor_emits_7_day_warning_once(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=7))
+        manager = _manager(bundle)
+
+        with caplog.at_level(logging.WARNING, logger="acheron.tls"):
+            manager.check_and_log(now=now)
+            manager.check_and_log(now=now)
+
+        warnings = [record for record in caplog.records if record.levelno == logging.WARNING and "7" in record.message]
+        assert len(warnings) == 1
+
+    def test_certificate_monitor_emits_1_day_error(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=1))
+
+        with caplog.at_level(logging.ERROR, logger="acheron.tls"):
+            _manager(bundle).check_and_log(now=now)
+
+        assert any(record.levelno == logging.ERROR and "1" in record.message for record in caplog.records)
+
+    def test_certificate_monitor_emits_expiry_critical(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now - timedelta(seconds=1))
+
+        with caplog.at_level(logging.CRITICAL, logger="acheron.tls"):
+            _manager(bundle).check_and_log(now=now)
+
+        assert any(
+            record.levelno == logging.CRITICAL and "expired" in record.message.lower() for record in caplog.records
+        )
+
+    def test_certificate_manager_reload_rejects_invalid_pair_without_mutation(
+        self,
+        certificate_bundle: CertificateFactory,
+        mutable_utc_clock: list[datetime],
+    ) -> None:
+        now = mutable_utc_clock[0]
+        bundle = certificate_bundle(now + timedelta(days=31))
+        manager = _manager(bundle)
+        context_before = manager.ssl_context
+        bundle.cert_path.write_text("not a certificate", encoding="utf-8")
+
+        with pytest.raises(AcheronError, match=r"certificate|TLS|PEM"):
+            manager.reload()
+
+        assert manager.ssl_context is context_before
+
+    def test_manager_is_disabled_when_tls_pair_is_unset(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("ACHERON_TLS_CERT_FILE", raising=False)
+        monkeypatch.delenv("ACHERON_TLS_KEY_FILE", raising=False)
+
+        assert tls.CertificateManager.from_env() is None
 
 
 class TestRequirePair:
