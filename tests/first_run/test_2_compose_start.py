@@ -60,6 +60,12 @@ def _mutate_cert_material(project: FirstRunProject, command: str) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def _restore_marked_certificate_bundle(project: FirstRunProject) -> None:
+    _mutate_cert_material(project, "rm -f /certs/* /certs/.[!.]* /certs/..?*")
+    result = _run_certs_init(project)
+    assert result.returncode == 0, result.stderr
+
+
 def test_step_2_compose_reuses_marked_development_bundle(
     compose_stack: ComposeStack,
     prepared_project: FirstRunProject,
@@ -87,11 +93,13 @@ def test_step_2_compose_rejects_unmarked_certificate_material(prepared_project: 
         "rm -f /certs/.dev-ca && printf operator-owned-ca > /certs/acheron-ca.crt && "
         "printf operator-owned-key > /certs/acheron-ca.key",
     )
+    try:
+        result = _run_certs_init(prepared_project)
 
-    result = _run_certs_init(prepared_project)
-
-    assert result.returncode != 0
-    assert (prepared_project.checkout / "certs" / "acheron-ca.crt").read_bytes() == sentinel
+        assert result.returncode != 0
+        assert (prepared_project.checkout / "certs" / "acheron-ca.crt").read_bytes() == sentinel
+    finally:
+        _restore_marked_certificate_bundle(prepared_project)
 
 
 def test_step_2_just_certs_rejects_shell_expression_without_execution(
@@ -154,13 +162,15 @@ def test_step_2_compose_dependency_gate_blocks_orchestrator_startup(
         "rm -f /certs/.dev-ca && printf operator-owned-ca > /certs/acheron-ca.crt && "
         "printf operator-owned-key > /certs/acheron-ca.key",
     )
+    try:
+        result = _run_orchestrator_startup(prepared_project)
+        output = result.stdout + result.stderr
 
-    result = _run_orchestrator_startup(prepared_project)
-    output = result.stdout + result.stderr
-
-    assert result.returncode != 0
-    assert 'service "certs-init" didn\'t complete successfully' in output
-    assert "orchestrator" not in [line for line in output.splitlines() if " Started" in line]
+        assert result.returncode != 0
+        assert 'service "certs-init" didn\'t complete successfully' in output
+        assert "orchestrator" not in [line for line in output.splitlines() if " Started" in line]
+    finally:
+        _restore_marked_certificate_bundle(prepared_project)
 
 
 def _assert_edge_override(
