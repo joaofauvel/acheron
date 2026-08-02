@@ -1378,7 +1378,7 @@ effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 001ee71
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["001ee71"]
 files:
   - path: src/acheron/shell/api/admin_audit.py
@@ -1407,13 +1407,13 @@ effort: M
 reviewed_at: 49747dd
 last_verified_at:
   commit: 75d5b7e
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["75d5b7e"]
 files:
   - path: src/acheron/shell/job_events.py
     lines: 20-130
-  - path: src/acheron/shell/api/routes/jobs.py
-    lines: 579-588
+  - path: src/acheron/shell/api/routes/job_streams.py
+    lines: 17-72
 related: [MAINT-024, CORR-045]
 ```
 
@@ -1434,7 +1434,7 @@ effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 6aa2f8a
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["6aa2f8a"]
 files:
   - path: dashboard/app.py
@@ -1463,7 +1463,7 @@ effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 2a11136
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["2a11136"]
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -1492,7 +1492,7 @@ effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: fc257a1
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["fc257a1"]
 files:
   - path: src/acheron/worker_sdk/_edge_http.py

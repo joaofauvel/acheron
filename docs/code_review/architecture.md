@@ -1264,7 +1264,7 @@ effort: M
 reviewed_at: 49747dd
 last_verified_at:
   commit: 2a11136
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["2a11136"]
 files:
   - path: src/acheron/shell/orchestrator.py
@@ -1293,7 +1293,7 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: 2a11136
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["2a11136"]
 files:
   - path: src/acheron/shell/api/app.py
@@ -1322,7 +1322,7 @@ effort: S
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 092ef77
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["092ef77"]
 files:
   - path: src/acheron/core/schemas.py

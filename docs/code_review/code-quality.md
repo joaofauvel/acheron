@@ -1283,7 +1283,7 @@ effort: M
 reviewed_at: 49747dd
 last_verified_at:
   commit: 75d5b7e
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["75d5b7e"]
 files:
   - path: src/acheron/shell/job_events.py
@@ -1310,7 +1310,7 @@ effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 74fdf0d
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["74fdf0d"]
 files:
   - path: src/acheron/shell/api/routes/jobs.py
@@ -1345,7 +1345,7 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: 74fdf0d
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["74fdf0d"]
 files:
   - path: src/acheron/shell/api/routes/job_requests.py
@@ -1370,7 +1370,7 @@ effort: S
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 001ee71
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["001ee71"]
 files:
   - path: src/acheron/shell/retention.py

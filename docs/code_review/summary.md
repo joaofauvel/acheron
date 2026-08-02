@@ -59,7 +59,7 @@ No open high- or medium-severity code-review stories remain.
 
 The review was refreshed through `5ba5e48`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, durable administrative audits, dashboard URL separation, combined cost polling, measured RunPod pricing, spooled multipart input handling, nested output-directory symlink coverage, malformed-WAV rejection coverage, administrative CLI documentation, and validation-gate documentation; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
 
-The UX rubric remains a separate required pre-merge gate; its current checkout reports 29 pre-existing metadata errors and requires a rubric refresh before merge.
+The UX rubric remains a separate required pre-merge gate; its current checkout reports 29 metadata errors: 16 pre-existing attestation mismatches plus 13 later citation drifts. It requires a rubric refresh before merge.
 
 ## Last orientation snapshot
 

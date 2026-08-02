@@ -2,7 +2,7 @@
 
 ## Goal
 
-Address all 21 currently open high- or medium-severity code-review stories in topology-ordered bundles, with a worker/reviewer loop for each bundle and one atomic commit per story.
+Address all 21 currently open high- or medium-severity code-review stories in topology-ordered bundles, with a worker/reviewer loop for each bundle and an atomic implementation commit per independently separable story or shared-file bundle.
 
 ## Scope
 
@@ -40,7 +40,7 @@ For each bundle:
 5. Synthesize findings in the parent. Apply only concrete fixes within the approved story scope through one fix worker.
 6. Repeat review and fix passes for up to five rounds per bundle; stop earlier when no blockers or worthwhile fixes remain. Escalate unapproved architecture or product decisions to the user.
 7. Run the formal correctness and documentation-staleness passes required by `code-review-tackle`.
-8. Update matching review entries, then create one atomic `fix(<STORY-ID>): <summary>` commit per addressed story. Dependent stories are committed in dependency order.
+8. Update matching review entries, then create an atomic `fix(<STORY-ID>): <summary>` commit per independently separable story; stories that share files may be grouped in one topology-bundle commit with all affected IDs represented in the review metadata. Dependent stories remain in dependency order.
 
 If `master` advances while a bundle is complete and the worktree is clean, rebase the branch onto `master` before starting the next bundle. Never modify `master` directly and do not push or open a PR unless separately requested.
 

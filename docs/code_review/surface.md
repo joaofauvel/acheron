@@ -723,7 +723,7 @@ effort: S
 reviewed_at: 22d20f5
 last_verified_at:
   commit: 5ba5e48
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["5ba5e48"]
 files:
   - path: README.md
@@ -752,7 +752,7 @@ effort: M
 reviewed_at: 49747dd
 last_verified_at:
   commit: 6aa2f8a
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["6aa2f8a"]
 files:
   - path: dashboard/app.py
@@ -779,7 +779,7 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: 5ba5e48
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["5ba5e48"]
 files:
   - path: Justfile

@@ -1228,11 +1228,11 @@ effort: M
 reviewed_at: 49747dd
 last_verified_at:
   commit: 75d5b7e
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["75d5b7e"]
 files:
   - path: src/acheron/shell/api/routes/job_streams.py
-    lines: 15-75
+    lines: 15-72
   - path: src/acheron/shell/job_events.py
     lines: 86-128
 related: [MAINT-024, PERF-012]
@@ -1255,7 +1255,7 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: 092ef77
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["092ef77"]
 files:
   - path: src/acheron/core/schemas.py
@@ -1284,7 +1284,7 @@ effort: S
 reviewed_at: 22d20f5
 last_verified_at:
   commit: fc257a1
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["fc257a1"]
 files:
   - path: src/acheron/worker_sdk/pricing.py

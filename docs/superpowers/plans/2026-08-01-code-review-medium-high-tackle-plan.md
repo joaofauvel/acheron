@@ -63,10 +63,7 @@
 - [x] **Step 4: Run focused tests and inspect resource ownership.**
   - Re-run the command from Step 2 and verify both the remote upstream-manifest path and unchanged-registry resource reuse.
 - [x] **Step 5: Run `just validate`.**
-- [x] **Step 6: After review-loop approval, stage code/tests and the three story entries; commit separately:**
-  - `fix(ARCH-027): share step cache with remote workers`
-  - `fix(ARCH-028): enforce one canonical data root`
-  - `fix(PERF-014): retain transport clients across jobs`
+- [x] **Step 6: Completed in implementation commit `2a11136`; selected-story metadata was finalized in `0ebf9b8`.**
 
 ---
 
@@ -97,11 +94,7 @@
 - [x] **Step 4: Run focused tests, including cancellation/disconnect paths.**
   - Re-run the command from Step 2 and verify no task or queue remains after the stream exits.
 - [x] **Step 5: Run `just validate`.**
-- [x] **Step 6: After review-loop approval, commit the four stories separately:**
-  - `fix(MAINT-024): reclaim completed job event state`
-  - `fix(CORR-045): terminate late job log subscribers`
-  - `fix(PERF-012): bound job event memory growth`
-  - `fix(TEST-033): cover late event subscribers`
+- [x] **Step 6: Completed in implementation commit `75d5b7e`; selected-story metadata was finalized in `0ebf9b8`.**
 
 ---
 
@@ -132,9 +125,7 @@
 - [x] **Step 4: Narrow BOOTING warning handling to the documented backend failure type and preserve exception chaining for unexpected errors.**
 - [x] **Step 5: Run the complete jobs route test file and verify submit, preview, retry, logs, cancel, resume, get, and list contracts.**
 - [x] **Step 6: Run `just validate`.**
-- [x] **Step 7: After review-loop approval, commit:**
-  - `fix(MAINT-025): split jobs route responsibilities`
-  - `fix(EXC-006): preserve unexpected warning failures`
+- [x] **Step 7: Completed in implementation commit `74fdf0d`; metadata follow-up `26cdf83` and selected-story finalization `0ebf9b8` followed.**
 
 ---
 
@@ -164,9 +155,7 @@
 - [x] **Step 3: Move the cleanup response models to `core/schemas.py`, delete the server-local definition, and update imports.**
 - [x] **Step 4: Add the typed metadata field to `OutputSummary` and copy metadata in the response mapper without exposing internal-only fields.**
 - [x] **Step 5: Run focused tests, `just type-check`, and `just validate`.**
-- [x] **Step 6: After review-loop approval, commit:**
-  - `fix(ARCH-029): move cleanup response to core schemas`
-  - `fix(CORR-046): preserve output metadata in job responses`
+- [x] **Step 6: Completed in implementation commit `092ef77`; metadata follow-up `4097cbd` and selected-story finalization `0ebf9b8` followed.**
 
 ---
 
@@ -196,9 +185,7 @@
 - [x] **Step 3: Run `uv run pytest tests/shell/test_retention.py tests/shell/api/test_admin.py tests/shell/test_orchestrator.py -q` and confirm the broad catch and process-local audit behavior.**
 - [x] **Step 4: Narrow retention handling to `StoreError` with `raise ... from exc`; persist bounded audit records through the existing durable storage boundary or an append-only file under the canonical data root, and reload them on startup.**
 - [x] **Step 5: Run focused tests and `just validate`.**
-- [x] **Step 6: After review-loop approval, commit:**
-  - `fix(EXC-007): preserve unexpected retention failures`
-  - `fix(OBS-016): persist administrative audit records`
+- [x] **Step 6: Completed in implementation commit `001ee71`; metadata follow-up `d7c3fdd` and selected-story finalization `0ebf9b8` followed.**
 
 ---
 
@@ -228,9 +215,7 @@
 - [x] **Step 3: Add the distinct browser-facing URL input with explicit validation and thread it only into rendered link context; keep internal fetch helpers on the internal URL.**
 - [x] **Step 4: Extend the cost summary route/service with a bounded job snapshot or a dedicated combined dashboard response, then update the partial to consume one response per poll.**
 - [x] **Step 5: Run focused dashboard and cost tests, then `just validate`.**
-- [x] **Step 6: After review-loop approval, commit:**
-  - `fix(DX-008): separate dashboard fetch and browser URLs`
-  - `fix(PERF-013): combine dashboard cost polling data`
+- [x] **Step 6: Completed in implementation commit `6aa2f8a`; metadata follow-up `8db14b8` and selected-story finalization `0ebf9b8` followed.**
 
 ---
 
@@ -256,9 +241,7 @@
 - [x] **Step 3: Run `uv run pytest tests/worker_sdk/test_runpod_price.py tests/worker_sdk/test_edge_http_multipart.py -q` and confirm the pricing fall-through and memory-copy path.**
 - [x] **Step 4: Fix the estimate branch and replace the multipart accumulation/copy path with a bounded spooled temporary-file or equivalent file-backed input implementation; preserve size and metadata validation.**
 - [x] **Step 5: Run focused tests and `just validate`.**
-- [x] **Step 6: After review-loop approval, commit:**
-  - `fix(CORR-047): report measured valid RunPod pricing`
-  - `fix(PERF-015): avoid duplicate multipart buffering`
+- [x] **Step 6: Completed in implementation commit `fc257a1`; metadata follow-up `cf02184` and selected-story finalization `0ebf9b8` followed.**
 
 ---
 
@@ -280,9 +263,7 @@
 - [x] **Step 3: Add parameterized malformed-WAV fixtures for non-PCM audio, zero byte rate, malformed RIFF header, and missing required chunks; assert the public domain error text for each branch.**
 - [x] **Step 4: Run `uv run pytest tests/shell/test_local_handlers.py -q` and ensure fixtures exercise the validators rather than only helper internals.**
 - [x] **Step 5: If the symlink or WAV tests expose a production defect, add the smallest production fix before changing expectations; otherwise keep this task test-only. Run `just validate`.**
-- [x] **Step 6: After review-loop approval, commit:**
-  - `fix(TEST-031): cover nested output symlink rejection`
-  - `fix(TEST-032): cover malformed PCM WAV rejection`
+- [x] **Step 6: Completed in implementation commit `f9ae89b`; metadata follow-up `03e7c38` and selected-story finalization `0ebf9b8` followed.**
 
 ---
 
@@ -300,16 +281,14 @@
 - README examples match `acheron --help`, `acheron job --help`, `acheron cleanup --help`, and `acheron admin --help`, including cleanup preview versus `--apply`.
 - `just validate` remains the code gate; `just ux-validate` is documented as a required separate pre-merge gate because the existing UX rubric requires a refresh before it can pass on this branch.
 
-- [x] **Step 1: Add a failing gate test or shell-level assertion that a malformed UX story causes the documented UX gate to fail before merge.**
+- [x] **Step 1: Run a shell-level assertion that malformed UX metadata causes the documented UX gate to fail before merge.**
 - [x] **Step 2: Run the existing CLI/help and UX validation tests to establish the red behavior.**
 - [x] **Step 3: Document the separate `ux-validate` gate in the Justfile and README without duplicating the recipe body; do not make the authoritative code gate depend on a known-stale rubric.**
 - [x] **Step 4: Replace the README's incorrect `acheron admin ...` mutation examples with the actual `job archive`, top-level `cleanup`, and `admin reap-stuck` namespaces, including runnable preview/apply examples.**
 - [x] **Step 5: Run the CLI/help tests and `just validate`; record any pre-existing `just ux-validate` rubric drift explicitly.**
-- [x] **Step 6: After review-loop approval, commit:**
-  - `fix(DOC-014): document administrative CLI namespaces`
-  - `fix(DX-009): document separate UX validation gate`
+- [x] **Step 6: Completed in implementation commit `5ba5e48`; metadata follow-up `0cbc2d8` and UX-gate decision `1ef2524` followed.**
 
-**Execution note:** The story permits a separate UX gate. The branch keeps `just validate` green as the authoritative code gate, documents strict `just ux-validate` as required before merge, and records its 29 pre-existing rubric metadata errors rather than bypassing them or refreshing UX evidence outside this code-review scope.
+**Execution note:** The story permits a separate UX gate. The branch keeps `just validate` green as the authoritative code gate and documents strict `just ux-validate` as required before merge. The current UX failure comprises 16 pre-existing attestation mismatches plus 13 citation drifts introduced by subsequent branch changes; refreshing that rubric remains outside this code-review scope.
 
 ---
 
@@ -327,6 +306,6 @@ After Task 9:
 
 - Implementation bundles: `2a11136`, `75d5b7e`, `74fdf0d`, `092ef77`, `001ee71`, `6aa2f8a`, `fc257a1`, `f9ae89b`, `5ba5e48`.
 - Review metadata and plan-finalization commits: `26cdf83`, `4097cbd`, `d7c3fdd`, `8db14b8`, `cf02184`, `03e7c38`, `0cbc2d8`, `0ebf9b8`, `1ef2524`.
-- Final verification: `just validate` passed with 1,756 tests passed and 9 skipped; final broad review found no blocker/high/medium residuals.
+- Final verification: `just validate` passed with 1,756 tests passed and 9 skipped; final broad review found no blocker/high/medium residuals. The post-correction rerun also exited 0 with Ruff, import-linter, mypy, basedpyright, and coverage passing.
 - Review inventory: 276 total stories; 196 verified, 61 fixed, 7 open low-severity, and 12 stale.
-- Deferred gate: strict `just ux-validate` remains a required separate pre-merge gate and currently reports 29 pre-existing UX metadata errors; refreshing that rubric is outside this code-review plan.
+- Deferred gate: strict `just ux-validate` remains a required separate pre-merge gate and currently reports 29 errors: 16 pre-existing attestation mismatches plus 13 later citation drifts. Refreshing that rubric is outside this code-review plan.

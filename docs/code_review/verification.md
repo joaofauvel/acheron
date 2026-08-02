@@ -1248,7 +1248,7 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: f9ae89b
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["f9ae89b"]
 files:
   - path: src/acheron/shell/api/routes/job_outputs.py
@@ -1275,7 +1275,7 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: f9ae89b
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["f9ae89b"]
 files:
   - path: src/acheron/shell/local_handlers.py
@@ -1302,13 +1302,13 @@ effort: S
 reviewed_at: 49747dd
 last_verified_at:
   commit: 75d5b7e
-  date: 2026-08-01
+  date: 2026-08-02
 fixed_in: ["75d5b7e"]
 files:
   - path: src/acheron/shell/job_events.py
     lines: 20-130
   - path: tests/shell/test_job_events.py
-    lines: 1-220
+    lines: 1-197
 related: [CORR-045, MAINT-024]
 ```
 
