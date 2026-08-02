@@ -2,17 +2,202 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import ssl
+from contextlib import suppress
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import grpc
 import grpc.aio
+from cryptography import x509
 
 from acheron.core.errors import AcheronError
 
 _LOG = logging.getLogger(__name__)
 _GRPC_MAX_RECEIVE_MESSAGE_BYTES = 64 * 1024 * 1024
+
+CertificateSeverity = Literal["ok", "warning", "error", "critical"]
+
+
+@dataclass(frozen=True, slots=True)
+class CertificateStatus:
+    """Public status for an active TLS certificate."""
+
+    name: str
+    subject: str
+    expires_at: datetime
+    remaining: timedelta
+    severity: CertificateSeverity
+
+    @property
+    def remaining_display(self) -> str:
+        """Format remaining time as whole days, hours, and minutes."""
+        seconds = max(0, int(self.remaining.total_seconds()))
+        days, remainder = divmod(seconds, 24 * 60 * 60)
+        hours, remainder = divmod(remainder, 60 * 60)
+        minutes = remainder // 60
+        return f"{days}d {hours}h {minutes}m"
+
+
+class CertificateError(AcheronError):
+    """A certificate could not be parsed, loaded, or reloaded."""
+
+
+class CertificateManager:
+    """Monitor and reload one server certificate and its persistent context."""
+
+    _MONITOR_INTERVAL = timedelta(days=1)
+
+    def __init__(self, *, cert_path: Path, key_path: Path, name: str) -> None:
+        self.cert_path = cert_path
+        self.key_path = key_path
+        self.name = name
+        self.ssl_context = self._load_context()
+        self._emitted_thresholds: set[int] = set()
+        self._startup_logged = False
+        self._monitor_task: asyncio.Task[None] | None = None
+
+    @classmethod
+    def from_env(cls, *, name: str = "orchestrator.crt") -> CertificateManager | None:
+        """Create a manager from the configured certificate/key pair."""
+        pair = _require_pair()
+        if pair is None:
+            return None
+        cert_path, key_path = pair
+        return cls(cert_path=Path(cert_path), key_path=Path(key_path), name=name)
+
+    def _load_context(self) -> ssl.SSLContext:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        try:
+            context.load_cert_chain(certfile=str(self.cert_path), keyfile=str(self.key_path))
+        except (OSError, ssl.SSLError, ValueError) as exc:
+            message = f"Unable to load TLS certificate pair for {self.name}"
+            raise CertificateError(
+                message,
+                remediation="Check the certificate and key files before retrying",
+            ) from exc
+        return context
+
+    def _certificate(self) -> x509.Certificate:
+        try:
+            return x509.load_pem_x509_certificate(self.cert_path.read_bytes())
+        except (OSError, ValueError) as exc:
+            message = f"Unable to parse TLS certificate for {self.name}"
+            raise CertificateError(message, remediation="Check the certificate file before retrying") from exc
+
+    @staticmethod
+    def _utc_now(now: datetime | None) -> datetime:
+        current = datetime.now(UTC) if now is None else now
+        return current.replace(tzinfo=UTC) if current.tzinfo is None else current.astimezone(UTC)
+
+    @staticmethod
+    def _severity(remaining: timedelta) -> CertificateSeverity:
+        if remaining <= timedelta(0):
+            return "critical"
+        if remaining <= timedelta(days=1):
+            return "error"
+        if remaining <= timedelta(days=30):
+            return "warning"
+        return "ok"
+
+    def status(self, now: datetime | None = None) -> CertificateStatus | None:
+        """Return current certificate metadata and expiry severity."""
+        certificate = self._certificate()
+        expires_at = certificate.not_valid_after_utc.astimezone(UTC)
+        remaining = expires_at - self._utc_now(now)
+        return CertificateStatus(
+            name=self.name,
+            subject=certificate.subject.rfc4514_string(),
+            expires_at=expires_at,
+            remaining=remaining,
+            severity=self._severity(remaining),
+        )
+
+    def _threshold(self, status: CertificateStatus) -> tuple[int, int, str] | None:
+        remaining = status.remaining
+        if remaining <= timedelta(0):
+            return (0, logging.CRITICAL, f"Certificate {self.name} has expired")
+        if remaining <= timedelta(days=1):
+            return (1, logging.ERROR, f"Certificate {self.name} expires in 1 day")
+        if remaining <= timedelta(days=7):
+            return (7, logging.WARNING, f"Certificate {self.name} expires in 7 days")
+        if remaining <= timedelta(days=30):
+            return (30, logging.WARNING, f"Certificate {self.name} expires in 30 days")
+        return None
+
+    def check_and_log(self, now: datetime | None = None) -> CertificateStatus | None:
+        """Log startup metadata and the next unreported expiry threshold."""
+        status = self.status(now=now)
+        if status is None:
+            return None
+        if not self._startup_logged:
+            _LOG.info(
+                "Certificate %s subject=%s expires=%s remaining=%s",
+                status.name,
+                status.subject,
+                status.expires_at.isoformat(),
+                status.remaining_display,
+            )
+            self._startup_logged = True
+        threshold = self._threshold(status)
+        if threshold is not None:
+            marker, level, message = threshold
+            if marker not in self._emitted_thresholds:
+                _LOG.log(level, message)
+                self._emitted_thresholds.add(marker)
+        return status
+
+    @staticmethod
+    def _require_status(status: CertificateStatus | None) -> CertificateStatus:
+        if status is None:
+            raise CertificateError("TLS certificate status is unavailable")
+        return status
+
+    def reload(self) -> CertificateStatus:
+        """Validate and activate the current certificate/key pair."""
+        self._load_context()
+        try:
+            self.ssl_context.load_cert_chain(certfile=str(self.cert_path), keyfile=str(self.key_path))
+            status = self._require_status(self.status())
+        except (OSError, ssl.SSLError, ValueError, CertificateError) as exc:
+            message = f"Unable to reload TLS certificate pair for {self.name}"
+            raise CertificateError(
+                message,
+                remediation="Check the replacement certificate and key before retrying",
+            ) from exc
+        self._emitted_thresholds.clear()
+        self._startup_logged = False
+        return status
+
+    async def start(self) -> None:
+        """Start the daily certificate monitor."""
+        if self._monitor_task is not None:
+            return
+        self.check_and_log()
+        self._monitor_task = asyncio.create_task(self._monitor())
+
+    async def stop(self) -> None:
+        """Stop the daily certificate monitor."""
+        task = self._monitor_task
+        if task is None:
+            return
+        self._monitor_task = None
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    async def _monitor(self) -> None:
+        while True:
+            await asyncio.sleep(self._MONITOR_INTERVAL.total_seconds())
+            try:
+                self.check_and_log()
+            except CertificateError:
+                _LOG.exception("Certificate monitoring failed for %s", self.name)
 
 
 def _allow_insecure() -> bool:
