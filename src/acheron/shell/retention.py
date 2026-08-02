@@ -4,21 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import heapq
+import logging
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from acheron.core.errors import CacheError
+from acheron.core.errors import CacheError, sanitise_exc_message
 from acheron.core.models import PlanStatus
 from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache, _delete_tree, _safe_path, _tree_size
 from acheron.shell.input_store import InputPathError, InputStore
+from acheron.shell.stores.base import StoreError
 
 if TYPE_CHECKING:
     from acheron.shell.job_store import TrackedJob
     from acheron.shell.stores.base import JobStore
 
+
+logger = logging.getLogger(__name__)
 
 _TERMINAL_STATUSES = frozenset({PlanStatus.COMPLETED, PlanStatus.FAILED, PlanStatus.PARTIAL})
 
@@ -190,10 +194,15 @@ class RetentionService:
                         continue
                     try:
                         await self._job_store.delete(current.job_id)
-                    except Exception:  # noqa: BLE001
-                        failures.append(
-                            CleanupFailure(candidate.job_id, paths, "job record deletion failed; retry is safe")
+                    except StoreError as exc:
+                        message = f"job record deletion failed; retry is safe ({sanitise_exc_message(exc)})"
+                        logger.warning(
+                            "Retention cleanup could not delete job record %s: %s",
+                            current.job_id,
+                            message,
+                            exc_info=(type(exc), exc, exc.__traceback__),
                         )
+                        failures.append(CleanupFailure(candidate.job_id, paths, message))
                         continue
                     deleted.append(current.job_id)
                     deleted_bytes += removed

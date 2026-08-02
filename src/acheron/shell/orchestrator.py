@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fcntl
+import json
 import logging
+import os
 import secrets
 import shutil
+import tempfile
 import threading
 import time
 import uuid
@@ -14,7 +18,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 from acheron.core.errors import (
     AcheronError,
@@ -77,7 +81,15 @@ if TYPE_CHECKING:
     from acheron.shell.stores.base import JobStore, WorkerStore
 
 logger = logging.getLogger(__name__)
+_MAX_ADMIN_AUDITS = 1000
+_MAX_ADMIN_REQUEST_ID_LENGTH = 128
+_MAX_ADMIN_ACTION_LENGTH = 256
 _MAX_ADMIN_REASON_LENGTH = 256
+_MAX_ADMIN_AUDIT_REASON_LENGTH = 512
+_MAX_ADMIN_JOB_ID_LENGTH = 256
+_MAX_ADMIN_AUDIT_LINE_BYTES = 4 * 1024 * 1024
+_ADMIN_AUDIT_FILE = ".admin_audit.jsonl"
+_ADMIN_AUDIT_LOCK_FILE = ".admin_audit.jsonl.lock"
 _LOW_DISK_RATIO = 0.10
 _CRITICAL_DISK_RATIO = 0.05
 
@@ -93,6 +105,71 @@ def _sanitize_admin_reason(reason: str) -> str:
     """Bound operator-provided lifecycle reasons before persisting them."""
     first_line = next((line.strip() for line in reason.splitlines() if line.strip()), "")
     return (first_line or "administrative action")[:_MAX_ADMIN_REASON_LENGTH]
+
+
+def _normalise_admin_audit(event: AdminActionAudit) -> AdminActionAudit:
+    """Bound one audit event before logging, retaining, and persisting it."""
+    return replace(
+        event,
+        request_id=event.request_id[:_MAX_ADMIN_REQUEST_ID_LENGTH],
+        action=event.action[:_MAX_ADMIN_ACTION_LENGTH],
+        reason=event.reason[:_MAX_ADMIN_AUDIT_REASON_LENGTH] if event.reason is not None else None,
+        job_ids=tuple(job_id[:_MAX_ADMIN_JOB_ID_LENGTH] for job_id in event.job_ids[:_MAX_ADMIN_AUDITS]),
+        affected_count=min(max(0, event.affected_count), _MAX_ADMIN_AUDITS),
+    )
+
+
+def _admin_audit_payload(event: AdminActionAudit) -> dict[str, object]:
+    return {
+        "request_id": event.request_id,
+        "action": event.action,
+        "reason": event.reason,
+        "job_ids": list(event.job_ids),
+        "affected_count": event.affected_count,
+        "result": event.result,
+    }
+
+
+def _parse_admin_audit(line: str) -> AdminActionAudit | None:
+    """Parse one bounded JSONL audit record, rejecting malformed values."""
+    try:
+        if len(line.encode("utf-8")) > _MAX_ADMIN_AUDIT_LINE_BYTES:
+            return None
+        raw: object = json.loads(line)
+    except TypeError, ValueError, UnicodeError, RecursionError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    request_id = raw.get("request_id")
+    action = raw.get("action")
+    reason = raw.get("reason")
+    job_ids = raw.get("job_ids")
+    affected_count = raw.get("affected_count")
+    result = raw.get("result")
+    if (
+        not isinstance(request_id, str)
+        or len(request_id) > _MAX_ADMIN_REQUEST_ID_LENGTH
+        or not isinstance(action, str)
+        or len(action) > _MAX_ADMIN_ACTION_LENGTH
+        or (reason is not None and (not isinstance(reason, str) or len(reason) > _MAX_ADMIN_AUDIT_REASON_LENGTH))
+        or not isinstance(job_ids, list)
+        or len(job_ids) > _MAX_ADMIN_AUDITS
+        or not all(isinstance(job_id, str) and len(job_id) <= _MAX_ADMIN_JOB_ID_LENGTH for job_id in job_ids)
+        or not isinstance(affected_count, int)
+        or isinstance(affected_count, bool)
+        or not 0 <= affected_count <= _MAX_ADMIN_AUDITS
+        or not isinstance(result, str)
+        or result not in {"success", "failure"}
+    ):
+        return None
+    return AdminActionAudit(
+        request_id=request_id,
+        action=action,
+        reason=reason,
+        job_ids=tuple(cast("list[str]", job_ids)),
+        affected_count=affected_count,
+        result=cast("Literal['success', 'failure']", result),
+    )
 
 
 def _log_unexpected(label: str, exc: BaseException) -> None:
@@ -228,7 +305,13 @@ class Orchestrator:
         self._shutting_down = False
         self._health_providers = create_health_providers(self._settings)
         self._events = JobEventBroker()
-        self._admin_audits: deque[AdminActionAudit] = deque(maxlen=1000)
+        self._admin_audit_path = canonical_data_dir / _ADMIN_AUDIT_FILE
+        self._admin_audit_lock_path = canonical_data_dir / _ADMIN_AUDIT_LOCK_FILE
+        self._admin_audit_lock = threading.Lock()
+        self._admin_audits: deque[AdminActionAudit] = deque(
+            self._load_admin_audits(),
+            maxlen=_MAX_ADMIN_AUDITS,
+        )
         self._health_monitor = HealthMonitor(
             registry,
             interval=float(self._settings.orchestrator.health_check_interval_seconds),
@@ -248,18 +331,107 @@ class Orchestrator:
     @property
     def admin_audits(self) -> tuple[AdminActionAudit, ...]:
         """Administrative action audit events recorded for this process."""
-        return tuple(self._admin_audits)
+        with self._admin_audit_lock:
+            return tuple(self._admin_audits)
 
     def record_admin_audit(self, event: AdminActionAudit) -> None:
-        """Record one bounded administrative action event."""
-        self._admin_audits.append(
-            replace(
-                event,
-                action=event.action[:256],
-                reason=event.reason[:512] if event.reason is not None else None,
-                job_ids=event.job_ids[:1000],
-            )
+        """Normalize, log, and durably retain one administrative action event."""
+        normalized = _normalise_admin_audit(event)
+        with self._admin_audit_lock:
+            try:
+                persisted = self._persist_admin_audit(normalized)
+            except OSError:
+                self._admin_audits.append(normalized)
+                logger.exception("Failed to persist administrative audit event %s", normalized.action)
+            else:
+                self._admin_audits = deque(persisted, maxlen=_MAX_ADMIN_AUDITS)
+        logger.info(
+            "Administrative audit event",
+            extra={
+                "admin_audit": _admin_audit_payload(normalized),
+                "request_id": normalized.request_id,
+                "action": normalized.action,
+                "result": normalized.result,
+                "reason": normalized.reason,
+                "job_ids": normalized.job_ids,
+                "affected_count": normalized.affected_count,
+            },
         )
+
+    def _persist_admin_audit(self, event: AdminActionAudit) -> tuple[AdminActionAudit, ...]:
+        """Merge one event into the durable bounded tail under a process lock."""
+        self._admin_audit_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._admin_audit_lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self._remove_stale_admin_audit_temps()
+                events = deque(self._load_admin_audits(), maxlen=_MAX_ADMIN_AUDITS)
+                events.append(event)
+                self._rewrite_admin_audits(tuple(events))
+                return tuple(events)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _rewrite_admin_audits(self, events: tuple[AdminActionAudit, ...]) -> None:
+        """Atomically replace the durable audit stream with its bounded tail."""
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self._admin_audit_path.parent,
+                prefix=f"{self._admin_audit_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as audit_file:
+                temporary_path = Path(audit_file.name)
+                for event in events:
+                    audit_file.write(json.dumps(_admin_audit_payload(event), separators=(",", ":")) + "\n")
+                audit_file.flush()
+                os.fsync(audit_file.fileno())
+            if temporary_path is not None:
+                temporary_path.replace(self._admin_audit_path)
+                temporary_path = None
+            directory_fd = os.open(self._admin_audit_path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            if temporary_path is not None:
+                with contextlib.suppress(OSError):
+                    temporary_path.unlink()
+
+    def _remove_stale_admin_audit_temps(self) -> None:
+        """Remove temporary audit snapshots left by an interrupted rewrite."""
+        pattern = f"{self._admin_audit_path.name}.*.tmp"
+        for temporary_path in self._admin_audit_path.parent.glob(pattern):
+            with contextlib.suppress(OSError):
+                temporary_path.unlink()
+
+    def _load_admin_audits(self) -> tuple[AdminActionAudit, ...]:
+        """Load the bounded tail of the durable administrative audit stream."""
+        events: deque[AdminActionAudit] = deque(maxlen=_MAX_ADMIN_AUDITS)
+        try:
+            with self._admin_audit_path.open("rb") as audit_file:
+                while raw_line := audit_file.readline(_MAX_ADMIN_AUDIT_LINE_BYTES + 1):
+                    if len(raw_line) > _MAX_ADMIN_AUDIT_LINE_BYTES:
+                        while raw_line and not raw_line.endswith(b"\n"):
+                            raw_line = audit_file.readline(_MAX_ADMIN_AUDIT_LINE_BYTES + 1)
+                        continue
+                    try:
+                        line = raw_line.decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
+                    event = _parse_admin_audit(line.rstrip("\r\n"))
+                    if event is not None:
+                        events.append(event)
+        except FileNotFoundError:
+            return ()
+        except OSError as exc:
+            logger.warning("Failed to load administrative audit events: %s", exc)
+            return ()
+        return tuple(events)
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
@@ -374,6 +546,8 @@ class Orchestrator:
         if self._started:
             return
         self._verify_data_dir_writable()
+        with self._admin_audit_lock:
+            self._admin_audits = deque(self._load_admin_audits(), maxlen=_MAX_ADMIN_AUDITS)
         await self._load_or_create_registration_token()
         _validate_registration_token(self._settings.orchestrator.registration_token)
         _validate_credential_token(self._settings.orchestrator.admin_token, setting_name="admin_token")

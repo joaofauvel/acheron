@@ -1357,9 +1357,9 @@ last_verified_at:
 fixed_in: []
 files:
   - path: src/acheron/shell/retention.py
-    lines: 13-16, 275-323
+    lines: 16, 292-303, 322-332
   - path: src/acheron/shell/orchestrator.py
-    lines: 51, 103-104, 379
+    lines: 55, 180-181, 551-553
 related: [ARCH-005, ARCH-023]
 ```
 

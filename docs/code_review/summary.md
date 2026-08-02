@@ -1,9 +1,9 @@
 ---
 branch: fix/code-review-medium-high
 initial_review_commit: 23c29e1
-last_updated_commit: 092ef77
+last_updated_commit: pending
 last_staleness_scan:
-  commit: 092ef77
+  commit: pending
   date: 2026-08-01
 ---
 
@@ -19,9 +19,9 @@ last_staleness_scan:
 | DATA | A | 0 critical, 0 high, 0 medium, 1 low |
 | DOC | A | 0 critical, 0 high, 2 medium, 0 low |
 | DX | A | 0 critical, 1 high, 2 medium, 0 low |
-| EXC | A | 0 critical, 0 high, 1 medium, 0 low |
+| EXC | A | 0 critical, 0 high, 0 medium, 0 low |
 | MAINT | A | 0 critical, 0 high, 0 medium, 1 low |
-| OBS | A | 0 critical, 0 high, 1 medium, 0 low |
+| OBS | A | 0 critical, 0 high, 0 medium, 0 low |
 | PERF | B | 0 critical, 0 high, 2 medium, 1 low |
 | PKG | A | 0 critical, 0 high, 0 medium, 0 low |
 | REPRO | A | 0 critical, 0 high, 0 medium, 1 low |
@@ -37,12 +37,10 @@ last_staleness_scan:
 2. **CORR-047** — RunPod pricing returns UNKNOWN after a usable rate is available [medium, S] — `correctness.md`
 3. **DOC-014** — README describes administrative mutations under the wrong CLI namespace [medium, S] — `surface.md`
 4. **DX-009** — `just validate` omits UX rubric validation [medium, S] — `surface.md`
-5. **EXC-007** — Retention cleanup converts every job-store deletion error into an unlogged per-job failure [medium, S] — `code-quality.md`
-6. **OBS-016** — Administrative audit events are process-local and never emitted to durable observability [medium, M] — `operations.md`
-7. **PERF-013** — Dashboard cost polling performs two full job queries every two seconds [medium, M] — `operations.md`
-8. **PERF-015** — Edge multipart parsing buffers each large input part and copies it again [medium, M] — `operations.md`
-9. **TEST-031** — Nested output-directory symlink rejection lacks coverage [medium, S] — `verification.md`
-10. **TEST-032** — PCM WAV rejection branches lack behavioral coverage [medium, S] — `verification.md`
+5. **PERF-013** — Dashboard cost polling performs two full job queries every two seconds [medium, M] — `operations.md`
+6. **PERF-015** — Edge multipart parsing buffers each large input part and copies it again [medium, M] — `operations.md`
+7. **TEST-031** — Nested output-directory symlink rejection lacks coverage [medium, S] — `verification.md`
+8. **TEST-032** — PCM WAV rejection branches lack behavioral coverage [medium, S] — `verification.md`
 
 ## Quick wins
 
@@ -52,32 +50,31 @@ last_staleness_scan:
 4. **REPRO-007** — cover cache CWD semantics [low, S] — `verification.md`
 5. **TYPE-015** — keep health response parsing behind the typed boundary [low, S] — `code-quality.md`
 6. **TYPE-016** — validate dashboard orchestrator JSON at runtime [low, S] — `code-quality.md`
-7. **EXC-007** — narrow retention cleanup deletion failure handling [medium, S] — `code-quality.md`
-8. **DOC-014** — document the actual administrative CLI namespaces [medium, S] — `surface.md`
-9. **DX-009** — include UX rubric validation in `just validate` [medium, S] — `surface.md`
-10. **CORR-047** — return measured RunPod pricing when a valid rate is available [medium, S] — `correctness.md`
+7. **DOC-014** — document the actual administrative CLI namespaces [medium, S] — `surface.md`
+8. **DX-009** — include UX rubric validation in `just validate` [medium, S] — `surface.md`
+9. **CORR-047** — return measured RunPod pricing when a valid rate is available [medium, S] — `correctness.md`
 
 ## Story Counts
 
 | Status | Count |
 |---|---|
-| open | 18 |
+| open | 16 |
 | in-progress | 0 |
 | fixed | 61 |
-| verified | 186 |
+| verified | 188 |
 | stale | 11 |
 | wontfix | 0 |
 | **total filed** | **276** |
 
 ## Changes Since Last Review
 
-The review was refreshed through `092ef77`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, and per-artifact output metadata; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
+The review was refreshed through `pending`, following the original `49747dd..22d20f5` scan. Since that scan, the medium/high tackle branch fixed cache propagation, job-event lifecycle cleanup, jobs-route decomposition, shared cleanup-schema ownership, per-artifact output metadata, retention exception classification, and durable administrative audits; related citations, statuses, and summary counts were re-resolved. The remaining open and stale stories are listed above.
 
 ## Last orientation snapshot
 
 **Repository**: `acheron`, a FastAPI orchestrator for asynchronous audio transformation with HTTP/gRPC workers, local handlers, and Redis or in-memory stores.
 
-**Branch / HEAD**: `fix/code-review-medium-high` at `092ef77` (implementation commit; review-metadata follow-up may be newer).
+**Branch / HEAD**: `fix/code-review-medium-high` at `pending` (implementation commit; review-metadata follow-up may be newer).
 
 **Top-level layout**: `src/` contains `acheron`; `tests/` mirrors core, shell, worker SDK, integration, first-run, simulation, scripts, and UX-review surfaces; `dashboard/`, `workers/`, `stubs/`, `proto/`, `sim/`, `compose/`, `scripts/`, and `docs/` provide supporting applications, deployment, tooling, and plans/specs.
 

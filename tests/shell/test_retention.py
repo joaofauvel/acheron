@@ -15,6 +15,7 @@ from acheron.shell.cache import PlanCache, StepCache, _delete_tree
 from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.retention import RetentionPolicy, RetentionService
+from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 
@@ -160,6 +161,101 @@ async def test_apply_preserves_shared_input_and_refuses_active_job(tmp_path: Pat
     assert report.failures == ()
     assert (tmp_path / "inputs/id/book.epub").exists()
     assert await store.get("job-old") is not None
+
+
+@pytest.mark.asyncio
+async def test_store_delete_failure_is_retryable_and_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    (tmp_path / "job-old").mkdir()
+    service, store = await _service(
+        tmp_path,
+        [_job("job-old", "plan-abcd1234", "missing.epub", PlanStatus.FAILED, now)],
+    )
+
+    async def fail_delete(_job_id: str) -> TrackedJob | None:
+        raise StoreError("backend unavailable")
+
+    monkeypatch.setattr(store, "delete", fail_delete)
+    with caplog.at_level("WARNING"):
+        report = await service.apply(RetentionPolicy(timedelta(days=7), timedelta(days=1)), now=now)
+
+    assert report.deleted_count == 0
+    assert report.failures[0].job_id == "job-old"
+    assert "StoreError: backend unavailable" in report.failures[0].message
+    assert "Retention cleanup could not delete job record job-old" in caplog.text
+    assert await store.get("job-old") is not None
+
+
+@pytest.mark.asyncio
+async def test_store_delete_diagnostic_is_sanitized(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    (tmp_path / "job-old").mkdir()
+    service, store = await _service(
+        tmp_path,
+        [_job("job-old", "plan-abcd1234", "missing.epub", PlanStatus.FAILED, now)],
+    )
+
+    async def fail_delete(_job_id: str) -> TrackedJob | None:
+        raise StoreError("password=secret https://internal.example.test")
+
+    monkeypatch.setattr(store, "delete", fail_delete)
+    report = await service.apply(RetentionPolicy(timedelta(days=7), timedelta(days=1)), now=now)
+
+    assert report.failures[0].message == "job record deletion failed; retry is safe (StoreError: <no message>)"
+    assert "secret" not in report.failures[0].message
+    assert "internal.example.test" not in report.failures[0].message
+
+
+@pytest.mark.asyncio
+async def test_store_delete_failure_is_retryable_on_subsequent_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    (tmp_path / "job-old").mkdir()
+    service, store = await _service(
+        tmp_path,
+        [_job("job-old", "plan-abcd1234", "missing.epub", PlanStatus.FAILED, now)],
+    )
+    original_delete = store.delete
+    attempts = 0
+
+    async def fail_once(job_id: str) -> TrackedJob | None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise StoreError("backend unavailable")
+        return await original_delete(job_id)
+
+    monkeypatch.setattr(store, "delete", fail_once)
+    policy = RetentionPolicy(timedelta(days=7), timedelta(days=1))
+
+    first = await service.apply(policy, now=now)
+    second = await service.apply(policy, now=now)
+
+    assert first.deleted_count == 0
+    assert first.failures[0].job_id == "job-old"
+    assert second.deleted_job_ids == ("job-old",)
+    assert await store.get("job-old") is None
+    assert not (tmp_path / "job-old").exists()
+
+
+@pytest.mark.asyncio
+async def test_unexpected_store_delete_failure_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime(2026, 7, 30, tzinfo=UTC)
+    (tmp_path / "job-old").mkdir()
+    service, store = await _service(
+        tmp_path,
+        [_job("job-old", "plan-abcd1234", "missing.epub", PlanStatus.FAILED, now)],
+    )
+
+    async def fail_delete(_job_id: str) -> TrackedJob | None:
+        raise AttributeError("serializer drift")
+
+    monkeypatch.setattr(store, "delete", fail_delete)
+    with pytest.raises(AttributeError, match="serializer drift"):
+        await service.apply(RetentionPolicy(timedelta(days=7), timedelta(days=1)), now=now)
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 """Tests for administrative authorization and contract seams."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -11,9 +12,11 @@ from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
 from acheron.shell.api.admin_audit import execute_admin_action
 from acheron.shell.api.deps import AdminTokenDep
 from acheron.shell.api.schemas import CleanupRequest, ReapStaleRequest
-from acheron.shell.job_store import JobQuery, TrackedJob
+from acheron.shell.cache import PlanCache
+from acheron.shell.job_store import AdminActionAudit, JobQuery, TrackedJob
+from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.retention import CleanupFailure, CleanupReport
-from acheron.shell.stores.memory import InMemoryJobStore
+from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
 
 
 def _app(client: AsyncClient) -> FastAPI:
@@ -330,6 +333,182 @@ async def test_archive_route_is_idempotent_and_preserves_job(client: AsyncClient
     assert first.json()["job"]["archived_at"] is not None
     assert second.json()["job"]["archived_at"] == first.json()["job"]["archived_at"]
     assert len(orch.admin_audits) == 2
+
+
+@pytest.mark.asyncio
+async def test_admin_audits_are_durable_and_queryable_after_restart(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+    job = TrackedJob(
+        job_id="archive-me",
+        request=EpubRequest("/input/book.epub", "en", "es"),
+        strategy=ExecutorStrategy.SEQUENTIAL,
+        status=PlanStatus.COMPLETED,
+    )
+    await orch._job_store.put(job)  # noqa: SLF001
+    headers = {"Authorization": "Bearer " + "a" * 32}
+
+    success = await client.post(
+        "/admin/jobs/archive-me/archive",
+        json={"reason": "retention review"},
+        headers={**headers, "x-request-id": "audit-success"},
+    )
+    failure = await client.post(
+        "/admin/jobs/missing/mark-failed",
+        json={"reason": "operator review"},
+        headers={**headers, "x-request-id": "audit-failure"},
+    )
+
+    assert success.status_code == 200
+    assert failure.status_code == 404
+    restarted = Orchestrator(
+        InMemoryWorkerStore(),
+        PlanCache(orch.settings.orchestrator.data_dir),
+        job_store=InMemoryJobStore(),
+        settings=orch.settings,
+    )
+    try:
+        await restarted.start()
+        audits = restarted.admin_audits
+        assert len(audits) == 2
+    finally:
+        await restarted.shutdown()
+        await restarted.close()
+    assert audits[0].request_id == "audit-success"
+    assert audits[0].action == "jobs/archive-me/archive"
+    assert audits[0].result == "success"
+    assert audits[0].reason == "retention review"
+    assert audits[0].job_ids == ("archive-me",)
+    assert audits[0].affected_count == 1
+    assert audits[1].request_id == "audit-failure"
+    assert audits[1].action == "jobs/missing/mark-failed"
+    assert audits[1].result == "failure"
+    assert audits[1].reason is not None
+    assert audits[1].job_ids == ()
+    assert audits[1].affected_count == 0
+
+
+@pytest.mark.asyncio
+async def test_malformed_admin_audits_do_not_block_startup(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    audit_path = orch.settings.orchestrator.data_dir / ".admin_audit.jsonl"
+    valid: dict[str, object] = {
+        "request_id": "valid",
+        "action": "jobs/reap-stale",
+        "reason": None,
+        "job_ids": [],
+        "affected_count": 0,
+        "result": "success",
+    }
+    audit_path.write_bytes(
+        b'{"request_id":"bad","action":"jobs/reap-stale","reason":null,"job_ids":[],"affected_count":0,"result":[]}\n'
+        b"\xff\xfe\n" + (json.dumps(valid) + "\n").encode()
+    )
+    restarted = Orchestrator(
+        InMemoryWorkerStore(),
+        PlanCache(orch.settings.orchestrator.data_dir),
+        job_store=InMemoryJobStore(),
+        settings=orch.settings,
+    )
+    try:
+        await restarted.start()
+        assert [event.request_id for event in restarted.admin_audits] == ["valid"]
+    finally:
+        await restarted.shutdown()
+        await restarted.close()
+
+
+@pytest.mark.asyncio
+async def test_admin_audit_file_is_compacted_to_bounded_tail(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    audit_path = orch.settings.orchestrator.data_dir / ".admin_audit.jsonl"
+    records: list[dict[str, object]] = [
+        {
+            "request_id": str(index),
+            "action": "jobs/reap-stale",
+            "reason": None,
+            "job_ids": [],
+            "affected_count": 0,
+            "result": "success",
+        }
+        for index in range(1001)
+    ]
+    audit_path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+    restarted = Orchestrator(
+        InMemoryWorkerStore(),
+        PlanCache(orch.settings.orchestrator.data_dir),
+        job_store=InMemoryJobStore(),
+        settings=orch.settings,
+    )
+    try:
+        restarted.record_admin_audit(
+            AdminActionAudit(
+                request_id="new",
+                action="jobs/reap-stale",
+                reason=None,
+                job_ids=(),
+                affected_count=0,
+                result="success",
+            )
+        )
+        assert len(audit_path.read_text(encoding="utf-8").splitlines()) == 1000
+    finally:
+        await restarted.close()
+
+
+@pytest.mark.asyncio
+async def test_admin_audits_from_multiple_orchestrators_are_merged(client: AsyncClient) -> None:
+    app = _app(client)
+    data_dir = app.state.orchestrator.settings.orchestrator.data_dir
+    first = Orchestrator(
+        InMemoryWorkerStore(),
+        PlanCache(data_dir),
+        job_store=InMemoryJobStore(),
+        settings=app.state.orchestrator.settings,
+    )
+    second = Orchestrator(
+        InMemoryWorkerStore(),
+        PlanCache(data_dir),
+        job_store=InMemoryJobStore(),
+        settings=app.state.orchestrator.settings,
+    )
+    try:
+        first.record_admin_audit(
+            AdminActionAudit(
+                request_id="first",
+                action="jobs/reap-stale",
+                reason=None,
+                job_ids=(),
+                affected_count=0,
+                result="success",
+            )
+        )
+        second.record_admin_audit(
+            AdminActionAudit(
+                request_id="second",
+                action="jobs/reap-stale",
+                reason=None,
+                job_ids=(),
+                affected_count=0,
+                result="success",
+            )
+        )
+        restarted = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(data_dir),
+            job_store=InMemoryJobStore(),
+            settings=app.state.orchestrator.settings,
+        )
+        try:
+            assert [event.request_id for event in restarted.admin_audits] == ["first", "second"]
+        finally:
+            await restarted.close()
+    finally:
+        await first.close()
+        await second.close()
 
 
 @pytest.mark.asyncio

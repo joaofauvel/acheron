@@ -1364,17 +1364,19 @@ related: []
 ### EXC-007 — Retention cleanup converts every job-store deletion error into an unlogged per-job failure
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
-fixed_in: []
+  commit: pending
+  date: 2026-08-01
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/retention.py
-    lines: 182-197
+    lines: 195-206
   - path: src/acheron/shell/stores/base.py
-    lines: 19-20, 172-173
+    lines: 19-20, 171-173
 related: []
 ```
 

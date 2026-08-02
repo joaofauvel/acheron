@@ -1372,19 +1372,19 @@ related: [OBS-014, CORR-042]
 ### OBS-016 — Administrative audit events are process-local and never emitted to durable observability
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
   commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/api/admin_audit.py
     lines: 33-52
   - path: src/acheron/shell/orchestrator.py
-    lines: 231-262
+    lines: 332-434
 related: []
 ```
 
@@ -1442,7 +1442,7 @@ files:
   - path: dashboard/templates/index.html
     lines: 80-84
   - path: src/acheron/shell/orchestrator.py
-    lines: 1235-1269
+    lines: 1409-1448, 1565-1567
 related: []
 ```
 
@@ -1604,7 +1604,7 @@ files:
   - path: src/acheron/shell/input_store.py
     lines: 181-199
   - path: src/acheron/shell/orchestrator.py
-    lines: 484-491
+    lines: 658-665
 related: [SEC-025]
 ```
 
