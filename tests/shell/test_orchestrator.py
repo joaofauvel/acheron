@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import hashlib
 from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
 
 from acheron.core.errors import (
@@ -46,6 +49,7 @@ from acheron.shell.job_store import TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+from acheron.shell.transports.http import HttpWorker
 from tests.shell.conftest import asr_caps, translation_caps, tts_caps
 
 
@@ -185,8 +189,8 @@ class _ObservingJobStore(InMemoryJobStore):
 class _RecordingStepCache(InMemoryStepCache):
     """Records invalidation requests for resume tests."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, data_dir: Path) -> None:
+        super().__init__(data_dir)
         self.invalidated: list[set[str]] = []
 
     async def invalidate_steps(self, job_id: str, step_ids: Collection[str]) -> None:
@@ -287,22 +291,244 @@ class TestOrchestrator:
         assert terminal is not None
         assert terminal.status is PlanStatus.COMPLETED
 
-    def test_default_step_cache_is_in_memory(self, tmp_path: Path) -> None:
-        """ARCH-008: omitting step_cache constructs an InMemoryStepCache (decoupled from PlanCache.data_dir)."""
+    def test_default_step_cache_uses_canonical_data_dir(self, tmp_path: Path) -> None:
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler)
-        assert isinstance(orch._step_cache, InMemoryStepCache)  # noqa: SLF001
+        assert isinstance(orch._step_cache, StepCache)  # noqa: SLF001
+        assert orch._step_cache.data_dir == tmp_path.resolve()  # noqa: SLF001
 
     def test_explicit_step_cache_is_used(self, tmp_path: Path) -> None:
         """ARCH-008: passing step_cache uses the caller's instance verbatim."""
-        cache = StepCache(tmp_path / "explicit")
+        cache = StepCache(tmp_path)
         orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, step_cache=cache)
         assert orch._step_cache is cache  # noqa: SLF001
 
+    def test_explicit_step_cache_root_mismatch_is_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="canonical orchestrator data directory"):
+            Orchestrator(
+                InMemoryWorkerStore(),
+                PlanCache(tmp_path),
+                _success_handler,
+                step_cache=StepCache(tmp_path / "other"),
+            )
+
     @pytest.mark.asyncio
-    async def test_submit_job_invalidates_handler_worker_cache(self, tmp_path: Path) -> None:
-        """CORR-009: submit_job must drop the step handler's worker-instance pool
-        and re-fetch on the next step, so a worker re-registered between jobs is seen.
-        """
+    async def test_default_handler_reads_upstream_manifest_from_orchestrator_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-remote", "http://worker:8000", "http", tts_caps("es"))
+        cache = StepCache(tmp_path)
+        jobs = InMemoryJobStore()
+        from acheron.shell.step_handler import CachingStepHandler, create_step_handler
+
+        injected_handler = create_step_handler(registry, data_dir=tmp_path)
+        orch = Orchestrator(
+            registry,
+            PlanCache(tmp_path),
+            handler=injected_handler,
+            job_store=jobs,
+            step_cache=cache,
+        )
+        assert isinstance(injected_handler, CachingStepHandler)
+        assert injected_handler._step_cache is cache  # noqa: SLF001
+        chunks = b"orchestrator-owned chunks"
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(chunks)
+        await cache.save_outputs(
+            "job-shared",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename=chunks_path.name,
+                    size_bytes=len(chunks),
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
+        seen: dict[str, bytes] = {}
+
+        async def _request(_worker: HttpWorker, _method: str, _path: str, **kwargs: Any) -> httpx.Response:
+            content = kwargs["content"]
+            seen["body"] = b"".join([part async for part in content])
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                content=b'{"job_id":"job-shared-synthesize","status":"success","outputs":[],'
+                b'"metrics":{"duration_seconds":0.0},"error":null}',
+            )
+
+        monkeypatch.setattr(HttpWorker, "_request", _request)
+        plan = Plan(
+            plan_id="plan-shared",
+            job_id="job-shared",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.STREAMING,
+            steps=(
+                PlanStep(
+                    step_id="synthesize",
+                    type=WorkerType.TTS,
+                    depends_on=("chunk",),
+                    status=StepStatus.PENDING,
+                    payload={"chapter_id": "ch1"},
+                    selected_worker_id="tts-remote",
+                ),
+            ),
+        )
+
+        result = await orch._handler(plan.steps[0], plan)  # noqa: SLF001
+
+        assert result.status is JobStatus.SUCCESS
+        assert chunks in seen["body"]
+        await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_resume_waits_for_prior_worker_release(self, tmp_path: Path) -> None:
+        from acheron.shell.step_handler import CachingStepHandler
+        from acheron.shell.transports.local import LocalWorker
+
+        release_started = asyncio.Event()
+        allow_release = asyncio.Event()
+        resumed_started = asyncio.Event()
+        allow_resumed = asyncio.Event()
+        calls = 0
+
+        async def _worker_handler(_job: object) -> JobResult:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return JobResult(
+                    job_id="job-resume-synthesize",
+                    status=JobStatus.FAILED,
+                    outputs=(),
+                    metrics=JobMetrics(duration_seconds=0.0),
+                    error="first execution failed",
+                )
+            resumed_started.set()
+            await allow_resumed.wait()
+            return JobResult(
+                job_id="job-resume-synthesize",
+                status=JobStatus.SUCCESS,
+                outputs=(),
+                metrics=JobMetrics(duration_seconds=0.0),
+            )
+
+        class BarrierHandler(CachingStepHandler):
+            async def release_job(self, job_id: str) -> None:
+                release_started.set()
+                await allow_release.wait()
+                await super().release_job(job_id)
+
+        registry = InMemoryWorkerStore()
+        await registry.register("tts-local", "local", "local", tts_caps("es"))
+        worker = LocalWorker(
+            worker_type=WorkerType.TTS,
+            handler=_worker_handler,
+            supported_languages_in=frozenset({"es"}),
+            supported_languages_out=frozenset({"es"}),
+        )
+        handler = BarrierHandler(
+            registry,
+            worker_factory=lambda _registered: worker,
+            data_dir=tmp_path,
+        )
+        plan = Plan(
+            plan_id="plan-resume",
+            job_id="job-resume",
+            source_type="epub",
+            source_language="en",
+            target_language="es",
+            executor_strategy=ExecutorStrategy.STREAMING,
+            steps=(
+                PlanStep(
+                    step_id="synthesize",
+                    type=WorkerType.TTS,
+                    depends_on=(),
+                    status=StepStatus.PENDING,
+                    payload={"chapter_id": "ch1"},
+                    selected_worker_id="tts-local",
+                ),
+            ),
+        )
+        jobs = InMemoryJobStore()
+        orch = Orchestrator(
+            registry,
+            PlanCache(tmp_path),
+            handler=handler,
+            job_store=jobs,
+            step_cache=StepCache(tmp_path),
+        )
+        tracked = TrackedJob(
+            job_id=plan.job_id,
+            request=EpubRequest("book.epub", "en", "es"),
+            strategy=ExecutorStrategy.STREAMING,
+            plan=plan,
+            status=PlanStatus.RUNNING,
+        )
+        await jobs.put(tracked)
+        orch._track_execution_task(tracked)  # noqa: SLF001
+        await release_started.wait()
+        assert plan.job_id in orch._active_jobs  # noqa: SLF001
+        persisted = await jobs.get(plan.job_id)
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
+
+        resumed = asyncio.create_task(orch.resume_job(plan.job_id))
+        await asyncio.sleep(0)
+        assert not resumed.done()
+
+        allow_release.set()
+        await resumed
+        await resumed_started.wait()
+        allow_resumed.set()
+        await asyncio.gather(*tuple(orch._tasks), return_exceptions=True)  # noqa: SLF001
+        assert calls == 2
+        assert plan.job_id not in orch._active_jobs  # noqa: SLF001
+        await orch.close()
+
+    @pytest.mark.asyncio
+    async def test_resume_prior_execution_wait_is_bounded(self, tmp_path: Path) -> None:
+        settings = Settings()
+        settings.orchestrator.data_dir = tmp_path
+        settings.orchestrator.shutdown_drain_seconds = 0.01
+        jobs = InMemoryJobStore()
+        plan = _single_step_plan("job-resume-timeout")
+        await jobs.put(
+            TrackedJob(
+                job_id=plan.job_id,
+                request=EpubRequest("book.epub", "en", "en"),
+                strategy=ExecutorStrategy.STREAMING,
+                plan=plan,
+                status=PlanStatus.FAILED,
+            )
+        )
+        orch = Orchestrator(
+            InMemoryWorkerStore(),
+            PlanCache(tmp_path),
+            _success_handler,
+            job_store=jobs,
+            settings=settings,
+        )
+
+        async def _stuck() -> None:
+            await asyncio.Event().wait()
+
+        prior_execution = asyncio.create_task(_stuck())
+        orch._execution_tasks[plan.job_id] = prior_execution  # noqa: SLF001
+        try:
+            with pytest.raises(TimeoutError):
+                await orch.resume_job(plan.job_id)
+        finally:
+            prior_execution.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await prior_execution
+
+    @pytest.mark.asyncio
+    async def test_submit_job_preserves_handler_cache_until_registry_change(self, tmp_path: Path) -> None:
+        """Transport resources persist across submissions and refresh on re-registration."""
         from acheron.shell.step_handler import CachingStepHandler
 
         reg = InMemoryWorkerStore()
@@ -312,7 +538,7 @@ class TestOrchestrator:
         await orch.start()
         assert isinstance(orch._handler, CachingStepHandler)  # noqa: SLF001
 
-        # First submit: cache is populated.
+        # First submit populates the handler's worker cache.
         await orch.submit_job(
             EpubRequest(source_path="/input/book.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
@@ -321,9 +547,7 @@ class TestOrchestrator:
         # Simulate a worker re-registering between jobs.
         await reg.register("tts-1", "http://127.0.0.1:99", "http", tts_caps("es"))
 
-        # Second submit must observe the re-registration. The invalidation
-        # is verified end-to-end: a fresh registry read means the new URL
-        # is in the worker list the executor dispatches against.
+        # The second submission runs against the changed registry generation.
         await orch.submit_job(
             EpubRequest(source_path="/input/book2.epub", source_language="en", target_language="es"),
             ExecutorStrategy.STREAMING,
@@ -707,7 +931,7 @@ class TestOrchestrator:
     @pytest.mark.asyncio
     async def test_streaming_cache_hits_update_and_persist_progress(self, tmp_path: Path) -> None:
         store = _ObservingJobStore()
-        step_cache = InMemoryStepCache()
+        step_cache = InMemoryStepCache(tmp_path)
         plan = _single_step_plan("job-streaming-cache")
         cached_path = tmp_path / "cached.txt"
         cached_bytes = b"cached"
@@ -1396,7 +1620,7 @@ class TestOrchestrator:
 
     @pytest.mark.asyncio
     async def test_resume_invalidates_selected_steps_and_dependents(self, tmp_path: Path) -> None:
-        cache = _RecordingStepCache()
+        cache = _RecordingStepCache(tmp_path)
         jobs = InMemoryJobStore()
         plan = Plan(
             plan_id="plan-resume",
@@ -1437,7 +1661,7 @@ class TestOrchestrator:
 
     @pytest.mark.asyncio
     async def test_resume_invalidates_chapter_and_rejects_unknown_target(self, tmp_path: Path) -> None:
-        cache = _RecordingStepCache()
+        cache = _RecordingStepCache(tmp_path)
         jobs = InMemoryJobStore()
         plan = Plan(
             plan_id="plan-chapter",
@@ -1962,6 +2186,7 @@ class TestOrchestrator:
 async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) -> None:  # type: ignore[no-untyped-def]
     """The Orchestrator must build HealthProviders from settings.providers.* API keys."""
     settings = Settings()
+    settings.orchestrator.data_dir = tmp_path
     settings.providers.runpod.api_key = "rp-key"
     orch = Orchestrator(
         registry=InMemoryWorkerStore(),
@@ -1973,25 +2198,23 @@ async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) 
     assert orch._health_monitor._providers.get("runpod") is not None  # noqa: SLF001
 
 
-def test_orchestrator_does_not_mutate_passed_settings(tmp_path: Path) -> None:
-    """Orchestrator must not mutate the caller's Settings; it constructs a fresh one when needed."""
+def test_orchestrator_rejects_plan_cache_outside_settings_root(tmp_path: Path) -> None:
+    """PlanCache must share the canonical settings data directory."""
     from acheron.shell.config import OrchestratorSettings
 
     settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path / "from_settings"))
     original_data_dir = settings.orchestrator.data_dir
     cache = PlanCache(data_dir=tmp_path / "from_cache")
 
-    orch = Orchestrator(
-        registry=InMemoryWorkerStore(),
-        cache=cache,
-        job_store=InMemoryJobStore(),
-        settings=settings,
-    )
+    with pytest.raises(ValueError, match="canonical orchestrator data directory"):
+        Orchestrator(
+            registry=InMemoryWorkerStore(),
+            cache=cache,
+            job_store=InMemoryJobStore(),
+            settings=settings,
+        )
 
-    assert settings.orchestrator.data_dir == original_data_dir, "Settings must not be mutated"
-    assert orch.settings.orchestrator.data_dir == original_data_dir, (
-        "Orchestrator must use the caller's settings when provided"
-    )
+    assert settings.orchestrator.data_dir == original_data_dir
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from acheron.core.errors import VoiceSelectionError, WorkerError
@@ -16,9 +17,8 @@ from acheron.shell.transports.http import HttpWorker
 from acheron.tls import grpc_channel
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from acheron.core.models import Plan, PlanStep
+    from acheron.shell.cache import InMemoryStepCache, StepCache
     from acheron.shell.executors._utils import StepHandler
     from acheron.shell.local_handlers import LocalJobHandler
     from acheron.shell.registry import RegisteredWorker
@@ -30,13 +30,14 @@ type WorkerFactory = Callable[[RegisteredWorker], Worker]
 type RegistrationTokenProvider = Callable[[], str | None]
 
 
-def default_worker_factory(
+def default_worker_factory(  # noqa: PLR0913
     registered: RegisteredWorker,
     local_handlers: dict[str, LocalJobHandler] | None = None,
     *,
     data_dir: Path | str,
     registration_token: str | None = None,
     registration_token_provider: RegistrationTokenProvider | None = None,
+    step_cache: StepCache | InMemoryStepCache | None = None,
 ) -> Worker:
     """Create a worker from a registered worker's endpoint and transport.
 
@@ -46,7 +47,7 @@ def default_worker_factory(
 
     ``data_dir`` is the orchestrator's effective data dir (from settings) and
     is forwarded to the transports so they don't need to read env vars.
-    ``HttpWorker`` constructs its own ``StepCache`` from ``data_dir``.
+    ``step_cache`` is the orchestrator-owned cache shared with remote workers.
     """
     match registered.transport:
         case "grpc":
@@ -83,6 +84,7 @@ def default_worker_factory(
                 data_dir=data_dir,
                 registration_token=token,
                 registration_token_provider=registration_token_provider,
+                step_cache=step_cache,
             )
 
 
@@ -163,13 +165,7 @@ def _select_worker(
 
 
 class CachingStepHandler:
-    """Step handler that caches the worker list and worker instances per plan.
-
-    The handler is a callable: ``await handler(step, plan) -> JobResult``. The
-    orchestrator invalidates the cache on ``submit_job`` and on task cancellation
-    via :meth:`_invalidate_worker_cache` so a worker that was re-registered or
-    removed between plans is picked up on the next dispatch.
-    """
+    """Step handler that reuses worker instances until registry generations change."""
 
     def __init__(  # noqa: PLR0913
         self,
@@ -180,9 +176,11 @@ class CachingStepHandler:
         data_dir: Path | str,
         registration_token: str | None = None,
         registration_token_provider: RegistrationTokenProvider | None = None,
+        step_cache: StepCache | InMemoryStepCache | None = None,
     ) -> None:
         self._registry = registry
         self._data_dir = data_dir
+        self._step_cache = step_cache
         if worker_factory is not None:
             self._factory = worker_factory
         elif registration_token_provider is None:
@@ -191,6 +189,7 @@ class CachingStepHandler:
                 local_handlers,
                 data_dir=data_dir,
                 registration_token=registration_token,
+                step_cache=self._step_cache,
             )
         else:
             self._factory = lambda reg: default_worker_factory(
@@ -199,28 +198,28 @@ class CachingStepHandler:
                 data_dir=data_dir,
                 registration_token=registration_token,
                 registration_token_provider=registration_token_provider,
+                step_cache=self._step_cache,
             )
         self._cached_workers: tuple[RegisteredWorker, ...] | None = None
-        self._cached_plan_id: str | None = None
+        self._cached_generations: dict[str, int] | None = None
         self._worker_instances: dict[str, Worker] = {}
         self._retired_worker_instances: dict[int, Worker] = {}
         self._job_worker_instances: dict[str, list[Worker]] = {}
         self._worker_refcounts: dict[int, int] = {}
 
     async def __call__(self, step: PlanStep, plan: Plan) -> JobResult:
-        """Dispatch the step to a selected worker; cache workers per plan_id."""
+        """Dispatch the step to a selected worker with generation-aware reuse."""
         src = plan.source_language
         dst = plan.target_language
 
         current_workers = await self._registry.list_all()
-        if self._cached_workers is not None and plan.plan_id == self._cached_plan_id:
-            previous = {worker.worker_id: worker for worker in self._cached_workers}
-            current_by_id = {worker.worker_id: worker for worker in current_workers}
-            for worker_id, old_worker in previous.items():
-                if current_by_id.get(worker_id) != old_worker:
+        current_generations = {worker.worker_id: worker.registration_generation for worker in current_workers}
+        if self._cached_generations is not None:
+            for worker_id, generation in self._cached_generations.items():
+                if current_generations.get(worker_id) != generation:
                     self._retire_worker_instance(worker_id)
         self._cached_workers = current_workers
-        self._cached_plan_id = plan.plan_id
+        self._cached_generations = current_generations
 
         selected = _select_worker(step, current_workers, src, dst)
 
@@ -236,6 +235,8 @@ class CachingStepHandler:
         worker_instance = self._worker_instances.get(selected.worker_id)
         if worker_instance is None:
             worker_instance = self._factory(selected)
+            if self._step_cache is not None and isinstance(worker_instance, HttpWorker):
+                worker_instance.configure_step_cache(self._step_cache)
             self._worker_instances[selected.worker_id] = worker_instance
         job_instances = self._job_worker_instances.setdefault(plan.job_id, [])
         if all(worker is not worker_instance for worker in job_instances):
@@ -245,6 +246,15 @@ class CachingStepHandler:
         result = await worker_instance.execute(job)
         return replace(result, worker_id=selected.worker_id)
 
+    def configure_step_cache(self, step_cache: StepCache | InMemoryStepCache) -> None:
+        """Configure the shared cache used by default and HTTP worker factories."""
+        handler_root = Path(self._data_dir).resolve()
+        cache_root = step_cache.data_dir.resolve()
+        if handler_root != cache_root:
+            msg = f"StepCache data directory must match the step handler data directory: {cache_root} != {handler_root}"
+            raise ValueError(msg)
+        self._step_cache = step_cache
+
     def _retire_worker_instance(self, worker_id: str) -> None:
         worker = self._worker_instances.pop(worker_id, None)
         if worker is not None:
@@ -253,13 +263,12 @@ class CachingStepHandler:
     async def _invalidate_worker_cache(self) -> None:
         """Drop both the worker-list snapshot and the worker-instance pool.
 
-        The orchestrator calls this on ``submit_job`` and on task cancellation
-        so a worker re-registration, removal, or endpoint change is reflected
-        on the next dispatch.
+        Explicitly drop all cached worker resources, retaining close behavior
+        for instances still referenced by active jobs.
         """
         self._retired_worker_instances.update((id(worker), worker) for worker in self._worker_instances.values())
         self._cached_workers = None
-        self._cached_plan_id = None
+        self._cached_generations = None
         self._worker_instances.clear()
         await self._close_retired_workers()
 
@@ -278,13 +287,16 @@ class CachingStepHandler:
         for worker_key, worker in tuple(self._retired_worker_instances.items()):
             if self._worker_refcounts.get(worker_key, 0) > 0:
                 continue
-            self._retired_worker_instances.pop(worker_key, None)
             close = getattr(worker, "close", None)
-            if close is not None:
-                try:
-                    await close()
-                except Exception:
-                    logger.exception("Failed to close cached worker")
+            if close is None:
+                self._retired_worker_instances.pop(worker_key, None)
+                continue
+            try:
+                await close()
+            except Exception:
+                logger.exception("Failed to close cached worker")
+            else:
+                self._retired_worker_instances.pop(worker_key, None)
 
     async def close(self) -> None:
         """Close resources held by cached worker instances."""
@@ -299,6 +311,7 @@ def create_step_handler(  # noqa: PLR0913
     data_dir: Path | str,
     registration_token: str | None = None,
     registration_token_provider: RegistrationTokenProvider | None = None,
+    step_cache: StepCache | InMemoryStepCache | None = None,
 ) -> StepHandler:
     """Create a step handler that dispatches to registered workers.
 
@@ -306,12 +319,11 @@ def create_step_handler(  # noqa: PLR0913
     the registry contains local workers (transport == "local").
 
     ``data_dir`` is the orchestrator's effective data dir and is forwarded to
-    the transports so they don't need to read env vars. ``HttpWorker``
-    constructs its own ``StepCache`` from ``data_dir``.
+    the transports so they don't need to read env vars. ``step_cache`` is the
+    orchestrator-owned cache shared with remote workers.
 
-    Caches ``registry.list_all()`` per plan (plan_id) and reuses ``Worker``
-    instances per worker_id across steps to avoid redundant registry round-trips
-    and gRPC channel / HTTP connection churn.
+    Refreshes registry state per dispatch and reuses ``Worker`` instances per
+    worker_id until that worker's registration generation changes.
     """
     return CachingStepHandler(
         registry,
@@ -320,4 +332,5 @@ def create_step_handler(  # noqa: PLR0913
         data_dir=data_dir,
         registration_token=registration_token,
         registration_token_provider=registration_token_provider,
+        step_cache=step_cache,
     )

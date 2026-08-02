@@ -1256,21 +1256,21 @@ related: []
 ### ARCH-027 — Remote workers cannot read upstream manifests from the orchestrator's cache
 
 ```yaml
-status: open
+status: verified
 severity: high
 effort: M
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 180-187
+    lines: 171-204
   - path: src/acheron/shell/step_handler.py
-    lines: 47-49, 79-86, 306-311
+    lines: 187-202, 249-263
   - path: src/acheron/shell/transports/http.py
-    lines: 158-169, 227-245
+    lines: 157-186, 254-263
 related: [ARCH-006, ARCH-008, CORR-009]
 ```
 
@@ -1285,19 +1285,19 @@ related: [ARCH-006, ARCH-008, CORR-009]
 ### ARCH-028 — Plan cache and orchestrator data roots can diverge
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
-fixed_in: []
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/api/app.py
-    lines: 87-106
+    lines: 95-110
   - path: src/acheron/shell/cache.py
-    lines: 172-193
+    lines: 175-237
   - path: src/acheron/shell/api/routes/job_outputs.py
     lines: 61-77, 145
 related: [REPRO-007]
@@ -1344,12 +1344,14 @@ severity: low
 effort: S
 reviewed_at: 22d20f5
 last_verified_at:
+  commit: pending
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/retention.py
     lines: 13-16, 275-323
   - path: src/acheron/shell/orchestrator.py
-    lines: 49-52, 359-363
+    lines: 51, 103-104, 379
 related: [ARCH-005, ARCH-023]
 ```
 

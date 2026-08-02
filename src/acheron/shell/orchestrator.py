@@ -172,19 +172,36 @@ class Orchestrator:
             default = load_settings()
             settings = Settings(orchestrator=default.orchestrator.model_copy(update={"data_dir": cache.data_dir}))
         canonical_data_dir = settings.orchestrator.data_dir.resolve()
+        if cache.data_dir.resolve() != canonical_data_dir:
+            msg = (
+                "PlanCache data directory must match the canonical orchestrator data directory: "
+                f"{cache.data_dir.resolve()} != {canonical_data_dir}"
+            )
+            raise ValueError(msg)
+        if step_cache is not None and step_cache.data_dir.resolve() != canonical_data_dir:
+            msg = (
+                "StepCache data directory must match the canonical orchestrator data directory: "
+                f"{step_cache.data_dir.resolve()} != {canonical_data_dir}"
+            )
+            raise ValueError(msg)
         self._settings = settings.model_copy(
             update={"orchestrator": settings.orchestrator.model_copy(update={"data_dir": canonical_data_dir})}
         )
         self._registry = registry
         self._cache = cache
-        self._step_cache = step_cache if step_cache is not None else InMemoryStepCache()
+        self._step_cache = step_cache if step_cache is not None else StepCache(canonical_data_dir)
         self._local_handlers: dict[str, LocalJobHandler] = {}
         self._handler = handler or create_step_handler(
             registry,
             local_handlers=self._local_handlers,
             data_dir=self._settings.orchestrator.data_dir,
             registration_token_provider=lambda: self._settings.orchestrator.registration_token,
+            step_cache=self._step_cache,
         )
+        if handler is not None:
+            configure_step_cache = getattr(self._handler, "configure_step_cache", None)
+            if configure_step_cache is not None:
+                configure_step_cache(self._step_cache)
         self._job_store = job_store if job_store is not None else create_job_store()
         self._capabilities = CapabilityAggregator(registry)
         self._tasks: set[asyncio.Task[None]] = set()
@@ -246,7 +263,7 @@ class Orchestrator:
 
     def _verify_data_dir_writable(self) -> None:
         """Ensure the step-cache data dir exists and is writable. Raises AcheronError otherwise."""
-        data_dir = self._step_cache.data_dir
+        data_dir = self._settings.orchestrator.data_dir
         probe = data_dir / ".acheron_write_test"
         try:
             data_dir.mkdir(parents=True, exist_ok=True)
@@ -546,7 +563,6 @@ class Orchestrator:
                     )
                 plan = await self._compile_plan(request, strategy, job_id=job_id)
                 self._cache.save_plan(plan)
-                await self._invalidate_handler_cache()
                 logger.info("Plan compiled for %s: %s (%d steps)", job_id, plan.plan_id, len(plan.steps))
 
                 tracked = TrackedJob(
@@ -681,10 +697,14 @@ class Orchestrator:
                 _log_unexpected(f"Failed to persist job {tracked.job_id} after execution failure", persist_exc)
             raise
         finally:
-            self._active_jobs.discard(tracked.job_id)
             release_job = getattr(self._handler, "release_job", None)
             if release_job is not None:
-                await release_job(tracked.job_id)
+                release_task = asyncio.create_task(release_job(tracked.job_id))
+                try:
+                    await asyncio.shield(release_task)
+                except asyncio.CancelledError:
+                    await asyncio.shield(release_task)
+            self._active_jobs.discard(tracked.job_id)
 
     def _track_execution_task(self, tracked: TrackedJob) -> None:
         task = asyncio.create_task(self._execute(tracked))
@@ -804,18 +824,6 @@ class Orchestrator:
                 )
         return pending
 
-    async def _invalidate_handler_cache(self) -> None:
-        """Invalidate the step handler's worker-instance cache, if it exposes one.
-
-        The default :class:`CachingStepHandler` pools worker instances across
-        steps; we drop the pool at the start of each new plan so a worker
-        re-registration, removal, or endpoint change is reflected on the next
-        dispatch.
-        """
-        invalidate = getattr(self._handler, "_invalidate_worker_cache", None)
-        if invalidate is not None:
-            await invalidate()
-
     async def _run_execution(self, tracked: TrackedJob) -> None:
         async with self._job_lifecycle_lock(tracked.job_id):
             db_job = await self._job_store.get(tracked.job_id)
@@ -861,7 +869,6 @@ class Orchestrator:
             await self._job_store.put(tracked)
             await self._publish_event(tracked, f"job {tracked.status.value}")
         finally:
-            self._active_jobs.discard(tracked.job_id)
             await self._events.finish(tracked.job_id)
 
     def _create_executor(self, tracked: TrackedJob) -> Executor:
@@ -1300,6 +1307,18 @@ class Orchestrator:
             self._job_locks[job_id] = lock
 
         async with lock:
+            current = await self._job_store.get(job_id)
+            if current is not None and current.status == PlanStatus.RUNNING:
+                msg = f"Job {job_id} is already running"
+                raise JobAlreadyRunningError(msg, remediation=f"acheron job cancel {job_id}")
+            prior_execution = self._execution_tasks.get(job_id)
+            if (
+                prior_execution is not None
+                and prior_execution is not asyncio.current_task()
+                and not prior_execution.done()
+            ):
+                async with asyncio.timeout(self._settings.orchestrator.shutdown_drain_seconds):
+                    await asyncio.shield(asyncio.gather(prior_execution, return_exceptions=True))
             await self._wait_for_background_persists(
                 job_id,
                 max_wait=self._settings.orchestrator.shutdown_drain_seconds,
@@ -1325,7 +1344,6 @@ class Orchestrator:
                 invalidate_chapters,
             )
             await self._step_cache.invalidate_steps(job_id, invalidated_steps)
-            await self._invalidate_handler_cache()
 
             async with self._lifecycle_lock:
                 if self._shutting_down:
@@ -1374,7 +1392,6 @@ class Orchestrator:
         if transport == "local" and handler is not None:
             self._local_handlers[worker_id] = handler
         await self._registry.register(worker_id, endpoint, transport, capabilities, metadata=metadata)
-        await self._invalidate_handler_cache()
         logger.info("Registered worker %s (%s, %s)", worker_id, capabilities.worker_type.value, transport)
 
     async def list_workers(self) -> tuple[RegisteredWorker, ...]:

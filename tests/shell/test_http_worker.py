@@ -402,11 +402,8 @@ class TestHttpWorkerExecuteMultipart:
 class TestHttpWorkerStepCache:
     @respx.mock
     @pytest.mark.asyncio
-    async def test_step_cache_default_constructs_from_data_dir(self, tmp_path: Path) -> None:
-        """When step_cache is not provided, the worker constructs a default
-        StepCache from data_dir (backward compat with pre-8b callers)."""
-        from acheron.shell.cache import StepCache
-
+    async def test_step_cache_is_not_constructed_without_shared_cache(self, tmp_path: Path) -> None:
+        """Remote workers do not create an independent upstream cache."""
         respx.post(f"{_BASE_URL}/execute").mock(
             return_value=httpx.Response(
                 200,
@@ -414,15 +411,14 @@ class TestHttpWorkerStepCache:
             )
         )
         worker = HttpWorker(_BASE_URL, data_dir=tmp_path)
-        assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
-        assert worker._step_cache.data_dir == tmp_path  # noqa: SLF001
+        assert worker._step_cache is None  # noqa: SLF001
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_explicit_step_cache_is_used(self, tmp_path: Path) -> None:
         from acheron.shell.cache import StepCache
 
-        cache = StepCache(tmp_path / "other")
+        cache = StepCache(tmp_path)
         respx.post(f"{_BASE_URL}/execute").mock(
             return_value=httpx.Response(
                 200,
@@ -431,7 +427,14 @@ class TestHttpWorkerStepCache:
         )
         worker = HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=cache)
         assert worker._step_cache is cache  # noqa: SLF001
-        assert worker._step_cache.data_dir == tmp_path / "other"  # noqa: SLF001
+        assert worker._step_cache is not None  # noqa: SLF001
+        assert worker._step_cache.data_dir == tmp_path.resolve()  # noqa: SLF001
+
+    def test_mismatched_step_cache_root_is_rejected(self, tmp_path: Path) -> None:
+        from acheron.shell.cache import StepCache
+
+        with pytest.raises(ValueError, match="HTTP worker data directory"):
+            HttpWorker(_BASE_URL, data_dir=tmp_path, step_cache=StepCache(tmp_path / "other"))
 
     @respx.mock
     @pytest.mark.asyncio

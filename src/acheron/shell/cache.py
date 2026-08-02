@@ -173,7 +173,7 @@ class PlanCache:
     """Persists and loads pipeline plans to/from disk."""
 
     def __init__(self, data_dir: str | Path = "/data/jobs") -> None:
-        self._data_dir = Path(data_dir)
+        self._data_dir = Path(data_dir).resolve()
 
     @property
     def data_dir(self) -> Path:
@@ -234,7 +234,7 @@ class StepCache:
     """Persists and loads step output manifests asynchronously."""
 
     def __init__(self, data_dir: str | Path = "/data/jobs") -> None:
-        self._data_dir = Path(data_dir)
+        self._data_dir = Path(data_dir).resolve()
 
     @property
     def data_dir(self) -> Path:
@@ -312,15 +312,11 @@ class StepCache:
 
 
 class InMemoryStepCache:
-    """Process-local step cache. State is lost on restart.
-
-    Used as the orchestrator's default so that constructing an ``Orchestrator``
-    does not require a writable data directory. Callers that want cross-process
-    resume must pass an explicit ``StepCache`` rooted at a shared directory.
-    """
+    """Process-local step cache. State is lost on restart."""
 
     def __init__(self, data_dir: str | Path | None = None) -> None:
-        self._data_dir = Path(data_dir) if data_dir is not None else Path(tempfile.mkdtemp(prefix="acheron-step-"))
+        root = Path(data_dir) if data_dir is not None else Path(tempfile.mkdtemp(prefix="acheron-step-"))
+        self._data_dir = root.resolve()
         self._outputs: dict[tuple[str, str], tuple[OutputFile, ...]] = {}
 
     @property

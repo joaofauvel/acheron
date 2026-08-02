@@ -284,7 +284,7 @@ class TestWorkerIntegrationErrorPath:
     @pytest.mark.asyncio
     async def test_worker_unreachable(self, tmp_path: Path, epub_file: Path) -> None:
         """Job fails when TTS worker is unreachable."""
-        from acheron.shell.cache import PlanCache
+        from acheron.shell.cache import PlanCache, StepCache
 
         async def _noop(job: Job) -> JobResult:
             return JobResult(
@@ -310,8 +310,14 @@ class TestWorkerIntegrationErrorPath:
             _caps(WorkerType.TTS, langs_in=frozenset({"es"}), langs_out=frozenset({"es"}), batch_capable=True),
         )
 
-        handler = create_step_handler(reg, data_dir=tmp_path)
-        orch = Orchestrator(registry=reg, cache=PlanCache(tmp_path), handler=handler)
+        shared_step_cache = StepCache(tmp_path)
+        handler = create_step_handler(reg, data_dir=tmp_path, step_cache=shared_step_cache)
+        orch = Orchestrator(
+            registry=reg,
+            cache=PlanCache(tmp_path),
+            handler=handler,
+            step_cache=shared_step_cache,
+        )
         await orch.start()
         request = EpubRequest(source_path=str(epub_file), source_language="en", target_language="es")
         tracked = await orch.submit_job(request, ExecutorStrategy.SEQUENTIAL)

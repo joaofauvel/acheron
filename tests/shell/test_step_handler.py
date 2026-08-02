@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
 
 from acheron.core.errors import VoiceSelectionError
 from acheron.core.models import (
     ExecutorStrategy,
+    Job,
     JobMetrics,
     JobResult,
     JobStatus,
+    OutputFile,
     Plan,
     PlanStep,
     StepStatus,
@@ -374,6 +379,46 @@ class TestStepHandler:
         assert call_count == 2
 
     @pytest.mark.asyncio
+    async def test_worker_factory_reuses_instances_across_jobs_until_generation_changes(self) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+
+        class ClosableLocalWorker(LocalWorker):
+            def __init__(self) -> None:
+                super().__init__(
+                    worker_type=WorkerType.TTS,
+                    handler=_echo_job_result,
+                    supported_languages_in=frozenset({"es"}),
+                    supported_languages_out=frozenset({"es"}),
+                )
+                self.close_calls = 0
+
+            async def close(self) -> None:
+                self.close_calls += 1
+
+        created: list[ClosableLocalWorker] = []
+
+        def _factory(_registered: RegisteredWorker) -> ClosableLocalWorker:
+            worker = ClosableLocalWorker()
+            created.append(worker)
+            return worker
+
+        handler = CachingStepHandler(reg, worker_factory=_factory, data_dir=_TEST_DATA_DIR)
+        plan_a = replace(_make_plan(), job_id="job-a", plan_id="plan-a")
+        plan_b = replace(_make_plan(), job_id="job-b", plan_id="plan-b")
+        await handler(plan_a.steps[0], plan_a)
+        await handler(plan_b.steps[0], plan_b)
+        assert len(created) == 1
+
+        await reg.register("tts-1", "http://127.0.0.2:1", "http", _tts_caps())
+        plan_c = replace(_make_plan(), job_id="job-c", plan_id="plan-c")
+        await handler(plan_c.steps[0], plan_c)
+        assert len(created) == 2
+        await handler.release_job(plan_a.job_id)
+        await handler.release_job(plan_b.job_id)
+        assert created[0].close_calls == 1
+
+    @pytest.mark.asyncio
     async def test_worker_factory_called_once_per_worker_id(self) -> None:
         """worker_factory is called once per worker_id across multiple steps."""
         reg = InMemoryWorkerStore()
@@ -482,6 +527,34 @@ class TestStepHandler:
         assert workers[0].close_calls == 1
 
     @pytest.mark.asyncio
+    async def test_failed_retired_worker_close_is_retried(self) -> None:
+        class FlakyLocalWorker(LocalWorker):
+            def __init__(self) -> None:
+                super().__init__(WorkerType.TTS, _echo_job_result)
+                self.close_calls = 0
+
+            async def close(self) -> None:
+                self.close_calls += 1
+                if self.close_calls == 1:
+                    raise RuntimeError("close failed")
+
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
+        worker = FlakyLocalWorker()
+        handler = CachingStepHandler(reg, worker_factory=lambda _registered: worker, data_dir=_TEST_DATA_DIR)
+        plan = _make_plan()
+        await handler(plan.steps[0], plan)
+
+        await handler._invalidate_worker_cache()  # noqa: SLF001
+        assert id(worker) in handler._retired_worker_instances  # noqa: SLF001
+        await handler.release_job(plan.job_id)
+        assert worker.close_calls == 1
+
+        await handler._close_retired_workers()  # noqa: SLF001
+        assert id(worker) not in handler._retired_worker_instances  # noqa: SLF001
+        assert worker.close_calls == 2
+
+    @pytest.mark.asyncio
     async def test_shared_retired_worker_closes_after_last_job_release(self) -> None:
         class ClosableLocalWorker(LocalWorker):
             def __init__(self) -> None:
@@ -514,10 +587,76 @@ class TestStepHandler:
 
 
 class TestHttpWorkerStepCache:
-    """ARCH-015: ``HttpWorker`` constructs its own ``StepCache`` from ``data_dir``
-    when the factory does not pass one. The factory is no longer the seam."""
+    @pytest.mark.asyncio
+    async def test_custom_http_worker_factory_receives_configured_cache(self, tmp_path: Path) -> None:
+        reg = InMemoryWorkerStore()
+        await reg.register("tts-x", "http://worker:8000", "http", _tts_caps())
+        cache = StepCache(tmp_path)
+        worker = HttpWorker("http://worker:8000", data_dir=tmp_path)
+        worker.execute = _echo_job_result  # type: ignore[method-assign]
+        handler = CachingStepHandler(
+            reg,
+            worker_factory=lambda _registered: worker,
+            data_dir=tmp_path,
+        )
+        handler.configure_step_cache(cache)
 
-    def test_default_worker_factory_produces_http_worker_with_default_step_cache(self) -> None:
+        plan = _make_plan()
+        step = replace(plan.steps[0], selected_worker_id="tts-x")
+        await handler(step, plan)
+
+        assert worker._step_cache is cache  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_default_factory_worker_reads_shared_upstream_manifest(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        registered = RegisteredWorker(
+            worker_id="tts-x",
+            endpoint="http://worker:8000",
+            transport="http",
+            capabilities=_tts_caps(),
+        )
+        cache = StepCache(tmp_path)
+        chunks = b"shared chunks"
+        chunks_path = tmp_path / "chunks.json"
+        chunks_path.write_bytes(chunks)
+        await cache.save_outputs(
+            "job-1",
+            "chunk",
+            (
+                OutputFile(
+                    path=str(chunks_path),
+                    filename=chunks_path.name,
+                    size_bytes=len(chunks),
+                    checksum="x" * 64,
+                    content_type="application/json",
+                ),
+            ),
+        )
+        worker = default_worker_factory(registered, data_dir=tmp_path, step_cache=cache)
+        assert isinstance(worker, HttpWorker)
+        seen: dict[str, bytes] = {}
+
+        async def _request(_method: str, _path: str, **kwargs: Any) -> httpx.Response:
+            content = kwargs["content"]
+            seen["body"] = b"".join([part async for part in content])
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                content=b'{"job_id":"job-1-synthesize","status":"success","outputs":[],"metrics":{"duration_seconds":0.0},"error":null}',
+            )
+
+        monkeypatch.setattr(worker, "_request", _request)
+        result = await worker.execute(
+            Job(job_id="job-1-synthesize", job_type=WorkerType.TTS, payload={}, chapter_id="ch1")
+        )
+        assert result.status is JobStatus.SUCCESS
+        assert chunks in seen["body"]
+
+    """ARCH-027: the factory passes one orchestrator-owned ``StepCache``."""
+
+    def test_default_worker_factory_passes_shared_step_cache(self, tmp_path: Path) -> None:
         from acheron.shell.registry import RegisteredWorker
 
         reg = RegisteredWorker(
@@ -526,10 +665,10 @@ class TestHttpWorkerStepCache:
             transport="http",
             capabilities=_tts_caps(),
         )
-        worker = default_worker_factory(reg, data_dir=_TEST_DATA_DIR)
+        cache = StepCache(tmp_path)
+        worker = default_worker_factory(reg, data_dir=tmp_path, step_cache=cache)
         assert isinstance(worker, HttpWorker)
-        assert isinstance(worker._step_cache, StepCache)  # noqa: SLF001
-        assert worker._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
+        assert worker._step_cache is cache  # noqa: SLF001
 
     def test_factory_reads_registration_token_at_worker_creation(self) -> None:
         from acheron.shell.registry import RegisteredWorker
@@ -558,34 +697,35 @@ class TestHttpWorkerStepCache:
         assert worker_after._registration_token == token  # noqa: SLF001
 
     @pytest.mark.asyncio
-    async def test_create_step_handler_default_lambda_produces_http_worker_with_default_step_cache(
-        self, monkeypatch: pytest.MonkeyPatch
+    async def test_create_step_handler_default_lambda_passes_shared_step_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """The default factory lambda in ``create_step_handler`` (no
-        ``worker_factory`` arg) must produce an ``HttpWorker`` whose
-        ``_step_cache`` is the worker's own default (constructed from
-        ``data_dir``). The orchestrator no longer threads ``step_cache``
-        through the factory (ARCH-015)."""
+        """The default factory receives the orchestrator-owned step cache."""
         import acheron.shell.step_handler as sh
 
         reg = InMemoryWorkerStore()
         await reg.register("tts-1", "http://127.0.0.1:1", "http", _tts_caps())
-        handler = create_step_handler(reg, data_dir=_TEST_DATA_DIR)
+        cache = StepCache(tmp_path)
+        handler = create_step_handler(reg, data_dir=tmp_path, step_cache=cache)
         original_default = default_worker_factory
         captured: dict = {}
 
-        def _capturing_default(
+        def _capturing_default(  # noqa: PLR0913
             registered: RegisteredWorker,
             local_handlers: dict[str, LocalJobHandler] | None = None,
             *,
             data_dir: Path | str = _TEST_DATA_DIR,
             registration_token: str | None = None,
+            registration_token_provider: Callable[[], str | None] | None = None,
+            step_cache: StepCache | None = None,
         ) -> object:
             worker = original_default(
                 registered,
                 local_handlers,
                 data_dir=data_dir,
                 registration_token=registration_token,
+                registration_token_provider=registration_token_provider,
+                step_cache=step_cache,
             )
             captured["worker"] = worker
             worker.execute = _echo_job_result  # type: ignore[method-assign]
@@ -594,7 +734,8 @@ class TestHttpWorkerStepCache:
         monkeypatch.setattr(sh, "default_worker_factory", _capturing_default)
         await handler(_make_plan().steps[0], _make_plan())
         assert isinstance(captured["worker"], HttpWorker)
-        assert isinstance(captured["worker"]._step_cache, StepCache)  # noqa: SLF001
+        assert captured["worker"]._step_cache is cache  # noqa: SLF001
+        assert captured["worker"]._step_cache is not None  # noqa: SLF001
         assert sh.default_worker_factory is _capturing_default
         # monkeypatch restores the module-level original on test teardown.
-        assert captured["worker"]._step_cache.data_dir == Path(_TEST_DATA_DIR)  # noqa: SLF001
+        assert captured["worker"]._step_cache.data_dir == tmp_path.resolve()  # noqa: SLF001

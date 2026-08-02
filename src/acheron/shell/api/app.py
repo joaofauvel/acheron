@@ -92,12 +92,22 @@ def create_app(  # noqa: C901, PLR0915
         )
     else:
         settings = base_settings
+    canonical_data_dir = settings.orchestrator.data_dir.resolve()
+    settings = settings.model_copy(
+        update={"orchestrator": settings.orchestrator.model_copy(update={"data_dir": canonical_data_dir})}
+    )
     if registry is None:
         registry = create_worker_store()
     if job_store is None:
         job_store = create_job_store()
     if cache is None:
-        cache = PlanCache(settings.orchestrator.data_dir)
+        cache = PlanCache(canonical_data_dir)
+    elif cache.data_dir.resolve() != canonical_data_dir:
+        msg = (
+            "PlanCache data directory must match the canonical orchestrator data directory: "
+            f"{cache.data_dir.resolve()} != {canonical_data_dir}"
+        )
+        raise ValueError(msg)
 
     orchestrator = Orchestrator(
         registry=registry,

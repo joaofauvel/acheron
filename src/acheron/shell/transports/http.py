@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
+    from acheron.shell.cache import InMemoryStepCache, StepCache
+
 import aiofiles
 import httpx
 from pydantic import TypeAdapter
@@ -27,7 +29,6 @@ from acheron.core.models import (
     WorkerCapabilities,
     WorkerType,
 )
-from acheron.shell.cache import StepCache
 from acheron.shell.transports._multipart import (
     _build_result,
     _materialize_artifact,
@@ -156,17 +157,33 @@ class HttpWorker(Worker):
         client: httpx.AsyncClient | None = None,
         *,
         data_dir: Path | str,
-        step_cache: StepCache | None = None,
+        step_cache: StepCache | InMemoryStepCache | None = None,
         registration_token: str | None = None,
         registration_token_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._registration_token = registration_token
         self._registration_token_provider = registration_token_provider
+        self._data_dir = Path(data_dir).resolve()
+        if step_cache is not None and step_cache.data_dir.resolve() != self._data_dir:
+            msg = (
+                "StepCache data directory must match the HTTP worker data directory: "
+                f"{step_cache.data_dir.resolve()} != {self._data_dir}"
+            )
+            raise ValueError(msg)
+        self._step_cache = step_cache
         self._client = client or httpx.AsyncClient()
         self._owns_client = client is None
-        self._data_dir = Path(data_dir)
-        self._step_cache = step_cache if step_cache is not None else StepCache(self._data_dir)
+
+    def configure_step_cache(self, step_cache: StepCache | InMemoryStepCache) -> None:
+        """Attach the orchestrator-owned cache after worker construction."""
+        cache_root = step_cache.data_dir.resolve()
+        if cache_root != self._data_dir:
+            msg = (
+                f"StepCache data directory must match the HTTP worker data directory: {cache_root} != {self._data_dir}"
+            )
+            raise ValueError(msg)
+        self._step_cache = step_cache
 
     async def close(self) -> None:
         """Close the HTTP client owned by this worker, if any."""
@@ -237,6 +254,8 @@ class HttpWorker(Worker):
     async def _execute_with_upstream_input(self, job: Job, dispatch: StepDispatch) -> JobResult:
         """Read the upstream step's matching output and POST it as multipart to the worker."""
         plan_job_id = job.job_id.rsplit("-", 1)[0]
+        if self._step_cache is None:
+            raise WorkerError("HTTP worker requires the orchestrator's shared step cache")
         try:
             upstream_outputs = await self._step_cache.load_outputs(plan_job_id, dispatch.upstream_step)
         except CacheMissError as exc:

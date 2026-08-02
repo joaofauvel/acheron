@@ -9,7 +9,21 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from acheron.shell.api.app import _safe_request_id, create_app
+from acheron.shell.cache import PlanCache
+from acheron.shell.config import Settings
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+
+
+def test_create_app_rejects_plan_cache_outside_settings_root(tmp_path: Path) -> None:
+    settings = Settings()
+    settings.orchestrator.data_dir = tmp_path
+    with pytest.raises(ValueError, match="canonical orchestrator data directory"):
+        create_app(
+            registry=InMemoryWorkerStore(),
+            job_store=InMemoryJobStore(),
+            cache=PlanCache(tmp_path / "other"),
+            settings=settings,
+        )
 
 
 def test_create_app_uses_injected_stores_without_consulting_env(

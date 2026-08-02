@@ -1015,12 +1015,12 @@ severity: low
 effort: S
 reviewed_at: e54458416e9bfe890a473dd9d542978d205b40a1
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 153-221
+    lines: 157-186, 254-263
 related: [PERF-007]
 ```
 
@@ -1377,12 +1377,14 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
+  commit: pending
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/api/admin_audit.py
     lines: 33-52
   - path: src/acheron/shell/orchestrator.py
-    lines: 214-245
+    lines: 231-263
 related: []
 ```
 
@@ -1431,6 +1433,8 @@ severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
+  commit: pending
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: dashboard/app.py
@@ -1438,7 +1442,7 @@ files:
   - path: dashboard/templates/index.html
     lines: 80-84
   - path: src/acheron/shell/orchestrator.py
-    lines: 1200-1240
+    lines: 1207-1245
 related: []
 ```
 
@@ -1453,19 +1457,21 @@ related: []
 ### PERF-014 — Per-job cache invalidation defeats cross-job HTTP and gRPC connection reuse
 
 ```yaml
-status: open
+status: verified
 severity: medium
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
-fixed_in: []
+  commit: pending
+  date: 2026-08-01
+fixed_in: ["pending"]
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 547-550, 807-817
+    lines: 563-564, 1392-1395
   - path: src/acheron/shell/step_handler.py
-    lines: 215-239, 253-264
+    lines: 215-247, 258-299
   - path: src/acheron/shell/transports/http.py
-    lines: 153-174
+    lines: 157-186
 related: [PERF-003]
 ```
 
@@ -1591,12 +1597,14 @@ severity: low
 effort: M
 reviewed_at: 22d20f5
 last_verified_at:
+  commit: pending
+  date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/input_store.py
     lines: 181-199
   - path: src/acheron/shell/orchestrator.py
-    lines: 467-474
+    lines: 484-491
 related: [SEC-025]
 ```
 

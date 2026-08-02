@@ -1330,12 +1330,12 @@ severity: low
 effort: S
 reviewed_at: 49747dd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/cache.py
-    lines: 175-193, 236-258
+    lines: 175-176, 236-237
   - path: tests/shell/test_cache.py
     lines: 48-96, 99-237
 related: [ARCH-028]

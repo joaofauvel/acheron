@@ -286,7 +286,7 @@ async def test_output_route_serves_relative_stored_path_with_relative_data_dir(
     app = create_app(
         registry=InMemoryWorkerStore(),
         job_store=jobs,
-        cache=PlanCache(tmp_path / "cache"),
+        cache=PlanCache(tmp_path / "data"),
         data_dir=data_dir,
     )
     await app.state.orchestrator.start()

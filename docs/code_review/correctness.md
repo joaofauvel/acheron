@@ -959,12 +959,12 @@ severity: medium
 effort: S
 reviewed_at: 77aadcd
 last_verified_at:
-  commit: 22d20f5028d64c8fdac61ad9c7871397c7cf178e
+  commit: pending
   date: 2026-08-01
 fixed_in: []
 files:
   - path: src/acheron/shell/transports/http.py
-    lines: 302-306
+    lines: 324-325
   - path: src/acheron/shell/cache.py
     lines: 273-281
   - path: src/acheron/shell/executors/streaming.py
