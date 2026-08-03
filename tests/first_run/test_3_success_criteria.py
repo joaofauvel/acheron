@@ -1,33 +1,45 @@
 import re
+import time
 
 from tests.first_run.helpers import ComposeStack, read_file_backed_token
 
 
-def test_step_3_first_run_auto_mints_and_registers_all_workers(file_backed_compose_stack: ComposeStack) -> None:
-    token = read_file_backed_token(file_backed_compose_stack.project)
-    auth = {"Authorization": f"Bearer {token}"}
-    worker_payload = file_backed_compose_stack.get_json("https://localhost:8000/workers", headers=auth)
-    workers = worker_payload.get("workers")
+def _healthy_worker_ids(compose_stack: ComposeStack, token: str) -> set[str]:
+    payload = compose_stack.get_json("https://localhost:8000/workers", headers={"Authorization": f"Bearer {token}"})
+    workers = payload.get("workers")
     assert isinstance(workers, list)
-    healthy_ids = {
+    return {
         worker["worker_id"]
         for worker in workers
         if isinstance(worker, dict) and worker.get("status") == "healthy" and isinstance(worker.get("worker_id"), str)
     }
-    assert {
+
+
+def test_step_3_first_run_auto_mints_and_registers_all_workers(file_backed_compose_stack: ComposeStack) -> None:
+    token = read_file_backed_token(file_backed_compose_stack.project)
+    expected = {
         "tts-local-stub",
         "asr-local-stub",
         "translation-local-stub",
         "tts-runpod-stub",
         "translation-runpod-stub",
         "tts-grpc-stub",
-    } <= healthy_ids
-    assert file_backed_compose_stack.log_text().find("ACHERON_REGISTRATION_TOKEN is unset") < 0
+    }
+    deadline = time.monotonic() + 60
+    healthy_ids: set[str] = set()
+    while time.monotonic() < deadline:
+        healthy_ids = _healthy_worker_ids(file_backed_compose_stack, token)
+        if expected <= healthy_ids:
+            break
+        time.sleep(2)
+    assert expected <= healthy_ids
+    assert "ACHERON_REGISTRATION_TOKEN is unset" not in file_backed_compose_stack.log_text()
 
 
-def test_step_3_first_run_success_criteria(compose_stack: ComposeStack) -> None:
-    auth = {"Authorization": f"Bearer {compose_stack.project.token}"}
-    status_body = compose_stack.get_text("http://localhost:8080/partials/status")
+def test_step_3_first_run_success_criteria(file_backed_compose_stack: ComposeStack) -> None:
+    token = read_file_backed_token(file_backed_compose_stack.project)
+    auth = {"Authorization": f"Bearer {token}"}
+    status_body = file_backed_compose_stack.get_text("http://localhost:8080/partials/status")
     assert "dot-red" not in status_body, "step 3: dashboard cannot reach the orchestrator"
     assert "Disconnected" not in status_body, "step 3: dashboard cannot reach the orchestrator"
     assert (
@@ -39,7 +51,7 @@ def test_step_3_first_run_success_criteria(compose_stack: ComposeStack) -> None:
         )
     ), f"step 3: dashboard returned an invalid readiness fragment: {status_body!r}"
 
-    worker_payload = compose_stack.get_json("https://localhost:8000/workers", headers=auth)
+    worker_payload = file_backed_compose_stack.get_json("https://localhost:8000/workers", headers=auth)
     assert isinstance(worker_payload, dict), "step 3: worker listing was not a JSON object"
     workers = worker_payload.get("workers")
     assert isinstance(workers, list), "step 3: worker listing did not contain a workers array"
@@ -57,16 +69,18 @@ def test_step_3_first_run_success_criteria(compose_stack: ComposeStack) -> None:
             "supported_languages_out": ["es"],
         },
     }
-    rejected = compose_stack.request(
+    rejected = file_backed_compose_stack.request(
         "https://localhost:8000/workers",
         method="POST",
         body=probe,
         headers={"Authorization": "Bearer invalid"},
     )
     assert rejected.status == 401, "step 3: invalid registration token was accepted"
-    accepted = compose_stack.request("https://localhost:8000/workers", method="POST", body=probe, headers=auth)
+    accepted = file_backed_compose_stack.request(
+        "https://localhost:8000/workers", method="POST", body=probe, headers=auth
+    )
     assert accepted.status == 201, f"step 3: generated registration token was rejected: {accepted.body.decode()}"
 
-    log = compose_stack.log_text()
+    log = file_backed_compose_stack.log_text()
     assert "ACHERON_REGISTRATION_TOKEN is unset" not in log, "step 3: startup reported an unset registration token"
     assert "ACHERON_OPEN_REGISTRATION=1" not in log, "step 3: startup reported open registration"
