@@ -225,6 +225,29 @@ async def test_cancellation_restores_token_and_reraises(tmp_path: Path) -> None:
     assert calls[1] == old_token
 
 
+@pytest.mark.parametrize("interruption", [SystemExit("stop"), KeyboardInterrupt()])
+@pytest.mark.asyncio
+async def test_base_exception_restores_token_and_workers(
+    tmp_path: Path,
+    interruption: BaseException,
+) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    old_token = store.load_or_create(None)
+    calls: list[str] = []
+
+    async def rollout(token: str) -> RolloutResult:
+        calls.append(token)
+        if len(calls) == 1:
+            raise interruption
+        return RolloutResult(success=True)
+
+    with pytest.raises(TokenRotationError, match="previous token was restored"):
+        await store.rotate("interrupted", "request-1", rollout)
+
+    assert store.read_current() == old_token
+    assert calls == [calls[0], old_token]
+
+
 @pytest.mark.asyncio
 async def test_concurrent_rotations_preserve_both_audits(tmp_path: Path) -> None:
     first = RegistrationTokenStore(tmp_path)

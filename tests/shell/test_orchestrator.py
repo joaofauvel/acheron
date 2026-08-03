@@ -2611,6 +2611,22 @@ async def test_worker_rotation_coordinator_preserves_worker_remediation() -> Non
 
 
 @pytest.mark.asyncio
+async def test_worker_rotation_coordinator_redacts_candidate_from_worker_remediation() -> None:
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "https://worker.example", "http", tts_caps())
+    candidate = "candidate-token"
+
+    async def auth_check(_worker: object, token: str) -> bool:
+        raise WorkerError("auth check failed", remediation=f"retry with {token}")
+
+    result = await WorkerRotationCoordinator(registry, auth_check=auth_check).rollout(candidate)
+
+    assert not result.success
+    assert result.remediation == "Check worker connectivity and retry the rotation"
+    assert candidate not in repr(result)
+
+
+@pytest.mark.asyncio
 async def test_worker_rotation_coordinator_uses_connectivity_remediation_for_untyped_errors() -> None:
     registry = InMemoryWorkerStore()
     await registry.register("edge-1", "https://worker.example", "http", tts_caps())

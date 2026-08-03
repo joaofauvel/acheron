@@ -303,7 +303,7 @@ class WorkerRotationCoordinator:
         remediation = worker_error.remediation if worker_error is not None else None
         if isinstance(worker_error, InsecureBearerTransportError):
             remediation = "Configure HTTPS or explicitly opt into insecure local transport"
-        elif remediation is None:
+        elif remediation is None or candidate in remediation:
             remediation = "Check worker connectivity and retry the rotation"
         return RolloutResult(
             success=False,

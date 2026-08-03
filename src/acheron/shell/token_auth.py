@@ -275,6 +275,8 @@ class RegistrationTokenStore:
             await self._handle_rollout_error(rollback, candidate, exc)
         except Exception as exc:  # noqa: BLE001 - callback failures require rollback and redaction
             await self._handle_rollout_error(rollback, candidate, exc)
+        except BaseException as exc:  # noqa: BLE001 - rollback must cover process-level interruption
+            await self._handle_rollout_error(rollback, candidate, exc)
 
         safe_worker_ids = tuple(
             self._safe_metadata(
