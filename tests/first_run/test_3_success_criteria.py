@@ -1,8 +1,9 @@
+import io
 import json
 import re
-import struct
 import subprocess
 import time
+import zipfile
 from typing import cast
 
 from tests.first_run.helpers import ComposeStack, read_file_backed_token
@@ -59,17 +60,27 @@ def _edge_auth_checks(compose_stack: ComposeStack, token: str) -> dict[str, int]
     return checks
 
 
-def _silent_wav() -> bytes:
-    data = b"\x00\x00" * 220500
-    return (
-        b"RIFF"
-        + struct.pack("<I", 36 + len(data))
-        + b"WAVEfmt "
-        + struct.pack("<IHHIIHH", 16, 1, 1, 22050, 44100, 2, 16)
-        + b"data"
-        + struct.pack("<I", len(data))
-        + data
-    )
+def _minimal_epub() -> bytes:
+    files = {
+        "META-INF/container.xml": (
+            '<?xml version="1.0"?><container version="1.0" '
+            'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/content.opf" '
+            'media-type="application/oebps-package+xml"/></rootfiles></container>'
+        ),
+        "OEBPS/content.opf": (
+            '<?xml version="1.0" encoding="UTF-8"?><package version="2.0" '
+            'xmlns="http://www.idpf.org/2007/opf"><manifest><item id="ch1" '
+            'href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>'
+            '<spine><itemref idref="ch1"/></spine></package>'
+        ),
+        "OEBPS/chapter.xhtml": "<html><body><p>This is a token rotation dispatch probe.</p></body></html>",
+    }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return output.getvalue()
 
 
 def _wait_for_rotation(
@@ -91,9 +102,9 @@ def _wait_for_rotation(
 
 def _dispatch_rotation_probe(compose_stack: ComposeStack, token: str, old_token: str) -> None:
     uploaded = compose_stack.upload_input(
-        _silent_wav(),
-        filename="rotation-probe.wav",
-        content_type="audio/wav",
+        _minimal_epub(),
+        filename="rotation-probe.epub",
+        content_type="application/epub+zip",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert uploaded.status == 201, uploaded.body.decode()
@@ -106,11 +117,10 @@ def _dispatch_rotation_probe(compose_stack: ComposeStack, token: str, old_token:
         "https://localhost:8000/jobs",
         method="POST",
         body={
-            "source_type": "audio",
+            "source_type": "epub",
             "source_path": source_path,
             "source_language": "en",
-            "target_language": "en",
-            "asr_model": "stub",
+            "target_language": "es",
             "input_id": input_id,
         },
         headers={"Authorization": f"Bearer {token}"},
