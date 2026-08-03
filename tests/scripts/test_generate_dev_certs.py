@@ -79,7 +79,8 @@ def test_creates_ca_and_per_service_certs(tmp_path: Path) -> None:
 
 
 def test_second_generation_is_a_noop_without_rewriting_files(tmp_path: Path) -> None:
-    _run(tmp_path)
+    first_result = _run(tmp_path)
+    assert "Generated Acheron CA" in first_result.stdout
     ca_cert = tmp_path / "acheron-ca.crt"
     service_cert = tmp_path / "orchestrator.crt"
     first_state = (
@@ -89,7 +90,9 @@ def test_second_generation_is_a_noop_without_rewriting_files(tmp_path: Path) -> 
         service_cert.stat().st_mtime_ns,
     )
 
-    _run(tmp_path)
+    second_result = _run(tmp_path)
+    assert "Reused existing Acheron development certificate bundle" in second_result.stdout
+    assert "Generated Acheron CA" not in second_result.stdout
 
     second_state = (
         ca_cert.read_bytes(),

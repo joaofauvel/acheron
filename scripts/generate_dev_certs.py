@@ -206,12 +206,12 @@ def _publish_bundle(staging_dir: Path, out_dir: Path) -> None:
         shutil.rmtree(backup_dir, ignore_errors=True)
 
 
-def generate(out_dir: Path, *, force: bool = False) -> None:
+def generate(out_dir: Path, *, force: bool = False) -> bool:
     """Generate the Acheron CA and per-service certs in `out_dir`."""
     out_dir.mkdir(parents=True, exist_ok=True)
     state = _preflight(out_dir)
     if state == "complete-marked" and not force:
-        return
+        return False
 
     # World-executable dir so workers can `ls` and `stat` files; file-level
     # permissions (0600 for keys, 0644 for certs) are set at write time.
@@ -223,6 +223,7 @@ def generate(out_dir: Path, *, force: bool = False) -> None:
             _build_server_cert(service, staging_dir, ca_cert, ca_key)
         _write_marker(staging_dir / DEV_CA_MARKER)
         _publish_bundle(staging_dir, out_dir)
+    return True
 
 
 def main() -> None:
@@ -241,10 +242,13 @@ def main() -> None:
     )
     args = parser.parse_args()
     try:
-        generate(args.out_dir, force=args.force)
+        generated = generate(args.out_dir, force=args.force)
     except RuntimeError as exc:
         parser.error(str(exc))
-    print(f"Generated Acheron CA and {len(SERVICES)} service certs in {args.out_dir}")  # noqa: T201
+    if generated:
+        print(f"Generated Acheron CA and {len(SERVICES)} service certs in {args.out_dir}")  # noqa: T201
+    else:
+        print(f"Reused existing Acheron development certificate bundle in {args.out_dir}")  # noqa: T201
 
 
 if __name__ == "__main__":

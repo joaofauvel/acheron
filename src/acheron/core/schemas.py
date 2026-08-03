@@ -474,6 +474,8 @@ class PlanResponse(BaseModel):
 __all__ = [
     "AdminJobResponse",
     "CapabilitiesResponse",
+    "CertificateReloadResponse",
+    "CertificateStatusResponse",
     "CleanupCandidateResponse",
     "CleanupFailureResponse",
     "CleanupResponse",

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from acheron.core import schemas
 from acheron.core.models import (
     CostBasis,
     ExecutorStrategy,
@@ -18,6 +19,8 @@ from acheron.core.models import (
 )
 from acheron.core.schemas import (
     CapabilitiesResponse,
+    CertificateReloadResponse,
+    CertificateStatusResponse,
     CostBreakdownResponse,
     CostEstimateResponse,
     CostSummaryResponse,
@@ -33,6 +36,13 @@ from acheron.core.schemas import (
 )
 
 _adapter = TypeAdapter(JobResponse)
+
+
+def test_certificate_responses_are_public_schema_exports() -> None:
+    assert "CertificateStatusResponse" in schemas.__all__
+    assert "CertificateReloadResponse" in schemas.__all__
+    assert schemas.CertificateStatusResponse is CertificateStatusResponse
+    assert schemas.CertificateReloadResponse is CertificateReloadResponse
 
 
 def _job_response_data(**overrides: object) -> dict[str, object]:
