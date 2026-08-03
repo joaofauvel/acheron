@@ -267,37 +267,35 @@ verified_by: ""
 ---
 id: DEPLOY-008
 title: "`certs-init` service and `just certs` overwrite the entire CA on every run, invalidating any external cert trust the deployer has wired up"
-status: open
+status: fixed
 severity: medium
 effort: M
 discovered_via: [code-review, first-run]
 user_facing_surface: certs
 silent: true
 journey_stage: t0
-user_journey: "Deployer provisions Acheron for production with a real CA-signed cert bundle (Let's Encrypt via cert-manager). They commit the bundle to `./certs/` (or mount it as a volume). Two weeks later they make a small change to the orchestrator config and re-run `just certs` to regenerate the dev certs — which silently overwrites their real `acheron-ca.crt` and `acheron-ca.key`. The orchestrator now serves the dev cert, the dashboard fails to trust it, and the deployer has to restore from backup or rotate their real CA."
+user_journey: "Deployer provisions Acheron for production with a real CA-signed cert bundle (Let's Encrypt via cert-manager). They commit the bundle to `./certs/` (or mount it as a volume). Two weeks later they make a small change to the orchestrator config and re-run `just certs` to regenerate the dev certs — which now refuses to overwrite unmarked operator material and preserves the real CA bundle."
 files:
   - path: docker-compose.yml
-    lines: 27-33
+    lines: 23-33
   - path: Justfile
-    lines: 46-48
+    lines: 48-51
   - path: scripts/generate_dev_certs.py
-    lines: 140-148
+    lines: 152-247
 related: [SEC-001]
 bundle: 01-cert-tls
-fixed_in: []
+fixed_in: [7c16960, 03deac0, 72dcbb8, e5f338a]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
 ---
 ```
 
-**Issue.** `scripts/generate_dev_certs.py:140-148` `generate()` calls `_build_ca` unconditionally. The `certs-init` compose service (docker-compose.yml:27-33) runs this script on every `docker compose up`. The `just certs` Justfile target (Justfile:43-44) does the same. There is no "if `./certs/acheron-ca.crt` exists, skip" branch, and no warning that a real CA is being clobbered.
+**Issue.** The development generator previously rebuilt the CA and service certificates on every run, including from the Compose `certs-init` gate and the `just certs` recipe.
 
-**Why it matters.** A deployer who has a real CA bundle in `./certs/` and runs `just certs` to "regenerate the dev certs" loses their real CA key with no warning.
+**Current state.** A fresh run creates `.dev-ca` after publishing a complete bundle. Re-running a complete marked bundle is a no-op; partial or unmarked material is rejected without mutation; `--force` is accepted only for a complete marked development bundle. Compose keeps dependent services behind successful `certs-init` completion.
 
-**Recommendation.** Add a "first run only" guard: if `out_dir / "acheron-ca.crt"` already exists and is not the dev CA, refuse to overwrite and print a clear error. Add a `--force` flag for the rare case where a deployer genuinely wants to regenerate.
-
-**Verification.** On a fresh clone, `just certs` creates `./certs/.dev-ca`. Re-running `just certs` is a no-op. Placing a real `acheron-ca.crt` and running `just certs` exits with an error.
+**Verification.** Automated generator, Compose, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent confirmation with an externally managed certificate bundle remains pending.
 
 ## DEPLOY-009 — `ACHERON_OPEN_REGISTRATION` env var is read by the orchestrator but undocumented
 

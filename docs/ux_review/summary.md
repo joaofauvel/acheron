@@ -1,7 +1,7 @@
 ---
 program: ux-review
 last_updated_date: 2026-08-02
-version: 8
+version: 9
 initial_review_commit: 59458ba
 last_updated_commit: CURRENT_HEAD
 related: docs/code_review/
@@ -13,26 +13,23 @@ related: docs/code_review/
 
 | Theme | Grade | Open stories by severity | Verified | Notes |
 |---|---|---|---|---|
-| DEPLOY | C | 3 medium, 1 low | 0 | 15 stories; no stale and 3 obsolete, with certificate, image, and environment gaps |
+| DEPLOY | C | 2 medium, 1 low | 0 | 15 stories; certificate material is protected, with image, environment, and model-cache gaps remaining |
 | OPS | C | 1 low | 6 | 31 stories; typed capability and tail-remediation drift remain alongside durable-dashboard gaps |
-| MAINT | C | 1 high | 10 | 19 stories; recovery, retention, worker-history, and traceability journeys now verified, with schema and token drift |
+| MAINT | C | 0 | 10 | 19 stories; certificate monitoring and reload are implemented, with schema and token drift remaining |
 
 A theme with 0 stories is graded `—` (untested); this summary has no such themes.
 
 ## Top concerns (open and stale stories)
 
-1. **MAINT-003** — Certificate expiry is silent.
-2. **MAINT-007** — Shared registration-token rotation has no safe workflow or audit trail.
-3. **MAINT-018** — Existing Redis job records have no schema upgrade path.
-4. **MAINT-005** — Certificate rotation requires an orchestrator restart.
-5. **MAINT-006** — Compose prevents the documented registration-token auto-mint path.
-6. **DEPLOY-008** — Certificate generation can overwrite an existing CA.
-7. **DEPLOY-010** — TranslateGemma model-switching guidance conflicts with offline mode.
-8. **DEPLOY-012** — The shell-local token and Compose token configuration remain easy to confuse.
-9. **OPS-015** — Typed capability output omits the model and voice fields.
-10. **OPS-032** — `acheron job tail` still lacks missing-job remediation.
-11. **DEPLOY-013** — TranslateGemma storage guidance conflates container disk and HF cache.
-12. **OPS-033** — Dashboard detail URLs reload as partial fragments.
+1. **MAINT-007** — Shared registration-token rotation has no safe workflow or audit trail.
+2. **MAINT-018** — Existing Redis job records have no schema upgrade path.
+3. **MAINT-006** — Compose prevents the documented registration-token auto-mint path.
+4. **DEPLOY-010** — TranslateGemma model-switching guidance conflicts with offline mode.
+5. **DEPLOY-012** — The shell-local token and Compose token configuration remain easy to confuse.
+6. **OPS-015** — Typed capability output omits the model and voice fields.
+7. **OPS-032** — `acheron job tail` still lacks missing-job remediation.
+8. **DEPLOY-013** — TranslateGemma storage guidance conflates container disk and HF cache.
+9. **OPS-033** — Dashboard detail URLs reload as partial fragments.
 
 ## Quick wins (S-effort, high-impact)
 
@@ -59,12 +56,12 @@ Stories are listed high-to-low within each bundle; bundle order prioritizes high
 
 | Status | Count |
 |---|---|
-| open | 6 |
+| open | 4 |
 | in-progress | 0 |
-| fixed | 27 |
+| fixed | 30 |
 | verified | 16 |
 | partial | 0 |
-| stale | 6 |
+| stale | 4 |
 | obsolete | 10 |
 | broken-yaml | 0 |
 | wontfix | 0 |
@@ -91,7 +88,7 @@ Stories are listed high-to-low within each bundle; bundle order prioritizes high
 - OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
 - Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.
 - `CURRENT_HEAD` is the repository-native marker for metadata verified at the checked-out commit. The UX verifier resolves it only against the repository's actual HEAD and rejects stale or arbitrary supplied SHAs; this keeps tracked metadata clean without a self-referential commit.
-- Open and stale stories remain UX concerns even when related code-review work is tracked separately. The six remaining bundles are encoded in story `bundle` metadata and contain only the revalidated stories.
+- Open and stale stories remain UX concerns even when related code-review work is tracked separately. Bundle 01's three stories are now fixed pending independent certificate-rotation verification; the remaining bundles are encoded in story `bundle` metadata and contain only the revalidated stories.
 - Simulation and first-run artifacts are supplemental evidence for stories whose strongest discovery channel is human; only stories discovered via `simulation` or `first-run` require exact `STORY_REF` and `user_journey` attestation.
 
 ## Task 18 report

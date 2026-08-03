@@ -321,9 +321,11 @@ The Edge Worker does not configure `gpu_type` — RunPod is the source of truth.
 
 > "ACHERON_TLS_CERT_FILE and ACHERON_TLS_KEY_FILE are unset — serving plain HTTP. Set both to enable HTTPS, or set ACHERON_ALLOW_INSECURE=1 to silence this warning."
 
-The Docker Compose stack auto-enables TLS by mounting self-signed certs from the `certs-init` service into every container (`docker-compose.yml:37-40`), so local dev always runs HTTPS. The first `docker compose up` materialises `./certs/`; `just certs` regenerates it manually.
+The Docker Compose stack auto-enables TLS by mounting development certs from the `certs-init` service into every container (`docker-compose.yml:23-57`), so local dev always runs HTTPS. The first `docker compose up` materialises `./certs/` and writes `.dev-ca`. A complete marked development bundle is reused on later starts; unmarked or partial material is rejected before dependent services start. `just certs` has the same non-destructive behavior, while `just certs --force` explicitly regenerates a complete marked development bundle.
 
-**Production.** Mount real certs (Let's Encrypt via cert-manager, your CA, etc.) with the right SANs, and set both env vars on the orchestrator. No Acheron code change is required.
+For certificate operations, set `ACHERON_ADMIN_TOKEN` and run `acheron certs status` to see the subject, expiry, remaining time, and severity without exposing key material. After replacing the certificate and key with a valid pair, run `acheron certs reload`; the orchestrator validates the pair and updates its persistent TLS context without a process restart. Both commands use the admin token, never the worker registration token.
+
+**Production.** The development generator is not a production certificate workflow. Mount externally managed, SAN-correct certificates (Let's Encrypt via cert-manager, your CA, etc.) and set both env vars on each service that serves TLS. No Acheron code change is required.
 
 **Client-side trust.** Set `ACHERON_TLS_CA_FILE` to the CA bundle; `tls.py:79` falls back to the standard `SSL_CERT_FILE` (honoured by httpx and the Python `ssl` stdlib) if the Acheron-specific var is unset. The CLI additionally falls back to `./certs/acheron-ca.crt` in the current directory when present (`src/acheron/cli.py:50-53`), so local dev just works without any trust-store configuration.
 

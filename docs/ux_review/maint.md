@@ -33,7 +33,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -72,7 +72,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
@@ -93,22 +93,26 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-003
 title: "Cert expiry is silent — orchestrator reads `ACHERON_TLS_CERT_FILE` once and emits no warning at 30/7/0 day marks"
-status: open
+status: fixed
 severity: high
 effort: M
 discovered_via: [on-call, code-review, audit]
 user_facing_surface: certs
 silent: true
 journey_stage: t2
-user_journey: "On-call at 2am is paged because all worker → orchestrator gRPC calls fail. Engineer runs `acheron certs status` and sees `orchestrator.crt expires in 0d 0h 14m`, plus warnings emitted to the orchestrator's log at the 30/7/0 day marks; rotates the cert via `acheron certs renew`, workers reconnect within 5s."
+user_journey: "On-call at 2am is paged because all worker → orchestrator gRPC calls fail. Engineer runs `acheron certs status` and sees `orchestrator.crt expires in 0d 0h 14m`, plus warnings emitted to the orchestrator's log at the 30/7/0 day marks; rotates the cert via `acheron certs reload`, workers reconnect within 5s."
 files:
   - path: src/acheron/tls.py
-    lines: 37-53
+    lines: 28-180
+  - path: src/acheron/shell/api/routes/admin.py
+    lines: 82-111
+  - path: src/acheron/cli.py
+    lines: 698-709
   - path: scripts/generate_dev_certs.py
-    lines: 21-31
+    lines: 209-247
 related: []
 bundle: 01-cert-tls
-fixed_in: []
+fixed_in: [7fb2631, 62c088a, e85861b]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -116,13 +120,11 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** The orchestrator's TLS layer reads `ACHERON_TLS_CERT_FILE` once at process start and never re-reads it. There is no expiry check, no `not_after` introspection, no warning emitted at the 30/7/0-day marks, and no `/admin/certs/status` endpoint. The CA + service certs minted by `generate_dev_certs.py:21-31` are `VALIDITY_DAYS = 365` and there is no cron / healthcheck / lifespan hook that re-checks them.
+**Issue.** The orchestrator's TLS layer previously read `ACHERON_TLS_CERT_FILE` once at process start and never re-read it. There was no expiry check, `not_after` introspection, threshold warning, or `/admin/certs/status` endpoint.
 
-**Why it matters.** Cert expiry is the #1 silent failure: the workers can't connect, the orchestrator's `/health` still returns 200, the dashboard still loads.
+**Current state.** `CertificateManager` reports subject, expiry, remaining time, and severity; logs startup status and one message at each 30-day, 7-day, 1-day, and expiry threshold; and the admin API/CLI expose sanitized status. The Compose development bundle remains separate from production certificate management.
 
-**Recommendation.** (a) On orchestrator startup, parse each cert and log a single INFO line per cert with `expires_at`, `days_remaining`, and `subject`. (b) Schedule a daily background task that emits WARNING at 30/7 days, ERROR at 1 day, and CRITICAL at 0. (c) Add `acheron certs status` (CLI) and `GET /admin/certs/status` (HTTP).
-
-**Verification.** After standing up the orchestrator with a 31-day cert, the startup log shows `INFO cert=orchestrator.crt expires_at=... days_remaining=31`. Stub time forward to 29 days: the daily task emits `WARNING cert=orchestrator.crt days_remaining=29`.
+**Verification.** Automated TLS, admin, CLI, Compose, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent status → replacement → reload → same-PID → worker-connectivity verification remains pending.
 
 ## MAINT-004 — Dev cert SAN list breaks production TLS verify
 
@@ -162,7 +164,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-005
 title: "Cert rotation requires orchestrator restart — `uvicorn` does not reload `ssl_certfile` / `ssl_keyfile` after a SIGHUP, and the operator has no `/admin/certs/reload` endpoint"
-status: stale
+status: fixed
 severity: medium
 effort: M
 discovered_via: [on-call, code-review]
@@ -172,12 +174,18 @@ journey_stage: t2
 user_journey: "On-call rotates `orchestrator.crt` and `orchestrator.key` on disk after the 30-day warning fires (MAINT-003). Operator runs `acheron certs reload`; the orchestrator's `uvicorn` server reloads the cert/key without bouncing (no downtime); workers continue to connect."
 files:
   - path: src/acheron/tls.py
-    lines: 37-53
+    lines: 51-180
+  - path: src/acheron/shell/api/routes/admin.py
+    lines: 114-135
+  - path: src/acheron/shell/api/__main__.py
+    lines: 18-21
   - path: src/acheron/worker_sdk/_server.py
     lines: 42-50
+  - path: src/acheron/cli.py
+    lines: 712-719
 related: [MAINT-003]
 bundle: 01-cert-tls
-fixed_in: []
+fixed_in: [9ec88c9, 134c47d]
 verified_in: []
 last_verified_at: {}
 verified_by: ""
@@ -185,13 +193,11 @@ incident_ref: TBD-pagerduty
 ---
 ```
 
-**Issue.** `uvicorn_ssl_kwargs` is consumed once at process start. uvicorn's `ssl_certfile` / `ssl_keyfile` are not hot-reloadable. There is no `/admin/certs/reload` HTTP endpoint, no `acheron certs reload` CLI command, no signal handler. The on-call's only path is `docker compose restart orchestrator` (5-15s of downtime).
+**Issue.** `uvicorn_ssl_kwargs` was consumed once at process start, so `ssl_certfile` / `ssl_keyfile` were not hot-reloadable. There was no `/admin/certs/reload` HTTP endpoint or `acheron certs reload` CLI command.
 
-**Why it matters.** Cert rotation is a routine on-call task. A bounce is acceptable during a planned maintenance window but not during a 2am expiry page.
+**Current state.** The admin endpoint validates the replacement pair, updates the persistent server context, and records an admin action; the CLI uses the admin token and reports the sanitized result. The orchestrator entry point supplies the same persistent context to Uvicorn, while plain HTTP remains available when TLS is unset.
 
-**Recommendation.** Add `GET /admin/certs/status` and `POST /admin/certs/reload` to the shell API.
-
-**Verification.** With a 30-day cert, rotate to a 365-day cert on disk. `acheron certs reload` returns 200; the orchestrator log shows `INFO reloaded cert: ...`; `openssl s_client -connect orchestrator:8000` returns the new cert's `not_after`.
+**Verification.** Automated TLS integration, admin, CLI, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent status → replacement → reload → same-PID → worker-connectivity verification remains pending.
 
 ## MAINT-006 — Registration-token auto-mint is unreachable in compose
 
@@ -300,7 +306,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -399,7 +405,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -432,7 +438,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -469,7 +475,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -506,7 +512,7 @@ fixed_in: [8357163c, 3f5b537, 8c0f119, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
@@ -545,7 +551,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
@@ -586,7 +592,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
@@ -631,7 +637,7 @@ fixed_in: [808353f, CURRENT_HEAD]
 verified_in: [808353f, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: b718ed29c2b447e0f39f3dfb5c6cd782341a2a54b94634e59d7fd7ffa39b33f7
+  tree: 94e5aaa7095b7e737b3465df2e4990397df37cb0f0bba1bdfe08a66bdf72ef37
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty

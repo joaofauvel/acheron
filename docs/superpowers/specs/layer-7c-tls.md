@@ -34,9 +34,9 @@ Three env vars, all optional. Unset means "no TLS" (current behavior, backward c
 
 ### 2. Server-side TLS
 
-A single helper module, `src/acheron/shell/tls.py`, owns the env-var → SSL credentials conversion. Both HTTP and gRPC entry points import from it.
+The shared `src/acheron/tls.py` module owns certificate parsing, expiry status, monitoring, and the persistent `ssl.SSLContext`. HTTP and gRPC entry points use the same TLS configuration contract.
 
-**HTTP services** (orchestrator, tts-stub, asr-stub, translation-stub). All run via `uvicorn`. uvicorn already accepts `ssl_certfile` and `ssl_keyfile` kwargs and builds the `ssl.SSLContext` for us. The helper returns the right kwargs dict:
+**HTTP services** (orchestrator, tts-stub, asr-stub, translation-stub). All run via `uvicorn`. The orchestrator passes its persistent context to the server so an authenticated certificate reload can update the active context without restarting the process. Other services retain the file-based startup path. The helper returns the right kwargs dict for the file-based path:
 
 ```python
 def uvicorn_ssl_kwargs() -> dict[str, str]:
@@ -113,9 +113,9 @@ Explicit env vars win over the dev auto-discovery. The CLI's default `ACHERON_UR
 
 ### 4. Dev cert generation
 
-A `scripts/generate_dev_certs.py` script. Idempotent: re-running overwrites the certs. Output goes to `certs/` (gitignored).
+A `scripts/generate_dev_certs.py` script generates development-only material in `certs/` (gitignored). The first run creates a complete bundle and the `.dev-ca` marker. Re-running a complete marked bundle is a no-op; unmarked or partial material is rejected without overwriting it. Pass `--force` only when explicitly replacing a complete marked development bundle. Publication is staged so a failed generation preserves the previous valid bundle.
 
-**Library: `cryptography`** (added as a dev dependency). Standard Python library for cert generation, no system dependencies, no shell-outs. Alternative approaches considered:
+**Library: `cryptography`** (a runtime dependency because the orchestrator parses certificates for status and reload). Standard Python library for cert generation, no system dependencies, no shell-outs. Alternative approaches considered:
 - `openssl` shell-out — rejected: platform-specific, ugly, harder to test.
 - `pyOpenSSL` — rejected: wrapper layer over cryptography that adds no value here.
 
@@ -143,7 +143,7 @@ certs/
 - Each server cert: `CN=<service-name>`, `subjectAltName=DNS:<service-name>,DNS:localhost,IP:127.0.0.1`
 - gRPC cert uses the same SAN pattern (gRPC clients check SAN by default)
 
-**Entry point.** A `just certs` target in the `Justfile` that runs `uv run scripts/generate_dev_certs.py`.
+**Entry point.** `just certs` runs `uv run python scripts/generate_dev_certs.py` and safely reuses existing marked development material. `just certs --force` is the explicit regeneration path; other arguments are rejected.
 
 **`.gitignore`.** `certs/` added so generated dev certs never get committed.
 
@@ -193,9 +193,9 @@ Each HTTP healthcheck is updated to read `SSL_CERT_FILE` and use it as the trust
 > - `ACHERON_TLS_CERT_FILE` + `ACHERON_TLS_KEY_FILE` — server-side; both must be set together
 > - `SSL_CERT_FILE` — client-side (used by httpx and stdlib `ssl`); set to the Acheron CA
 >
-> **Local dev (self-signed).** Run `just certs` to generate a local Acheron CA and per-service certs in `certs/`. The compose file mounts `certs/` into every service and sets the env vars. The CA is trusted by all services via `SSL_CERT_FILE`.
+> **Local dev (self-signed).** Run `just certs` to generate a local Acheron CA and per-service certs in `certs/`. The compose file mounts `certs/` into every service and sets the env vars. The CA is trusted by all services via `SSL_CERT_FILE`. A complete `.dev-ca` bundle is reused on later starts; `just certs --force` is the explicit replacement path. Use `acheron certs status` with `ACHERON_ADMIN_TOKEN` to inspect expiry and `acheron certs reload` after installing a valid replacement pair.
 >
-> **Production.** Generate real certs (Let's Encrypt via cert-manager, your CA, etc.) with the right SANs. Mount them into each service and set the env vars. No Acheron code change.
+> **Production.** The development generator is not a production certificate workflow. Generate or obtain externally managed certificates with the required SANs (Let's Encrypt via cert-manager, your CA, etc.), mount them into each service, and set the env vars. No Acheron code change.
 >
 > **Reverse proxy (optional).** Acheron doesn't ship a proxy. To put nginx, Caddy, or anything else in front, point it at the orchestrator (HTTPS) and dashboard (HTTP) and terminate TLS there. Acheron's `ACHERON_TLS_*` env vars are independent of any proxy you add.
 >
@@ -209,18 +209,18 @@ Each HTTP healthcheck is updated to read `SSL_CERT_FILE` and use it as the trust
 
 ## Test Strategy
 
-**Unit tests for `src/acheron/shell/tls.py`** (`tests/shell/test_tls.py`):
-- `uvicorn_ssl_kwargs()` returns `{}` when both env vars unset
-- `uvicorn_ssl_kwargs()` raises `AcheronError` with a clear message when only one is set
-- `uvicorn_ssl_kwargs()` returns the right dict when both set
-- `grpc_server_credentials()` returns `None` when both env vars unset
-- `grpc_server_credentials()` raises when only one is set
-- `grpc_server_credentials()` returns a `ServerCredentials` instance when both set
-- `grpc_channel_credentials()` returns `None` when `ACHERON_TLS_CA_FILE` unset
-- `grpc_channel_credentials()` returns `ChannelCredentials` when set
+**Unit tests for `src/acheron/tls.py`** (`tests/test_tls.py`):
+- `CertificateManager.status()` reports subject, expiry, remaining time, and severity
+- threshold monitoring emits the 30-day, 7-day, 1-day, and expiry messages once per manager
+- `CertificateManager.reload()` validates replacement material before updating the persistent context
+- invalid replacement material leaves the existing context usable
+- missing TLS pairs keep the manager disabled
 
 **Unit tests for the dev cert script** (`tests/scripts/test_generate_dev_certs.py`):
-- Script is idempotent: running twice produces valid certs
+- A complete marked bundle is idempotent: running twice does not rewrite managed files
+- An unmarked existing bundle is rejected without mutation
+- An incomplete marked bundle is rejected without mutation
+- `--force` replaces only a complete marked development bundle
 - Each cert's SAN includes the service name + `localhost` + `127.0.0.1`
 - The CA cert is loadable by `ssl.SSLContext.load_verify_locations`
 - A test `ssl.SSLContext` with the cert chain + key successfully completes a handshake against a loopback client that trusts the CA
@@ -238,7 +238,7 @@ Each HTTP healthcheck is updated to read `SSL_CERT_FILE` and use it as the trust
 - Verifies it returns 0 when the server is up, 1 when down
 - Verifies it correctly loads the CA from `SSL_CERT_FILE`
 
-**Coverage target.** Same as the rest of the codebase: 80% minimum on `src/acheron/shell/tls.py` and 95%+ on the cert script.
+**Coverage target.** Same as the rest of the codebase: 80% minimum on `src/acheron/tls.py` and 95%+ on the cert script.
 
 Per AGENTS.md: tests don't depend on hardcoded paths. The cert path fixture uses `tmp_path` and the cert script's output dir is configurable.
 
@@ -246,11 +246,11 @@ Per AGENTS.md: tests don't depend on hardcoded paths. The cert path fixture uses
 
 ### New
 
-- `src/acheron/shell/tls.py` — env-var → SSL credentials helpers (uvicorn kwargs, gRPC server credentials, gRPC channel credentials)
-- `scripts/generate_dev_certs.py` — dev cert generation script using `cryptography`
-- `tests/shell/test_tls.py` — unit tests for the helpers
+- `src/acheron/tls.py` — certificate status, expiry monitoring, and persistent reloadable context
+- `scripts/generate_dev_certs.py` — non-destructive development certificate generation using `cryptography`
+- `tests/test_tls.py` — certificate-manager unit tests
 - `tests/scripts/test_generate_dev_certs.py` — unit tests for the cert script
-- `tests/integration/test_tls.py` — integration tests against the live TLS stack
+- `tests/integration/test_tls.py` — integration tests against the live TLS stack, including same-process reload
 
 ### Modified
 
@@ -259,8 +259,8 @@ Per AGENTS.md: tests don't depend on hardcoded paths. The cert path fixture uses
 - `stubs/translation_stub.py` — same
 - `stubs/grpc_worker_stub.py` — `grpc.aio.server(credentials=grpc_server_credentials())`
 - `src/acheron/shell/transports/grpc.py` — `grpc.aio.secure_channel(target, grpc_channel_credentials())` when CA is set
-- `Justfile` — `certs` target that runs `uv run scripts/generate_dev_certs.py`
-- `pyproject.toml` — `cryptography~=44.0` dev dependency; no new runtime deps
+- `Justfile` — `certs` target with safe default reuse and explicit `--force`
+- `pyproject.toml` — `cryptography~=46.0` runtime dependency for certificate parsing and generation
 - `.gitignore` — `certs/`
 - `README.md` — new "TLS" subsection in Deployment; new env vars in Configuration table
 - `docs/superpowers/specs/architecture.md` — Production Hardening paragraph; status table update
