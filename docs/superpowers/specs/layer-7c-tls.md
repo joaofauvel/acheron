@@ -116,15 +116,15 @@ certs/
 ├── asr-stub.key
 ├── translation-stub.crt
 ├── translation-stub.key
-├── tts-grpc-stub.crt    # gRPC worker cert
-└── tts-grpc-stub.key    # historical HTTP worker-edge cert
+├── tts-grpc-stub.crt    # historical HTTP worker-edge cert
+└── tts-grpc-stub.key
 ```
 
 **Cert details.**
 - 2048-bit RSA keys, 1-year validity
 - CA: `CN=Acheron Dev CA, O=Acheron`
 - Each server cert: `CN=<service-name>`, `subjectAltName=DNS:<service-name>,DNS:localhost,IP:127.0.0.1`
-- gRPC cert uses the same SAN pattern (gRPC clients check SAN by default)
+- HTTP worker-edge certificates use the same SAN pattern for local hostname/IP validation
 
 **Entry point.** `just certs` runs `uv run python scripts/generate_dev_certs.py` and safely reuses existing marked development material. `just certs --force` is the explicit regeneration path; other arguments are rejected.
 
