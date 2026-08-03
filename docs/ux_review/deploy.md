@@ -444,7 +444,7 @@ feedback_ref: "TBD-pagerduty"
 
 **Recommendation.** Persist exactly one registration-token value in the project configuration, or use the orchestrator's auto-mint path, so a new shell reuses the same Compose input without appending duplicate assignments. Document the token's source of truth.
 
-**Verification.** A deployer who follows the updated Quick Start in terminal A, closes it, opens terminal B, and runs `docker compose up --build` succeeds without re-exporting. The token persists in `.env` across shell restarts.
+**Verification.** A deployer who follows the updated Quick Start in terminal A, closes it, opens terminal B, and runs `docker compose up --build` succeeds without re-exporting. The token persists in the named `acheron-data` volume at `/data/jobs/.registration_token` across shell restarts.
 
 ## DEPLOY-013 — TranslateGemma README's "container disk ≥ 30 GB" guidance is ambiguous about weights
 
