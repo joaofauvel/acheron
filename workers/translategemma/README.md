@@ -58,15 +58,18 @@ Mount the returned volume at `/runpod-volume`.
 4. **Configure the orchestrator-side edge service** (`docker-compose.yml`'s
    `translategemma-edge`):
 
+   Repository Compose mounts the named `acheron-data` volume read-only and maps
+   the reload-aware file source automatically:
+
    ```env
-   ACHERON_WORKER__REGISTRATION_TOKEN=<orchestrator's token>
+   ACHERON_WORKER__REGISTRATION_TOKEN_FILE=/data/jobs/.registration_token
    ACHERON_WORKER__RUNPOD_API_KEY=<your RunPod API key>
    ACHERON_WORKER__RUNPOD_ENDPOINT_ID=<endpoint id from step 3>
    ```
 
-   When using the repository Compose profile, set `ACHERON_REGISTRATION_TOKEN`,
-   `RUNPOD_API_KEY`, and `TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID` in `.env`; Compose
-   maps them to the SDK names above.
+   Leave `ACHERON_REGISTRATION_TOKEN` unset for file-backed auto-mint, or set it
+   only when intentionally using static environment-token mode. Standalone
+   workers may use `ACHERON_WORKER__REGISTRATION_TOKEN` instead.
 
 5. `COMPOSE_PROFILES= docker compose --profile runpod-translation up -d`. The edge registers
    with the orchestrator; the orchestrator's `HealthMonitor` reports the
@@ -80,7 +83,8 @@ Mount the returned volume at `/runpod-volume`.
 | `ACHERON_WORKER__WORKER_ID` | yes (or via worker.yaml) | Worker ID used at registration. Default in worker.yaml: `translategemma-1`. |
 | `ACHERON_WORKER__ORCHESTRATOR_URL` | yes | Orchestrator base URL. |
 | `ACHERON_WORKER__WORKER_HOST` | Compose deployments | Hostname the orchestrator uses to reach this edge container. |
-| `ACHERON_WORKER__REGISTRATION_TOKEN` | env-only | Bearer token used for `POST /workers`. |
+| `ACHERON_WORKER__REGISTRATION_TOKEN` | standalone env-only | Static bearer token used for `POST /workers`; external rotation requires updating/restarting workers. |
+| `ACHERON_WORKER__REGISTRATION_TOKEN_FILE` | Compose or standalone | Reload-aware bearer-token file read for each protected operation. |
 | `ACHERON_WORKER__RUNPOD_API_KEY` | env-only | RunPod API key. |
 | `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | env-only | The RunPod serverless endpoint ID. |
 | `ACHERON_WORKER__MODEL_ID` | optional | HuggingFace model id (default `google/translategemma-12b-it`; switch to `google/translategemma-4b-it` for a smaller variant). |

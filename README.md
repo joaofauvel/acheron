@@ -208,9 +208,10 @@ Per-worker configuration is driven by a `worker.yaml` file, searched in this ord
 2. `<cwd>/<worker_name>.worker.yaml`, where `worker_name` comes from `$WORKER_NAME` or the current directory's basename.
 3. `<cwd>/worker.yaml`.
 
-Env vars prefixed with `ACHERON_WORKER__` override YAML values at runtime, so the same image can be retargeted without rebuilding. **Three fields are env-only** — they are rejected when supplied via YAML or constructor and must come from `os.environ` (`src/acheron/worker_sdk/settings.py:26-32`):
+Env vars prefixed with `ACHERON_WORKER__` override YAML values at runtime, so the same image can be retargeted without rebuilding. **Secret fields are env-only** — they are rejected when supplied via YAML or constructor and must come from `os.environ` (`src/acheron/worker_sdk/settings.py:26-32`):
 
-- `ACHERON_WORKER__REGISTRATION_TOKEN`
+- `ACHERON_WORKER__REGISTRATION_TOKEN` (static standalone-worker source)
+- `ACHERON_WORKER__REGISTRATION_TOKEN_FILE` (reload-aware standalone or Compose source)
 - `ACHERON_WORKER__RUNPOD_API_KEY`
 - `ACHERON_WORKER__RUNPOD_ENDPOINT_ID`
 
@@ -386,7 +387,7 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | ---- | -------- | ------- | ----------- |
 | Orchestrator / URLs | `ACHERON_URL` | `https://localhost:8000` | CLI and dashboard server-side orchestrator URL. Use `http://` to skip TLS. |
 | Dashboard | `ACHERON_BROWSER_URL` | `ACHERON_URL` | Browser-facing orchestrator URL used in dashboard output links; set this when the dashboard reaches the orchestrator through an internal hostname. |
-| Orchestrator / Registration | `ACHERON_REGISTRATION_TOKEN` | (auto-generated) | Worker registration shared secret. If unset, the orchestrator generates a secure token on startup and writes it to `{data_dir}/.registration_token` (`src/acheron/shell/orchestrator.py:207-225`). |
+| Orchestrator / Registration | `ACHERON_REGISTRATION_TOKEN` | (unset) | Optional static worker-registration secret. When unset, Compose uses the file-backed token at `{data_dir}/.registration_token` (`src/acheron/shell/token_auth.py`). |
 | Orchestrator / Administration | `ACHERON_ADMIN_TOKEN` | (unset) | Separate bearer token for `/admin/*` mutations such as archive, cleanup, and stuck-job recovery. Unset disables administrative mutations; never use the worker registration token. |
 | Orchestrator / Registration | `ACHERON_OPEN_REGISTRATION` | (unset) | Set to `1` to enable open worker registration (bypasses token checks, useful for local dev). |
 | Orchestrator / Config | `ACHERON_CONFIG_PATH` | (unset) | Custom path to the YAML configuration file (searches `acheron.yaml` / `acheron.yml` if unset). |
@@ -403,7 +404,7 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Build identity | `ACHERON_BUILD_DIRTY` | (unset) | Optional exact `true`/`false` source-tree state returned by `GET /version`; metadata only. |
 | Build identity | `ACHERON_BUILD_IMAGE` | (unset) | Optional image name or reference returned by `GET /version`; metadata only. |
 | Build identity | `ACHERON_BUILD_REGISTRY` | (unset) | Optional image registry returned by `GET /version`; metadata only. |
-| Dashboard | `ACHERON_REGISTRATION_TOKEN` | (unset) | Server-side bearer token used by the dashboard proxy for protected orchestrator reads; never exposed to browsers. Compose requires the same token as the orchestrator. |
+| Dashboard | `ACHERON_REGISTRATION_TOKEN_FILE` | `/data/jobs/.registration_token` in Compose | Server-side file-backed bearer source for protected orchestrator reads; resolved per request and never exposed to browsers. Standalone dashboard deployments may use an explicit static token. |
 | Dashboard | `ACHERON_TRUST_REVERSE_PROXY` | `0` | Set to `1` to trust the `X-Forwarded-User` header from a reverse proxy that authenticates and strips the header. Default `0` (unauthenticated). |
 | Worker / Transport | `ACHERON_WORKER__WORKER_ID` | (required) | Stable identifier for this worker instance. |
 | Worker / Transport | `ACHERON_WORKER__ORCHESTRATOR_URL` | (required) | Orchestrator URL the worker registers with and sends `/execute` to. |
@@ -415,7 +416,8 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Worker / Dispatch | `ACHERON_WORKER__MODEL_ID` | (unset) | Override the model id the handler loads (e.g., `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`). |
 | Worker / Dispatch | `ACHERON_WORKER__PHANTOM_HANDLER` | (unset) | Edge-only: cloud-side handler class used solely to read static `capabilities()` (no model load). |
 | Worker / Dispatch | `ACHERON_WORKER__LOG_LEVEL` | `INFO` | Standard logging level. |
-| Worker / Secrets (env-only) | `ACHERON_WORKER__REGISTRATION_TOKEN` | (unset) | Bearer token for `Authorization` header on registration. Env-only — rejected when supplied via YAML or constructor. |
+| Worker / Secrets (env-only) | `ACHERON_WORKER__REGISTRATION_TOKEN` | (unset) | Static bearer token for standalone-worker `Authorization` headers. Env-only and externally managed; in-place rotation is unsupported. |
+| Worker / Secrets (env-only) | `ACHERON_WORKER__REGISTRATION_TOKEN_FILE` | (unset) | Reload-aware bearer-token file for standalone workers and repository Compose edges; read for each protected operation. |
 | Worker / Secrets (env-only) | `ACHERON_WORKER__RUNPOD_API_KEY` | (unset) | RunPod account API key for the GraphQL pricing endpoint. Env-only. |
 | Worker / Secrets (env-only) | `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` | (unset) | RunPod serverless endpoint id to forward `/execute` to. Env-only. |
 | Worker / Pricing | `ACHERON_WORKER__PRICE_SOURCE` | `runpod` | `runpod` (auto-discover from RunPod GraphQL), `static` (fixed `DOLLARS_PER_HOUR`), or `zero` (stubs/local). |

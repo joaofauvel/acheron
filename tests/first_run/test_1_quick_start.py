@@ -60,6 +60,19 @@ def test_step_1_deployment_documentation_contract(prepared_project: FirstRunProj
         assert "ACHERON_WORKER__REGISTRATION_TOKEN" in text, f"step 1: {worker_readme} omits SDK token mapping"
 
 
+def test_quick_start_commands_are_shell_restart_safe(prepared_project: FirstRunProject) -> None:
+    checkout = prepared_project.checkout
+    readme = (checkout / "README.md").read_text()
+    env_example = (checkout / ".env.example").read_text()
+    assert extract_quick_start_commands(readme) == EXPECTED_QUICK_START_COMMANDS
+    assignments = [line for line in env_example.splitlines() if line.startswith("ACHERON_REGISTRATION_TOKEN=")]
+    assert assignments == ["ACHERON_REGISTRATION_TOKEN="]
+    assert "export ACHERON_REGISTRATION_TOKEN" not in readme
+    assert "acheron token status" in readme
+    assert "acheron token rotate --reason" in readme
+    assert "update/restart workers externally" in readme
+
+
 def test_step_1_file_backed_mode_survives_shell_restart(prepared_project: FirstRunProject) -> None:
     first_shell = file_backed_environment(prepared_project.env)
     second_shell = file_backed_environment(prepared_project.env)
