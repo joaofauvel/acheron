@@ -1,7 +1,7 @@
 ---
 theme: DEPLOY
-last_updated_date: 2026-08-02
-version: 6
+last_updated_date: 2026-08-03
+version: 7
 ---
 
 # DEPLOY
@@ -288,7 +288,7 @@ fixed_in: [7c16960, 03deac0, 72dcbb8, e5f338a]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 ---
@@ -410,27 +410,30 @@ verified_by: ""
 ---
 id: DEPLOY-012
 title: "Quick Start's `export ACHERON_REGISTRATION_TOKEN=…` is not idempotent across terminals; opening a new shell silently breaks `docker compose up`"
-status: open
+status: verified
 severity: medium
 effort: S
 discovered_via: [code-review, first-run, user-feedback]
 user_facing_surface: quickstart
 silent: true
 journey_stage: t0
-user_journey: "Deployer completes the Quick Start in terminal A (everything works). They close terminal A, open terminal B to make a code change, run `docker compose up --build` to pick up the change, and the orchestrator refuses to start with `ACHERON_REGISTRATION_TOKEN must be set` (the `${ACHERON_REGISTRATION_TOKEN:?…}` at docker-compose.yml:48 short-circuits the compose env interpolation). The deployer re-reads the Quick Start, sees the `export` line, and runs it again."
+user_journey: "Deployer copies `.env.example` and runs `docker compose up --build` in terminal A, closes it, opens terminal B, and reruns the same Compose command without exporting or appending a registration token; the file-backed credential persists in the named `acheron-data` volume."
 files:
   - path: README.md
-    lines: 24-28
+    lines: 24-52
   - path: .env.example
-    lines: 4-9
+    lines: 1-30
   - path: docker-compose.yml
-    lines: 45-49
+    lines: 45-56
 related: [DX-005]
 bundle: 02-token-auth
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: [d4673bb, 8c4d77e]
+verified_in: [CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
+  date: "2026-08-03"
+verified_by: "harness:first-run-file-backed-token-rotation+shell-restart"
 feedback_ref: "TBD-pagerduty"
 ---
 ```

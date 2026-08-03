@@ -1,7 +1,7 @@
 ---
 theme: MAINT
-last_updated_date: 2026-08-02
-version: 5
+last_updated_date: 2026-08-03
+version: 6
 ---
 
 # MAINT
@@ -33,7 +33,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -72,7 +72,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+failed-job-integration"
 incident_ref: TBD-pagerduty
@@ -116,7 +116,7 @@ fixed_in: [7fb2631, 62c088a, e85861b]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 incident_ref: TBD-pagerduty
@@ -192,7 +192,7 @@ fixed_in: [9ec88c9, 134c47d]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 incident_ref: TBD-pagerduty
@@ -211,26 +211,28 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-006
 title: "Registration-token auto-mint is unreachable in Compose"
-status: stale
+status: verified
 severity: medium
 effort: S
 discovered_via: [on-call, first-run, code-review]
 user_facing_surface: compose
 silent: true
 journey_stage: t2
-user_journey: "Deployer on a fresh checkout follows the README and runs `docker compose up`. Compose refuses to start: `ACHERON_REGISTRATION_TOKEN must be set`. Deployer must run `openssl rand -hex 32` manually, set the env var in `.env`, and re-run `docker compose up`. The orchestrator's documented 'auto-generates and persists' path is never reached because compose requires the env var up front."
+user_journey: "Deployer on a fresh checkout follows the README and runs `docker compose up`. Compose starts without an exported registration token, persists one at `/data/jobs/.registration_token`, and the supported worker edges register against that file-backed credential."
 files:
   - path: docker-compose.yml
-    lines: 45-49
+    lines: 45-56
   - path: src/acheron/shell/orchestrator.py
-    lines: 564-601
+    lines: 650-709
 related: []
 bundle: 02-token-auth
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
-drift_note: "Compose still requires a token during interpolation, while auto-mint persists to <data_dir>/.registration_token; worker profiles receive a static startup token."
+fixed_in: [d4673bb, ea65a40]
+verified_in: [CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
+  date: "2026-08-03"
+verified_by: "harness:first-run-file-backed-token-rotation"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -249,33 +251,36 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-007
 title: "No safe registration-token rotation or audit trail; rotating the shared token requires updating and restarting every worker edge"
-status: stale
+status: verified
 severity: high
 effort: M
 discovered_via: [on-call, code-review, audit]
 user_facing_surface: cli
 silent: true
 journey_stage: t2
-user_journey: "On-call at 2am checks the registration-token status and sees its creation time and rotation history. Engineer runs `acheron token rotate --reason incident-2026-07-24-worker-401`; the new token is recorded under `<data_dir>/.registration_token`, every worker edge receives the new `ACHERON_WORKER__REGISTRATION_TOKEN` and is restarted or reloaded, and a health check confirms dispatch still succeeds."
+user_journey: "On-call at 2am checks token status and rotation history, runs `acheron token rotate --reason incident-2026-07-24-worker-401`, confirms every supported worker edge accepts the new file-backed credential without restart, and dispatches successfully."
 files:
   - path: src/acheron/shell/orchestrator.py
-    lines: 574-601
+    lines: 262-360
   - path: src/acheron/shell/api/routes/admin.py
-    lines: 57-225
+    lines: 137-203
   - path: src/acheron/cli.py
-    lines: 603-686
+    lines: 752-800
   - path: src/acheron/worker_sdk/app.py
-    lines: 104-121
+    lines: 85-125
   - path: src/acheron/worker_sdk/_edge_http.py
-    lines: 529-540
+    lines: 529-566
   - path: docker-compose.yml
-    lines: 48-61
+    lines: 45-90
 related: [MAINT-006, SEC-008]
 bundle: 02-token-auth
-fixed_in: []
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+fixed_in: ["6267392", "4995c9a", "844ae38", "5fb5777", "e67f915", "ea65a40"]
+verified_in: [CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
+  date: "2026-08-03"
+verified_by: "harness:first-run-file-backed-token-rotation+admin-cli-audit"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -312,7 +317,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -411,7 +416,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -444,7 +449,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -481,7 +486,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 incident_ref: TBD-pagerduty
@@ -518,7 +523,7 @@ fixed_in: [8357163c, 3f5b537, 8c0f119, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-12-correlation"
 incident_ref: TBD-pagerduty
@@ -557,7 +562,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:gpu-switch+runpod-contract-tests"
 incident_ref: TBD-pagerduty
@@ -598,7 +603,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:pricing-outage+focused-tests"
 incident_ref: TBD-pagerduty
@@ -643,7 +648,7 @@ fixed_in: [808353f, CURRENT_HEAD]
 verified_in: [808353f, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
+  tree: efae0fd7132f0d3f785e57ba06b4bf05d8bed025b3e31d84dcdba5a37f1760e7
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-13-dashboard-version"
 incident_ref: TBD-pagerduty
