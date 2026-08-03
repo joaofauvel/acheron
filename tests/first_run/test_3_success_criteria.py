@@ -230,7 +230,7 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
     assert "first-run rotation" in reasons
     assert latest_token not in history.body.decode()
 
-    current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, latest_token, new_token)
+    current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, latest_token, old_token)
     assert current_checks == dict.fromkeys(_SUPPORTED_EDGES, 200)
     assert old_checks == dict.fromkeys(_SUPPORTED_EDGES, 401)
     assert _edge_identities(file_backed_compose_stack) == identities_before
