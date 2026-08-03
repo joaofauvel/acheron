@@ -50,6 +50,7 @@ def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
 @pytest.fixture(scope="session")
 def file_backed_compose_stack(file_backed_project: FirstRunProject) -> Iterator[ComposeStack]:
     """Start one Compose stack without an explicit registration token."""
+    file_backed_project.env["ACHERON_ADMIN_TOKEN"] = "f" * 64
     stack = launch_compose(file_backed_project)
     try:
         try:

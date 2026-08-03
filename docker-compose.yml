@@ -56,6 +56,7 @@ services:
       ACHERON_STORE_BACKEND: redis
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_ADMIN_TOKEN: ${ACHERON_ADMIN_TOKEN:-}
+      ACHERON_ALLOW_INSECURE: "1"
       ACHERON_DATA_DIR: /data/jobs
       ACHERON_TLS_CERT_FILE: /certs/orchestrator.crt
       ACHERON_TLS_KEY_FILE: /certs/orchestrator.key

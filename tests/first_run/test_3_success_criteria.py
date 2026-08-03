@@ -1,4 +1,6 @@
+import json
 import re
+import subprocess
 import time
 from typing import cast
 
@@ -38,6 +40,97 @@ def test_step_3_first_run_auto_mints_and_registers_all_workers(file_backed_compo
         time.sleep(2)
     assert expected <= healthy_ids
     assert "ACHERON_REGISTRATION_TOKEN is unset" not in file_backed_compose_stack.log_text()
+
+
+def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
+    file_backed_compose_stack: ComposeStack,
+) -> None:
+    project = file_backed_compose_stack.project
+    admin_token = project.env["ACHERON_ADMIN_TOKEN"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    old_token = read_file_backed_token(project)
+
+    status = file_backed_compose_stack.request("https://localhost:8000/admin/token/status", headers=admin_headers)
+    assert status.status == 200
+    status_payload = cast("dict[str, object]", json.loads(status.body))
+    assert status_payload["source"] == "file"
+    assert old_token not in status.body.decode()
+
+    rotation = file_backed_compose_stack.request(
+        "https://localhost:8000/admin/token/rotate",
+        method="POST",
+        body={"reason": "first-run rotation"},
+        headers=admin_headers,
+    )
+    assert rotation.status == 200, rotation.body.decode()
+    rotation_payload = cast("dict[str, object]", json.loads(rotation.body))
+    assert rotation_payload["rotated"] is True
+    assert old_token not in rotation.body.decode()
+
+    new_token = read_file_backed_token(project)
+    assert new_token != old_token
+    old_worker = file_backed_compose_stack.request(
+        "http://localhost:8001/auth/check", headers={"Authorization": f"Bearer {old_token}"}
+    )
+    new_worker = file_backed_compose_stack.request(
+        "http://localhost:8001/auth/check", headers={"Authorization": f"Bearer {new_token}"}
+    )
+    assert old_worker.status == 401
+    assert new_worker.status == 200
+
+    cli_status = subprocess.run(
+        ["docker", "compose", "exec", "-T", "orchestrator", "acheron", "token", "status"],
+        cwd=project.checkout,
+        env=project.env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert cli_status.returncode == 0, cli_status.stderr
+    assert "source=file" in cli_status.stdout
+    assert new_token not in cli_status.stdout
+
+    cli_rotate = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "orchestrator",
+            "acheron",
+            "token",
+            "rotate",
+            "--reason",
+            "cli rotation",
+        ],
+        cwd=project.checkout,
+        env=project.env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert cli_rotate.returncode == 0, cli_rotate.stderr
+    latest_token = read_file_backed_token(project)
+    assert latest_token not in cli_rotate.stdout
+    assert latest_token != new_token
+
+    history = file_backed_compose_stack.request("https://localhost:8000/admin/token/status", headers=admin_headers)
+    assert history.status == 200
+    history_payload = cast("dict[str, object]", json.loads(history.body))
+    history_entries = history_payload["history"]
+    assert isinstance(history_entries, list)
+    reasons = {entry["reason"] for entry in history_entries if isinstance(entry, dict)}
+    assert {"first-run rotation", "cli rotation"} <= reasons
+    assert latest_token not in history.body.decode()
+
+    registered = _healthy_worker_ids(file_backed_compose_stack, latest_token)
+    assert registered >= {
+        "tts-local-stub",
+        "asr-local-stub",
+        "translation-local-stub",
+    }
 
 
 def test_step_3_file_backed_token_authenticates_worker_execute(file_backed_compose_stack: ComposeStack) -> None:
