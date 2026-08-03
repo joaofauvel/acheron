@@ -125,7 +125,7 @@ The `Justfile` defines the development workflow. Run `just` to list all targets.
 - `just test` — pytest.
 - `just first-run [--step N]` — run the fresh-checkout README deployment journey in Docker.
 - `just proto` — regenerate protobuf code after editing `proto/synthesis.proto`.
-- `just certs` — regenerate the dev TLS CA and per-service certs in `./certs/`. Not needed for `docker compose up`; the `certs-init` service does this automatically.
+- `just certs` — safely reuse a complete marked dev TLS bundle or create one in `./certs/`; it refuses unmarked or partial material. Pass `just certs --force` only to explicitly replace a complete marked bundle. Not needed for `docker compose up`; the `certs-init` service does this automatically.
 - `just build-worker <name>` — build a RunPod worker image locally for dev iteration. CI publishes images to `ghcr.io` on pushes to `master` and version tags.
 - `just build-edge` — build the generic edge image (`acheron-worker-edge`).
 
@@ -317,19 +317,19 @@ The Edge Worker does not configure `gpu_type` — RunPod is the source of truth.
 
 ## TLS & Hardening
 
-**Defaults in the codebase.** TLS is opt-in. Setting `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` together enables HTTPS; setting only one is an error and the orchestrator refuses to start (`src/acheron/tls.py:30-38`). If both are unset, `uvicorn_ssl_kwargs()` logs exactly this warning before serving plain HTTP:
+**Defaults in the codebase.** TLS is opt-in. Setting `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` together enables HTTPS; setting only one is an error and the orchestrator refuses to start (`src/acheron/tls.py:208-239`). If both are unset, `uvicorn_ssl_kwargs()` logs exactly this warning before serving plain HTTP:
 
 > "ACHERON_TLS_CERT_FILE and ACHERON_TLS_KEY_FILE are unset — serving plain HTTP. Set both to enable HTTPS, or set ACHERON_ALLOW_INSECURE=1 to silence this warning."
 
-The Docker Compose stack auto-enables TLS by mounting development certs from the `certs-init` service into every container (`docker-compose.yml:23-57`), so local dev always runs HTTPS. The first `docker compose up` materialises `./certs/` and writes `.dev-ca`. A complete marked development bundle is reused on later starts; unmarked or partial material is rejected before dependent services start. `just certs` has the same non-destructive behavior, while `just certs --force` explicitly regenerates a complete marked development bundle.
+The Docker Compose stack enables TLS on the orchestrator by mounting development certs from the `certs-init` service (`docker-compose.yml:23-72`); the local HTTP worker stubs and dashboard retain plaintext listeners while their clients trust the development CA. The first `docker compose up` materialises `./certs/` and writes `.dev-ca`. A complete marked development bundle is reused on later starts; unmarked or partial material is rejected before dependent services start. `just certs` has the same non-destructive behavior, while `just certs --force` explicitly regenerates a complete marked development bundle.
 
 For certificate operations, set `ACHERON_ADMIN_TOKEN` and run `acheron certs status` to see the subject, expiry, remaining time, and severity without exposing key material. After replacing the certificate and key with a valid pair, run `acheron certs reload`; the orchestrator validates the pair and updates its persistent TLS context without a process restart. Both commands use the admin token, never the worker registration token.
 
 **Production.** The development generator is not a production certificate workflow. Mount externally managed, SAN-correct certificates (Let's Encrypt via cert-manager, your CA, etc.) and set both env vars on each service that serves TLS. No Acheron code change is required.
 
-**Client-side trust.** Set `ACHERON_TLS_CA_FILE` to the CA bundle; `tls.py:79` falls back to the standard `SSL_CERT_FILE` (honoured by httpx and the Python `ssl` stdlib) if the Acheron-specific var is unset. The CLI additionally falls back to `./certs/acheron-ca.crt` in the current directory when present (`src/acheron/cli.py:50-53`), so local dev just works without any trust-store configuration.
+**Client-side trust.** Set `ACHERON_TLS_CA_FILE` to the CA bundle; `src/acheron/tls.py:253-261` falls back to the standard `SSL_CERT_FILE` (honoured by httpx and the Python `ssl` stdlib) if the Acheron-specific var is unset. The CLI additionally falls back to `./certs/acheron-ca.crt` in the current directory when present (`src/acheron/cli.py:65-79`), so local dev just works without any trust-store configuration.
 
-**Disabling TLS.** Unset the cert/key env vars. To silence the WARNING when plain HTTP is intentional, set `ACHERON_ALLOW_INSECURE=1` (`src/acheron/tls.py:22-23, 50-55`). The same flag silences the analogous WARNING emitted by `grpc_channel()` when `ACHERON_TLS_CA_FILE` is unset.
+**Disabling TLS.** Unset the cert/key env vars. To silence the WARNING when plain HTTP is intentional, set `ACHERON_ALLOW_INSECURE=1` (`src/acheron/tls.py:204-239`). The same flag silences the analogous WARNING emitted by `grpc_channel()` when `ACHERON_TLS_CA_FILE` is unset (`src/acheron/tls.py:279-298`).
 
 **Reverse proxy (optional).** Acheron does not ship a proxy. If you want to terminate TLS at a reverse proxy instead of in-process, point nginx, Caddy, or anything else at the orchestrator (HTTPS) and the dashboard (HTTP), and terminate TLS there. The `ACHERON_TLS_*` env vars are independent of any proxy you add — leaving them unset serves plain HTTP from Acheron itself, which is fine when the proxy handles TLS in front.
 

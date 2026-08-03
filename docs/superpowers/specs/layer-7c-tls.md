@@ -149,26 +149,24 @@ certs/
 
 ### 5. Compose integration
 
-Two additions to `docker-compose.yml`: a `certs/` bind mount and per-service TLS env vars.
+The Compose stack mounts the host `./certs` directory at `/certs` (read-only) for services that need the development CA. The one-shot `certs-init` service mounts it read/write, creates a complete marked bundle on first start, reuses it on later starts, and refuses unmarked or partial material. Bind mounting keeps development certs visible on the host for inspection.
 
-**New bind mount.** The host `./certs` directory mounted at `/certs` (read-only) on every service that needs it. Bind mount rather than a named volume so the dev certs are visible on the host for inspection.
+**Service config.** Compose enables TLS on the orchestrator and keeps local worker/dashboard listeners on their existing protocols:
 
-**Service config.**
-
-| Service | Server env | Client env | URL scheme change |
+| Service | Server configuration | Client configuration | URL/protocol |
 |---|---|---|---|
-| `orchestrator` | `ACHERON_TLS_{CERT,KEY}_FILE=/certs/{orchestrator.crt,orchestrator.key}` | `SSL_CERT_FILE=/certs/acheron-ca.crt` | listens on HTTPS |
-| `tts-stub` | same pattern, `tts-stub.*` | `SSL_CERT_FILE=/certs/acheron-ca.crt` | listens on HTTPS; `WORKER_ENDPOINT=https://tts-stub:8001` |
-| `asr-stub` | same pattern, `asr-stub.*` | `SSL_CERT_FILE=/certs/acheron-ca.crt` | listens on HTTPS; `WORKER_ENDPOINT=https://asr-stub:8002` |
-| `translation-stub` | same pattern, `translation-stub.*` | `SSL_CERT_FILE=/certs/acheron-ca.crt` | listens on HTTPS; `WORKER_ENDPOINT=https://translation-stub:8003` |
-| `tts-grpc-stub` | same pattern, `tts-grpc-stub.*` | `SSL_CERT_FILE=/certs/acheron-ca.crt` | gRPC port serves TLS; registration uses HTTPS |
-| `dashboard` | — | — | unchanged (plaintext HTTP) |
+| `orchestrator` | `ACHERON_TLS_{CERT,KEY}_FILE=/certs/{orchestrator.crt,orchestrator.key}` | `ACHERON_TLS_CA_FILE` and `SSL_CERT_FILE` point to `/certs/acheron-ca.crt` | serves HTTPS on port 8000 |
+| local HTTP stubs | no server TLS env vars | `SSL_CERT_FILE=/certs/acheron-ca.crt` for calls to the orchestrator | serve HTTP on ports 8001–8003; register over HTTPS |
+| `tts-grpc-stub` | no server TLS env vars in Compose | `SSL_CERT_FILE=/certs/acheron-ca.crt` for calls to the orchestrator | serves plaintext gRPC; registers over HTTPS |
+| `dashboard` | — | `SSL_CERT_FILE=/certs/acheron-ca.crt` for its orchestrator client | serves plaintext HTTP on port 8080 |
 
-**Orchestrator's view.** The orchestrator reads `WORKER_ENDPOINT` from the worker's registration payload. The worker now reports `https://host:port`; the orchestrator's `HttpWorker` already passes the URL to httpx as-is, so it Just Works. The gRPC client reads `ACHERON_TLS_CA_FILE` itself (per Section 3) and dials with `secure_channel`.
+The local stubs advertise their existing `http://host:port` worker endpoints; only their client connection to the HTTPS orchestrator is TLS-protected. The standalone TLS integration fixture can still enable server TLS on HTTP and gRPC stubs with their per-service certificates.
 
-**Ports.** Unchanged. The HTTPS listener binds to the same port as the HTTP listener would (e.g., 8000). TLS is transport-level, not port-level. The `ports: 8000:8000` mapping in compose stays.
+**Orchestrator's view.** The orchestrator reads the worker endpoint from each registration payload. Compose local stubs advertise HTTP endpoints, while the integration TLS fixture advertises HTTPS endpoints; the existing HTTP transport passes the selected URL scheme to httpx. The gRPC client reads `ACHERON_TLS_CA_FILE` and verifies the CA when configured.
 
-**Healthchecks.** The HTTP healthchecks need to follow TLS. The one-liner becomes:
+**Ports.** Unchanged. TLS is transport-level, not port-level, and the `ports: 8000:8000` mapping stays.
+
+**Healthchecks.** The orchestrator healthcheck uses the development CA for HTTPS:
 
 ```yaml
 test:
@@ -178,9 +176,9 @@ test:
   - "import os, ssl, urllib.request; ctx = ssl.create_default_context(cafile=os.environ.get('SSL_CERT_FILE')); urllib.request.urlopen('https://localhost:8000/health', context=ctx).read()"
 ```
 
-Each HTTP healthcheck is updated to read `SSL_CERT_FILE` and use it as the trust store. The gRPC stub's HTTP `/health` sidecar (on port 9002) stays plain HTTP — it's a healthcheck-only endpoint for Docker's internal use, and adding TLS to internal probes is overkill. The compose healthcheck for the gRPC stub targets `http://localhost:9002/health` (no `SSL_CERT_FILE` lookup).
+The dashboard and local worker healthchecks remain plain HTTP (`http://localhost:<port>/health`), as does the gRPC stub's HTTP sidecar healthcheck on port 9002. Compose therefore matches the current stack: orchestrator HTTPS, local worker/dashboard HTTP, and TLS on worker-to-orchestrator client connections.
 
-**Opt-in.** Because unset env vars = HTTP (backward compat), the TLS behavior is gated entirely on whether the env vars are present. A deployer who doesn't want TLS simply doesn't set them. No profile flag needed.
+**Opt-in.** The shared service implementation supports TLS when both server certificate variables are set. Compose sets those variables only for the orchestrator; a deployer can configure additional service listeners with externally managed SAN-correct certificates without changing application code.
 
 ### 6. Documentation
 
@@ -272,8 +270,8 @@ Per AGENTS.md: tests don't depend on hardcoded paths. The cert path fixture uses
 
 ## Dependencies
 
-- **New dev dep:** `cryptography~=49.0` (for the cert script). Bumped from the originally-planned `~=44.0` during implementation because Python 3.14's `ssl` module requires `SubjectKeyIdentifier` on the CA cert and `AuthorityKeyIdentifier` + `ExtendedKeyUsage(SERVER_AUTH)` on server certs; the older cryptography release's `BasicConstraints` defaults were insufficient. Not in the runtime image.
-- **No new runtime deps.** `uvicorn` (HTTP) and `grpcio` (gRPC) both have built-in TLS support.
+- **Runtime dependency:** `cryptography~=46.0` is required because the orchestrator parses certificates for status and reload, and the development generator uses the same library. It is declared in the project runtime dependencies and locked in `uv.lock`.
+- `uvicorn` (HTTP) and `grpcio` (gRPC) provide the TLS transport primitives; no additional runtime TLS dependency is needed.
 
 ## Out of Scope
 
