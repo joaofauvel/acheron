@@ -139,5 +139,144 @@ def test_rotation_rolls_back_and_audits_failure(tmp_path: Path) -> None:
     assert old_token not in audit
 
 
+def test_rotation_rejects_secret_metadata_without_leaking_it(tmp_path: Path) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    token = store.load_or_create(None)
+
+    with pytest.raises(TokenRotationError) as raised:
+        asyncio.run(store.rotate(token, "request-1", _successful_rollout))
+
+    assert token not in str(raised.value)
+    assert token not in store.audit_path.read_text(encoding="utf-8")
+
+
+def test_rollout_error_and_worker_ids_never_persist_secret(tmp_path: Path) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    old_token = store.load_or_create(None)
+    seen: list[str] = []
+
+    async def rollout(token: str) -> RolloutResult:
+        seen.append(token)
+        if len(seen) == 1:
+            return RolloutResult(success=False, worker_ids=(old_token, token), message=token)
+        return RolloutResult(success=True)
+
+    with pytest.raises(TokenRotationError) as raised:
+        asyncio.run(store.rotate("safe reason", "request-1", rollout))
+
+    candidate = seen[0]
+    audit = store.audit_path.read_text(encoding="utf-8")
+    assert candidate not in str(raised.value)
+    assert candidate not in audit
+    assert old_token not in audit
+
+
+def test_audit_failure_restores_token_and_workers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    old_token = store.load_or_create(None)
+    calls: list[str] = []
+    original_replace = Path.replace
+
+    def fail_audit_replace(path: Path, target: Path) -> Path:
+        if target == store.audit_path:
+            raise OSError("audit unavailable")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_audit_replace)
+
+    async def rollout(token: str) -> RolloutResult:
+        calls.append(token)
+        return RolloutResult(success=True)
+
+    with pytest.raises(TokenRotationError, match="previous token was restored"):
+        asyncio.run(store.rotate("audit failure", "request-1", rollout))
+
+    assert store.read_current() == old_token
+    assert len(calls) == 2
+    assert calls[1] == old_token
+
+
+@pytest.mark.asyncio
+async def test_cancellation_restores_token_and_reraises(tmp_path: Path) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    old_token = store.load_or_create(None)
+    calls: list[str] = []
+
+    async def rollout(token: str) -> RolloutResult:
+        calls.append(token)
+        if len(calls) == 1:
+            raise asyncio.CancelledError
+        return RolloutResult(success=True)
+
+    with pytest.raises(asyncio.CancelledError):
+        await store.rotate("cancelled", "request-1", rollout)
+
+    assert store.read_current() == old_token
+    assert len(calls) == 2
+    assert calls[1] == old_token
+
+
+@pytest.mark.asyncio
+async def test_concurrent_rotations_preserve_both_audits(tmp_path: Path) -> None:
+    first = RegistrationTokenStore(tmp_path)
+    second = RegistrationTokenStore(tmp_path)
+    first.load_or_create(None)
+    observed: list[str] = []
+
+    async def rollout(token: str) -> RolloutResult:
+        observed.append(token)
+        await asyncio.sleep(0)
+        return RolloutResult(success=True)
+
+    await asyncio.gather(
+        first.rotate("first", "request-1", rollout),
+        second.rotate("second", "request-2", rollout),
+    )
+
+    assert len(observed) == 2
+    records = [json.loads(line) for line in store_audit(tmp_path).splitlines()]
+    assert [record["result"] for record in records].count("success") == 2
+    assert RegistrationTokenStore(tmp_path).status().rotation_count == 2
+
+
+@pytest.mark.asyncio
+async def test_rollback_failure_does_not_replace_original_error(tmp_path: Path) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    store.load_or_create(None)
+    calls = 0
+
+    async def rollout(_: str) -> RolloutResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("original rollout failure")
+        raise RuntimeError("rollback failure")
+
+    with pytest.raises(TokenRotationError, match="previous token was restored") as raised:
+        await store.rotate("failed", "request-1", rollout)
+
+    assert "rollback failure" not in str(raised.value)
+
+
+def test_lifecycle_metadata_is_independent_of_bounded_audit(tmp_path: Path) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    created = store.load_or_create(None)
+    initial = store.status()
+
+    for index in range(105):
+        asyncio.run(store.rotate(f"rotation-{index}", f"request-{index}", _successful_rollout))
+
+    final = store.status()
+    records = [json.loads(line) for line in store.audit_path.read_text(encoding="utf-8").splitlines()]
+    assert final.created_at == initial.created_at
+    assert final.rotation_count == 105
+    assert len(records) == 100
+    assert created not in store.audit_path.read_text(encoding="utf-8")
+
+
+def store_audit(tmp_path: Path) -> str:
+    return (tmp_path / ".registration_token.audit.jsonl").read_text(encoding="utf-8")
+
+
 async def _successful_rollout(token: str) -> RolloutResult:
     return RolloutResult(success=True, worker_ids=("worker-a",))
