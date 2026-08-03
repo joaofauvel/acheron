@@ -2,14 +2,14 @@
 
 Date: 2026-08-03
 
-Verification target: `d17f27cb2b1f6d25c056eac5d35a8c8ecc7c6db7` (`HEAD`), repository tree fingerprint `b98bab651b96ce43831ae4f5b47b7b9cd16720f15194a3649821bdd6fb772beb`.
+Verified code target: `6fda4f1dbdc470e5048fa68ef06b8a6953bb4b00`, repository tree fingerprint `733c849e5d5054bc5be36eef118e4d32fef452d715f2d7d34e28031c15bbced3`.
 
-Fresh verification was performed from the isolated `ux-tackle/maint-bundle-02` checkout after the Task 9 fix rounds. No plaintext registration or admin token was recorded.
+Fresh verification was performed from the isolated `ux-tackle/maint-bundle-02` checkout at the verified code target after the Task 9 fix rounds. The final UX metadata records the current branch head separately. No plaintext registration or admin token was recorded.
 
 ## Evidence
 
-- `just first-run`: full Quick Start, Compose, and success-criteria journey passed (20 tests).
-- File-backed status → API rotation with a reason → audit history passed.
+- `just first-run`: full Quick Start, Compose, and success-criteria journey passed (20 tests), including the API and CLI rotation paths.
+- File-backed status → API rotation with a reason → audit history passed, followed by `docker compose exec -T orchestrator acheron token rotate --reason test` with sanitized successful output.
 - Every supported Compose edge (`tts-local-stub`, `asr-local-stub`, `translation-local-stub`, `tts-runpod-stub`, `translation-runpod-stub`, and `tts-grpc-stub`) accepted the current token and rejected the superseded token.
 - Container identities were captured for every supported edge before rotation and were unchanged after rotation; this demonstrated reload/rollout without container restart.
 - A real authenticated `POST /inputs` → `POST /jobs` → `GET /jobs/{job_id}` journey completed successfully with non-empty output after rotation.
@@ -22,6 +22,7 @@ Fresh verification was performed from the isolated `ux-tackle/maint-bundle-02` c
 - `uv run pytest --no-cov tests/integration/test_worker_integration.py -q` — passed: 9 tests.
 - `just validate` — passed: 1874 passed, 20 skipped; lint, import, mypy, basedpyright, and coverage gates passed.
 - `just first-run` — passed: 20 passed; existing container-owned certificate cleanup warnings only.
+- `docker compose exec -T orchestrator acheron token rotate --reason test` — passed in the file-backed journey; output was sanitized and contained no token value.
 - `just ux-validate` — passed after attestation refresh.
 - `just ux-verify MAINT-007` — passed.
 - `just ux-verify MAINT-006` — passed.
@@ -30,8 +31,9 @@ Fresh verification was performed from the isolated `ux-tackle/maint-bundle-02` c
 
 ## Fix-round scope
 
-- Fix commit: `d17f27c` (`fix(MAINT-007): scope insecure bearer transport`).
-- Earlier Task 9 evidence/fix commits are included in the reviewed range `8c4d77e..d17f27c`.
+- Security fix commit: `d17f27c` (`fix(MAINT-007): scope insecure bearer transport`).
+- CLI evidence commit: `6fda4f1` (`test(MAINT-007): verify cli token rotation`).
+- Earlier Task 9 evidence/fix commits are included in the reviewed range `8c4d77e..6fda4f1`.
 - Outbound bearer checks now require an explicit URL/target hostname allowlist; server-only warning suppression remains separate.
 
 ## Residual risks
