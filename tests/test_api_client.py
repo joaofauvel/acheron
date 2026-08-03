@@ -183,8 +183,6 @@ async def test_reload_certs_posts_admin_header() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-@pytest.mark.asyncio
-@respx.mock
 async def test_api_client_does_not_send_registration_token_to_admin_routes() -> None:
     status_route = respx.get("http://test/admin/token/status").mock(
         return_value=httpx.Response(
