@@ -823,6 +823,124 @@ def test_admin_reap_stuck_renders_ids_and_uses_admin_token(monkeypatch: pytest.M
 
 
 @respx.mock
+def test_cli_token_status_uses_admin_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.get(f"{_BASE_URL}/admin/token/status").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "source": "file",
+                "created_at": "2026-08-02T12:00:00Z",
+                "last_rotation_at": "2026-08-02T12:01:00Z",
+                "rotation_count": 1,
+                "fingerprint": "abc12345",
+                "history": [
+                    {
+                        "timestamp": "2026-08-02T12:01:00Z",
+                        "reason": "scheduled rotation",
+                        "old_fingerprint": "old12345",
+                        "new_fingerprint": "abc12345",
+                        "worker_ids": ["worker-1", "worker-2"],
+                        "result": "success",
+                        "request_id": "request-1",
+                    }
+                ],
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["token", "status"])
+
+    assert result.exit_code == 0, result.output
+    assert "source=file" in result.output
+    assert "fingerprint=abc12345" in result.output
+    assert "audit reason=scheduled rotation" in result.output
+    assert "audit workers=2" in result.output
+    assert "admin-token" not in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@respx.mock
+def test_cli_token_rotate_renders_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.post(f"{_BASE_URL}/admin/token/rotate").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "rotated": True,
+                "status": {
+                    "source": "file",
+                    "created_at": "2026-08-02T12:00:00Z",
+                    "last_rotation_at": "2026-08-02T12:01:00Z",
+                    "rotation_count": 1,
+                    "fingerprint": "abc12345",
+                    "history": [
+                        {
+                            "timestamp": "2026-08-02T12:01:00Z",
+                            "reason": "scheduled rotation",
+                            "old_fingerprint": "old12345",
+                            "new_fingerprint": "abc12345",
+                            "worker_ids": ["worker-1"],
+                            "result": "success",
+                            "request_id": "request-1",
+                        }
+                    ],
+                },
+                "rollout": {
+                    "success": True,
+                    "worker_ids": ["worker-1", "worker-2"],
+                    "message": "all workers accepted the candidate",
+                    "remediation": None,
+                },
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["token", "rotate", "--reason", "scheduled rotation"])
+
+    assert result.exit_code == 0, result.output
+    assert "rollout=success workers=2" in result.output
+    assert "audit reason=scheduled rotation" in result.output
+    assert "all workers accepted" in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+    assert json.loads(route.calls.last.request.content) == {"reason": "scheduled rotation"}
+
+
+@respx.mock
+def test_cli_token_rotate_returns_nonzero_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.post(f"{_BASE_URL}/admin/token/rotate").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "rotated": False,
+                "status": {
+                    "source": "environment",
+                    "created_at": "2026-08-02T12:00:00Z",
+                    "last_rotation_at": None,
+                    "rotation_count": 0,
+                    "fingerprint": "abc12345",
+                    "history": [],
+                },
+                "rollout": {
+                    "success": False,
+                    "worker_ids": [],
+                    "message": "environment token is externally managed",
+                    "remediation": "Update worker environments and restart them externally",
+                },
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["token", "rotate", "--reason", "scheduled rotation"])
+
+    assert result.exit_code != 0
+    assert "rollout=failed workers=0" in result.output
+    assert "Try: Update worker environments and restart them externally" in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@respx.mock
 def test_certs_status_renders_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
     route = respx.get(f"{_BASE_URL}/admin/certs/status").mock(

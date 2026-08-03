@@ -34,7 +34,11 @@ from acheron.tls import resolve_ca_path
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
-    from acheron.core.schemas import CertificateStatusResponse, PlanResponse
+    from acheron.core.schemas import (
+        CertificateStatusResponse,
+        PlanResponse,
+        RegistrationTokenStatusResponse,
+    )
 
 console = Console()
 err_console = Console(stderr=True)
@@ -717,6 +721,62 @@ def certs_reload() -> None:
     result = _run(client.reload_certs(), client=client, on_http_error=_print_http_error)
     prefix = "Reloaded certificate: " if result.reloaded else "Certificate not reloaded: "
     console.print(prefix + _format_certificate_status(result.certificate))
+
+
+def _format_token_status(status: RegistrationTokenStatusResponse) -> str:
+    """Render secret-free registration-token lifecycle details."""
+    lines = [
+        f"source={status.source}",
+        f"created_at={status.created_at.isoformat() if status.created_at is not None else '-'}",
+        f"last_rotation_at={status.last_rotation_at.isoformat() if status.last_rotation_at is not None else '-'}",
+        f"rotation_count={status.rotation_count}",
+        f"fingerprint={status.fingerprint or '-'}",
+    ]
+    for audit in status.history:
+        lines.extend(
+            (
+                f"audit timestamp={audit.timestamp.isoformat()} result={audit.result}",
+                f"audit reason={audit.reason}",
+                f"audit workers={len(audit.worker_ids)} request_id={audit.request_id or '-'}",
+            )
+        )
+    return "\n".join(lines)
+
+
+@main.group()
+def token() -> None:
+    """Inspect and rotate registration tokens."""
+
+
+@token.command("status")
+def token_status() -> None:
+    """Show secret-free registration-token lifecycle status."""
+    _require_admin_token()
+    client = _get_client()
+    result = _run(client.get_registration_token_status(), client=client, on_http_error=_print_http_error)
+    console.print(_format_token_status(result))
+
+
+@token.command("rotate")
+@click.option("--reason", required=True)
+def token_rotate(reason: str) -> None:
+    """Rotate the file-backed registration token."""
+    _require_admin_token()
+    client = _get_client()
+    result = _run(
+        client.rotate_registration_token(reason),
+        client=client,
+        on_http_error=_print_http_error,
+    )
+    console.print(_format_token_status(result.status))
+    rollout = result.rollout
+    console.print(f"rollout={'success' if rollout.success else 'failed'} workers={len(rollout.worker_ids)}")
+    if rollout.message:
+        console.print(f"message={rollout.message}")
+    if not result.rotated or not rollout.success:
+        if rollout.remediation:
+            console.print(f"Try: {rollout.remediation}")
+        raise click.exceptions.Exit(1)
 
 
 def _preflight_voice_selection(  # noqa: PLR0913

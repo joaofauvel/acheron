@@ -21,7 +21,14 @@ from pydantic import ValidationError
 
 from acheron.api_client import AcheronClient
 from acheron.core.models import PlanStatus, VoiceRange
-from acheron.core.schemas import CertificateReloadResponse, CertificateStatusResponse, CleanupResponse, WorkerCapability
+from acheron.core.schemas import (
+    CertificateReloadResponse,
+    CertificateStatusResponse,
+    CleanupResponse,
+    RegistrationTokenRotationResponse,
+    RegistrationTokenStatusResponse,
+    WorkerCapability,
+)
 
 
 def test_api_client_import_does_not_load_shell_schemas() -> None:
@@ -172,6 +179,58 @@ async def test_reload_certs_posts_admin_header() -> None:
     assert type(result) is CertificateReloadResponse
     assert result.reloaded is True
     assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+@pytest.mark.asyncio
+@respx.mock
+async def test_api_client_does_not_send_registration_token_to_admin_routes() -> None:
+    status_route = respx.get("http://test/admin/token/status").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "source": "file",
+                "created_at": "2026-08-02T12:00:00Z",
+                "last_rotation_at": None,
+                "rotation_count": 0,
+                "fingerprint": "abc12345",
+                "history": [],
+            },
+        )
+    )
+    rotate_route = respx.post("http://test/admin/token/rotate").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "rotated": True,
+                "status": {
+                    "source": "file",
+                    "created_at": "2026-08-02T12:00:00Z",
+                    "last_rotation_at": "2026-08-02T12:01:00Z",
+                    "rotation_count": 1,
+                    "fingerprint": "def67890",
+                    "history": [],
+                },
+                "rollout": {"success": True, "worker_ids": ["worker-1"]},
+            },
+        )
+    )
+    client = AcheronClient(
+        "http://test",
+        registration_token="registration-token",
+        admin_token="admin-token",
+    )
+
+    status = await client.get_registration_token_status()
+    rotation = await client.rotate_registration_token("scheduled rotation")
+
+    assert type(status) is RegistrationTokenStatusResponse
+    assert type(rotation) is RegistrationTokenRotationResponse
+    for route in (status_route, rotate_route):
+        request = route.calls.last.request
+        assert request.headers["authorization"] == "Bearer admin-token"
+        assert "registration-token" not in request.headers.get("authorization", "")
 
 
 @pytest.mark.asyncio

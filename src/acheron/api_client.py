@@ -26,6 +26,8 @@ from acheron.core.schemas import (
     LanguagePair,
     PlanResponse,
     ReapStaleResponse,
+    RegistrationTokenRotationResponse,
+    RegistrationTokenStatusResponse,
     WorkerCapability,
     WorkerListResponse,
     WorkerResponse,
@@ -270,6 +272,24 @@ class AcheronClient:
             resp = await client.post("/admin/certs/reload", headers=self._admin_headers())
             resp.raise_for_status()
             return CertificateReloadResponse.model_validate(resp.json())
+
+    async def get_registration_token_status(self) -> RegistrationTokenStatusResponse:
+        """Get secret-free registration-token lifecycle status."""
+        async with self._http_client() as client:
+            resp = await client.get("/admin/token/status", headers=self._admin_headers())
+            resp.raise_for_status()
+            return RegistrationTokenStatusResponse.model_validate(resp.json())
+
+    async def rotate_registration_token(self, reason: str) -> RegistrationTokenRotationResponse:
+        """Rotate the registration token through the admin API."""
+        async with self._http_client() as client:
+            resp = await client.post(
+                "/admin/token/rotate",
+                json={"reason": reason},
+                headers=self._admin_headers(),
+            )
+            resp.raise_for_status()
+            return RegistrationTokenRotationResponse.model_validate(resp.json())
 
     async def cancel_job(self, job_id: str) -> JobResponse:
         """Cancel an active job and return its persisted terminal result."""
