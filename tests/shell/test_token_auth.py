@@ -160,7 +160,12 @@ def test_rollout_error_and_worker_ids_never_persist_secret(tmp_path: Path) -> No
     async def rollout(token: str) -> RolloutResult:
         seen.append(token)
         if len(seen) == 1:
-            return RolloutResult(success=False, worker_ids=(old_token, token), message=token)
+            return RolloutResult(
+                success=False,
+                worker_ids=(old_token, token),
+                message=token,
+                remediation=f"retry with {old_token} or {token}",
+            )
         return RolloutResult(success=True)
 
     with pytest.raises(TokenRotationError) as raised:
@@ -169,6 +174,8 @@ def test_rollout_error_and_worker_ids_never_persist_secret(tmp_path: Path) -> No
     candidate = seen[0]
     audit = store.audit_path.read_text(encoding="utf-8")
     assert candidate not in str(raised.value)
+    assert candidate not in (raised.value.remediation or "")
+    assert old_token not in (raised.value.remediation or "")
     assert candidate not in audit
     assert old_token not in audit
 

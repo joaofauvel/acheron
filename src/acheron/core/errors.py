@@ -38,6 +38,10 @@ class WorkerError(AcheronError):
     """Errors related to worker communication or execution."""
 
 
+class InsecureBearerTransportError(WorkerError):
+    """A bearer credential would be sent over plaintext transport."""
+
+
 class WorkerUnavailableError(WorkerError):
     """Worker is not reachable or has been removed from the registry."""
 

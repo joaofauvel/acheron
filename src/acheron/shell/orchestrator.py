@@ -24,6 +24,7 @@ import httpx
 
 from acheron.core.errors import (
     AcheronError,
+    InsecureBearerTransportError,
     InvalidationTargetError,
     JobAlreadyRunningError,
     JobNotCancellableError,
@@ -300,12 +301,10 @@ class WorkerRotationCoordinator:
             return RolloutResult(success=True, worker_ids=tuple(worker.worker_id for worker in remote_http))
         worker_error = next((result for result in results if isinstance(result, WorkerError)), None)
         remediation = worker_error.remediation if worker_error is not None else None
-        if remediation is None or candidate in remediation:
-            remediation = (
-                "Configure HTTPS worker endpoints before retrying token rotation"
-                if worker_error is not None
-                else "Check worker connectivity and retry the rotation"
-            )
+        if isinstance(worker_error, InsecureBearerTransportError):
+            remediation = "Configure HTTPS or explicitly opt into insecure local transport"
+        elif remediation is None:
+            remediation = "Check worker connectivity and retry the rotation"
         return RolloutResult(
             success=False,
             worker_ids=tuple(worker.worker_id for worker in remote_http),
@@ -347,7 +346,7 @@ class WorkerRotationCoordinator:
         """Verify a worker edge through its authenticated health endpoint."""
         url = f"{worker.endpoint.rstrip('/')}/auth/check"
         if urlsplit(url).scheme.casefold() == "http" and not _allow_insecure():
-            raise WorkerError(
+            raise InsecureBearerTransportError(
                 "Refusing to send a bearer token over plaintext",
                 remediation="Configure HTTPS or explicitly opt into insecure local transport",
             )

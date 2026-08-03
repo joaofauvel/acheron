@@ -20,7 +20,7 @@ import aiofiles
 import httpx
 from pydantic import TypeAdapter
 
-from acheron.core.errors import CacheMissError, WorkerError, WorkerUnavailableError
+from acheron.core.errors import CacheMissError, InsecureBearerTransportError, WorkerError, WorkerUnavailableError
 from acheron.core.interfaces import Worker
 from acheron.core.models import (
     Job,
@@ -36,6 +36,7 @@ from acheron.shell.transports._multipart import (
     _safe_join,
     _validate_content_type,
 )
+from acheron.tls import _allow_insecure
 
 _caps_adapter = TypeAdapter(WorkerCapabilities)
 _result_adapter = TypeAdapter(JobResult)
@@ -159,12 +160,10 @@ class HttpWorker(Worker):
         step_cache: StepCache | InMemoryStepCache | None = None,
         registration_token: str | None = None,
         registration_token_provider: Callable[[], str | None] | None = None,
-        allow_insecure: bool = False,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._registration_token = registration_token
         self._registration_token_provider = registration_token_provider
-        self._allow_insecure = allow_insecure
         self._data_dir = Path(data_dir).resolve()
         if step_cache is not None and step_cache.data_dir.resolve() != self._data_dir:
             msg = (
@@ -199,10 +198,11 @@ class HttpWorker(Worker):
             if self._registration_token_provider is not None
             else self._registration_token
         )
-        if token is not None and urlsplit(url).scheme.casefold() == "http" and not self._allow_insecure:
-            raise WorkerError(
+        if token is not None and urlsplit(url).scheme.casefold() == "http" and not _allow_insecure():
+            raise InsecureBearerTransportError(
                 "Refusing to send a bearer token over plaintext; "
-                "configure HTTPS or explicitly opt into insecure local transport"
+                "configure HTTPS or explicitly opt into insecure local transport",
+                remediation="Configure HTTPS or explicitly opt into insecure local transport",
             )
         if token is not None:
             headers = dict(kwargs.pop("headers", {}))

@@ -2611,6 +2611,20 @@ async def test_worker_rotation_coordinator_preserves_worker_remediation() -> Non
 
 
 @pytest.mark.asyncio
+async def test_worker_rotation_coordinator_uses_connectivity_remediation_for_untyped_errors() -> None:
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "https://worker.example", "http", tts_caps())
+
+    async def auth_check(_worker: object, _token: str) -> bool:
+        raise WorkerError("auth check failed")
+
+    result = await WorkerRotationCoordinator(registry, auth_check=auth_check).rollout("candidate-token")
+
+    assert not result.success
+    assert result.remediation == "Check worker connectivity and retry the rotation"
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_constructs_health_providers_from_settings(tmp_path) -> None:  # type: ignore[no-untyped-def]
     """The Orchestrator must build HealthProviders from settings.providers.* API keys."""
     settings = Settings()

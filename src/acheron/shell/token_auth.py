@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NoReturn
 
 from acheron.core.errors import AcheronError, sanitise_public_message
 
@@ -74,6 +74,14 @@ class _LifecycleMetadata:
     created_at: datetime
     last_rotation_at: datetime | None
     rotation_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RotationRollback:
+    rollout: Rollout
+    old_token: str
+    old_audit: bytes | None
+    old_metadata: bytes | None
 
 
 Rollout = Callable[[str], Awaitable[RolloutResult]]
@@ -260,20 +268,13 @@ class RegistrationTokenStore:
                 "Unable to stage the replacement registration token",
                 remediation="Check the orchestrator data directory permissions",
             ) from exc
+        rollback = _RotationRollback(rollout, old_token, old_audit, old_metadata)
         try:
             result = await rollout(candidate)
-        except asyncio.CancelledError:
-            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
-            raise
-        except TokenRotationError, TokenStoreError:
-            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
-            raise
-        except BaseException as exc:
-            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
-            raise TokenRotationError(
-                "Registration token rollout failed; the previous token was restored",
-                remediation="Check worker connectivity and retry the rotation",
-            ) from exc
+        except asyncio.CancelledError as exc:
+            await self._handle_rollout_error(rollback, candidate, exc)
+        except Exception as exc:  # noqa: BLE001 - callback failures require rollback and redaction
+            await self._handle_rollout_error(rollback, candidate, exc)
 
         safe_worker_ids = tuple(
             self._safe_metadata(
@@ -299,7 +300,11 @@ class RegistrationTokenStore:
             )
             raise TokenRotationError(
                 "Registration token rollout failed; the previous token was restored",
-                remediation=result.remediation or "Check worker connectivity and retry the rotation",
+                remediation=self._safe_rollout_remediation(
+                    result.remediation,
+                    old_token,
+                    candidate,
+                ),
             )
 
         new_lifecycle = _LifecycleMetadata(
@@ -554,6 +559,50 @@ class RegistrationTokenStore:
                     "Unable to release registration token state lock",
                     remediation="Check the orchestrator data directory permissions",
                 ) from exc
+
+    async def _handle_rollout_error(
+        self,
+        rollback: _RotationRollback,
+        candidate: str,
+        error: BaseException,
+    ) -> NoReturn:
+        await self._rollback_state(
+            rollback.rollout,
+            rollback.old_token,
+            rollback.old_audit,
+            rollback.old_metadata,
+        )
+        if isinstance(error, asyncio.CancelledError):
+            raise error
+        if isinstance(error, (TokenRotationError, TokenStoreError)):
+            if self._exception_contains_secret(error, rollback.old_token, candidate):
+                raise TokenRotationError(
+                    "Registration token rollout failed; the previous token was restored",
+                    remediation="Check worker connectivity and retry the rotation",
+                ) from None
+            raise error
+        wrapped = TokenRotationError(
+            "Registration token rollout failed; the previous token was restored",
+            remediation="Check worker connectivity and retry the rotation",
+        )
+        if self._exception_contains_secret(error, rollback.old_token, candidate):
+            raise wrapped from None
+        raise wrapped from error
+
+    @staticmethod
+    def _safe_rollout_remediation(remediation: str | None, old_token: str, candidate: str) -> str:
+        generic = "Check worker connectivity and retry the rotation"
+        if remediation is None or old_token in remediation or candidate in remediation:
+            return generic
+        return sanitise_public_message(remediation[:256], fallback=generic)
+
+    @staticmethod
+    def _exception_contains_secret(error: BaseException, old_token: str, candidate: str) -> bool:
+        values = [str(error)]
+        remediation = getattr(error, "remediation", None)
+        if isinstance(remediation, str):
+            values.append(remediation)
+        return any(secret and any(secret in value for value in values) for secret in (old_token, candidate))
 
     @staticmethod
     def _safe_metadata(value: str, secret: str, fallback: str) -> str:
