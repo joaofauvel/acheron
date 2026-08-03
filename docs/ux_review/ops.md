@@ -161,7 +161,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
   date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
@@ -372,7 +372,7 @@ fixed_in: ["4750302", "1f5514c", "CURRENT_HEAD"]
 verified_in: ["1f5514c", "CURRENT_HEAD"]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
   date: "2026-08-02"
 verified_by: "harness:pytest+just-validate"
 feedback_ref: "TBD-pagerduty"
@@ -459,7 +459,7 @@ fixed_in: [6d47e35, CURRENT_HEAD]
 verified_in: [6d47e35, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-10-recovery"
 drift_note: "Time-window/status/archive controls and archive metadata are covered by the Task 10 recovery journey."
@@ -833,7 +833,7 @@ fixed_in: [8357163c, 8c0f119, d08dafc, 6ae39df, 0e6ab4e, 16898af, CURRENT_HEAD]
 verified_in: [16898af, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
   date: "2026-08-02"
 verified_by: "harness:phase-4d-task-12-correlation"
 feedback_ref: "TBD-pagerduty"
@@ -1043,7 +1043,7 @@ fixed_in: [8aea0cb, CURRENT_HEAD]
 verified_in: [8aea0cb, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
   date: "2026-08-02"
 verified_by: "harness:task-17-voice-journey"
 feedback_ref: "TBD-pagerduty"
@@ -1120,7 +1120,7 @@ fixed_in: [d78e7a1, CURRENT_HEAD]
 verified_in: [d78e7a1, CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
   date: "2026-08-02"
 verified_by: "harness:pricing-outage+gpu-switch+focused-tests"
 feedback_ref: "TBD-pagerduty"
