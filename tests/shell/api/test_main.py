@@ -32,12 +32,12 @@ def _patch_server(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return captured
 
 
-def test_main_invokes_uvicorn_with_tls_kwargs(
+def test_main_invokes_uvicorn_with_tls_context_factory(
     monkeypatch: pytest.MonkeyPatch,
     dev_certs: Path,
     tmp_path: Path,
 ) -> None:
-    """`python -m acheron.shell.api` builds a uvicorn.Config with TLS kwargs set."""
+    """`python -m acheron.shell.api` configures one persistent TLS context."""
     monkeypatch.setenv("ACHERON_TLS_CERT_FILE", str(dev_certs / "orchestrator.crt"))
     monkeypatch.setenv("ACHERON_TLS_KEY_FILE", str(dev_certs / "orchestrator.key"))
     monkeypatch.setenv("ACHERON_DATA_DIR", str(tmp_path / "data"))
@@ -49,8 +49,12 @@ def test_main_invokes_uvicorn_with_tls_kwargs(
     with pytest.raises(SystemExit):
         main()
     config = captured["config"]
-    assert config.ssl_certfile == str(dev_certs / "orchestrator.crt")
-    assert config.ssl_keyfile == str(dev_certs / "orchestrator.key")
+    assert config.ssl_certfile is None
+    assert config.ssl_keyfile is None
+    assert config.ssl_context_factory is not None
+    first_context = config.ssl_context_factory(config, None)
+    second_context = config.ssl_context_factory(config, None)
+    assert first_context is second_context
     assert config.host == "0.0.0.0"
     assert config.port == 0
 
