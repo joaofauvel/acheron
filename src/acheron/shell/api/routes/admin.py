@@ -61,9 +61,11 @@ def _not_implemented(action: str) -> HTTPException:
 class _CertificateAdminManager(Protocol):
     def status(self) -> CertificateStatus | None:
         """Return the current certificate status."""
+        ...
 
     def reload(self) -> CertificateStatus:
         """Reload the active certificate context."""
+        ...
 
 
 def _certificate_manager(request: Request) -> _CertificateAdminManager:

@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from cryptography import x509
@@ -59,7 +60,7 @@ def _run(
     )
 
 
-def _load_generator():
+def _load_generator() -> ModuleType:
     spec = importlib.util.spec_from_file_location("generate_dev_certs", SCRIPT)
     assert spec is not None
     assert spec.loader is not None

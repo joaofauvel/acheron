@@ -292,7 +292,7 @@ class TestCertificateManager:
         bundle = certificate_bundle(now + timedelta(days=31))
         manager = _manager(bundle)
         context = TrackingContext()
-        manager.ssl_context = context
+        monkeypatch.setattr(manager, "ssl_context", context)
 
         def fail_status(*args: object, **kwargs: object) -> tls.CertificateStatus:
             del args, kwargs
