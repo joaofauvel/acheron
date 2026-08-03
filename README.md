@@ -24,9 +24,13 @@ Acheron is a distributed asynchronous audio-transformation pipeline that convert
 
 ```bash
 cp .env.example .env
-export ACHERON_REGISTRATION_TOKEN="$(openssl rand -hex 32)"
 docker compose up --build
 ```
+
+Compose persists its file-backed registration token at
+`<data_dir>/.registration_token` (the local data volume maps this to
+`./data/jobs/.registration_token`). Re-running these commands from a new shell
+reuses that token; no shell-only export is required.
 
 The stack comes up with these default services. Administrative mutations
 require a separate `ACHERON_ADMIN_TOKEN`; set it in `.env` before using the
@@ -73,6 +77,10 @@ acheron status
 acheron jobs --active
 acheron jobs --completed
 
+# Registration token source and lifecycle
+acheron token status
+acheron token rotate --reason "planned credential rotation"
+
 # Registered workers
 acheron workers
 
@@ -93,9 +101,20 @@ The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8
 
 Operator-only mutations use `ACHERON_ADMIN_TOKEN`, not
 `ACHERON_REGISTRATION_TOKEN`. Compose reads this token from `.env`; when running
-the host CLI, export it in the process environment (for example,
-`export ACHERON_ADMIN_TOKEN="..."`). Leaving it unset disables administrative
-mutations.
+the host CLI, export the separate admin token in the process environment (for
+example, `export ACHERON_ADMIN_TOKEN="..."`). Leaving it unset disables
+administrative mutations.
+
+### Registration-token source contract
+
+| Source | Configuration | Lifecycle |
+|---|---|---|
+| Environment | `ACHERON_REGISTRATION_TOKEN` or standalone worker `ACHERON_WORKER__REGISTRATION_TOKEN` | Static, externally managed; `acheron token rotate --reason "..."` exits nonzero with remediation to update/restart workers externally. |
+| File | Unset Compose token; `<data_dir>/.registration_token` | File-backed auto-mint and reuse across shells. |
+| Worker file | `ACHERON_WORKER__REGISTRATION_TOKEN_FILE` | Reload-aware; the worker reads the current mounted file for each protected operation. |
+
+`acheron token status` reports `source=environment` or `source=file`, a
+fingerprint, and lifecycle timestamps. Status output never contains the token.
 
 ```bash
 # Archive one or more completed or failed jobs without deleting their records.

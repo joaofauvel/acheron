@@ -7,6 +7,9 @@ def test_step_1_quick_start_commands_and_environment(prepared_project: FirstRunP
         "step 1: README Quick Start commands changed; update the journey only with an intentional design change"
     )
     assert (prepared_project.checkout / ".env").exists(), "step 1: README environment copy did not create .env"
+    assert "export ACHERON_REGISTRATION_TOKEN" not in readme, (
+        "step 1: Quick Start must persist the Compose token instead of requiring a shell-only export"
+    )
     assert len(prepared_project.token) == 64, "step 1: generated registration token is not 32 bytes of hex"
     assert prepared_project.env["ACHERON_REGISTRATION_TOKEN"] == prepared_project.token
 
@@ -27,6 +30,10 @@ def test_step_1_deployment_documentation_contract(prepared_project: FirstRunProj
         assert variable in env_example, f"step 1: .env.example omits {variable}"
 
     assert "ACHERON_ADMIN_TOKEN" in readme, "step 1: README omits the separate admin token"
+    assert "ACHERON_WORKER__REGISTRATION_TOKEN_FILE" in readme, (
+        "step 1: README omits the reload-aware worker token-file source"
+    )
+    assert "acheron token status" in readme, "step 1: README omits token status guidance"
     compose = (checkout / "docker-compose.yml").read_text()
     assert "ACHERON_ADMIN_TOKEN: ${ACHERON_ADMIN_TOKEN:-}" in compose
     assert "ghcr.io/<owner>/<repo>/" in readme, "step 1: README uses an ambiguous GHCR image placeholder"
