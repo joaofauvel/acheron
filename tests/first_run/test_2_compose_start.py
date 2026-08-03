@@ -34,7 +34,8 @@ def test_step_2_compose_start(compose_stack: ComposeStack) -> None:
     assert orchestrator_environment["ACHERON_INSECURE_LOCAL_EDGE_HOSTS"] == (
         "localhost,127.0.0.1,tts-local-stub,asr-local-stub,translation-local-stub,"
         "tts-runpod-stub,"
-        "translation-runpod-stub,tts-grpc-stub,qwen3tts-edge,granite-speech-edge,translategemma-edge"
+        "translation-runpod-stub,tts-grpc-stub,qwen3tts-edge,granite-speech-edge,translategemma-edge,"
+        "orchestrator"
     )
 
     orchestrator = compose_stack.get_json("https://localhost:8000/health")
