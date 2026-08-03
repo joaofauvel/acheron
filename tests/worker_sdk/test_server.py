@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from typing import Any
 
 import pytest
@@ -28,7 +29,7 @@ def _patch_server(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 class TestRunWorkerServer:
-    def test_builds_config_and_invokes_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_server_preserves_plain_http_without_tls(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ACHERON_TLS_CERT_FILE", raising=False)
         monkeypatch.delenv("ACHERON_TLS_KEY_FILE", raising=False)
         captured = _patch_server(monkeypatch)
@@ -42,3 +43,15 @@ class TestRunWorkerServer:
         assert config.port == 9000
         assert config.ssl_certfile is None
         assert config.ssl_keyfile is None
+        assert config.ssl_context_factory is None
+
+    def test_server_uses_reloadable_context_when_manager_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured = _patch_server(monkeypatch)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+        with pytest.raises(SystemExit):
+            run_worker_server(FastAPI(), host="127.0.0.1", port=9000, ssl_ctx=context)
+
+        config = captured["config"]
+        assert config.ssl_context_factory is not None
+        assert config.ssl_context_factory(config, lambda: context) is context

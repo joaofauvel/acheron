@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import ipaddress
 import os
 import socket
 import ssl
@@ -10,9 +12,14 @@ import sys
 import time
 from collections.abc import Generator
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 # Serialize: this test binds to dynamic ports and a TOCTOU race would cause
 # flakes under pytest-xdist. Tests in this module share a single xdist group.
@@ -66,6 +73,64 @@ def _wait_for_workers_registered(orch_port: int, expected_ids: set[str], ca: Pat
     raise RuntimeError(msg)
 
 
+def _peer_certificate(port: int, ca: Path) -> dict[str, object]:
+    """Return the peer certificate presented by an HTTPS listener."""
+    context = ssl.create_default_context(cafile=str(ca))
+    with (
+        socket.create_connection(("127.0.0.1", port), timeout=5) as raw,
+        context.wrap_socket(raw, server_hostname="localhost") as wrapped,
+    ):
+        return cast("dict[str, object]", wrapped.getpeercert())
+
+
+def _replace_orchestrator_certificate(certs_dir: Path) -> None:
+    """Issue a replacement orchestrator certificate from the test CA."""
+    ca_cert = x509.load_pem_x509_certificate((certs_dir / "acheron-ca.crt").read_bytes())
+    ca_key = cast(
+        "rsa.RSAPrivateKey",
+        serialization.load_pem_private_key((certs_dir / "acheron-ca.key").read_bytes(), password=None),
+    )
+    server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "orchestrator-reloaded")])
+    now = datetime.datetime.now(datetime.UTC)
+    server_cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(ca_cert.subject)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=1))
+        .not_valid_after(now + datetime.timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(
+                ca_cert.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value
+            ),
+            critical=False,
+        )
+        .add_extension(
+            x509.SubjectAlternativeName(
+                [
+                    x509.DNSName("orchestrator-reloaded"),
+                    x509.DNSName("localhost"),
+                    x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                ]
+            ),
+            critical=False,
+        )
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .sign(ca_key, hashes.SHA256())
+    )
+    (certs_dir / "orchestrator.crt").write_bytes(server_cert.public_bytes(serialization.Encoding.PEM))
+    (certs_dir / "orchestrator.key").write_bytes(
+        server_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+    )
+
+
 @pytest.fixture(scope="module")
 def tls_stack(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Generator[dict[str, object]]:
     """Bring up orchestrator, tts-stub, and tts-grpc-stub over TLS."""
@@ -93,6 +158,7 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Gene
     base_env["ACHERON_TLS_CA_FILE"] = str(ca)
     base_env["ACHERON_STORE_BACKEND"] = "memory"
     base_env["ACHERON_ALLOW_INSECURE"] = "1"
+    base_env["ACHERON_ADMIN_TOKEN"] = "test-admin-token-must-be-32-chars-or-more"
     base_env["PYTHONPATH"] = (
         str(repo_root / "src") + os.pathsep + str(repo_root / "stubs") + os.pathsep + base_env.get("PYTHONPATH", "")
     )
@@ -159,6 +225,9 @@ def tls_stack(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Gene
         "tts_port": tts_port,
         "grpc_port": grpc_port,
         "grpc_http_port": grpc_http_port,
+        "orch_pid": orch_proc.pid,
+        "orch_process": orch_proc,
+        "certs_dir": certs_dir,
     }
     for p in procs:
         p.terminate()
@@ -208,3 +277,39 @@ def test_grpc_worker_registers(tls_stack: dict[str, object]) -> None:
         workers = resp.json()["workers"]
         ids = {w["worker_id"] for w in workers}
         assert "tts-grpc-stub" in ids
+
+
+def test_orchestrator_cert_reload_keeps_pid_and_worker_connectivity(tls_stack: dict[str, object]) -> None:
+    ca = tls_stack["ca"]
+    port = tls_stack["orch_port"]
+    certs_dir = tls_stack["certs_dir"]
+    orch_pid = tls_stack["orch_pid"]
+    orch_process = tls_stack["orch_process"]
+    assert isinstance(ca, Path)
+    assert isinstance(certs_dir, Path)
+    assert isinstance(port, int)
+    assert isinstance(orch_pid, int)
+    assert isinstance(orch_process, subprocess.Popen)
+    assert orch_process.pid == orch_pid
+
+    before = _peer_certificate(port, ca)
+    _replace_orchestrator_certificate(certs_dir)
+    with httpx.Client(verify=ssl.create_default_context(cafile=str(ca))) as client:
+        reload_response = client.post(
+            f"https://127.0.0.1:{port}/admin/certs/reload",
+            headers={"Authorization": "Bearer test-admin-token-must-be-32-chars-or-more"},
+        )
+        assert reload_response.status_code == 200
+        assert reload_response.json()["reloaded"] is True
+        health_response = client.get(f"https://127.0.0.1:{port}/health")
+        assert health_response.status_code == 200
+        workers_response = client.get(f"https://127.0.0.1:{port}/workers")
+        assert workers_response.status_code == 200
+        worker_ids = {worker["worker_id"] for worker in workers_response.json()["workers"]}
+        assert {"tts-local-stub", "tts-grpc-stub"}.issubset(worker_ids)
+
+    after = _peer_certificate(port, ca)
+    assert before["serialNumber"] != after["serialNumber"]
+    assert before["subject"] != after["subject"]
+    os.kill(orch_pid, 0)
+    assert orch_process.poll() is None
