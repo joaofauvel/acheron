@@ -53,26 +53,9 @@ def uvicorn_ssl_kwargs() -> dict[str, str]:
 
 Each entry point that calls `uvicorn.run(...)` passes `**uvicorn_ssl_kwargs()`.
 
-**gRPC stub.** `grpc.aio.server()` takes a `credentials` kwarg. We build a `grpc.ssl_server_credentials` with the cert chain and key:
+**gRPC server support.** Services that instantiate `grpc.aio.server()` can use `grpc_server_credentials()` to build `grpc.ssl_server_credentials` from the configured certificate and key. No new dependency is required because the helper is provided by `grpcio`.
 
-```python
-def grpc_server_credentials() -> grpc.ServerCredentials | None:
-    cert = os.environ.get("ACHERON_TLS_CERT_FILE")
-    key = os.environ.get("ACHERON_TLS_KEY_FILE")
-    if cert is None and key is None:
-        return None
-    if cert is None or key is None:
-        raise AcheronError(
-            "ACHERON_TLS_CERT_FILE and ACHERON_TLS_KEY_FILE must be set together"
-        )
-    with open(cert, "rb") as f:
-        cert_pem = f.read()
-    with open(key, "rb") as f:
-        key_pem = f.read()
-    return grpc.ssl_server_credentials([(key_pem, cert_pem)])
-```
-
-The gRPC stub's `grpc.aio.server()` call passes this in. No new dependencies — `grpc.ssl_server_credentials` is in the `grpcio` package we already have.
+The current `stubs/tts_grpc_stub/main.py` is not a gRPC server: despite its historical name, it creates a FastAPI/Uvicorn HTTP worker-edge app. Its Compose listener is HTTP on port 9002, and its worker client registers with the HTTPS orchestrator. The gRPC credential helper is therefore not used by that Compose stub.
 
 **Dashboard.** Stays HTTP. The expectation is that it ships in the same node as the orchestrator, so it doesn't need TLS — the orchestrator's HTTPS endpoint is the public surface. No changes to the dashboard.
 
@@ -134,7 +117,7 @@ certs/
 ├── translation-stub.crt
 ├── translation-stub.key
 ├── tts-grpc-stub.crt    # gRPC worker cert
-└── tts-grpc-stub.key
+└── tts-grpc-stub.key    # historical HTTP worker-edge cert
 ```
 
 **Cert details.**
@@ -157,10 +140,10 @@ The Compose stack mounts the host `./certs` directory at `/certs` (read-only) fo
 |---|---|---|---|
 | `orchestrator` | `ACHERON_TLS_{CERT,KEY}_FILE=/certs/{orchestrator.crt,orchestrator.key}` | `ACHERON_TLS_CA_FILE` and `SSL_CERT_FILE` point to `/certs/acheron-ca.crt` | serves HTTPS on port 8000 |
 | local HTTP stubs | no server TLS env vars | `SSL_CERT_FILE=/certs/acheron-ca.crt` for calls to the orchestrator | serve HTTP on ports 8001–8003; register over HTTPS |
-| `tts-grpc-stub` | no server TLS env vars in Compose | `SSL_CERT_FILE=/certs/acheron-ca.crt` for calls to the orchestrator | serves plaintext gRPC; registers over HTTPS |
+| `tts-grpc-stub` (historical name) | no server TLS env vars in Compose | `SSL_CERT_FILE=/certs/acheron-ca.crt` for calls to the orchestrator | serves an HTTP worker edge on port 9002; registers over HTTPS |
 | `dashboard` | — | `SSL_CERT_FILE=/certs/acheron-ca.crt` for its orchestrator client | serves plaintext HTTP on port 8080 |
 
-The local stubs advertise their existing `http://host:port` worker endpoints; only their client connection to the HTTPS orchestrator is TLS-protected. The standalone TLS integration fixture can still enable server TLS on HTTP and gRPC stubs with their per-service certificates.
+The local stubs advertise their existing `http://host:port` worker endpoints; only their client connection to the HTTPS orchestrator is TLS-protected. A separately deployed service that instantiates an HTTP or gRPC server can opt into server TLS with its per-service certificate; the current Compose and integration fixtures use HTTP worker edges.
 
 **Orchestrator's view.** The orchestrator reads the worker endpoint from each registration payload. Compose local stubs advertise HTTP endpoints, while the integration TLS fixture advertises HTTPS endpoints; the existing HTTP transport passes the selected URL scheme to httpx. The gRPC client reads `ACHERON_TLS_CA_FILE` and verifies the CA when configured.
 
@@ -176,7 +159,7 @@ test:
   - "import os, ssl, urllib.request; ctx = ssl.create_default_context(cafile=os.environ.get('SSL_CERT_FILE')); urllib.request.urlopen('https://localhost:8000/health', context=ctx).read()"
 ```
 
-The dashboard and local worker healthchecks remain plain HTTP (`http://localhost:<port>/health`), as does the gRPC stub's HTTP sidecar healthcheck on port 9002. Compose therefore matches the current stack: orchestrator HTTPS, local worker/dashboard HTTP, and TLS on worker-to-orchestrator client connections.
+The dashboard and local worker healthchecks remain plain HTTP (`http://localhost:<port>/health`). The service named `tts-grpc-stub` uses the same FastAPI/Uvicorn HTTP worker edge on port 9002, so its Docker healthcheck is a direct `http://localhost:9002/health` request; there is no HTTP sidecar or gRPC listener in the current Compose service. Compose therefore matches the current stack: orchestrator HTTPS, local worker/dashboard HTTP, and TLS on worker-to-orchestrator client connections.
 
 **Opt-in.** The shared service implementation supports TLS when both server certificate variables are set. Compose sets those variables only for the orchestrator; a deployer can configure additional service listeners with externally managed SAN-correct certificates without changing application code.
 
@@ -197,7 +180,7 @@ The dashboard and local worker healthchecks remain plain HTTP (`http://localhost
 >
 > **Reverse proxy (optional).** Acheron doesn't ship a proxy. To put nginx, Caddy, or anything else in front, point it at the orchestrator (HTTPS) and dashboard (HTTP) and terminate TLS there. Acheron's `ACHERON_TLS_*` env vars are independent of any proxy you add.
 >
-> **Disabling TLS.** Leave `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` unset. All services fall back to HTTP. Useful for local dev without certs.
+> **Disabling TLS.** Leave `ACHERON_TLS_CERT_FILE` and `ACHERON_TLS_KEY_FILE` unset for a service that should retain its existing listener protocol. In Compose, the orchestrator remains HTTPS while local worker edges and the dashboard remain HTTP; the worker clients still use their configured HTTPS orchestrator URL when registering. Useful for local dev without certs on the service being configured.
 
 **Master spec note.** One paragraph added to `docs/superpowers/specs/architecture.md`'s Production Hardening section, plus a status-table update:
 
@@ -224,12 +207,11 @@ The dashboard and local worker healthchecks remain plain HTTP (`http://localhost
 - A test `ssl.SSLContext` with the cert chain + key successfully completes a handshake against a loopback client that trusts the CA
 
 **Integration tests** (`tests/integration/test_tls.py`):
-- Spins up the orchestrator + one HTTP stub + one gRPC stub with TLS env vars set, mounts `certs/` from a session-scoped fixture that runs `generate_dev_certs.py`
+- Spins up the orchestrator + two HTTP worker-edge stubs (including the historically named `tts-grpc-stub`) with TLS env vars set, mounts `certs/` from a session-scoped fixture that runs `generate_dev_certs.py`
 - Verifies:
-  - Orchestrator's `/health` returns 200 over HTTPS
-  - Orchestrator can register a worker over HTTPS (worker → orchestrator direction)
-  - Orchestrator can dispatch a job to a gRPC worker over TLS (orchestrator → worker direction)
-  - The gRPC handshake completes with hostname verification on
+  - Orchestrator's `/health` and `/version` return 200 over HTTPS
+  - Both HTTP worker edges, including the historically named `tts-grpc-stub`, register over HTTPS (worker → orchestrator direction)
+  - Certificate replacement and admin reload preserve the orchestrator PID, healthy API, and registered worker connectivity
 
 **Healthcheck script test** (`tests/shell/test_healthcheck.py`):
 - Runs the healthcheck Python one-liner against a `pytest-httpserver` instance
