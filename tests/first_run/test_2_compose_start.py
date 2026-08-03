@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import cast
@@ -231,8 +232,13 @@ def test_step_2_just_certs_rejects_shell_expression_without_execution(
 
 def _run_orchestrator_startup(project: FirstRunProject) -> subprocess.CompletedProcess[str]:
     # This negative-path probe must not tear down the session-scoped healthy
-    # stack used by test_step_3_first_run_success_criteria.
-    gate_environment = project.env | {"COMPOSE_PROJECT_NAME": f"{project.compose_project}-dependency-gate"}
+    # stack used by test_step_3_first_run_success_criteria or claim its host ports.
+    override = project.checkout / "dependency-gate.override.yml"
+    override.write_text("services:\n  redis:\n    ports: []\n  orchestrator:\n    ports: []\n", encoding="utf-8")
+    gate_environment = project.env | {
+        "COMPOSE_PROJECT_NAME": f"{project.compose_project}-dependency-gate",
+        "COMPOSE_FILE": os.pathsep.join((str(project.checkout / "docker-compose.yml"), str(override))),
+    }
     try:
         return subprocess.run(
             [
@@ -261,16 +267,23 @@ def _run_orchestrator_startup(project: FirstRunProject) -> subprocess.CompletedP
             text=True,
             timeout=60,
         )
+        override.unlink(missing_ok=True)
 
 
 def test_step_2_dependency_gate_uses_an_isolated_compose_project(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls: list[tuple[list[str], str]] = []
+    calls: list[tuple[list[str], str, str]] = []
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         environment = cast("dict[str, str]", kwargs["env"])
-        calls.append((command, environment["COMPOSE_PROJECT_NAME"]))
+        calls.append(
+            (
+                command,
+                environment["COMPOSE_PROJECT_NAME"],
+                environment["COMPOSE_FILE"],
+            )
+        )
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -284,11 +297,12 @@ def test_step_2_dependency_gate_uses_an_isolated_compose_project(
 
     _run_orchestrator_startup(project)
 
-    assert [command[:3] for command, _ in calls] == [
+    assert [command[:3] for command, _, _ in calls] == [
         ["docker", "compose", "up"],
         ["docker", "compose", "down"],
     ]
-    assert {project_name for _, project_name in calls} == {"first-run-dependency-gate"}
+    assert {project_name for _, project_name, _ in calls} == {"first-run-dependency-gate"}
+    assert all("dependency-gate.override.yml" in compose_file for _, _, compose_file in calls)
 
 
 def test_step_2_compose_dependency_gate_blocks_orchestrator_startup(
