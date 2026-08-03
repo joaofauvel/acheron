@@ -28,6 +28,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/dist/*.whl ./
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl \
     && python -m nltk.downloader -d /usr/local/share/nltk_data punkt_tab
