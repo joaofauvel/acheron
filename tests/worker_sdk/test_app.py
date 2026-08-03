@@ -76,6 +76,7 @@ class TestCreateWorkerApp:
         assert "/health" in paths
         assert "/capabilities" in paths
         assert "/execute" in paths
+        assert "/auth/check" in paths
 
     def test_factory_picks_up_new_edge_routes_automatically(self) -> None:
         """Regression for CORR-015: a new route added to EdgeApp's router

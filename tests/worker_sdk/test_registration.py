@@ -1,11 +1,14 @@
 """Tests for Orchestrator self-registration."""
 
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
 
 from acheron.core.models import WorkerCapabilities, WorkerType
 from acheron.worker_sdk.registration import register_with_orchestrator
+from acheron.worker_sdk.token_auth import EnvironmentOrFileTokenProvider
 
 
 def _caps() -> WorkerCapabilities:
@@ -60,6 +63,43 @@ class TestRegisterWithOrchestrator:
         assert "tts" in body
         headers = route.calls.last.request.headers
         assert headers["authorization"] == "Bearer tok"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_reads_latest_provider_token_on_each_retry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        token_file = tmp_path / ".registration_token"
+        token_file.write_text("first-token", encoding="utf-8")
+        provider = EnvironmentOrFileTokenProvider(None, token_file)
+        route = respx.post("http://orch:8000/workers")
+
+        calls = 0
+
+        def _replace_token(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                token_file.write_text("second-token", encoding="utf-8")
+                return httpx.Response(503)
+            return httpx.Response(201, json={})
+
+        route.mock(side_effect=_replace_token)
+        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        async with httpx.AsyncClient() as client:
+            await register_with_orchestrator(
+                client=client,
+                orchestrator_url="http://orch:8000",
+                token_provider=provider,
+                worker_id="w",
+                endpoint="http://w:8001",
+                transport="http",
+                capabilities=_caps(),
+                retry_delay=0.0,
+            )
+        assert route.call_count == 2
+        assert route.calls[0].request.headers["authorization"] == "Bearer first-token"
+        assert route.calls[1].request.headers["authorization"] == "Bearer second-token"
 
     @respx.mock
     @pytest.mark.asyncio

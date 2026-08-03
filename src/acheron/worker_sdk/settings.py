@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from pathlib import Path  # noqa: TC003 - Pydantic resolves this annotation at runtime
 from typing import Any, Literal
 
 from pydantic import AliasChoices, Field, model_validator
@@ -16,6 +17,7 @@ from pydantic_settings import (
 ENV_ONLY_FIELDS: frozenset[str] = frozenset(
     {
         "registration_token",
+        "registration_token_file",
         "runpod_api_key",
         "runpod_endpoint_id",
     }
@@ -29,6 +31,7 @@ class WorkerSettings(BaseSettings):
     orchestrator_url: str
 
     registration_token: str | None = None
+    registration_token_file: Path | None = None
     runpod_api_key: str | None = None
     runpod_endpoint_id: str | None = None
 

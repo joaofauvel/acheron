@@ -21,6 +21,7 @@ from acheron.worker_sdk.pricing import (
     ZeroPrice,
 )
 from acheron.worker_sdk.registration import register_with_orchestrator
+from acheron.worker_sdk.token_auth import EnvironmentOrFileTokenProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -93,18 +94,22 @@ def create_worker_app(
     """
     caps = handler.capabilities()
     price_source = _build_price_source(settings)
+    token_provider = EnvironmentOrFileTokenProvider(
+        settings.registration_token,
+        settings.registration_token_file,
+    )
     inner = EdgeApp(
         handler=handler,
         capabilities=caps,
         price_source=price_source,
-        registration_token=settings.registration_token,
+        token_provider=token_provider,
         allow_unauthenticated_execute=allow_unauthenticated_execute or disable_registration,
     )
 
     async def _register() -> None:
         endpoint = _endpoint_url(settings)
         orchestrator_scheme = urlsplit(settings.orchestrator_url).scheme.casefold()
-        if orchestrator_scheme == "http" and settings.registration_token and not _allow_insecure():
+        if orchestrator_scheme == "http" and token_provider.current() and not _allow_insecure():
             raise RuntimeError(
                 "Refusing to register a bearer-authenticated worker over plaintext; "
                 "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
@@ -113,7 +118,7 @@ def create_worker_app(
             await register_with_orchestrator(
                 client=client,
                 orchestrator_url=settings.orchestrator_url,
-                token=settings.registration_token,
+                token_provider=token_provider,
                 worker_id=settings.worker_id,
                 endpoint=endpoint,
                 transport="http",

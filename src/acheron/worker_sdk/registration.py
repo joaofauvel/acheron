@@ -11,6 +11,7 @@ import httpx
 
 from acheron.tls import _allow_insecure
 from acheron.worker_sdk._caps import caps_to_dict
+from acheron.worker_sdk.token_auth import EnvironmentOrFileTokenProvider, RegistrationTokenProvider
 
 if TYPE_CHECKING:
     from acheron.core.models import WorkerCapabilities
@@ -24,7 +25,8 @@ async def register_with_orchestrator(  # noqa: PLR0913
     *,
     client: httpx.AsyncClient,
     orchestrator_url: str,
-    token: str | None,
+    token_provider: RegistrationTokenProvider | None = None,
+    token: str | None = None,
     worker_id: str,
     endpoint: str,
     transport: str,
@@ -42,15 +44,7 @@ async def register_with_orchestrator(  # noqa: PLR0913
     point; callers compose each field from a ``WorkerSettings`` instance.
     """
     parsed_url = urlparse(orchestrator_url)
-    if token and parsed_url.scheme.casefold() == "http" and not _allow_insecure():
-        raise ValueError(
-            "Refusing bearer-authenticated worker registration over plaintext; "
-            "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
-        )
-
-    headers: dict[str, str] = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    provider = token_provider or EnvironmentOrFileTokenProvider(token, None)
 
     payload = {
         "worker_id": worker_id,
@@ -62,6 +56,15 @@ async def register_with_orchestrator(  # noqa: PLR0913
     url = f"{orchestrator_url.rstrip('/')}/workers"
     attempt = 0
     while True:
+        current_token = provider.current()
+        if current_token and parsed_url.scheme.casefold() == "http" and not _allow_insecure():
+            raise ValueError(
+                "Refusing bearer-authenticated worker registration over plaintext; "
+                "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
+            )
+        headers: dict[str, str] = {}
+        if current_token:
+            headers["Authorization"] = f"Bearer {current_token}"
         try:
             resp = await client.post(url, json=payload, headers=headers, timeout=10.0)
             resp.raise_for_status()

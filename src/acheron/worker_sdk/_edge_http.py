@@ -34,6 +34,7 @@ from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, FileArtifact, 
 from acheron.worker_sdk.inputs import Input, StreamInput
 from acheron.worker_sdk.pricing import PriceSource, to_cost_basis
 from acheron.worker_sdk.schemas import ExecuteRequest
+from acheron.worker_sdk.token_auth import EnvironmentOrFileTokenProvider, RegistrationTokenProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -511,32 +512,34 @@ class EdgeApp:
     should ``include_router`` :attr:`router` instead of copying routes.
     """
 
-    def __init__(  # noqa: C901
+    def __init__(  # noqa: C901, PLR0913
         self,
         *,
         handler: WorkerHandler,
         capabilities: WorkerCapabilities,
         price_source: PriceSource | None = None,
         registration_token: str | None = None,
+        token_provider: RegistrationTokenProvider | None = None,
         allow_unauthenticated_execute: bool = False,
     ) -> None:
         self.handler = handler
         self.capabilities = capabilities
         self.price_source = price_source
-        self.registration_token = registration_token
+        self.token_provider = token_provider or EnvironmentOrFileTokenProvider(registration_token, None)
         self.allow_unauthenticated_execute = allow_unauthenticated_execute
 
         async def _verify_bearer(
             authorization: str | None = Header(default=None),
         ) -> None:
-            if self.registration_token is None:
+            current_token = self.token_provider.current()
+            if current_token is None:
                 if self.allow_unauthenticated_execute:
                     return
                 raise HTTPException(status_code=401, detail="Missing registration token")
             if authorization is None:
                 raise HTTPException(status_code=401, detail="Missing Authorization header")
             scheme, _, provided = authorization.partition(" ")
-            if scheme.lower() != "bearer" or not secrets.compare_digest(provided, self.registration_token):
+            if scheme.lower() != "bearer" or not secrets.compare_digest(provided, current_token):
                 raise HTTPException(status_code=401, detail="Invalid registration token")
 
         router = APIRouter()
@@ -548,6 +551,10 @@ class EdgeApp:
         @router.get("/capabilities")
         async def get_capabilities() -> dict[str, JsonValue]:
             return public_caps_to_dict(self.capabilities)
+
+        @router.get("/auth/check", dependencies=[Depends(_verify_bearer)])
+        async def auth_check() -> dict[str, str]:
+            return {"status": "ok"}
 
         @router.post("/execute", dependencies=[Depends(_verify_bearer)])
         async def execute(request: Request) -> Response:

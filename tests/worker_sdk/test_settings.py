@@ -1,5 +1,7 @@
 """Tests for WorkerSettings."""
 
+from pathlib import Path
+
 import pydantic
 import pytest
 
@@ -93,7 +95,7 @@ class TestDefaults:
 class TestEnvOnlyFields:
     @pytest.mark.parametrize(
         "field",
-        ["registration_token", "runpod_api_key", "runpod_endpoint_id"],
+        ["registration_token", "registration_token_file", "runpod_api_key", "runpod_endpoint_id"],
     )
     def test_env_only_field_rejected_by_explicit_construction(self, field: str) -> None:
         with pytest.raises(pydantic.ValidationError, match=field):
@@ -108,9 +110,11 @@ class TestEnvOnlyFields:
         monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
         monkeypatch.setenv("ACHERON_WORKER__RUNPOD_API_KEY", "rk_abc")
         monkeypatch.setenv("ACHERON_WORKER__RUNPOD_ENDPOINT_ID", "i02xupws")
+        monkeypatch.setenv("ACHERON_WORKER__REGISTRATION_TOKEN_FILE", "/data/jobs/.registration_token")
         s = WorkerSettings()  # type: ignore[call-arg]
         assert s.runpod_api_key == "rk_abc"
         assert s.runpod_endpoint_id == "i02xupws"
+        assert s.registration_token_file == Path("/data/jobs/.registration_token")
 
 
 class TestValidation:

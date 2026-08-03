@@ -2,6 +2,7 @@
 
 import dataclasses
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -16,6 +17,7 @@ from acheron.worker_sdk.artifacts import Artifact, BytesArtifact, StreamArtifact
 from acheron.worker_sdk.handler import WorkerHandler
 from acheron.worker_sdk.inputs import Input
 from acheron.worker_sdk.pricing import PriceEstimate
+from acheron.worker_sdk.token_auth import EnvironmentOrFileTokenProvider
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -702,6 +704,57 @@ class TestEdgeExecuteAuth:
             )
         assert r.status_code == 200
         assert h.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_latest_file_token_without_restart(self, tmp_path: Path) -> None:
+        token_file = tmp_path / ".registration_token"
+        token_file.write_text("old-token", encoding="utf-8")
+        h = _Stub()
+        app = EdgeApp(
+            handler=h,
+            capabilities=h.capabilities(),
+            token_provider=EnvironmentOrFileTokenProvider(None, token_file),
+        ).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            first = await c.post(
+                "/execute",
+                headers={"Authorization": "Bearer old-token"},
+                json={"job_id": "j1", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+            token_file.write_text("new-token", encoding="utf-8")
+            old = await c.post(
+                "/execute",
+                headers={"Authorization": "Bearer old-token"},
+                json={"job_id": "j2", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+            new = await c.post(
+                "/execute",
+                headers={"Authorization": "Bearer new-token"},
+                json={"job_id": "j3", "job_type": "tts", "payload": {}, "chapter_id": "ch1"},
+            )
+        assert first.status_code == 200
+        assert old.status_code == 401
+        assert new.status_code == 200
+        assert h.calls == 2
+
+    @pytest.mark.asyncio
+    async def test_auth_check_requires_current_bearer_token(self, tmp_path: Path) -> None:
+        token_file = tmp_path / ".registration_token"
+        token_file.write_text("auth-token", encoding="utf-8")
+        h = _Stub()
+        app = EdgeApp(
+            handler=h,
+            capabilities=h.capabilities(),
+            token_provider=EnvironmentOrFileTokenProvider(None, token_file),
+        ).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            missing = await c.get("/auth/check")
+            valid = await c.get("/auth/check", headers={"Authorization": "Bearer auth-token"})
+        assert missing.status_code == 401
+        assert valid.status_code == 200
+        assert valid.json() == {"status": "ok"}
 
     @pytest.mark.asyncio
     async def test_health_and_capabilities_remain_unauthenticated(self, app_with_token: tuple[FastAPI, _Stub]) -> None:
