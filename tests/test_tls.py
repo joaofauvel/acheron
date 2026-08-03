@@ -424,7 +424,7 @@ class TestGrpcCredentials:
     def test_grpc_channel_sets_receive_bound(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ACHERON_TLS_CA_FILE", raising=False)
         monkeypatch.delenv("SSL_CERT_FILE", raising=False)
-        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "worker")
         with patch("acheron.tls.grpc.aio.insecure_channel", return_value=object()) as factory:
             grpc_channel("worker:9000")
         assert factory.call_args.kwargs["options"] == (("grpc.max_receive_message_length", 64 * 1024 * 1024),)
@@ -433,7 +433,7 @@ class TestGrpcCredentials:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "worker")
         monkeypatch.setenv("SSL_CERT_FILE", "/ambient-system-ca.pem")
         with (
             patch("acheron.tls.grpc.aio.insecure_channel", return_value=object()) as insecure,

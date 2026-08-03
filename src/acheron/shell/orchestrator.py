@@ -346,7 +346,7 @@ class WorkerRotationCoordinator:
     async def _default_auth_check(client: httpx.AsyncClient, worker: RegisteredWorker, candidate: str) -> bool:
         """Verify a worker edge through its authenticated health endpoint."""
         url = f"{worker.endpoint.rstrip('/')}/auth/check"
-        if urlsplit(url).scheme.casefold() == "http" and not _allow_insecure():
+        if urlsplit(url).scheme.casefold() == "http" and not _allow_insecure(url):
             raise InsecureBearerTransportError(
                 "Refusing to send a bearer token over plaintext",
                 remediation="Configure HTTPS or explicitly opt into insecure local transport",

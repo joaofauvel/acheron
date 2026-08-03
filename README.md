@@ -357,7 +357,7 @@ For certificate operations, set `ACHERON_ADMIN_TOKEN` and run `acheron certs sta
 
 **Client-side trust.** Set `ACHERON_TLS_CA_FILE` to the CA bundle; `src/acheron/tls.py:253-261` falls back to the standard `SSL_CERT_FILE` (honoured by httpx and the Python `ssl` stdlib) if the Acheron-specific var is unset. The CLI additionally falls back to `./certs/acheron-ca.crt` in the current directory when present (`src/acheron/cli.py:65-79`), so local dev just works without any trust-store configuration.
 
-**Disabling TLS.** Unset the cert/key env vars. To silence the WARNING when plain HTTP is intentional, set `ACHERON_ALLOW_INSECURE=1` (`src/acheron/tls.py:204-239`). The same flag silences the analogous WARNING emitted by `grpc_channel()` when `ACHERON_TLS_CA_FILE` is unset (`src/acheron/tls.py:279-298`).
+**Disabling TLS.** Unset the cert/key env vars. To silence the server WARNING when plain HTTP is intentional, set `ACHERON_ALLOW_INSECURE=1` (`src/acheron/tls.py:204-239`). Bearer-authenticated HTTP and gRPC clients require the target hostname in `ACHERON_INSECURE_LOCAL_EDGE_HOSTS`; the server-only flag never authorizes credentials to remote plaintext endpoints.
 
 **Reverse proxy (optional).** Acheron does not ship a proxy. If you want to terminate TLS at a reverse proxy instead of in-process, point nginx, Caddy, or anything else at the orchestrator (HTTPS) and the dashboard (HTTP), and terminate TLS there. The `ACHERON_TLS_*` env vars are independent of any proxy you add — leaving them unset serves plain HTTP from Acheron itself, which is fine when the proxy handles TLS in front.
 
@@ -404,7 +404,8 @@ The authoritative table of every Acheron environment variable. Grouped by surfac
 | Orchestrator / TLS | `ACHERON_TLS_CERT_FILE` | (unset) | Server: path to PEM-encoded server cert. Set with `ACHERON_TLS_KEY_FILE` to enable HTTPS. |
 | Orchestrator / TLS | `ACHERON_TLS_KEY_FILE` | (unset) | Server: path to PEM-encoded server key. Set with `ACHERON_TLS_CERT_FILE` to enable HTTPS. |
 | Orchestrator / TLS | `ACHERON_TLS_CA_FILE` | (unset) | gRPC and CLI clients: path to PEM-encoded CA bundle to verify peer certs. Falls back to `SSL_CERT_FILE`, then `./certs/acheron-ca.crt` in the CLI's CWD. |
-| Orchestrator / TLS | `ACHERON_ALLOW_INSECURE` | (unset) | Set to `1` to silence the plain-HTTP / insecure-gRPC WARNINGs emitted by `tls.py` when TLS env vars are unset. |
+| Orchestrator / TLS | `ACHERON_INSECURE_LOCAL_EDGE_HOSTS` | (unset) | Comma-separated local edge hostnames allowed for bearer-authenticated plaintext HTTP/gRPC during deliberate development use. |
+| Orchestrator / TLS | `ACHERON_ALLOW_INSECURE` | (unset) | Set to `1` only to silence the plain-HTTP server warning; it never authorizes bearer transport. |
 | Build identity | `ACHERON_BUILD_SHA` | (unset) | Optional source revision identity returned by `GET /version`; metadata only. |
 | Build identity | `ACHERON_BUILD_TIME` | (unset) | Optional ISO 8601 build timestamp returned by `GET /version`; metadata only. |
 | Build identity | `ACHERON_BUILD_BRANCH` | (unset) | Optional source branch identity returned by `GET /version`; metadata only. |

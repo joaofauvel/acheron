@@ -202,13 +202,18 @@ class CertificateManager:
                 _LOG.exception("Certificate monitoring failed for %s", self.name)
 
 
-def _allow_insecure(url: str | None = None) -> bool:
-    """Allow plaintext only for explicitly listed local edge hosts."""
+def _allow_insecure(url: str) -> bool:
+    """Allow bearer transport only for explicitly listed local edge hosts."""
     hosts = os.environ.get("ACHERON_INSECURE_LOCAL_EDGE_HOSTS")
-    if url is not None and hosts is not None:
-        hostname = urlsplit(url).hostname
-        allowed = {item.strip().casefold() for item in hosts.split(",") if item.strip()}
-        return hostname is not None and hostname.casefold() in allowed
+    if hosts is None:
+        return False
+    hostname = urlsplit(url).hostname
+    allowed = {item.strip().casefold() for item in hosts.split(",") if item.strip()}
+    return hostname is not None and hostname.casefold() in allowed
+
+
+def _allow_insecure_server_warning() -> bool:
+    """Silence warnings for intentionally plaintext local service listeners."""
     return os.environ.get("ACHERON_ALLOW_INSECURE") == "1"
 
 
@@ -236,7 +241,7 @@ def uvicorn_ssl_kwargs() -> dict[str, str]:
     """
     pair = _require_pair()
     if pair is None:
-        if not _allow_insecure():
+        if not _allow_insecure_server_warning():
             _LOG.warning(
                 "ACHERON_TLS_CERT_FILE and ACHERON_TLS_KEY_FILE are unset — serving plain HTTP. "
                 "Set both to enable HTTPS, or set ACHERON_ALLOW_INSECURE=1 to silence this warning."
@@ -283,13 +288,20 @@ def grpc_channel_credentials() -> grpc.ChannelCredentials | None:
     return grpc.ssl_channel_credentials(root_certificates=ca_pem)
 
 
+def _allow_insecure_target(target: str) -> bool:
+    """Apply the local-edge allowlist to a gRPC target authority."""
+    target_url = target if "://" in target else f"grpc://{target}"
+    return _allow_insecure(target_url)
+
+
 def grpc_channel(target: str, *, require_tls: bool = False) -> grpc.aio.Channel:
     """Return a gRPC channel, requiring CA verification for secure dispatch.
 
-    ``require_tls`` is used for production worker dispatch. Local tests and
-    explicitly opted-in development use ``ACHERON_ALLOW_INSECURE=1``.
+    ``require_tls`` is used for authenticated worker dispatch. Plaintext is
+    permitted only when the target hostname is in
+    ``ACHERON_INSECURE_LOCAL_EDGE_HOSTS``.
     """
-    if _allow_insecure():
+    if _allow_insecure_target(target):
         return grpc.aio.insecure_channel(
             target,
             options=(("grpc.max_receive_message_length", _GRPC_MAX_RECEIVE_MESSAGE_BYTES),),
@@ -301,8 +313,8 @@ def grpc_channel(target: str, *, require_tls: bool = False) -> grpc.aio.Channel:
             raise RuntimeError("ACHERON_TLS_CA_FILE is required for authenticated gRPC dispatch")
         _LOG.warning(
             "ACHERON_TLS_CA_FILE is unset — opening insecure gRPC channel to %s. "
-            "Set ACHERON_TLS_CA_FILE to enable verification, or "
-            "set ACHERON_ALLOW_INSECURE=1 for local development.",
+            "Set ACHERON_TLS_CA_FILE to enable verification, or add the target "
+            "to ACHERON_INSECURE_LOCAL_EDGE_HOSTS for local development.",
             target,
         )
         return grpc.aio.insecure_channel(

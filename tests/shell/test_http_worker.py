@@ -118,6 +118,7 @@ class TestHttpWorkerHealth:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+        monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "worker")
         tokens = iter(("first-token", "rotated-token"))
         seen: list[str | None] = []
 

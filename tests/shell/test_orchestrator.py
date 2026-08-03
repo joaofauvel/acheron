@@ -2521,6 +2521,7 @@ async def test_worker_rotation_coordinator_refuses_plaintext_bearer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+    monkeypatch.delenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", raising=False)
     requests: list[tuple[str, dict[str, str]]] = []
     monkeypatch.setattr(
         "acheron.shell.orchestrator.httpx.AsyncClient",
@@ -2534,6 +2535,46 @@ async def test_worker_rotation_coordinator_refuses_plaintext_bearer(
     assert not result.success
     assert result.remediation == "Configure HTTPS or explicitly opt into insecure local transport"
     assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_does_not_use_global_insecure_for_remote_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+    monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "local-edge")
+    requests: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "acheron.shell.orchestrator.httpx.AsyncClient",
+        lambda **kwargs: _MockAsyncClient(requests, **kwargs),
+    )
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "http://remote.example", "http", tts_caps())
+
+    result = await WorkerRotationCoordinator(registry).rollout("candidate-token")
+
+    assert not result.success
+    assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_allows_explicit_local_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+    monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "local-edge")
+    requests: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "acheron.shell.orchestrator.httpx.AsyncClient",
+        lambda **kwargs: _MockAsyncClient(requests, **kwargs),
+    )
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "http://local-edge", "http", tts_caps())
+
+    result = await WorkerRotationCoordinator(registry).rollout("candidate-token")
+
+    assert result.success
+    assert requests[0][0] == "http://local-edge/auth/check"
 
 
 @pytest.mark.asyncio

@@ -62,10 +62,7 @@ def default_worker_factory(  # noqa: PLR0913
         case "grpc":
             channel = grpc_channel(
                 registered.endpoint,
-                require_tls=(
-                    (registration_token is not None or registration_token_provider is not None)
-                    and not registered.endpoint.startswith(("localhost:", "127.0.0.1:", "[::1]:"))
-                ),
+                require_tls=registration_token is not None or registration_token_provider is not None,
             )
             return GrpcWorker(
                 channel,

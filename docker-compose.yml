@@ -56,7 +56,6 @@ services:
       ACHERON_STORE_BACKEND: redis
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_ADMIN_TOKEN: ${ACHERON_ADMIN_TOKEN:-}
-      ACHERON_ALLOW_INSECURE: "1"
       ACHERON_INSECURE_LOCAL_EDGE_HOSTS: localhost,127.0.0.1,tts-local-stub,asr-local-stub,translation-local-stub,tts-runpod-stub,translation-runpod-stub,tts-grpc-stub,qwen3tts-edge,granite-speech-edge,translategemma-edge,orchestrator
       ACHERON_DATA_DIR: /data/jobs
       ACHERON_TLS_CERT_FILE: /certs/orchestrator.crt

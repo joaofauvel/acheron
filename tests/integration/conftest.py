@@ -307,6 +307,7 @@ async def wired_orchestrator(
     monkeypatch.setenv("ACHERON_ORCHESTRATOR__DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
     monkeypatch.setenv("ACHERON_INSECURE_HTTP_WORKER_IDS", "tts-http,trans-http")
+    monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "localhost,127.0.0.1")
 
     reg = InMemoryWorkerStore()
 

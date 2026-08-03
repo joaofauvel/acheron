@@ -44,7 +44,7 @@ class TestRegisterWithOrchestrator:
     @respx.mock
     @pytest.mark.asyncio
     async def test_posts_payload_and_returns_on_201(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "orch")
         route = respx.post("http://orch:8000/workers").mock(return_value=httpx.Response(201, json={}))
         async with httpx.AsyncClient() as client:
             await register_with_orchestrator(
@@ -85,7 +85,7 @@ class TestRegisterWithOrchestrator:
             return httpx.Response(201, json={})
 
         route.mock(side_effect=_replace_token)
-        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "orch")
         async with httpx.AsyncClient() as client:
             await register_with_orchestrator(
                 client=client,

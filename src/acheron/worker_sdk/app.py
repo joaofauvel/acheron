@@ -109,10 +109,14 @@ def create_worker_app(
     async def _register() -> None:
         endpoint = _endpoint_url(settings)
         orchestrator_scheme = urlsplit(settings.orchestrator_url).scheme.casefold()
-        if orchestrator_scheme == "http" and token_provider.current() and not _allow_insecure():
+        if (
+            orchestrator_scheme == "http"
+            and token_provider.current()
+            and not _allow_insecure(settings.orchestrator_url)
+        ):
             raise RuntimeError(
                 "Refusing to register a bearer-authenticated worker over plaintext; "
-                "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
+                "add the orchestrator hostname to ACHERON_INSECURE_LOCAL_EDGE_HOSTS for deliberate local operation"
             )
         async with httpx.AsyncClient() as client:
             await register_with_orchestrator(

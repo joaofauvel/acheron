@@ -57,10 +57,10 @@ async def register_with_orchestrator(  # noqa: PLR0913
     attempt = 0
     while True:
         current_token = provider.current()
-        if current_token and parsed_url.scheme.casefold() == "http" and not _allow_insecure():
+        if current_token and parsed_url.scheme.casefold() == "http" and not _allow_insecure(orchestrator_url):
             raise ValueError(
                 "Refusing bearer-authenticated worker registration over plaintext; "
-                "set ACHERON_ALLOW_INSECURE=1 only for deliberate local operation"
+                "add the orchestrator hostname to ACHERON_INSECURE_LOCAL_EDGE_HOSTS for deliberate local operation"
             )
         headers: dict[str, str] = {}
         if current_token:
