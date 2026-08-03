@@ -288,7 +288,7 @@ fixed_in: [7c16960, 03deac0, 72dcbb8, e5f338a]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: a8af4e66292ae7c513fa0105ca25be070c0a2c71f2c697b331ef88bedcbfa5e4
+  tree: 97cade64ab8c7c20e1afc09193fb9583a214a5c69757f049429126a7bb7cc38f
   date: "2026-08-02"
 verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 ---
@@ -431,7 +431,7 @@ fixed_in: [d4673bb, 8c4d77e]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: a8af4e66292ae7c513fa0105ca25be070c0a2c71f2c697b331ef88bedcbfa5e4
+  tree: 97cade64ab8c7c20e1afc09193fb9583a214a5c69757f049429126a7bb7cc38f
   date: "2026-08-03"
 verified_by: "harness:first-run-file-backed-token-rotation+shell-restart"
 feedback_ref: "TBD-pagerduty"
