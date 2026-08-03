@@ -10,7 +10,7 @@ from stubs._sdk_base import StubASRHandler
 def main() -> None:
     settings = load_settings()
     handler = StubASRHandler(settings)
-    app = create_worker_app(handler=handler, settings=settings, allow_unauthenticated_execute=True)
+    app = create_worker_app(handler=handler, settings=settings, allow_unauthenticated_execute=False)
     uvicorn.run(app, host=settings.listen_host, port=settings.listen_port)
 
 

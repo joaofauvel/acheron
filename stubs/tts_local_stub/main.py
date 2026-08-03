@@ -15,7 +15,7 @@ def main() -> None:
         handler=handler,
         settings=settings,
         disable_registration=os.environ.get("ACHERON_DISABLE_REGISTRATION") == "1",
-        allow_unauthenticated_execute=True,
+        allow_unauthenticated_execute=False,
     )
     run_worker_server(app, host=settings.listen_host, port=settings.listen_port)
 

@@ -40,6 +40,33 @@ def test_step_3_first_run_auto_mints_and_registers_all_workers(file_backed_compo
     assert "ACHERON_REGISTRATION_TOKEN is unset" not in file_backed_compose_stack.log_text()
 
 
+def test_step_3_file_backed_token_authenticates_worker_execute(file_backed_compose_stack: ComposeStack) -> None:
+    token = read_file_backed_token(file_backed_compose_stack.project)
+    body = {
+        "job_id": "file-backed-token-probe",
+        "job_type": "tts",
+        "payload": {"chunks": [{"chapter_id": "probe", "sequence_id": 0}]},
+        "chapter_id": "probe",
+        "sequence_ids": [0],
+    }
+    current = file_backed_compose_stack.request(
+        "http://localhost:8001/execute",
+        method="POST",
+        body=body,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert current.status == 200, f"step 3: current token was rejected: {current.body.decode()}"
+    wrong = file_backed_compose_stack.request(
+        "http://localhost:8001/execute",
+        method="POST",
+        body=body,
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+    assert wrong.status == 401, "step 3: wrong token was accepted by worker /execute"
+    output = current.body + wrong.body + file_backed_compose_stack.log_text().encode()
+    assert token.encode() not in output, "step 3: generated token appeared in worker output"
+
+
 def test_step_3_first_run_success_criteria(file_backed_compose_stack: ComposeStack) -> None:
     token = read_file_backed_token(file_backed_compose_stack.project)
     auth = {"Authorization": f"Bearer {token}"}

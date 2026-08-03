@@ -74,13 +74,24 @@ def test_step_2_compose_config_allows_unset_registration_token(prepared_project:
 
 
 def test_step_2_compose_mounts_shared_token_volume_for_workers(prepared_project: FirstRunProject) -> None:
-    services = _compose_config(prepared_project, "sim", "runpod-tts", without_registration_token=True)
+    services = _compose_config(
+        prepared_project,
+        "sim",
+        "runpod-tts",
+        "runpod-asr",
+        "runpod-translation",
+        without_registration_token=True,
+    )
     worker_services = (
         "tts-local-stub",
         "asr-local-stub",
         "translation-local-stub",
         "qwen3tts-edge",
+        "granite-speech-edge",
+        "translategemma-edge",
         "tts-runpod-stub",
+        "translation-runpod-stub",
+        "tts-grpc-stub",
     )
     for service_name in worker_services:
         service = services[service_name]

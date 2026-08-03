@@ -259,7 +259,7 @@ def read_file_backed_token(project: FirstRunProject) -> str:
     return token
 
 
-def stop_compose_best_effort(stack: ComposeStack) -> None:
+def stop_compose_best_effort(stack: ComposeStack, *, remove_certs: bool = True) -> None:
     """Stop Compose and remove its resources without masking test failures."""
     try:
         try:
@@ -272,30 +272,31 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
                 stack.process.wait(timeout=10)
         with contextlib.suppress(OSError, ValueError):
             stack.log_file.close()
-        # Remove root-owned bind-mounted certificate files before tearing down
-        # the Compose project. Running `compose run` after `down` recreates the
-        # project network and leaves it behind.
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "run",
-                    "--rm",
-                    "--no-deps",
-                    "--entrypoint",
-                    "sh",
-                    "certs-init",
-                    "-c",
-                    "rm -rf /certs/*",
-                ],
-                cwd=stack.project.checkout,
-                env=stack.project.env,
-                check=False,
-                timeout=60,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+        if remove_certs:
+            # Remove root-owned bind-mounted certificate files before tearing down
+            # the Compose project. Running `compose run` after `down` recreates the
+            # project network and leaves it behind.
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                subprocess.run(
+                    [
+                        "docker",
+                        "compose",
+                        "run",
+                        "--rm",
+                        "--no-deps",
+                        "--entrypoint",
+                        "sh",
+                        "certs-init",
+                        "-c",
+                        "rm -rf /certs/*",
+                    ],
+                    cwd=stack.project.checkout,
+                    env=stack.project.env,
+                    check=False,
+                    timeout=60,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
                 ["docker", "compose", "down", "--volumes", "--remove-orphans"],
@@ -306,6 +307,7 @@ def stop_compose_best_effort(stack: ComposeStack) -> None:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        shutil.rmtree(stack.project.checkout / "certs", ignore_errors=True)
+        if remove_certs:
+            shutil.rmtree(stack.project.checkout / "certs", ignore_errors=True)
     except OSError, subprocess.SubprocessError:
         pass

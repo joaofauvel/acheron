@@ -32,7 +32,7 @@ def file_backed_project(tmp_path_factory: pytest.TempPathFactory) -> FirstRunPro
     return prepare_project(repo_root, destination, file_backed_token=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
     """Start one Compose stack for the selected journey steps."""
     stack = launch_compose(prepared_project)
@@ -44,7 +44,7 @@ def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
             raise AssertionError(message) from exc
         yield stack
     finally:
-        stop_compose_best_effort(stack)
+        stop_compose_best_effort(stack, remove_certs=False)
 
 
 @pytest.fixture(scope="session")
