@@ -1,7 +1,9 @@
 """Tests for administrative authorization and contract seams."""
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -11,13 +13,13 @@ from httpx import ASGITransport, AsyncClient
 from acheron.core.models import EpubRequest, ExecutorStrategy, PlanStatus
 from acheron.shell.api.admin_audit import execute_admin_action
 from acheron.shell.api.deps import AdminTokenDep
-from acheron.shell.api.schemas import CleanupRequest, ReapStaleRequest
+from acheron.shell.api.schemas import CleanupRequest, ReapStaleRequest, TokenRotateRequest
 from acheron.shell.cache import PlanCache
 from acheron.shell.job_store import AdminActionAudit, JobQuery, TrackedJob
 from acheron.shell.orchestrator import Orchestrator
 from acheron.shell.retention import CleanupFailure, CleanupReport
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
-from acheron.shell.token_auth import RolloutResult, TokenRotationError
+from acheron.shell.token_auth import RegistrationTokenStore, RolloutResult, TokenRotationError
 from acheron.tls import CertificateError, CertificateStatus
 
 
@@ -78,6 +80,124 @@ async def test_token_rotate_audits_success_once(client: AsyncClient, monkeypatch
     assert audit.action == "token/rotate"
     assert audit.request_id == "token-rotate"
     assert audit.reason == "scheduled rotation"
+
+
+def test_token_rotate_reason_rejects_whitespace() -> None:
+    with pytest.raises(ValueError, match="non-whitespace"):
+        TokenRotateRequest(reason=" \n\t ")
+    assert TokenRotateRequest(reason="  scheduled rotation  ").reason == "scheduled rotation"
+
+
+@pytest.mark.asyncio
+async def test_token_status_does_not_block_inflight_rotation(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+    rollout_started = asyncio.Event()
+    release_rollout = asyncio.Event()
+
+    async def slow_rollout(_candidate: str) -> RolloutResult:
+        rollout_started.set()
+        await release_rollout.wait()
+        return RolloutResult(success=True, worker_ids=("worker-a",))
+
+    monkeypatch.setattr(orch._worker_rotation_coordinator, "rollout", slow_rollout)  # noqa: SLF001
+    headers = {"Authorization": "Bearer " + "a" * 32}
+    rotation = asyncio.create_task(client.post("/admin/token/rotate", json={"reason": "heartbeat"}, headers=headers))
+    await asyncio.wait_for(rollout_started.wait(), timeout=1)
+    status = asyncio.create_task(client.get("/admin/token/status", headers=headers))
+    heartbeat = asyncio.Event()
+
+    async def beat() -> None:
+        await asyncio.sleep(0)
+        heartbeat.set()
+
+    await asyncio.wait_for(beat(), timeout=1)
+    assert heartbeat.is_set()
+    release_rollout.set()
+    status_response, rotation_response = await asyncio.gather(status, rotation)
+    assert status_response.status_code == 200
+    assert rotation_response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_token_status_redacts_untrusted_audit_text(client: AsyncClient) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+    current_token = orch._registration_token_store.read_current()  # noqa: SLF001
+    old_token = "b" * 32
+    audit_path = orch._registration_token_store.audit_path  # noqa: SLF001
+    audit_path.write_text(
+        json.dumps(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "reason": current_token,
+                "old_fingerprint": None,
+                "new_fingerprint": None,
+                "worker_ids": [old_token],
+                "result": "success",
+                "request_id": current_token,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    response = await client.get(
+        "/admin/token/status",
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+    payload = json.dumps(response.json())
+    assert response.status_code == 200
+    assert current_token not in payload
+    assert old_token not in payload
+    assert "[redacted]" in payload
+
+
+@pytest.mark.asyncio
+async def test_token_rotate_rejects_environment_source(client: AsyncClient, tmp_path: Path) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+    store = RegistrationTokenStore(tmp_path / "environment-token")
+    store.load_or_create("e" * 32)
+    orch._registration_token_store = store  # noqa: SLF001
+    response = await client.post(
+        "/admin/token/rotate",
+        json={"reason": "environment mode"},
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["remediation"] == "Update the worker environment and restart workers externally"
+
+
+@pytest.mark.asyncio
+async def test_token_rotate_returns_structured_rollout_failure_from_coordinator(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = _app(client)
+    orch = app.state.orchestrator
+    orch.settings.orchestrator.admin_token = "a" * 32
+
+    async def fail_rollout(_candidate: str) -> RolloutResult:
+        return RolloutResult(
+            success=False,
+            worker_ids=("worker-a",),
+            remediation="Replace unsupported worker transports before retrying",
+        )
+
+    monkeypatch.setattr(orch._worker_rotation_coordinator, "rollout", fail_rollout)  # noqa: SLF001
+    response = await client.post(
+        "/admin/token/rotate",
+        json={"reason": "unsupported fleet"},
+        headers={"Authorization": "Bearer " + "a" * 32},
+    )
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["type"] == "TokenRotationError"
+    assert detail["remediation"] == "Replace unsupported worker transports before retrying"
 
 
 @pytest.mark.asyncio

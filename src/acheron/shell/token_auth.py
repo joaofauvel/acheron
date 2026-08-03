@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import secrets
 import tempfile
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
@@ -25,6 +26,7 @@ _AUDIT_FILE_NAME = ".registration_token.audit.jsonl"
 _METADATA_FILE_NAME = ".registration_token.metadata.json"
 _LOCK_FILE_NAME = ".registration_token.lock"
 _TOKEN_MODE = 0o600
+_TOKEN_LIKE_TEXT = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9])")
 
 
 class TokenStoreError(AcheronError):
@@ -215,7 +217,8 @@ class RegistrationTokenStore:
             return ()
         try:
             with self._file_lock():
-                return tuple(self._read_audits())
+                token = self._read_current_locked()
+                return tuple(self._redact_audit(audit, (token,)) for audit in self._read_audits())
         except TokenStoreError:
             raise
         except OSError as exc:
@@ -605,6 +608,26 @@ class RegistrationTokenStore:
         if self._exception_contains_secret(error, rollback.old_token, candidate):
             raise wrapped from None
         raise wrapped from error
+
+    @classmethod
+    def _redact_audit(cls, audit: RegistrationTokenAudit, secrets_to_hide: tuple[str, ...]) -> RegistrationTokenAudit:
+        return RegistrationTokenAudit(
+            timestamp=audit.timestamp,
+            reason=cls._redact_untrusted_text(audit.reason, secrets_to_hide),
+            old_fingerprint=audit.old_fingerprint,
+            new_fingerprint=audit.new_fingerprint,
+            worker_ids=tuple(cls._redact_untrusted_text(worker_id, secrets_to_hide) for worker_id in audit.worker_ids),
+            result=audit.result,
+            request_id=cls._redact_untrusted_text(audit.request_id, secrets_to_hide),
+        )
+
+    @staticmethod
+    def _redact_untrusted_text(value: str, secrets_to_hide: tuple[str, ...]) -> str:
+        redacted = value
+        for secret in secrets_to_hide:
+            if secret:
+                redacted = redacted.replace(secret, "[redacted]")
+        return _TOKEN_LIKE_TEXT.sub("[redacted]", redacted)
 
     @staticmethod
     def _safe_rollout_remediation(remediation: str | None, old_token: str, candidate: str) -> str:

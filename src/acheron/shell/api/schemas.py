@@ -117,6 +117,16 @@ class TokenRotateRequest(_StrictRequest):
 
     reason: str = Field(min_length=1, max_length=512)
 
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _normalize_reason(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        reason = value.strip()
+        if not reason:
+            raise ValueError("reason must contain non-whitespace text")
+        return reason
+
 
 _MAX_ADMIN_DURATION_SECONDS = 100 * 365 * 24 * 60 * 60
 _MAX_CAPABILITY_METADATA_STRING = 256

@@ -31,7 +31,7 @@ from acheron.shell.api.schemas import (
 
 def test_token_rotate_request_is_strict_and_bounded() -> None:
     assert TokenRotateRequest(reason="scheduled").reason == "scheduled"
-    with pytest.raises(ValidationError, match="at least 1 character"):
+    with pytest.raises(ValidationError, match="non-whitespace"):
         TokenRotateRequest(reason="")
     with pytest.raises(ValidationError, match="at most 512 characters"):
         TokenRotateRequest(reason="x" * 513)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
@@ -143,7 +144,7 @@ async def token_status(
 
     async def operation() -> RegistrationTokenStatusResponse:
         try:
-            return _token_status_response(orch)
+            return await asyncio.to_thread(_token_status_response, orch)
         except TokenStoreError as exc:
             raise _admin_error(exc, status_code=503) from exc
 
@@ -167,7 +168,7 @@ async def token_rotate(
             )
         except TokenStoreError as exc:
             raise _admin_error(exc, status_code=409) from exc
-        history = orch.registration_token_history()
+        history = await asyncio.to_thread(orch.registration_token_history)
         latest = history[-1] if history else None
         rollout = RegistrationTokenRolloutResponse(
             success=True,
