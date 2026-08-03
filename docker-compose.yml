@@ -56,7 +56,7 @@ services:
       ACHERON_STORE_BACKEND: redis
       ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_ADMIN_TOKEN: ${ACHERON_ADMIN_TOKEN:-}
-      ACHERON_INSECURE_LOCAL_EDGE_HOSTS: tts-local-stub,asr-local-stub,translation-local-stub,tts-runpod-stub,translation-runpod-stub,tts-grpc-stub
+      ACHERON_INSECURE_LOCAL_EDGE_HOSTS: tts-local-stub,asr-local-stub,translation-local-stub,tts-runpod-stub,translation-runpod-stub,tts-grpc-stub,qwen3tts-edge,granite-speech-edge,translategemma-edge
       ACHERON_DATA_DIR: /data/jobs
       ACHERON_TLS_CERT_FILE: /certs/orchestrator.crt
       ACHERON_TLS_KEY_FILE: /certs/orchestrator.key
