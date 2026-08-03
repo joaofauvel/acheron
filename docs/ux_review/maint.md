@@ -203,7 +203,7 @@ incident_ref: TBD-pagerduty
 
 **Current state.** The admin endpoint validates the replacement pair, updates the persistent server context, and records an admin action; the CLI uses the admin token and reports the sanitized result. The independent status → replacement → reload → same-PID → healthy API → HTTP worker-connectivity journey passed; plain HTTP remains available when TLS is unset.
 
-**Verification.** Automated TLS integration, admin, CLI, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent status → replacement → reload → same-PID → worker-connectivity verification remains pending.
+**Verification.** Automated TLS integration, admin, CLI, `just validate`, and `just first-run --step 2` gates provide implementation evidence. The independent status → replacement → reload → same-PID → worker-connectivity journey passed; see `docs/superpowers/review/bundle-01-cert-tls-independent-verification.md`.
 
 ## MAINT-006 — Registration-token auto-mint is unreachable in compose
 
