@@ -26,7 +26,11 @@ _AUDIT_FILE_NAME = ".registration_token.audit.jsonl"
 _METADATA_FILE_NAME = ".registration_token.metadata.json"
 _LOCK_FILE_NAME = ".registration_token.lock"
 _TOKEN_MODE = 0o600
-_TOKEN_LIKE_TEXT = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9])")
+_UUID_LIKE_TEXT = re.compile(
+    r"(?<!\S)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\S)",
+    re.IGNORECASE,
+)
+_LONG_NONWHITESPACE = re.compile(r"\S{32,}")
 
 
 class TokenStoreError(AcheronError):
@@ -616,18 +620,37 @@ class RegistrationTokenStore:
             reason=cls._redact_untrusted_text(audit.reason, secrets_to_hide),
             old_fingerprint=audit.old_fingerprint,
             new_fingerprint=audit.new_fingerprint,
-            worker_ids=tuple(cls._redact_untrusted_text(worker_id, secrets_to_hide) for worker_id in audit.worker_ids),
+            worker_ids=tuple(
+                cls._redact_untrusted_text(worker_id, secrets_to_hide, preserve_uuid=True)
+                for worker_id in audit.worker_ids
+            ),
             result=audit.result,
-            request_id=cls._redact_untrusted_text(audit.request_id, secrets_to_hide),
+            request_id=cls._redact_untrusted_text(audit.request_id, secrets_to_hide, preserve_uuid=True),
         )
 
     @staticmethod
-    def _redact_untrusted_text(value: str, secrets_to_hide: tuple[str, ...]) -> str:
+    def _redact_untrusted_text(
+        value: str,
+        secrets_to_hide: tuple[str, ...],
+        *,
+        preserve_uuid: bool = False,
+    ) -> str:
         redacted = value
+        protected: list[str] = []
+        if preserve_uuid:
+
+            def protect_uuid(match: re.Match[str]) -> str:
+                protected.append(match.group(0))
+                return f"__UUID_{len(protected) - 1}__"
+
+            redacted = _UUID_LIKE_TEXT.sub(protect_uuid, redacted)
         for secret in secrets_to_hide:
             if secret:
                 redacted = redacted.replace(secret, "[redacted]")
-        return _TOKEN_LIKE_TEXT.sub("[redacted]", redacted)
+        redacted = _LONG_NONWHITESPACE.sub("[redacted]", redacted)
+        for index, uuid in enumerate(protected):
+            redacted = redacted.replace(f"__UUID_{index}__", uuid)
+        return redacted
 
     @staticmethod
     def _safe_rollout_remediation(remediation: str | None, old_token: str, candidate: str) -> str:

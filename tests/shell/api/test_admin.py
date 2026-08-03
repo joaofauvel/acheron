@@ -129,17 +129,19 @@ async def test_token_status_redacts_untrusted_audit_text(client: AsyncClient) ->
     orch.settings.orchestrator.admin_token = "a" * 32
     current_token = orch._registration_token_store.read_current()  # noqa: SLF001
     old_token = "b" * 32
+    punctuation_token = "historical-token!with/punctuation?and=separators"
+    worker_uuid = "123e4567-e89b-12d3-a456-426614174000"
     audit_path = orch._registration_token_store.audit_path  # noqa: SLF001
     audit_path.write_text(
         json.dumps(
             {
                 "timestamp": datetime.now(UTC).isoformat(),
-                "reason": current_token,
+                "reason": f"scheduled rotation {current_token} {punctuation_token}",
                 "old_fingerprint": None,
                 "new_fingerprint": None,
-                "worker_ids": [old_token],
+                "worker_ids": [old_token, punctuation_token, worker_uuid],
                 "result": "success",
-                "request_id": current_token,
+                "request_id": f"request-{punctuation_token}",
             }
         )
         + "\n",
@@ -153,6 +155,9 @@ async def test_token_status_redacts_untrusted_audit_text(client: AsyncClient) ->
     assert response.status_code == 200
     assert current_token not in payload
     assert old_token not in payload
+    assert punctuation_token not in payload
+    assert worker_uuid in payload
+    assert "scheduled rotation" in payload
     assert "[redacted]" in payload
 
 
