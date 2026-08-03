@@ -26,6 +26,10 @@ from acheron.core.schemas import (
     OutputSummary,
     PlanResponse,
     PlanStepResponse,
+    RegistrationTokenAuditResponse,
+    RegistrationTokenRolloutResponse,
+    RegistrationTokenRotationResponse,
+    RegistrationTokenStatusResponse,
     StepError,
     WorkerCapability,
     WorkerListResponse,
@@ -106,6 +110,12 @@ class AdminErrorResponse(BaseModel):
     type: str
     message: str
     remediation: str | None = None
+
+
+class TokenRotateRequest(_StrictRequest):
+    """Request body for a registration-token rotation."""
+
+    reason: str = Field(min_length=1, max_length=512)
 
 
 _MAX_ADMIN_DURATION_SECONDS = 100 * 365 * 24 * 60 * 60
@@ -246,10 +256,15 @@ __all__ = [
     "PlanResponse",
     "PlanStepResponse",
     "ReapStaleRequest",
+    "RegistrationTokenAuditResponse",
+    "RegistrationTokenRolloutResponse",
+    "RegistrationTokenRotationResponse",
+    "RegistrationTokenStatusResponse",
     "ResumeJobRequest",
     "RetryJobRequest",
     "StepError",
     "SubmitJobRequest",
+    "TokenRotateRequest",
     "VoiceRangeRequest",
     "WorkerCapabilitiesRequest",
     "WorkerCapability",

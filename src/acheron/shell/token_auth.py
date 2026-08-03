@@ -209,6 +209,21 @@ class RegistrationTokenStore:
             fingerprint=_fingerprint(token),
         )
 
+    def history(self) -> tuple[RegistrationTokenAudit, ...]:
+        """Return the bounded, secret-free rotation audit history."""
+        if self._configured_token is not None:
+            return ()
+        try:
+            with self._file_lock():
+                return tuple(self._read_audits())
+        except TokenStoreError:
+            raise
+        except OSError as exc:
+            raise TokenStoreError(
+                "Unable to inspect registration token audit history",
+                remediation="Check the orchestrator data directory permissions",
+            ) from exc
+
     async def rotate(self, reason: str, request_id: str, rollout: Rollout) -> RegistrationTokenStatus:
         """Rotate a file-backed token and roll it back if worker rollout fails."""
         if self._configured_token is not None:

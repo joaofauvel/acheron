@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -21,6 +21,10 @@ from acheron.core.schemas import (
     CleanupFailureResponse,
     CleanupResponse,
     ReapStaleResponse,
+    RegistrationTokenAuditResponse,
+    RegistrationTokenRolloutResponse,
+    RegistrationTokenRotationResponse,
+    RegistrationTokenStatusResponse,
 )
 from acheron.shell.api.admin_audit import AdminAuditDetails, execute_admin_action
 from acheron.shell.api.deps import AdminTokenDep, OrchestratorDep  # noqa: TC001
@@ -31,9 +35,14 @@ from acheron.shell.api.schemas import (
     CleanupRequest,
     MarkFailedRequest,
     ReapStaleRequest,
+    TokenRotateRequest,
 )
 from acheron.shell.retention import CleanupReport, RetentionPolicy
+from acheron.shell.token_auth import RegistrationTokenAudit, RegistrationTokenStatus, TokenStoreError
 from acheron.tls import CertificateError, CertificateStatus
+
+if TYPE_CHECKING:
+    from acheron.shell.orchestrator import Orchestrator
 
 router = APIRouter()
 
@@ -92,6 +101,97 @@ def _certificate_response(status: CertificateStatus | None) -> CertificateStatus
         remaining_seconds=status.remaining.total_seconds(),
         remaining_display=status.remaining_display,
         severity=status.severity,
+    )
+
+
+def _token_audit_response(audit: RegistrationTokenAudit) -> RegistrationTokenAuditResponse:
+    match audit.result:
+        case "created" | "success" | "failed" as result:
+            typed_result: Literal["created", "success", "failed"] = result
+        case _:
+            typed_result = "failed"
+    return RegistrationTokenAuditResponse(
+        timestamp=audit.timestamp,
+        reason=audit.reason,
+        old_fingerprint=audit.old_fingerprint,
+        new_fingerprint=audit.new_fingerprint,
+        worker_ids=list(audit.worker_ids[:100]),
+        result=typed_result,
+        request_id=audit.request_id or None,
+    )
+
+
+def _token_status_response(orch: Orchestrator) -> RegistrationTokenStatusResponse:
+    status: RegistrationTokenStatus = orch.registration_token_status()
+    return RegistrationTokenStatusResponse(
+        source=status.source,
+        created_at=status.created_at,
+        last_rotation_at=status.last_rotation_at,
+        rotation_count=status.rotation_count,
+        fingerprint=status.fingerprint,
+        history=[_token_audit_response(audit) for audit in orch.registration_token_history()],
+    )
+
+
+@router.get("/token/status", response_model=RegistrationTokenStatusResponse)
+async def token_status(
+    request: Request,
+    orch: OrchestratorDep,
+    _token: AdminTokenDep,
+) -> RegistrationTokenStatusResponse:
+    """Return secret-free registration-token status and history."""
+
+    async def operation() -> RegistrationTokenStatusResponse:
+        try:
+            return _token_status_response(orch)
+        except TokenStoreError as exc:
+            raise _admin_error(exc, status_code=503) from exc
+
+    return await execute_admin_action(request, orch, operation)
+
+
+@router.post("/token/rotate", response_model=RegistrationTokenRotationResponse)
+async def token_rotate(
+    body: TokenRotateRequest,
+    request: Request,
+    orch: OrchestratorDep,
+    _token: AdminTokenDep,
+) -> RegistrationTokenRotationResponse:
+    """Rotate the file-backed registration token across worker edges."""
+
+    async def operation() -> RegistrationTokenRotationResponse:
+        try:
+            status = await orch.rotate_registration_token(
+                reason=body.reason,
+                request_id=getattr(request.state, "request_id", ""),
+            )
+        except TokenStoreError as exc:
+            raise _admin_error(exc, status_code=409) from exc
+        history = orch.registration_token_history()
+        latest = history[-1] if history else None
+        rollout = RegistrationTokenRolloutResponse(
+            success=True,
+            worker_ids=list(latest.worker_ids[:100]) if latest is not None else [],
+            message="Registration token rotated successfully",
+        )
+        return RegistrationTokenRotationResponse(
+            rotated=True,
+            status=RegistrationTokenStatusResponse(
+                source=status.source,
+                created_at=status.created_at,
+                last_rotation_at=status.last_rotation_at,
+                rotation_count=status.rotation_count,
+                fingerprint=status.fingerprint,
+                history=[_token_audit_response(audit) for audit in history],
+            ),
+            rollout=rollout,
+        )
+
+    return await execute_admin_action(
+        request,
+        orch,
+        operation,
+        details=AdminAuditDetails(reason=body.reason),
     )
 
 

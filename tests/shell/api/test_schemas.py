@@ -20,7 +20,23 @@ from acheron.core.schemas import (
     WorkerResponse,
 )
 from acheron.shell.api import schemas
-from acheron.shell.api.schemas import ResumeJobRequest, RetryJobRequest, SubmitJobRequest, VoiceRangeRequest
+from acheron.shell.api.schemas import (
+    ResumeJobRequest,
+    RetryJobRequest,
+    SubmitJobRequest,
+    TokenRotateRequest,
+    VoiceRangeRequest,
+)
+
+
+def test_token_rotate_request_is_strict_and_bounded() -> None:
+    assert TokenRotateRequest(reason="scheduled").reason == "scheduled"
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        TokenRotateRequest(reason="")
+    with pytest.raises(ValidationError, match="at most 512 characters"):
+        TokenRotateRequest(reason="x" * 513)
+    with pytest.raises(ValidationError, match="extra"):
+        TokenRotateRequest.model_validate({"reason": "scheduled", "unexpected": True})
 
 
 def test_response_models_keep_their_public_import_path() -> None:

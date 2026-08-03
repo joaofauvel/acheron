@@ -202,6 +202,62 @@ class ErrorResponse(BaseModel):
     remediation: str | None = None
 
 
+class RegistrationTokenAuditResponse(BaseModel):
+    """Secret-free registration-token audit entry."""
+
+    timestamp: datetime
+    reason: str
+    old_fingerprint: str | None = None
+    new_fingerprint: str | None = None
+    worker_ids: list[str] = Field(default_factory=list, max_length=100)
+    result: Literal["created", "success", "failed"]
+    request_id: str | None = None
+
+    @field_validator("timestamp")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("token audit timestamp must be timezone-aware")
+        return value.astimezone(UTC)
+
+
+class RegistrationTokenStatusResponse(BaseModel):
+    """Secret-free registration-token lifecycle status and history."""
+
+    source: Literal["environment", "file"]
+    created_at: datetime | None = None
+    last_rotation_at: datetime | None = None
+    rotation_count: int = Field(ge=0)
+    fingerprint: str | None = None
+    history: list[RegistrationTokenAuditResponse] = Field(default_factory=list, max_length=100)
+
+    @field_validator("created_at", "last_rotation_at")
+    @classmethod
+    def _require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("token lifecycle timestamps must be timezone-aware")
+        return value.astimezone(UTC)
+
+
+class RegistrationTokenRolloutResponse(BaseModel):
+    """Secret-free worker rollout result."""
+
+    success: bool
+    worker_ids: list[str] = Field(default_factory=list, max_length=100)
+    message: str | None = None
+    remediation: str | None = None
+
+
+class RegistrationTokenRotationResponse(BaseModel):
+    """Result of an administrative registration-token rotation."""
+
+    rotated: bool
+    status: RegistrationTokenStatusResponse
+    rollout: RegistrationTokenRolloutResponse
+
+
 class CertificateStatusResponse(BaseModel):
     """Sanitized certificate status for administrative consumers."""
 
@@ -496,6 +552,10 @@ __all__ = [
     "PlanResponse",
     "PlanStepResponse",
     "ReapStaleResponse",
+    "RegistrationTokenAuditResponse",
+    "RegistrationTokenRolloutResponse",
+    "RegistrationTokenRotationResponse",
+    "RegistrationTokenStatusResponse",
     "StepError",
     "VersionResponse",
     "WorkerCapability",

@@ -74,6 +74,7 @@ from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 from acheron.shell.stores.base import StoreError
 from acheron.shell.token_auth import (
+    RegistrationTokenAudit,
     RegistrationTokenStatus,
     RegistrationTokenStore,
     RolloutResult,
@@ -697,6 +698,10 @@ class Orchestrator:
     def registration_token_status(self) -> RegistrationTokenStatus:
         """Return secret-free registration-token lifecycle status."""
         return self._registration_token_store.status()
+
+    def registration_token_history(self) -> tuple[RegistrationTokenAudit, ...]:
+        """Return secret-free registration-token rotation history."""
+        return self._registration_token_store.history()
 
     async def rotate_registration_token(self, reason: str, request_id: str) -> RegistrationTokenStatus:
         """Rotate the registration token after all remote HTTP edges accept it."""
