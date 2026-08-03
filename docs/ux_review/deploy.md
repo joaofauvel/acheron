@@ -288,7 +288,7 @@ fixed_in: [7c16960, 03deac0, 72dcbb8, e5f338a]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 97cade64ab8c7c20e1afc09193fb9583a214a5c69757f049429126a7bb7cc38f
+  tree: feb46df00802fc67a62c19e8b476e2badf85e92304633af04356d0dd6deee0d9
   date: "2026-08-02"
 verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 ---
@@ -427,11 +427,11 @@ files:
     lines: 45-56
 related: [DX-005]
 bundle: 02-token-auth
-fixed_in: [d4673bb, 8c4d77e]
+fixed_in: [98ea67e, ac06009]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 97cade64ab8c7c20e1afc09193fb9583a214a5c69757f049429126a7bb7cc38f
+  tree: feb46df00802fc67a62c19e8b476e2badf85e92304633af04356d0dd6deee0d9
   date: "2026-08-03"
 verified_by: "harness:first-run-file-backed-token-rotation+shell-restart"
 feedback_ref: "TBD-pagerduty"
