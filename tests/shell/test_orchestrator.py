@@ -24,6 +24,7 @@ from acheron.core.errors import (
     JobNotResumableError,
     NoPlanToResumeError,
     VoiceSelectionError,
+    WorkerError,
 )
 from acheron.core.models import (
     AudioRequest,
@@ -2531,7 +2532,7 @@ async def test_worker_rotation_coordinator_refuses_plaintext_bearer(
     result = await WorkerRotationCoordinator(registry).rollout("candidate-token")
 
     assert not result.success
-    assert result.remediation == "Configure HTTPS worker endpoints before retrying token rotation"
+    assert result.remediation == "Configure HTTPS or explicitly opt into insecure local transport"
     assert requests == []
 
 
@@ -2593,6 +2594,20 @@ async def test_rotation_success_updates_dynamic_registration_token_provider(tmp_
 
 async def _reject_auth() -> bool:
     return False
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_preserves_worker_remediation() -> None:
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "https://worker.example", "http", tts_caps())
+
+    async def auth_check(_worker: object, _token: str) -> bool:
+        raise WorkerError("auth check failed", remediation="restart edge agent")
+
+    result = await WorkerRotationCoordinator(registry, auth_check=auth_check).rollout("candidate-token")
+
+    assert not result.success
+    assert result.remediation == "restart edge agent"
 
 
 @pytest.mark.asyncio

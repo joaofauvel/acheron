@@ -298,16 +298,19 @@ class WorkerRotationCoordinator:
         )
         if not failed:
             return RolloutResult(success=True, worker_ids=tuple(worker.worker_id for worker in remote_http))
-        insecure = any(isinstance(result, WorkerError) for result in results)
+        worker_error = next((result for result in results if isinstance(result, WorkerError)), None)
+        remediation = worker_error.remediation if worker_error is not None else None
+        if remediation is None or candidate in remediation:
+            remediation = (
+                "Configure HTTPS worker endpoints before retrying token rotation"
+                if worker_error is not None
+                else "Check worker connectivity and retry the rotation"
+            )
         return RolloutResult(
             success=False,
             worker_ids=tuple(worker.worker_id for worker in remote_http),
             message="One or more HTTP worker edges rejected the candidate token",
-            remediation=(
-                "Configure HTTPS worker endpoints before retrying token rotation"
-                if insecure
-                else "Check worker connectivity and retry the rotation"
-            ),
+            remediation=remediation,
         )
 
     async def _run_injected_checks(
