@@ -9,7 +9,7 @@ import hashlib
 from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import httpx
 import pytest
@@ -2464,6 +2464,131 @@ class TestOrchestrator:
         assert orch.registration_token_status().rotation_count == 0
         await orch.close()
         await orch.shutdown()
+
+
+class _MockAsyncClient:
+    requests: list[tuple[str, dict[str, str]]]
+
+    def __init__(self, requests: list[tuple[str, dict[str, str]]], **_kwargs: object) -> None:
+        self._requests = requests
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def get(self, url: str, *, headers: dict[str, str]) -> httpx.Response:
+        self._requests.append((url, headers))
+        return httpx.Response(200)
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_default_https_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "acheron.shell.orchestrator.httpx.AsyncClient",
+        lambda **kwargs: _MockAsyncClient(requests, **kwargs),
+    )
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "https://worker-1.example", "http", tts_caps())
+    await registry.register("edge-2", "https://worker-2.example", "http", tts_caps())
+
+    result = await WorkerRotationCoordinator(registry).rollout("candidate-token")
+
+    assert result.success
+    assert {url for url, _headers in requests} == {
+        "https://worker-1.example/auth/check",
+        "https://worker-2.example/auth/check",
+    }
+    assert all(headers["Authorization"] == "Bearer candidate-token" for _url, headers in requests)
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_rejects_unsupported_transport() -> None:
+    registry = InMemoryWorkerStore()
+    await registry.register("grpc-edge", "grpcs://worker.example", "grpc", tts_caps())
+
+    result = await WorkerRotationCoordinator(registry).rollout("candidate-token")
+
+    assert not result.success
+    assert result.remediation == "Replace unsupported worker transports with HTTPS HTTP edges before retrying"
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_refuses_plaintext_bearer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+    requests: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "acheron.shell.orchestrator.httpx.AsyncClient",
+        lambda **kwargs: _MockAsyncClient(requests, **kwargs),
+    )
+    registry = InMemoryWorkerStore()
+    await registry.register("edge-1", "http://worker.example", "http", tts_caps())
+
+    result = await WorkerRotationCoordinator(registry).rollout("candidate-token")
+
+    assert not result.success
+    assert result.remediation == "Configure HTTPS worker endpoints before retrying token rotation"
+    assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_worker_rotation_coordinator_bounds_default_injected_checks() -> None:
+    registry = InMemoryWorkerStore()
+    for index in range(20):
+        await registry.register(f"edge-{index}", f"https://worker-{index}.example", "http", tts_caps())
+    active = 0
+    maximum = 0
+
+    async def auth_check(_worker: object, _candidate: str) -> bool:
+        nonlocal active, maximum
+        active += 1
+        maximum = max(maximum, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return True
+
+    result = await WorkerRotationCoordinator(registry, auth_check=auth_check).rollout("candidate-token")
+
+    assert result.success
+    assert maximum <= 8
+
+
+@pytest.mark.asyncio
+async def test_rotation_success_updates_dynamic_registration_token_provider(tmp_path: Path) -> None:
+    from acheron.shell.config import OrchestratorSettings
+
+    registry = InMemoryWorkerStore()
+    observed: list[str] = []
+
+    async def auth_check(_worker: object, candidate: str) -> bool:
+        observed.append(candidate)
+        return True
+
+    await registry.register("edge-1", "https://worker.example", "http", tts_caps())
+    settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+    coordinator = WorkerRotationCoordinator(registry, auth_check=auth_check)
+    orch = Orchestrator(
+        registry,
+        PlanCache(tmp_path),
+        _success_handler,
+        settings=settings,
+        worker_rotation_coordinator=coordinator,
+    )
+    await orch.start()
+    old_token = orch.settings.orchestrator.registration_token
+    assert old_token is not None
+
+    await orch.rotate_registration_token("test", "request-success")
+
+    assert observed
+    assert observed[0] != old_token
+    assert orch.settings.orchestrator.registration_token == observed[0]
+    await orch.close()
+    await orch.shutdown()
 
 
 async def _reject_auth() -> bool:

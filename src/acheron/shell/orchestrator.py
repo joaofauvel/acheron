@@ -18,6 +18,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -29,6 +30,7 @@ from acheron.core.errors import (
     JobNotFoundError,
     JobNotResumableError,
     NoPlanToResumeError,
+    WorkerError,
     sanitise_exc_message,
 )
 from acheron.core.models import (
@@ -75,6 +77,7 @@ from acheron.shell.token_auth import (
     RegistrationTokenStore,
     RolloutResult,
 )
+from acheron.tls import _allow_insecure
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Collection, Sequence
@@ -251,6 +254,9 @@ def _resolve_invalidation_steps(
     return selected
 
 
+_MAX_CONCURRENT_TOKEN_CHECKS = 8
+
+
 class WorkerRotationCoordinator:
     """Roll out a candidate token across registered remote HTTP workers."""
 
@@ -261,7 +267,7 @@ class WorkerRotationCoordinator:
         auth_check: Callable[[RegisteredWorker, str], Awaitable[bool]] | None = None,
     ) -> None:
         self._registry = registry
-        self._auth_check = auth_check or self._default_auth_check
+        self._auth_check = auth_check
 
     async def rollout(self, candidate: str) -> RolloutResult:
         """Verify a candidate token on every supported remote worker edge."""
@@ -272,30 +278,78 @@ class WorkerRotationCoordinator:
                 success=False,
                 worker_ids=tuple(worker.worker_id for worker in unsupported),
                 message="Token rollout requires supported HTTP worker edges",
+                remediation="Replace unsupported worker transports with HTTPS HTTP edges before retrying",
             )
         remote_http = tuple(worker for worker in workers if worker.transport == "http")
-        results = await asyncio.gather(
-            *(self._auth_check(worker, candidate) for worker in remote_http),
-            return_exceptions=True,
-        )
+        if not remote_http:
+            return RolloutResult(success=True)
+
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_TOKEN_CHECKS)
+        if self._auth_check is not None:
+            results = await self._run_injected_checks(remote_http, candidate, semaphore)
+        else:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                results = await self._run_default_checks(remote_http, candidate, client, semaphore)
+
         failed = tuple(
             worker.worker_id
             for worker, result in zip(remote_http, results, strict=True)
             if isinstance(result, BaseException) or result is not True
         )
+        if not failed:
+            return RolloutResult(success=True, worker_ids=tuple(worker.worker_id for worker in remote_http))
+        insecure = any(isinstance(result, WorkerError) for result in results)
         return RolloutResult(
-            success=not failed,
+            success=False,
             worker_ids=tuple(worker.worker_id for worker in remote_http),
-            message=None if not failed else "One or more HTTP worker edges rejected the candidate token",
+            message="One or more HTTP worker edges rejected the candidate token",
+            remediation=(
+                "Configure HTTPS worker endpoints before retrying token rotation"
+                if insecure
+                else "Check worker connectivity and retry the rotation"
+            ),
         )
 
+    async def _run_injected_checks(
+        self,
+        workers: tuple[RegisteredWorker, ...],
+        candidate: str,
+        semaphore: asyncio.Semaphore,
+    ) -> list[bool | BaseException]:
+        auth_check = self._auth_check
+        if auth_check is None:
+            raise RuntimeError("injected auth check is required")
+
+        async def check(worker: RegisteredWorker) -> bool:
+            async with semaphore:
+                return await auth_check(worker, candidate)
+
+        return list(await asyncio.gather(*(check(worker) for worker in workers), return_exceptions=True))
+
+    async def _run_default_checks(
+        self,
+        workers: tuple[RegisteredWorker, ...],
+        candidate: str,
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+    ) -> list[bool | BaseException]:
+        async def check(worker: RegisteredWorker) -> bool:
+            async with semaphore:
+                return await self._default_auth_check(client, worker, candidate)
+
+        return list(await asyncio.gather(*(check(worker) for worker in workers), return_exceptions=True))
+
     @staticmethod
-    async def _default_auth_check(worker: RegisteredWorker, candidate: str) -> bool:
+    async def _default_auth_check(client: httpx.AsyncClient, worker: RegisteredWorker, candidate: str) -> bool:
         """Verify a worker edge through its authenticated health endpoint."""
         url = f"{worker.endpoint.rstrip('/')}/auth/check"
+        if urlsplit(url).scheme.casefold() == "http" and not _allow_insecure():
+            raise WorkerError(
+                "Refusing to send a bearer token over plaintext",
+                remediation="Configure HTTPS or explicitly opt into insecure local transport",
+            )
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, headers={"Authorization": f"Bearer {candidate}"})
+            response = await client.get(url, headers={"Authorization": f"Bearer {candidate}"})
         except httpx.HTTPError, OSError:
             return False
         return response.is_success

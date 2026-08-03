@@ -42,6 +42,7 @@ class RolloutResult:
     success: bool
     worker_ids: tuple[str, ...] = ()
     message: str | None = None
+    remediation: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +299,7 @@ class RegistrationTokenStore:
             )
             raise TokenRotationError(
                 "Registration token rollout failed; the previous token was restored",
-                remediation="Check worker connectivity and retry the rotation",
+                remediation=result.remediation or "Check worker connectivity and retry the rotation",
             )
 
         new_lifecycle = _LifecycleMetadata(
