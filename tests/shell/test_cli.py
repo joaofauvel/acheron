@@ -186,7 +186,6 @@ def test_submit_sends_bearer_token_on_upload_and_jobs(tmp_path: Path, monkeypatc
 
 
 @respx.mock
-@respx.mock
 def test_job_cost_explain_renders_execution_estimate_and_gpu_details() -> None:
     respx.get(f"{_BASE_URL}/jobs/job-1/cost").mock(
         return_value=httpx.Response(
@@ -854,6 +853,7 @@ def test_cli_token_status_uses_admin_header(monkeypatch: pytest.MonkeyPatch) -> 
     assert result.exit_code == 0, result.output
     assert "source=file" in result.output
     assert "fingerprint=abc12345" in result.output
+    assert "audit fingerprints old=old12345 new=abc12345" in result.output
     assert "audit reason=scheduled rotation" in result.output
     assert "audit workers=2" in result.output
     assert "admin-token" not in result.output
@@ -900,10 +900,37 @@ def test_cli_token_rotate_renders_rollout(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert result.exit_code == 0, result.output
     assert "rollout=success workers=2" in result.output
+    assert "audit fingerprints old=old12345 new=abc12345" in result.output
     assert "audit reason=scheduled rotation" in result.output
     assert "all workers accepted" in result.output
     assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
     assert json.loads(route.calls.last.request.content) == {"reason": "scheduled rotation"}
+
+
+@respx.mock
+def test_cli_token_rotate_http_error_renders_structured_remediation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.post(f"{_BASE_URL}/admin/token/rotate").mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "detail": {
+                    "type": "TokenRotationError",
+                    "message": "Registration-token rollout failed",
+                    "remediation": "Update worker environments and restart them externally",
+                }
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["token", "rotate", "--reason", "scheduled rotation"])
+
+    assert result.exit_code != 0
+    assert "Registration-token rollout failed" in result.output
+    assert "Try: Update" in result.output
+    assert "worker environments and restart them externally" in result.output
+    assert "admin-token" not in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
 
 
 @respx.mock
@@ -936,7 +963,8 @@ def test_cli_token_rotate_returns_nonzero_on_failure(monkeypatch: pytest.MonkeyP
 
     assert result.exit_code != 0
     assert "rollout=failed workers=0" in result.output
-    assert "Try: Update worker environments and restart them externally" in result.output
+    assert "Try: Update" in result.output
+    assert "worker environments and restart them externally" in result.output
     assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
 
 

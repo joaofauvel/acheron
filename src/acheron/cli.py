@@ -367,7 +367,11 @@ def _format_estimated_cost(cost: float | None, basis: CostBasis | None) -> str:
 
 
 def _print_http_error(exc: httpx.HTTPStatusError) -> None:
-    console.print(f"[red]Error {exc.response.status_code}: {_http_error_detail(exc)}{_http_error_suffix(exc)}[/red]")
+    remediation = _http_error_remediation(exc)
+    suffix = f" Try: {remediation}" if remediation else ""
+    console.print(
+        f"[red]Error {exc.response.status_code}: {_http_error_detail(exc)}{_http_error_suffix(exc)}{suffix}[/red]"
+    )
 
 
 def _print_submit_http_error(
@@ -736,6 +740,7 @@ def _format_token_status(status: RegistrationTokenStatusResponse) -> str:
         lines.extend(
             (
                 f"audit timestamp={audit.timestamp.isoformat()} result={audit.result}",
+                f"audit fingerprints old={audit.old_fingerprint or '-'} new={audit.new_fingerprint or '-'}",
                 f"audit reason={audit.reason}",
                 f"audit workers={len(audit.worker_ids)} request_id={audit.request_id or '-'}",
             )
