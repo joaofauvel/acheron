@@ -326,7 +326,14 @@ The profile names (`runpod-tts`, `runpod-asr`, `runpod-translation`) and the cor
 - `handler` — Python import path to the worker handler class, used by `acheron-worker-edge` to import the handler when the cloud-side module is bundled.
 - `phantom_handler` — edge-only: cloud-side handler class used solely to read static `capabilities()` (no model load).
 
-**Secrets are env-only.** `ACHERON_WORKER__REGISTRATION_TOKEN`, `ACHERON_WORKER__RUNPOD_API_KEY`, and `ACHERON_WORKER__RUNPOD_ENDPOINT_ID` are rejected when supplied via `worker.yaml` or as constructor kwargs (`src/acheron/worker_sdk/settings.py:26-32`). Set them in `.env` or your secret store.
+**Keep secrets out of worker YAML.** Compose workers use the mounted
+`ACHERON_WORKER__REGISTRATION_TOKEN_FILE=/data/jobs/.registration_token` source;
+standalone workers may use the static `ACHERON_WORKER__REGISTRATION_TOKEN`
+environment variable. `ACHERON_WORKER__RUNPOD_API_KEY` and
+`ACHERON_WORKER__RUNPOD_ENDPOINT_ID` remain env/secret-store values and are
+rejected in `worker.yaml` or constructor kwargs (`src/acheron/worker_sdk/settings.py:26-32`).
+When static registration-token mode is used in Compose, pass the same explicit
+value to every worker edge and the dashboard.
 
 ## GPU & Pricing Auto-Discovery
 

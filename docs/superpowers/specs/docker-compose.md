@@ -75,13 +75,17 @@ Shared secret model:
 - With that variable unset, the orchestrator writes one token to
   `/data/jobs/.registration_token` and reuses it across shell restarts.
 - Compose workers and dashboard read the same named-volume file; standalone
-  workers can use either the file source or static env source.
+  workers can use either the file source or static env source. When static mode
+  is selected, Compose passes the same explicit value to every dashboard and
+  worker edge as well as the orchestrator.
 - `POST /workers` and protected worker operations require the current bearer
   token; missing or invalid tokens return 401 Unauthorized.
 - `acheron token status` reports source/fingerprint metadata without the secret.
 - File-backed rotation is coordinated by `acheron token rotate --reason`; static
   environment mode cannot be rotated in place and requires external worker
   updates/restarts.
+- Both token commands require the separate `ACHERON_ADMIN_TOKEN`; the
+  registration token never authorizes admin routes.
 
 ## Docker Compose
 
@@ -115,6 +119,8 @@ services:
     ports: ["8080:8080"]
     environment:
       ACHERON_URL: http://orchestrator:8000
+      # Leave empty for file-backed mode; static mode passes the same value to every edge.
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
     volumes:
       - acheron-data:/data:ro
@@ -132,6 +138,8 @@ services:
       ACHERON_WORKER__WORKER_ID: tts-local-stub
       ACHERON_WORKER__WORKER_HOST: tts-local-stub
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      # Leave empty for file-backed mode; static mode uses the same explicit value.
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       ACHERON_WORKER__PRICE_SOURCE: zero
       ACHERON_WORKER__LISTEN_PORT: "8001"
@@ -150,6 +158,8 @@ services:
       ACHERON_WORKER__WORKER_ID: asr-local-stub
       ACHERON_WORKER__WORKER_HOST: asr-local-stub
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
+      # Leave empty for file-backed mode; static mode uses the same explicit value.
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       ACHERON_WORKER__PRICE_SOURCE: zero
       ACHERON_WORKER__LISTEN_PORT: "8002"
