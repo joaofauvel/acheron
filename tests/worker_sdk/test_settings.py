@@ -116,6 +116,15 @@ class TestEnvOnlyFields:
         assert s.runpod_endpoint_id == "i02xupws"
         assert s.registration_token_file == Path("/data/jobs/.registration_token")
 
+    def test_empty_token_file_env_is_normalized_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ACHERON_WORKER__WORKER_ID", "w")
+        monkeypatch.setenv("ACHERON_WORKER__ORCHESTRATOR_URL", "http://o:8000")
+        monkeypatch.setenv("ACHERON_WORKER__REGISTRATION_TOKEN_FILE", "")
+
+        settings = WorkerSettings()  # type: ignore[call-arg]
+
+        assert settings.registration_token_file is None
+
 
 class TestValidation:
     def test_worker_id_required(self) -> None:

@@ -42,6 +42,6 @@ class EnvironmentOrFileTokenProvider:
             return self._normalise(self._token_file.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return None
-        except OSError:
+        except OSError, UnicodeError:
             logger.warning("Unable to read worker registration token file")
             return None

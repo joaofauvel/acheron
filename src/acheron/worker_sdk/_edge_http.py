@@ -528,19 +528,24 @@ class EdgeApp:
         self.token_provider = token_provider or EnvironmentOrFileTokenProvider(registration_token, None)
         self.allow_unauthenticated_execute = allow_unauthenticated_execute
 
-        async def _verify_bearer(
+        async def _require_bearer(
             authorization: str | None = Header(default=None),
         ) -> None:
             current_token = self.token_provider.current()
             if current_token is None:
-                if self.allow_unauthenticated_execute:
-                    return
-                raise HTTPException(status_code=401, detail="Missing registration token")
+                raise HTTPException(status_code=401, detail="Registration token unavailable")
             if authorization is None:
                 raise HTTPException(status_code=401, detail="Missing Authorization header")
             scheme, _, provided = authorization.partition(" ")
             if scheme.lower() != "bearer" or not secrets.compare_digest(provided, current_token):
                 raise HTTPException(status_code=401, detail="Invalid registration token")
+
+        async def _verify_bearer(
+            authorization: str | None = Header(default=None),
+        ) -> None:
+            if self.allow_unauthenticated_execute and self.token_provider.current() is None:
+                return
+            await _require_bearer(authorization)
 
         router = APIRouter()
 
@@ -552,7 +557,7 @@ class EdgeApp:
         async def get_capabilities() -> dict[str, JsonValue]:
             return public_caps_to_dict(self.capabilities)
 
-        @router.get("/auth/check", dependencies=[Depends(_verify_bearer)])
+        @router.get("/auth/check", dependencies=[Depends(_require_bearer)])
         async def auth_check() -> dict[str, str]:
             return {"status": "ok"}
 

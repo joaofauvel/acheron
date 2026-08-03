@@ -97,8 +97,11 @@ class WorkerSettings(BaseSettings):
         """
         if not isinstance(data, Mapping):
             return data
-        for field_name in ENV_ONLY_FIELDS & data.keys():
-            if data[field_name] is None:
+        values = dict(data)
+        if values.get("registration_token_file") == "":
+            values["registration_token_file"] = None
+        for field_name in ENV_ONLY_FIELDS & values.keys():
+            if values[field_name] is None:
                 continue
             env_var = f"ACHERON_WORKER__{field_name.upper()}"
             if env_var not in os.environ:
@@ -107,7 +110,7 @@ class WorkerSettings(BaseSettings):
                     f"constructor or YAML. Set it via {env_var} env var."
                 )
                 raise ValueError(msg)
-        return data
+        return values
 
     @model_validator(mode="after")
     def _validate_composite(self) -> WorkerSettings:

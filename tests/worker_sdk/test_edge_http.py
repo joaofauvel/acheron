@@ -757,6 +757,17 @@ class TestEdgeExecuteAuth:
         assert valid.json() == {"status": "ok"}
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    async def test_auth_check_stays_authenticated_in_execute_open_mode(self) -> None:
+        h = _Stub()
+        app = EdgeApp(handler=h, capabilities=h.capabilities(), allow_unauthenticated_execute=True).app
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.get("/auth/check")
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
     async def test_health_and_capabilities_remain_unauthenticated(self, app_with_token: tuple[FastAPI, _Stub]) -> None:
         app, _ = app_with_token
         transport = ASGITransport(app=app)

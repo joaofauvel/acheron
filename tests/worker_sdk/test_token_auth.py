@@ -30,3 +30,10 @@ def test_provider_treats_empty_values_as_unset(tmp_path: Path) -> None:
 
     assert EnvironmentOrFileTokenProvider("", token_file).current() is None
     assert EnvironmentOrFileTokenProvider(None, None).current() is None
+
+
+def test_provider_fails_closed_for_invalid_token_file_encoding(tmp_path: Path) -> None:
+    token_file = tmp_path / ".registration_token"
+    token_file.write_bytes(b"\xff\xfe")
+
+    assert EnvironmentOrFileTokenProvider(None, token_file).current() is None
