@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -28,6 +29,14 @@ logger = logging.getLogger(__name__)
 
 type WorkerFactory = Callable[[RegisteredWorker], Worker]
 type RegistrationTokenProvider = Callable[[], str | None]
+
+_INSECURE_HTTP_WORKER_IDS_ENV = "ACHERON_INSECURE_HTTP_WORKER_IDS"
+
+
+def _configured_insecure_http_worker_ids() -> frozenset[str]:
+    """Return the explicit worker-ID allowlist for local HTTP simulation edges."""
+    raw = os.environ.get(_INSECURE_HTTP_WORKER_IDS_ENV, "")
+    return frozenset(worker_id.strip() for worker_id in raw.split(",") if worker_id.strip())
 
 
 def default_worker_factory(  # noqa: PLR0913
@@ -85,6 +94,7 @@ def default_worker_factory(  # noqa: PLR0913
                 registration_token=token,
                 registration_token_provider=registration_token_provider,
                 step_cache=step_cache,
+                allow_insecure=registered.worker_id in _configured_insecure_http_worker_ids(),
             )
 
 

@@ -28,6 +28,16 @@ class TestChunkTextBasic:
         assert len(result) == 3
         assert [c.sequence_id for c in result] == [0, 1, 2]
 
+    def test_falls_back_when_nltk_data_is_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def missing_tokenizer(_text: str) -> list[str]:
+            raise LookupError("punkt_tab is not installed")
+
+        monkeypatch.setattr("acheron.core.chunking.nltk.sent_tokenize", missing_tokenizer)
+
+        result = chunk_text("First sentence. Second sentence.", "ch1")
+
+        assert [chunk.text for chunk in result] == ["First sentence.", "Second sentence."]
+
     def test_chapter_id_preserved(self) -> None:
         text = "Hello. World."
         result = chunk_text(text, "ch-42")

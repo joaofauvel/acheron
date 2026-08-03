@@ -37,6 +37,15 @@ class TestHttpWorkerBounds:
         with pytest.raises(WorkerError, match="plaintext"):
             await worker.capabilities()
 
+    @pytest.mark.asyncio
+    async def test_global_insecure_opt_in_does_not_bypass_plaintext_bearer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        worker = HttpWorker("http://worker:8000", data_dir=tmp_path, registration_token="secret")
+        with pytest.raises(WorkerError, match="plaintext"):
+            await worker.capabilities()
+
     @respx.mock
     @pytest.mark.asyncio
     async def test_rejects_oversized_content_length(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,7 +106,7 @@ class TestHttpWorkerHealth:
     async def test_registration_token_provider_is_read_for_each_request(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
         tokens = iter(("first-token", "rotated-token"))
         seen: list[str | None] = []
 
@@ -106,7 +115,12 @@ class TestHttpWorkerHealth:
             return httpx.Response(200)
 
         respx.get(f"{_BASE_URL}/health").mock(side_effect=handler)
-        worker = HttpWorker(_BASE_URL, data_dir=tmp_path, registration_token_provider=lambda: next(tokens))
+        worker = HttpWorker(
+            _BASE_URL,
+            data_dir=tmp_path,
+            registration_token_provider=lambda: next(tokens),
+            allow_insecure=True,
+        )
         assert await worker.health() is True
         assert await worker.health() is True
         assert seen == ["Bearer first-token", "Bearer rotated-token"]

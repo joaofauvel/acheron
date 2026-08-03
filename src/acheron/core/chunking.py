@@ -1,5 +1,7 @@
 """Text chunking engine for splitting chapters into TTS-sized segments."""
 
+import re
+
 import nltk
 
 from acheron.core.errors import ChunkingError
@@ -25,9 +27,8 @@ def chunk_text(text: str, chapter_id: str, max_length: int = 250) -> tuple[Chunk
 
     try:
         sentences = nltk.sent_tokenize(normalized)
-    except (LookupError, OSError) as exc:
-        msg = f"NLTK sentence tokenization failed: {exc}"
-        raise ChunkingError(msg) from exc
+    except LookupError, OSError:
+        sentences = re.split(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+", normalized)
 
     raw_chunks: list[str] = []
 

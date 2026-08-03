@@ -506,10 +506,12 @@ class Orchestrator:
         }
 
         for worker_type, handler in handlers.items():
+            worker_id = f"{worker_type.value}-local"
             existing = await self._registry.find_by_type(worker_type)
             if existing:
+                if any(worker.worker_id == worker_id and worker.transport == "local" for worker in existing):
+                    self._local_handlers[worker_id] = handler
                 continue
-            worker_id = f"{worker_type.value}-local"
             self._local_handlers[worker_id] = handler
             await self._registry.register(
                 worker_id=worker_id,

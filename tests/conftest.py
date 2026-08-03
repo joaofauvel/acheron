@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import warnings
@@ -17,6 +18,13 @@ from acheron.shell.stores.redis import RedisJobStore, RedisWorkerStore
 
 if TYPE_CHECKING:
     from testcontainers.redis import RedisContainer
+
+
+def pytest_configure() -> None:
+    """Keep developer deployment credentials out of the test process."""
+    for name in tuple(os.environ):
+        if name.startswith("ACHERON_"):
+            os.environ.pop(name, None)
 
 
 @pytest.fixture

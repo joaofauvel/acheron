@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from tests.first_run.helpers import ComposeStack, FirstRunProject
 
 
@@ -22,6 +24,37 @@ def test_step_2_compose_start(compose_stack: ComposeStack) -> None:
     assert orchestrator == {"status": "ok"}, "step 2: orchestrator did not become healthy"
     dashboard = compose_stack.get_text("http://localhost:8080/")
     assert "Acheron" in dashboard, "step 2: dashboard did not render its index page"
+
+
+def test_step_2_compose_initializes_orchestrator_data_volume(prepared_project: FirstRunProject) -> None:
+    services = _compose_config(prepared_project, "sim")
+    certs_init = services["certs-init"]
+    volumes = cast("list[dict[str, object]]", certs_init["volumes"])
+    command = " ".join(cast("list[str]", certs_init["command"]))
+    orchestrator_env = cast("dict[str, str]", services["orchestrator"]["environment"])
+    dockerfile = (prepared_project.checkout / "Dockerfile").read_text()
+
+    assert any(volume.get("source") == "acheron-data" and volume.get("target") == "/data" for volume in volumes)
+    assert "mkdir -p /data/jobs" in command
+    assert "chown 1000:0 /data/jobs" in command
+    assert "chmod 0775 /data/jobs" in command
+    assert "ACHERON_ALLOW_INSECURE" not in orchestrator_env
+    assert {
+        worker_id.strip()
+        for worker_id in orchestrator_env["ACHERON_INSECURE_HTTP_WORKER_IDS"].split(",")
+        if worker_id.strip()
+    } == {
+        "asr-local-stub",
+        "translation-local-stub",
+        "translation-runpod-stub",
+        "tts-grpc-stub",
+        "tts-local-stub",
+        "tts-runpod-stub",
+        "qwen3tts-1",
+        "granite-speech-edge",
+        "translategemma-edge",
+    }
+    assert "apt-get install --no-install-recommends --yes ffmpeg" in dockerfile
 
 
 def _run_certs_init(project: FirstRunProject) -> subprocess.CompletedProcess[str]:
@@ -122,6 +155,9 @@ def test_step_2_just_certs_rejects_shell_expression_without_execution(
 
 
 def _run_orchestrator_startup(project: FirstRunProject) -> subprocess.CompletedProcess[str]:
+    # This negative-path probe must not tear down the session-scoped healthy
+    # stack used by test_step_3_first_run_success_criteria.
+    gate_environment = project.env | {"COMPOSE_PROJECT_NAME": f"{project.compose_project}-dependency-gate"}
     try:
         return subprocess.run(
             [
@@ -134,7 +170,7 @@ def _run_orchestrator_startup(project: FirstRunProject) -> subprocess.CompletedP
                 "orchestrator",
             ],
             cwd=project.checkout,
-            env=project.env,
+            env=gate_environment,
             check=False,
             capture_output=True,
             text=True,
@@ -144,12 +180,40 @@ def _run_orchestrator_startup(project: FirstRunProject) -> subprocess.CompletedP
         subprocess.run(
             ["docker", "compose", "down", "--volumes", "--remove-orphans"],
             cwd=project.checkout,
-            env=project.env,
+            env=gate_environment,
             check=False,
             capture_output=True,
             text=True,
             timeout=60,
         )
+
+
+def test_step_2_dependency_gate_uses_an_isolated_compose_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[list[str], str]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environment = cast("dict[str, str]", kwargs["env"])
+        calls.append((command, environment["COMPOSE_PROJECT_NAME"]))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    project = FirstRunProject(
+        checkout=tmp_path,
+        token="a" * 64,
+        env={"COMPOSE_PROJECT_NAME": "first-run"},
+        compose_project="first-run",
+        log_path=tmp_path / "compose.log",
+    )
+
+    _run_orchestrator_startup(project)
+
+    assert [command[:3] for command, _ in calls] == [
+        ["docker", "compose", "up"],
+        ["docker", "compose", "down"],
+    ]
+    assert {project_name for _, project_name in calls} == {"first-run-dependency-gate"}
 
 
 def test_step_2_compose_dependency_gate_blocks_orchestrator_startup(

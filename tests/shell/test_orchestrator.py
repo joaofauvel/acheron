@@ -596,6 +596,27 @@ class TestOrchestrator:
             assert await reg.find_by_type(wt), f"{wt.value}-local should be registered"
 
     @pytest.mark.asyncio
+    async def test_start_rehydrates_handlers_for_persisted_local_workers(self, tmp_path: Path) -> None:
+        """A restarted orchestrator can dispatch workers persisted by a previous process."""
+        registry = InMemoryWorkerStore()
+        first = Orchestrator(registry, PlanCache(tmp_path / "first"))
+        await first.start()
+        await first.shutdown()
+        await first.close()
+
+        restarted = Orchestrator(registry, PlanCache(tmp_path / "restarted"))
+        await restarted.start()
+        try:
+            assert set(restarted._local_handlers) >= {  # noqa: SLF001
+                "extraction-local",
+                "chunking-local",
+                "packaging-local",
+            }
+        finally:
+            await restarted.shutdown()
+            await restarted.close()
+
+    @pytest.mark.asyncio
     async def test_preview_job_compiles_without_persistence(self, tmp_path: Path) -> None:
         """OPS-016: preview_job must compile a plan without creating a job record or a plan file."""
         registry = InMemoryWorkerStore()

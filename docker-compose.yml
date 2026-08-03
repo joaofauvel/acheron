@@ -30,7 +30,16 @@ services:
       target: certs-init
     volumes:
       - ./certs:/certs
-    command: ["sh", "-c", "python scripts/generate_dev_certs.py --out-dir /certs && chmod 640 /certs/*.key"]
+      - acheron-data:/data
+    command:
+      - sh
+      - -c
+      - >-
+        python scripts/generate_dev_certs.py --out-dir /certs &&
+        chmod 640 /certs/*.key &&
+        mkdir -p /data/jobs &&
+        chown 1000:0 /data/jobs &&
+        chmod 0775 /data/jobs
     restart: "no"
 
   orchestrator:
@@ -51,6 +60,9 @@ services:
       ACHERON_TLS_CERT_FILE: /certs/orchestrator.crt
       ACHERON_TLS_KEY_FILE: /certs/orchestrator.key
       ACHERON_TLS_CA_FILE: /certs/acheron-ca.crt
+      # Only named Compose edges may receive bearer-authenticated HTTP traffic.
+      # Other registered plaintext endpoints remain blocked.
+      ACHERON_INSECURE_HTTP_WORKER_IDS: ${ACHERON_INSECURE_HTTP_WORKER_IDS:-asr-local-stub,translation-local-stub,translation-runpod-stub,tts-grpc-stub,tts-local-stub,tts-runpod-stub,qwen3tts-1,granite-speech-edge,translategemma-edge}
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
       - acheron-data:/data
@@ -206,7 +218,6 @@ services:
       ACHERON_WORKER__DEFAULT_SPEAKER: "Ryan"
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
-      ACHERON_ALLOW_INSECURE: "1"
     volumes:
       - ./certs:/certs:ro
     healthcheck:
@@ -243,7 +254,6 @@ services:
       ACHERON_WORKER__SECURE_CLOUD: "false"
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
-      ACHERON_ALLOW_INSECURE: "1"
     volumes:
       - ./certs:/certs:ro
     healthcheck:
@@ -281,7 +291,6 @@ services:
       ACHERON_WORKER__LISTEN_PORT: "8001"
       ACHERON_WORKER__MODEL_ID: ${TRANSLATEGEMMA_MODEL_ID:-google/translategemma-12b-it}
       SSL_CERT_FILE: /certs/acheron-ca.crt
-      ACHERON_ALLOW_INSECURE: "1"
     volumes:
       - ./certs:/certs:ro
     healthcheck:

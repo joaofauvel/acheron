@@ -23,6 +23,10 @@ ENV ACHERON_BUILD_SHA=${ACHERON_BUILD_SHA} \
     ACHERON_BUILD_IMAGE=${ACHERON_BUILD_IMAGE} \
     ACHERON_BUILD_REGISTRY=${ACHERON_BUILD_REGISTRY}
 
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl

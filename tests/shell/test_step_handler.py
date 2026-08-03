@@ -696,6 +696,31 @@ class TestHttpWorkerStepCache:
         assert isinstance(worker_after, HttpWorker)
         assert worker_after._registration_token == token  # noqa: SLF001
 
+    def test_factory_scopes_insecure_http_to_explicit_worker_ids(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ACHERON_INSECURE_HTTP_WORKER_IDS", "tts-local-stub, asr-local-stub")
+        allowed = RegisteredWorker(
+            worker_id="tts-local-stub",
+            endpoint="http://tts-local-stub:8001",
+            transport="http",
+            capabilities=_tts_caps(),
+        )
+        remote = RegisteredWorker(
+            worker_id="remote-tts",
+            endpoint="http://remote.example:8000",
+            transport="http",
+            capabilities=_tts_caps(),
+        )
+
+        allowed_worker = default_worker_factory(allowed, data_dir=tmp_path, registration_token="secret")
+        remote_worker = default_worker_factory(remote, data_dir=tmp_path, registration_token="secret")
+
+        assert isinstance(allowed_worker, HttpWorker)
+        assert isinstance(remote_worker, HttpWorker)
+        assert allowed_worker._allow_insecure is True  # noqa: SLF001
+        assert remote_worker._allow_insecure is False  # noqa: SLF001
+
     @pytest.mark.asyncio
     async def test_create_step_handler_default_lambda_passes_shared_step_cache(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
