@@ -1,11 +1,15 @@
 import re
 import time
+from typing import cast
 
 from tests.first_run.helpers import ComposeStack, read_file_backed_token
 
 
 def _healthy_worker_ids(compose_stack: ComposeStack, token: str) -> set[str]:
-    payload = compose_stack.get_json("https://localhost:8000/workers", headers={"Authorization": f"Bearer {token}"})
+    payload = cast(
+        "dict[str, object]",
+        compose_stack.get_json("https://localhost:8000/workers", headers={"Authorization": f"Bearer {token}"}),
+    )
     workers = payload.get("workers")
     assert isinstance(workers, list)
     return {
