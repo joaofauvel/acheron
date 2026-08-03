@@ -1,6 +1,7 @@
 from tests.first_run.helpers import (
     EXPECTED_QUICK_START_COMMANDS,
     FirstRunProject,
+    compose_config_for_file_backed_mode,
     extract_quick_start_commands,
     file_backed_environment,
 )
@@ -65,5 +66,21 @@ def test_step_1_file_backed_mode_survives_shell_restart(prepared_project: FirstR
     assert "ACHERON_REGISTRATION_TOKEN" not in first_shell
     assert "ACHERON_REGISTRATION_TOKEN" not in second_shell
     assert first_shell == second_shell
+
+    first_config = compose_config_for_file_backed_mode(prepared_project)
+    second_config = compose_config_for_file_backed_mode(prepared_project)
+    assert first_config.returncode == 0, (
+        "step 1: Compose must render without ACHERON_REGISTRATION_TOKEN for the persisted file-backed source; "
+        f"stderr={first_config.stderr}"
+    )
+    assert second_config.returncode == 0, (
+        "step 1: a new shell must reuse the persisted file-backed source; stderr={second_config.stderr}"
+    )
+    for config in (first_config, second_config):
+        assert "ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token" in config.stdout
+    token_file = prepared_project.checkout / ".first-run-data" / "jobs" / ".registration_token"
+    assert token_file.read_text(encoding="utf-8") == "persisted-test-token\n"
+    assert first_config.stdout == second_config.stdout
+
     readme = (prepared_project.checkout / "README.md").read_text()
     assert "reuses that token" in readme, "step 1: README omits cross-shell token reuse guidance"

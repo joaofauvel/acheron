@@ -137,6 +137,22 @@ def file_backed_environment(environment: Mapping[str, str]) -> dict[str, str]:
     return {key: value for key, value in environment.items() if key != "ACHERON_REGISTRATION_TOKEN"}
 
 
+def compose_config_for_file_backed_mode(project: FirstRunProject) -> subprocess.CompletedProcess[str]:
+    """Render Compose without an environment token for the file-backed contract."""
+    token_directory = project.checkout / ".first-run-data" / "jobs"
+    token_directory.mkdir(parents=True, exist_ok=True)
+    (token_directory / ".registration_token").write_text("persisted-test-token\n", encoding="utf-8")
+    environment = file_backed_environment(project.env)
+    return subprocess.run(
+        ["docker", "compose", "config"],
+        cwd=project.checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 def extract_quick_start_commands(readme_text: str) -> tuple[str, ...]:
     """Extract commands from the README Quick Start bash fence."""
     _, separator, remainder = readme_text.partition("## Quick Start")
