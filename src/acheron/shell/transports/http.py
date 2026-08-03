@@ -160,10 +160,12 @@ class HttpWorker(Worker):
         step_cache: StepCache | InMemoryStepCache | None = None,
         registration_token: str | None = None,
         registration_token_provider: Callable[[], str | None] | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._registration_token = registration_token
         self._registration_token_provider = registration_token_provider
+        self._allow_insecure = allow_insecure
         self._data_dir = Path(data_dir).resolve()
         if step_cache is not None and step_cache.data_dir.resolve() != self._data_dir:
             msg = (
@@ -198,7 +200,11 @@ class HttpWorker(Worker):
             if self._registration_token_provider is not None
             else self._registration_token
         )
-        if token is not None and urlsplit(url).scheme.casefold() == "http" and not _allow_insecure(url):
+        if (
+            token is not None
+            and urlsplit(url).scheme.casefold() == "http"
+            and not (self._allow_insecure and _allow_insecure(url))
+        ):
             raise InsecureBearerTransportError(
                 "Refusing to send a bearer token over plaintext; "
                 "configure HTTPS or explicitly opt into insecure local transport",
