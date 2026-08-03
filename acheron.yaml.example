@@ -15,7 +15,8 @@ orchestrator:
 
   # Shared secret for worker registration. If not configured (null or commented out),
   # the orchestrator will automatically generate a secure token and persist it to
-  # {data_dir}/.registration_token. Repository Compose workers use the mounted
+  # {data_dir}/.registration_token. Repository Compose stores this in the named
+# acheron-data volume and workers use the mounted
   # ACHERON_WORKER__REGISTRATION_TOKEN_FILE source; standalone workers may use
   # the static ACHERON_WORKER__REGISTRATION_TOKEN environment source instead.
   # To bypass security completely for development, set the environment variable

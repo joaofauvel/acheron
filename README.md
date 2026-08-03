@@ -28,9 +28,10 @@ docker compose up --build
 ```
 
 Compose persists its file-backed registration token at
-`<data_dir>/.registration_token` (the local data volume maps this to
-`./data/jobs/.registration_token`). Re-running these commands from a new shell
-reuses that token; no shell-only export is required.
+`<data_dir>/.registration_token` in the named `acheron-data` volume, mounted at
+`/data/jobs/.registration_token`. This is not a host `./data/jobs` bind mount.
+Re-running these commands from a new shell reuses that token; no shell-only
+export is required.
 
 The stack comes up with these default services. Administrative mutations
 require a separate `ACHERON_ADMIN_TOKEN`; set it in `.env` before using the
@@ -95,7 +96,7 @@ acheron capabilities --type tts
 
 ## Dashboard
 
-The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8080`. It polls the orchestrator for job status, worker health, and cost. In Compose, set `ACHERON_REGISTRATION_TOKEN`; the dashboard forwards this secret only from its server-side proxy to protected orchestrator reads, never to the browser.
+The dashboard is an HTMX-based web UI for live monitoring at `http://localhost:8080`. It polls the orchestrator for job status, worker health, and cost. In Compose, the dashboard reads the file-backed token from the shared `acheron-data` volume at `/data/jobs/.registration_token`; it forwards this secret only from its server-side proxy to protected orchestrator reads, never to the browser.
 
 ## Administrative Operations
 
@@ -109,7 +110,7 @@ administrative mutations.
 
 | Source | Configuration | Lifecycle |
 |---|---|---|
-| Environment | `ACHERON_REGISTRATION_TOKEN` or standalone worker `ACHERON_WORKER__REGISTRATION_TOKEN` | Static, externally managed; `acheron token rotate --reason "..."` exits nonzero with remediation to update/restart workers externally. |
+| Environment | `ACHERON_REGISTRATION_TOKEN` or standalone worker `ACHERON_WORKER__REGISTRATION_TOKEN` | Static, externally managed; cannot rotate in place. `acheron token rotate --reason "..."` exits nonzero with remediation to update/restart workers externally. |
 | File | Unset Compose token; `<data_dir>/.registration_token` | File-backed auto-mint and reuse across shells. |
 | Worker file | `ACHERON_WORKER__REGISTRATION_TOKEN_FILE` | Reload-aware; the worker reads the current mounted file for each protected operation. |
 

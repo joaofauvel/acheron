@@ -22,7 +22,6 @@ from typing import TextIO
 
 EXPECTED_QUICK_START_COMMANDS = (
     "cp .env.example .env",
-    'export ACHERON_REGISTRATION_TOKEN="$(openssl rand -hex 32)"',
     "docker compose up --build",
 )
 
@@ -131,6 +130,11 @@ class ComposeStack:
         log = self.log_tail()
         message = f"services did not become ready: {last_error}\n{log}"
         raise TimeoutError(message)
+
+
+def file_backed_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """Remove the explicit registration token for Compose file-backed mode."""
+    return {key: value for key, value in environment.items() if key != "ACHERON_REGISTRATION_TOKEN"}
 
 
 def extract_quick_start_commands(readme_text: str) -> tuple[str, ...]:

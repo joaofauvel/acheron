@@ -27,11 +27,14 @@ def test_token_status_contract_names_source_without_plaintext() -> None:
     assert "source=file" in readme
     assert "fingerprint" in readme
     assert "status output never contains the token" in readme
+    assert "named `acheron-data` volume" in readme
+    assert "/data/jobs/.registration_token" in readme
     assert "0123456789abcdef" not in readme
 
 
 def test_environment_rotation_contract_has_external_remediation() -> None:
     readme = _readme().casefold()
     assert "acheron token rotate --reason" in readme
+    assert "cannot rotate in place" in readme
     assert "exits nonzero" in readme
     assert "update/restart workers externally" in readme
