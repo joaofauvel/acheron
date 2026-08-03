@@ -1,7 +1,7 @@
 ---
 program: ux-review
 last_updated_date: 2026-08-02
-version: 9
+version: 10
 initial_review_commit: 59458ba
 last_updated_commit: CURRENT_HEAD
 related: docs/code_review/
@@ -13,9 +13,9 @@ related: docs/code_review/
 
 | Theme | Grade | Open stories by severity | Verified | Notes |
 |---|---|---|---|---|
-| DEPLOY | C | 2 medium, 1 low | 0 | 15 stories; certificate material is protected, with image, environment, and model-cache gaps remaining |
+| DEPLOY | C | 2 medium, 1 low | 1 | 15 stories; certificate material is protected and independently verified, with image, environment, and model-cache gaps remaining |
 | OPS | C | 1 low | 6 | 31 stories; typed capability and tail-remediation drift remain alongside durable-dashboard gaps |
-| MAINT | C | 0 | 10 | 19 stories; certificate monitoring and reload are implemented, with schema and token drift remaining |
+| MAINT | C | 0 | 12 | 19 stories; certificate monitoring and reload are independently verified, with schema and token drift remaining |
 
 A theme with 0 stories is graded `—` (untested); this summary has no such themes.
 
@@ -58,8 +58,8 @@ Stories are listed high-to-low within each bundle; bundle order prioritizes high
 |---|---|
 | open | 4 |
 | in-progress | 0 |
-| fixed | 30 |
-| verified | 16 |
+| fixed | 27 |
+| verified | 19 |
 | partial | 0 |
 | stale | 4 |
 | obsolete | 10 |
@@ -88,7 +88,7 @@ Stories are listed high-to-low within each bundle; bundle order prioritizes high
 - OPS-028 voice selection was verified at `8d3229a` by the four-chapter temporary-input preview/promotion journey, canonical map assertion, jointly capable worker assertion, and Qwen speaker-sequence assertion; its story metadata records the same `fixed_in`, `verified_in`, and `last_verified_at.commit`.
 - Final-gate metadata refresh records `CURRENT_HEAD` in `fixed_in`, `verified_in`, and `last_verified_at.commit` for all 15 Phase 4D stories; story evidence remains the journey and simulation harnesses named in `verified_by`.
 - `CURRENT_HEAD` is the repository-native marker for metadata verified at the checked-out commit. The UX verifier resolves it only against the repository's actual HEAD and rejects stale or arbitrary supplied SHAs; this keeps tracked metadata clean without a self-referential commit.
-- Open and stale stories remain UX concerns even when related code-review work is tracked separately. Bundle 01's three stories are now fixed pending independent certificate-rotation verification; the remaining bundles are encoded in story `bundle` metadata and contain only the revalidated stories.
+- Open and stale stories remain UX concerns even when related code-review work is tracked separately. Bundle 01's three stories are now verified by the independent certificate-rotation journey; the remaining bundles are encoded in story `bundle` metadata and contain only the revalidated stories.
 - Simulation and first-run artifacts are supplemental evidence for stories whose strongest discovery channel is human; only stories discovered via `simulation` or `first-run` require exact `STORY_REF` and `user_journey` attestation.
 
 ## Task 18 report

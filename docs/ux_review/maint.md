@@ -93,7 +93,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-003
 title: "Cert expiry is silent — orchestrator reads `ACHERON_TLS_CERT_FILE` once and emits no warning at 30/7/0 day marks"
-status: fixed
+status: verified
 severity: high
 effort: M
 discovered_via: [on-call, code-review, audit]
@@ -113,9 +113,12 @@ files:
 related: []
 bundle: 01-cert-tls
 fixed_in: [7fb2631, 62c088a, e85861b]
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+verified_in: [CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  date: "2026-08-02"
+verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 incident_ref: TBD-pagerduty
 ---
 ```
@@ -124,7 +127,7 @@ incident_ref: TBD-pagerduty
 
 **Current state.** `CertificateManager` reports subject, expiry, remaining time, and severity; logs startup status and one message at each 30-day, 7-day, 1-day, and expiry threshold; and the admin API/CLI expose sanitized status. The Compose development bundle remains separate from production certificate management.
 
-**Verification.** Automated TLS, admin, CLI, Compose, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent status → replacement → reload → same-PID → worker-connectivity verification remains pending.
+**Verification.** Independent status → replacement → reload → same-PID → healthy API → HTTP worker-connectivity verification passed in `docs/superpowers/review/bundle-01-cert-tls-independent-verification.md`; automated TLS, admin, CLI, Compose, and first-run gates also pass.
 
 ## MAINT-004 — Dev cert SAN list breaks production TLS verify
 
@@ -164,7 +167,7 @@ incident_ref: TBD-pagerduty
 ---
 id: MAINT-005
 title: "Cert rotation requires orchestrator restart — `uvicorn` does not reload `ssl_certfile` / `ssl_keyfile` after a SIGHUP, and the operator has no `/admin/certs/reload` endpoint"
-status: fixed
+status: verified
 severity: medium
 effort: M
 discovered_via: [on-call, code-review]
@@ -186,16 +189,19 @@ files:
 related: [MAINT-003]
 bundle: 01-cert-tls
 fixed_in: [9ec88c9, 134c47d]
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+verified_in: [CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  date: "2026-08-02"
+verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 incident_ref: TBD-pagerduty
 ---
 ```
 
 **Issue.** `uvicorn_ssl_kwargs` was consumed once at process start, so `ssl_certfile` / `ssl_keyfile` were not hot-reloadable. There was no `/admin/certs/reload` HTTP endpoint or `acheron certs reload` CLI command.
 
-**Current state.** The admin endpoint validates the replacement pair, updates the persistent server context, and records an admin action; the CLI uses the admin token and reports the sanitized result. The orchestrator entry point supplies the same persistent context to Uvicorn, while plain HTTP remains available when TLS is unset.
+**Current state.** The admin endpoint validates the replacement pair, updates the persistent server context, and records an admin action; the CLI uses the admin token and reports the sanitized result. The independent status → replacement → reload → same-PID → healthy API → HTTP worker-connectivity journey passed; plain HTTP remains available when TLS is unset.
 
 **Verification.** Automated TLS integration, admin, CLI, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent status → replacement → reload → same-PID → worker-connectivity verification remains pending.
 

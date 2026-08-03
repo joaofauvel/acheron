@@ -267,7 +267,7 @@ verified_by: ""
 ---
 id: DEPLOY-008
 title: "`certs-init` service and `just certs` overwrite the entire CA on every run, invalidating any external cert trust the deployer has wired up"
-status: fixed
+status: verified
 severity: medium
 effort: M
 discovered_via: [code-review, first-run]
@@ -285,9 +285,12 @@ files:
 related: [SEC-001]
 bundle: 01-cert-tls
 fixed_in: [7c16960, 03deac0, 72dcbb8, e5f338a]
-verified_in: []
-last_verified_at: {}
-verified_by: ""
+verified_in: [CURRENT_HEAD]
+last_verified_at:
+  commit: CURRENT_HEAD
+  tree: 0e9829f7fa8c42bfbfe91e4361d77f5401a5098f677de0d03996f8ee750a2342
+  date: "2026-08-02"
+verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 ---
 ```
 
@@ -295,7 +298,7 @@ verified_by: ""
 
 **Current state.** A fresh run creates `.dev-ca` after publishing a complete bundle. Re-running a complete marked bundle is a no-op; partial or unmarked material is rejected without mutation; `--force` is accepted only for a complete marked development bundle. Compose keeps dependent services behind successful `certs-init` completion.
 
-**Verification.** Automated generator, Compose, `just validate`, and `just first-run --step 2` gates provide implementation evidence. Independent confirmation with an externally managed certificate bundle remains pending.
+**Verification.** Independent generator, Compose refusal/reuse, status, replacement, reload, same-PID, healthy API, and HTTP worker-connectivity evidence passed in `docs/superpowers/review/bundle-01-cert-tls-independent-verification.md`.
 
 ## DEPLOY-009 — `ACHERON_OPEN_REGISTRATION` env var is read by the orchestrator but undocumented
 
