@@ -34,7 +34,7 @@ from acheron.tls import resolve_ca_path
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
-    from acheron.core.schemas import PlanResponse
+    from acheron.core.schemas import CertificateStatusResponse, PlanResponse
 
 console = Console()
 err_console = Console(stderr=True)
@@ -684,6 +684,39 @@ def reap_stuck(older_than: str, reason: str) -> None:
     console.print(f"reaped={result.reaped}")
     for job_id in result.job_ids:
         console.print(job_id)
+
+
+def _format_certificate_status(status: CertificateStatusResponse) -> str:
+    """Render sanitized certificate status without filesystem details."""
+    if not status.enabled:
+        return "TLS disabled"
+    name = status.name or "certificate"
+    remaining = status.remaining_display or "unknown"
+    return f"{name} expires in {remaining}"
+
+
+@main.group()
+def certs() -> None:
+    """Inspect and reload orchestrator certificates."""
+
+
+@certs.command("status")
+def certs_status() -> None:
+    """Show orchestrator certificate expiry status."""
+    _require_admin_token()
+    client = _get_client()
+    result = _run(client.get_cert_status(), client=client, on_http_error=_print_http_error)
+    console.print(_format_certificate_status(result))
+
+
+@certs.command("reload")
+def certs_reload() -> None:
+    """Reload the active orchestrator certificate."""
+    _require_admin_token()
+    client = _get_client()
+    result = _run(client.reload_certs(), client=client, on_http_error=_print_http_error)
+    prefix = "Reloaded certificate: " if result.reloaded else "Certificate not reloaded: "
+    console.print(prefix + _format_certificate_status(result.certificate))
 
 
 def _preflight_voice_selection(  # noqa: PLR0913

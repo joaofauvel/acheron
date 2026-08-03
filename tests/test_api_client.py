@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from acheron.api_client import AcheronClient
 from acheron.core.models import PlanStatus, VoiceRange
-from acheron.core.schemas import CleanupResponse, WorkerCapability
+from acheron.core.schemas import CertificateReloadResponse, CertificateStatusResponse, CleanupResponse, WorkerCapability
 
 
 def test_api_client_import_does_not_load_shell_schemas() -> None:
@@ -108,6 +108,69 @@ async def test_cleanup_returns_core_response_schema() -> None:
     assert type(result) is CleanupResponse
     assert result.candidates[0].job_id == "job-1"
     assert result.reclaimable_bytes == 12
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_cert_status_uses_admin_header() -> None:
+    route = respx.get("http://test/admin/certs/status").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "enabled": True,
+                "name": "orchestrator.crt",
+                "subject": "CN=orchestrator",
+                "expires_at": "2026-08-02T12:00:00Z",
+                "remaining_seconds": 840.0,
+                "remaining_display": "0d 0h 14m",
+                "severity": "ok",
+            },
+        )
+    )
+    client = AcheronClient(
+        "http://test",
+        registration_token="registration-token",
+        admin_token="admin-token",
+    )
+
+    result = await client.get_cert_status()
+
+    assert type(result) is CertificateStatusResponse
+    assert result.name == "orchestrator.crt"
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_reload_certs_posts_admin_header() -> None:
+    route = respx.post("http://test/admin/certs/reload").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "reloaded": True,
+                "certificate": {
+                    "enabled": True,
+                    "name": "orchestrator.crt",
+                    "subject": "CN=orchestrator",
+                    "expires_at": "2026-08-02T12:00:00Z",
+                    "remaining_seconds": 840.0,
+                    "remaining_display": "0d 0h 14m",
+                    "severity": "ok",
+                },
+            },
+        )
+    )
+    client = AcheronClient(
+        "http://test",
+        registration_token="registration-token",
+        admin_token="admin-token",
+    )
+
+    result = await client.reload_certs()
+
+    assert type(result) is CertificateReloadResponse
+    assert result.reloaded is True
     assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
 
 

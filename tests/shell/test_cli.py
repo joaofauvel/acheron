@@ -823,6 +823,79 @@ def test_admin_reap_stuck_renders_ids_and_uses_admin_token(monkeypatch: pytest.M
 
 
 @respx.mock
+def test_certs_status_renders_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.get(f"{_BASE_URL}/admin/certs/status").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "enabled": True,
+                "name": "orchestrator.crt",
+                "subject": "CN=orchestrator",
+                "expires_at": "2026-08-02T12:00:00Z",
+                "remaining_seconds": 840.0,
+                "remaining_display": "0d 0h 14m",
+                "severity": "ok",
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["certs", "status"])
+
+    assert result.exit_code == 0, result.output
+    assert "orchestrator.crt expires in 0d 0h 14m" in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+    assert "private" not in result.output.lower()
+    assert "/" not in result.output
+
+
+@respx.mock
+def test_certs_reload_renders_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACHERON_ADMIN_TOKEN", "admin-token")
+    route = respx.post(f"{_BASE_URL}/admin/certs/reload").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "reloaded": True,
+                "certificate": {
+                    "enabled": True,
+                    "name": "orchestrator.crt",
+                    "subject": "CN=orchestrator",
+                    "expires_at": "2026-08-02T12:00:00Z",
+                    "remaining_seconds": 840.0,
+                    "remaining_display": "0d 0h 14m",
+                    "severity": "ok",
+                },
+            },
+        )
+    )
+
+    result = CliRunner().invoke(main, ["certs", "reload"])
+
+    assert result.exit_code == 0, result.output
+    assert "Reloaded certificate: orchestrator.crt expires in 0d 0h 14m" in result.output
+    assert route.calls.last.request.headers["authorization"] == "Bearer admin-token"
+
+
+@respx.mock
+def test_certs_commands_require_admin_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ACHERON_ADMIN_TOKEN", raising=False)
+    monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN", "registration-token")
+    status_route = respx.get(f"{_BASE_URL}/admin/certs/status").mock(return_value=httpx.Response(200))
+    reload_route = respx.post(f"{_BASE_URL}/admin/certs/reload").mock(return_value=httpx.Response(200))
+
+    status_result = CliRunner().invoke(main, ["certs", "status"])
+    reload_result = CliRunner().invoke(main, ["certs", "reload"])
+
+    assert status_result.exit_code != 0
+    assert reload_result.exit_code != 0
+    assert "ACHERON_ADMIN_TOKEN" in status_result.output
+    assert "ACHERON_ADMIN_TOKEN" in reload_result.output
+    assert not status_route.called
+    assert not reload_route.called
+
+
+@respx.mock
 def test_archive_requires_admin_token_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ACHERON_ADMIN_TOKEN", raising=False)
     route = respx.post(f"{_BASE_URL}/admin/jobs/job-1/archive").mock(return_value=httpx.Response(200))

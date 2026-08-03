@@ -14,6 +14,8 @@ import httpx
 from acheron.core.schemas import (
     AdminJobResponse,
     CapabilitiesResponse,
+    CertificateReloadResponse,
+    CertificateStatusResponse,
     CleanupResponse,
     CostSummaryResponse,
     InputResponse,
@@ -254,6 +256,20 @@ class AcheronClient:
             resp = await client.post("/admin/cleanup", json=payload, headers=self._admin_headers())
             resp.raise_for_status()
             return CleanupResponse.model_validate(resp.json())
+
+    async def get_cert_status(self) -> CertificateStatusResponse:
+        """Get sanitized orchestrator certificate status through the admin API."""
+        async with self._http_client() as client:
+            resp = await client.get("/admin/certs/status", headers=self._admin_headers())
+            resp.raise_for_status()
+            return CertificateStatusResponse.model_validate(resp.json())
+
+    async def reload_certs(self) -> CertificateReloadResponse:
+        """Reload the orchestrator certificate through the admin API."""
+        async with self._http_client() as client:
+            resp = await client.post("/admin/certs/reload", headers=self._admin_headers())
+            resp.raise_for_status()
+            return CertificateReloadResponse.model_validate(resp.json())
 
     async def cancel_job(self, job_id: str) -> JobResponse:
         """Cancel an active job and return its persisted terminal result."""
