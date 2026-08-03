@@ -32,7 +32,8 @@ def test_step_2_compose_start(compose_stack: ComposeStack) -> None:
     assert isinstance(orchestrator_environment, dict)
     assert "ACHERON_ALLOW_INSECURE" not in orchestrator_environment
     assert orchestrator_environment["ACHERON_INSECURE_LOCAL_EDGE_HOSTS"] == (
-        "tts-local-stub,asr-local-stub,translation-local-stub,tts-runpod-stub,"
+        "localhost,127.0.0.1,tts-local-stub,asr-local-stub,translation-local-stub,"
+        "tts-runpod-stub,"
         "translation-runpod-stub,tts-grpc-stub,qwen3tts-edge,granite-speech-edge,translategemma-edge"
     )
 
