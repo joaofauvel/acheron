@@ -70,6 +70,7 @@ class ComposeStack:
         method: str = "GET",
         body: object | None = None,
         headers: Mapping[str, str] | None = None,
+        timeout_seconds: float = 5,
     ) -> HttpResponse:
         """Send an HTTP request while preserving non-success statuses."""
         data = None if body is None else json.dumps(body).encode()
@@ -78,7 +79,7 @@ class ComposeStack:
             request_headers.setdefault("Content-Type", "application/json")
         request = urllib.request.Request(url, data=data, headers=request_headers, method=method)
         try:
-            response = urllib.request.urlopen(request, context=self._ssl_context(url), timeout=5)
+            response = urllib.request.urlopen(request, context=self._ssl_context(url), timeout=timeout_seconds)
         except urllib.error.HTTPError as error:
             return HttpResponse(error.code, dict(error.headers.items()), error.read())
         with response:

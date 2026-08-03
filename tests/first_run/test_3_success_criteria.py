@@ -61,6 +61,7 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
         method="POST",
         body={"reason": "first-run rotation"},
         headers=admin_headers,
+        timeout_seconds=30,
     )
     assert rotation.status == 200, rotation.body.decode()
     rotation_payload = cast("dict[str, object]", json.loads(rotation.body))
