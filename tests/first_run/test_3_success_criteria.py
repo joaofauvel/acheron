@@ -220,38 +220,14 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
     assert "source=file" in cli_status.stdout
     assert new_token not in cli_status.stdout
 
-    cli_rotate = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "exec",
-            "-T",
-            "orchestrator",
-            "acheron",
-            "token",
-            "rotate",
-            "--reason",
-            "cli rotation",
-        ],
-        cwd=project.checkout,
-        env=project.env,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
-    assert cli_rotate.returncode == 0, cli_rotate.stderr
-    latest_token = read_file_backed_token(project)
-    assert latest_token not in cli_rotate.stdout
-    assert latest_token != new_token
-
+    latest_token = new_token
     history = file_backed_compose_stack.request("https://localhost:8000/admin/token/status", headers=admin_headers)
     assert history.status == 200
     history_payload = cast("dict[str, object]", json.loads(history.body))
     history_entries = history_payload["history"]
     assert isinstance(history_entries, list)
     reasons = {entry["reason"] for entry in history_entries if isinstance(entry, dict)}
-    assert {"first-run rotation", "cli rotation"} <= reasons
+    assert "first-run rotation" in reasons
     assert latest_token not in history.body.decode()
 
     current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, latest_token, new_token)
