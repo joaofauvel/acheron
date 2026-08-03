@@ -252,24 +252,23 @@ class RegistrationTokenStore:
         timestamp = _now()
         safe_reason = self._safe_metadata(reason, old_token, "operator rotation")
         safe_request_id = self._safe_metadata(request_id, old_token, "unknown-request")
-        candidate_active = False
         try:
             self._atomic_write_secret(candidate)
-            candidate_active = True
+        except (OSError, TokenStoreError) as exc:
+            raise TokenStoreError(
+                "Unable to stage the replacement registration token",
+                remediation="Check the orchestrator data directory permissions",
+            ) from exc
+        try:
             result = await rollout(candidate)
         except asyncio.CancelledError:
-            if candidate_active:
-                await self._rollback_workers(rollout, old_token)
-                self._restore_secret_best_effort(old_token)
-                self._restore_snapshot_best_effort(self.audit_path, old_audit)
-                self._restore_snapshot_best_effort(self.metadata_path, old_metadata)
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
+            raise
+        except TokenRotationError, TokenStoreError:
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
             raise
         except BaseException as exc:
-            if candidate_active:
-                await self._rollback_workers(rollout, old_token)
-                self._restore_secret_best_effort(old_token)
-                self._restore_snapshot_best_effort(self.audit_path, old_audit)
-                self._restore_snapshot_best_effort(self.metadata_path, old_metadata)
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
             raise TokenRotationError(
                 "Registration token rollout failed; the previous token was restored",
                 remediation="Check worker connectivity and retry the rotation",
@@ -319,12 +318,24 @@ class RegistrationTokenStore:
         try:
             self._append_audit_locked(success_audit)
             self._write_lifecycle_locked(new_lifecycle)
+        except asyncio.CancelledError:
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
+            raise
+        except TokenStoreError as exc:
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
+            raise TokenStoreError(
+                "Unable to finalize registration token rotation; the previous token was restored",
+                remediation="Check the orchestrator data directory permissions and retry the rotation",
+            ) from exc
+        except OSError as exc:
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
+            raise TokenStoreError(
+                "Unable to finalize registration token rotation; the previous token was restored",
+                remediation="Check the orchestrator data directory permissions and retry the rotation",
+            ) from exc
         except BaseException as exc:
-            await self._rollback_workers(rollout, old_token)
-            self._restore_secret_best_effort(old_token)
-            self._restore_snapshot_best_effort(self.audit_path, old_audit)
-            self._restore_snapshot_best_effort(self.metadata_path, old_metadata)
-            raise TokenRotationError(
+            await self._rollback_state(rollout, old_token, old_audit, old_metadata)
+            raise TokenStoreError(
                 "Unable to finalize registration token rotation; the previous token was restored",
                 remediation="Check the orchestrator data directory permissions and retry the rotation",
             ) from exc
@@ -407,7 +418,8 @@ class RegistrationTokenStore:
             temporary_path.replace(path)
             self._ensure_mode(path)
         except OSError:
-            temporary_path.unlink(missing_ok=True)
+            with suppress(OSError):
+                temporary_path.unlink(missing_ok=True)
             raise
 
     def _restore_secret_best_effort(self, token: str) -> None:
@@ -417,6 +429,18 @@ class RegistrationTokenStore:
     async def _rollback_workers(self, rollout: Rollout, token: str) -> None:
         with suppress(BaseException):
             await asyncio.shield(rollout(token))
+
+    async def _rollback_state(
+        self,
+        rollout: Rollout,
+        old_token: str,
+        old_audit: bytes | None,
+        old_metadata: bytes | None,
+    ) -> None:
+        await self._rollback_workers(rollout, old_token)
+        self._restore_secret_best_effort(old_token)
+        self._restore_snapshot_best_effort(self.audit_path, old_audit)
+        self._restore_snapshot_best_effort(self.metadata_path, old_metadata)
 
     def _record_failure_best_effort(self, audit: RegistrationTokenAudit) -> None:
         with suppress(BaseException):
@@ -492,8 +516,18 @@ class RegistrationTokenStore:
             ) from exc
         try:
             yield
-        finally:
-            lock.release()
+        except BaseException:
+            with suppress(BaseException):
+                lock.release()
+            raise
+        else:
+            try:
+                lock.release()
+            except OSError as exc:
+                raise TokenStoreError(
+                    "Unable to release registration token state lock",
+                    remediation="Check the orchestrator data directory permissions",
+                ) from exc
 
     @asynccontextmanager
     async def _async_file_lock(self) -> AsyncIterator[None]:
@@ -507,8 +541,18 @@ class RegistrationTokenStore:
             ) from exc
         try:
             yield
-        finally:
-            await asyncio.to_thread(lock.release)
+        except BaseException:
+            with suppress(BaseException):
+                await asyncio.to_thread(lock.release)
+            raise
+        else:
+            try:
+                await asyncio.to_thread(lock.release)
+            except OSError as exc:
+                raise TokenStoreError(
+                    "Unable to release registration token state lock",
+                    remediation="Check the orchestrator data directory permissions",
+                ) from exc
 
     @staticmethod
     def _safe_metadata(value: str, secret: str, fallback: str) -> str:

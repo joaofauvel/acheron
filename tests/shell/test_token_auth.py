@@ -9,6 +9,8 @@ from acheron.shell.token_auth import (
     RegistrationTokenStore,
     RolloutResult,
     TokenRotationError,
+    TokenStoreError,
+    _FileLock,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -188,7 +190,7 @@ def test_audit_failure_restores_token_and_workers(tmp_path: Path, monkeypatch: p
         calls.append(token)
         return RolloutResult(success=True)
 
-    with pytest.raises(TokenRotationError, match="previous token was restored"):
+    with pytest.raises(TokenStoreError, match="previous token was restored"):
         asyncio.run(store.rotate("audit failure", "request-1", rollout))
 
     assert store.read_current() == old_token
@@ -237,6 +239,99 @@ async def test_concurrent_rotations_preserve_both_audits(tmp_path: Path) -> None
     records = [json.loads(line) for line in store_audit(tmp_path).splitlines()]
     assert [record["result"] for record in records].count("success") == 2
     assert RegistrationTokenStore(tmp_path).status().rotation_count == 2
+
+
+@pytest.mark.asyncio
+async def test_typed_rollout_error_is_preserved_after_rollback(tmp_path: Path) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    store.load_or_create(None)
+    expected = TokenRotationError("typed rollout failure", remediation="retry later")
+    calls = 0
+
+    async def rollout(_: str) -> RolloutResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise expected
+        return RolloutResult(success=True)
+
+    with pytest.raises(TokenRotationError) as raised:
+        await store.rotate("typed failure", "request-typed", rollout)
+
+    assert raised.value is expected
+    assert str(raised.value) == "typed rollout failure"
+    assert store.status().rotation_count == 0
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_candidate_write_failure_is_typed_and_preserves_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    old_token = store.load_or_create(None)
+
+    def fail_candidate(_: str) -> None:
+        raise OSError("candidate write unavailable")
+
+    monkeypatch.setattr(store, "_atomic_write_secret", fail_candidate)
+
+    with pytest.raises(TokenStoreError) as raised:
+        await store.rotate("candidate failure", "request-candidate", _successful_rollout)
+
+    assert "candidate write unavailable" not in str(raised.value)
+    assert store.read_current() == old_token
+
+
+@pytest.mark.asyncio
+async def test_lock_release_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = RegistrationTokenStore(tmp_path)
+    store.load_or_create(None)
+    original_release = _FileLock.release
+
+    def fail_release(lock: _FileLock) -> None:
+        if lock.path == store.lock_path:
+            raise OSError("lock release unavailable")
+        original_release(lock)
+
+    monkeypatch.setattr(_FileLock, "release", fail_release)
+
+    with pytest.raises(TokenStoreError) as raised:
+        await store.rotate("release failure", "request-release", _successful_rollout)
+
+    assert "lock release unavailable" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_lock_wait_does_not_block_heartbeat(tmp_path: Path) -> None:
+    first = RegistrationTokenStore(tmp_path)
+    second = RegistrationTokenStore(tmp_path)
+    first.load_or_create(None)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def first_rollout(_: str) -> RolloutResult:
+        entered.set()
+        await release.wait()
+        return RolloutResult(success=True)
+
+    first_task = asyncio.create_task(first.rotate("first", "request-heartbeat-1", first_rollout))
+    await entered.wait()
+    second_task = asyncio.create_task(second.rotate("second", "request-heartbeat-2", _successful_rollout))
+    heartbeat = asyncio.Event()
+
+    async def pulse() -> None:
+        await asyncio.sleep(0)
+        heartbeat.set()
+
+    await asyncio.wait_for(pulse(), timeout=1)
+    assert heartbeat.is_set()
+    release.set()
+    await asyncio.gather(first_task, second_task)
 
 
 @pytest.mark.asyncio
