@@ -104,6 +104,14 @@ def test_step_2_compose_mounts_shared_token_volume_for_workers(prepared_project:
             and volume.get("read_only") is True
             for volume in volumes
         )
+    dashboard = services["dashboard"]
+    dashboard_environment = cast("dict[str, str]", dashboard["environment"])
+    dashboard_volumes = cast("list[dict[str, object]]", dashboard["volumes"])
+    assert dashboard_environment["ACHERON_REGISTRATION_TOKEN_FILE"] == "/data/jobs/.registration_token"
+    assert any(
+        volume.get("source") == "acheron-data" and volume.get("target") == "/data" and volume.get("read_only") is True
+        for volume in dashboard_volumes
+    )
     orchestrator_volumes = cast("list[dict[str, object]]", services["orchestrator"]["volumes"])
     assert any(
         volume.get("source") == "acheron-data"
