@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import grpc
 import grpc.aio
@@ -201,7 +202,13 @@ class CertificateManager:
                 _LOG.exception("Certificate monitoring failed for %s", self.name)
 
 
-def _allow_insecure() -> bool:
+def _allow_insecure(url: str | None = None) -> bool:
+    """Allow plaintext only for explicitly listed local edge hosts."""
+    hosts = os.environ.get("ACHERON_INSECURE_LOCAL_EDGE_HOSTS")
+    if url is not None and hosts is not None:
+        hostname = urlsplit(url).hostname
+        allowed = {item.strip().casefold() for item in hosts.split(",") if item.strip()}
+        return hostname is not None and hostname.casefold() in allowed
     return os.environ.get("ACHERON_ALLOW_INSECURE") == "1"
 
 

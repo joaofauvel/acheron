@@ -85,6 +85,35 @@ class ComposeStack:
         with response:
             return HttpResponse(response.status, dict(response.headers.items()), response.read())
 
+    def upload_input(
+        self, content: bytes, *, filename: str, content_type: str, headers: Mapping[str, str]
+    ) -> HttpResponse:
+        """Upload one input through the authenticated orchestrator API."""
+        boundary = f"acheron-{uuid.uuid4().hex}"
+        body = (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode()
+            + content
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
+        request_headers = {
+            **headers,
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(body)),
+        }
+        request = urllib.request.Request(
+            "https://localhost:8000/inputs", data=body, headers=request_headers, method="POST"
+        )
+        try:
+            response = urllib.request.urlopen(request, context=self._ssl_context(request.full_url), timeout=10)
+        except urllib.error.HTTPError as error:
+            return HttpResponse(error.code, dict(error.headers.items()), error.read())
+        with response:
+            return HttpResponse(response.status, dict(response.headers.items()), response.read())
+
     def get_text(self, url: str, headers: Mapping[str, str] | None = None) -> str:
         """Fetch a successful text endpoint using the stack's generated CA when needed."""
         response = self.request(url, headers=headers)

@@ -29,7 +29,9 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /app/dist/*.whl ./
-RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
+RUN pip install --no-cache-dir ./*.whl && rm ./*.whl \
+    && python -m nltk.downloader -d /usr/local/share/nltk_data punkt_tab
+ENV NLTK_DATA=/usr/local/share/nltk_data
 RUN useradd --create-home --uid 1000 --shell /bin/bash acheron \
     && mkdir -p /data/jobs \
     && chown acheron:root /data /data/jobs

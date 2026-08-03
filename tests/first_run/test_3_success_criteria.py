@@ -1,10 +1,141 @@
 import json
 import re
+import struct
 import subprocess
 import time
 from typing import cast
 
 from tests.first_run.helpers import ComposeStack, read_file_backed_token
+
+_SUPPORTED_EDGES = {
+    "tts-local-stub": "http://localhost:8001",
+    "asr-local-stub": "http://localhost:8002",
+    "translation-local-stub": "http://localhost:8003",
+    "tts-runpod-stub": "http://localhost:8006",
+    "translation-runpod-stub": "http://localhost:8007",
+    "tts-grpc-stub": "http://localhost:9002",
+}
+
+
+def _edge_identities(compose_stack: ComposeStack) -> dict[str, str]:
+    identities: dict[str, str] = {}
+    for service in _SUPPORTED_EDGES:
+        result = subprocess.run(
+            ["docker", "compose", "ps", "-q", service],
+            cwd=compose_stack.project.checkout,
+            env=compose_stack.project.env,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        container_id = result.stdout.strip()
+        assert container_id, f"step 3: Compose did not report container for {service}"
+        identities[service] = container_id
+    return identities
+
+
+def _edge_auth_checks(compose_stack: ComposeStack, token: str) -> dict[str, int]:
+    body = {
+        "job_id": "token-edge-probe",
+        "job_type": "tts",
+        "payload": {"chunks": [{"chapter_id": "probe", "sequence_id": 0}]},
+        "chapter_id": "probe",
+        "sequence_ids": [0],
+    }
+    checks: dict[str, int] = {}
+    for service, endpoint in _SUPPORTED_EDGES.items():
+        try:
+            response = compose_stack.request(
+                f"{endpoint}/execute",
+                method="POST",
+                body=body,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except OSError:
+            checks[service] = 0
+        else:
+            checks[service] = response.status
+    return checks
+
+
+def _silent_wav() -> bytes:
+    data = b"\x00\x00" * 220500
+    return (
+        b"RIFF"
+        + struct.pack("<I", 36 + len(data))
+        + b"WAVEfmt "
+        + struct.pack("<IHHIIHH", 16, 1, 1, 22050, 44100, 2, 16)
+        + b"data"
+        + struct.pack("<I", len(data))
+        + data
+    )
+
+
+def _wait_for_rotation(
+    compose_stack: ComposeStack, current_token: str, old_token: str
+) -> tuple[dict[str, int], dict[str, int]]:
+    deadline = time.monotonic() + 60
+    current_checks = _edge_auth_checks(compose_stack, current_token)
+    old_checks = _edge_auth_checks(compose_stack, old_token)
+    while time.monotonic() < deadline:
+        if all(status == 200 for status in current_checks.values()) and all(
+            status == 401 for status in old_checks.values()
+        ):
+            break
+        time.sleep(2)
+        current_checks = _edge_auth_checks(compose_stack, current_token)
+        old_checks = _edge_auth_checks(compose_stack, old_token)
+    return current_checks, old_checks
+
+
+def _dispatch_rotation_probe(compose_stack: ComposeStack, token: str, old_token: str) -> None:
+    uploaded = compose_stack.upload_input(
+        _silent_wav(),
+        filename="rotation-probe.wav",
+        content_type="audio/wav",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert uploaded.status == 201, uploaded.body.decode()
+    uploaded_payload = cast("dict[str, object]", json.loads(uploaded.body))
+    input_id = uploaded_payload.get("input_id")
+    source_path = uploaded_payload.get("source_path")
+    assert isinstance(input_id, str)
+    assert isinstance(source_path, str)
+    submitted = compose_stack.request(
+        "https://localhost:8000/jobs",
+        method="POST",
+        body={
+            "source_type": "audio",
+            "source_path": source_path,
+            "source_language": "en",
+            "target_language": "en",
+            "asr_model": "stub",
+            "input_id": input_id,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+        timeout_seconds=30,
+    )
+    assert submitted.status == 201, submitted.body.decode()
+    submitted_payload = cast("dict[str, object]", json.loads(submitted.body))
+    job_id = submitted_payload.get("job_id")
+    assert isinstance(job_id, str)
+    deadline = time.monotonic() + 60
+    completed: dict[str, object] = submitted_payload
+    while time.monotonic() < deadline:
+        job = compose_stack.request(
+            f"https://localhost:8000/jobs/{job_id}", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert job.status == 200, job.body.decode()
+        completed = cast("dict[str, object]", json.loads(job.body))
+        if completed.get("status") in {"completed", "failed", "partial"}:
+            break
+        time.sleep(2)
+    assert completed.get("status") == "completed", completed.get("errors")
+    assert completed.get("outputs"), completed
+    output = json.dumps(completed)
+    assert old_token not in output
+    assert token not in output
 
 
 def _healthy_worker_ids(compose_stack: ComposeStack, token: str) -> set[str]:
@@ -49,6 +180,7 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
     admin_token = project.env["ACHERON_ADMIN_TOKEN"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     old_token = read_file_backed_token(project)
+    identities_before = _edge_identities(file_backed_compose_stack)
 
     status = file_backed_compose_stack.request("https://localhost:8000/admin/token/status", headers=admin_headers)
     assert status.status == 200
@@ -70,14 +202,10 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
 
     new_token = read_file_backed_token(project)
     assert new_token != old_token
-    old_worker = file_backed_compose_stack.request(
-        "http://localhost:8001/auth/check", headers={"Authorization": f"Bearer {old_token}"}
-    )
-    new_worker = file_backed_compose_stack.request(
-        "http://localhost:8001/auth/check", headers={"Authorization": f"Bearer {new_token}"}
-    )
-    assert old_worker.status == 401
-    assert new_worker.status == 200
+    current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, new_token, old_token)
+    assert current_checks == dict.fromkeys(_SUPPORTED_EDGES, 200)
+    assert old_checks == dict.fromkeys(_SUPPORTED_EDGES, 401)
+    assert _edge_identities(file_backed_compose_stack) == identities_before
 
     cli_status = subprocess.run(
         ["docker", "compose", "exec", "-T", "orchestrator", "acheron", "token", "status"],
@@ -126,12 +254,11 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
     assert {"first-run rotation", "cli rotation"} <= reasons
     assert latest_token not in history.body.decode()
 
-    registered = _healthy_worker_ids(file_backed_compose_stack, latest_token)
-    assert registered >= {
-        "tts-local-stub",
-        "asr-local-stub",
-        "translation-local-stub",
-    }
+    current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, latest_token, new_token)
+    assert current_checks == dict.fromkeys(_SUPPORTED_EDGES, 200)
+    assert old_checks == dict.fromkeys(_SUPPORTED_EDGES, 401)
+    assert _edge_identities(file_backed_compose_stack) == identities_before
+    _dispatch_rotation_probe(file_backed_compose_stack, latest_token, new_token)
 
 
 def test_step_3_file_backed_token_authenticates_worker_execute(file_backed_compose_stack: ComposeStack) -> None:

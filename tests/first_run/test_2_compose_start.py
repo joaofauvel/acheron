@@ -27,6 +27,14 @@ def _compose_config(
 
 
 def test_step_2_compose_start(compose_stack: ComposeStack) -> None:
+    config = _compose_config(compose_stack.project, "sim", "runpod-tts", "runpod-asr", "runpod-translation")
+    orchestrator_environment = config["orchestrator"]["environment"]
+    assert isinstance(orchestrator_environment, dict)
+    assert "ACHERON_ALLOW_INSECURE" not in orchestrator_environment
+    assert orchestrator_environment["ACHERON_INSECURE_LOCAL_EDGE_HOSTS"] == (
+        "tts-local-stub,asr-local-stub,translation-local-stub,tts-runpod-stub,translation-runpod-stub,tts-grpc-stub"
+    )
+
     orchestrator = compose_stack.get_json("https://localhost:8000/health")
     assert orchestrator == {"status": "ok"}, "step 2: orchestrator did not become healthy"
     dashboard = compose_stack.get_text("http://localhost:8080/")

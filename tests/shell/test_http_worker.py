@@ -42,7 +42,18 @@ class TestHttpWorkerBounds:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("ACHERON_ALLOW_INSECURE", "1")
+        monkeypatch.delenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", raising=False)
         worker = HttpWorker("http://worker:8000", data_dir=tmp_path, registration_token="secret")
+        with pytest.raises(WorkerError, match="plaintext"):
+            await worker.capabilities()
+
+    @pytest.mark.asyncio
+    async def test_local_edge_allowlist_does_not_permit_remote_plaintext(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ACHERON_ALLOW_INSECURE", raising=False)
+        monkeypatch.setenv("ACHERON_INSECURE_LOCAL_EDGE_HOSTS", "tts-local-stub,asr-local-stub")
+        worker = HttpWorker("http://remote.example:8000", data_dir=tmp_path, registration_token="secret")
         with pytest.raises(WorkerError, match="plaintext"):
             await worker.capabilities()
 

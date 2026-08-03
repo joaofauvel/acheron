@@ -198,7 +198,7 @@ class HttpWorker(Worker):
             if self._registration_token_provider is not None
             else self._registration_token
         )
-        if token is not None and urlsplit(url).scheme.casefold() == "http" and not _allow_insecure():
+        if token is not None and urlsplit(url).scheme.casefold() == "http" and not _allow_insecure(url):
             raise InsecureBearerTransportError(
                 "Refusing to send a bearer token over plaintext; "
                 "configure HTTPS or explicitly opt into insecure local transport",
