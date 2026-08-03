@@ -230,21 +230,51 @@ def test_step_3_file_backed_token_rotation_updates_workers_and_audit(
     assert "source=file" in cli_status.stdout
     assert new_token not in cli_status.stdout
 
-    latest_token = new_token
+    cli_rotation = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "orchestrator",
+            "acheron",
+            "token",
+            "rotate",
+            "--reason",
+            "test",
+        ],
+        cwd=project.checkout,
+        env=project.env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert cli_rotation.returncode == 0, cli_rotation.stderr
+    assert "rollout=success" in cli_rotation.stdout
+    assert old_token not in cli_rotation.stdout
+    assert new_token not in cli_rotation.stdout
+
+    cli_token = read_file_backed_token(project)
+    assert cli_token not in {old_token, new_token}
+    current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, cli_token, new_token)
+    assert current_checks == dict.fromkeys(_SUPPORTED_EDGES, 200)
+    assert old_checks == dict.fromkeys(_SUPPORTED_EDGES, 401)
+    assert _edge_identities(file_backed_compose_stack) == identities_before
+
     history = file_backed_compose_stack.request("https://localhost:8000/admin/token/status", headers=admin_headers)
     assert history.status == 200
     history_payload = cast("dict[str, object]", json.loads(history.body))
     history_entries = history_payload["history"]
     assert isinstance(history_entries, list)
     reasons = {entry["reason"] for entry in history_entries if isinstance(entry, dict)}
-    assert "first-run rotation" in reasons
-    assert latest_token not in history.body.decode()
+    assert {"first-run rotation", "test"} <= reasons
+    history_text = history.body.decode()
+    assert old_token not in history_text
+    assert new_token not in history_text
+    assert cli_token not in history_text
 
-    current_checks, old_checks = _wait_for_rotation(file_backed_compose_stack, latest_token, old_token)
-    assert current_checks == dict.fromkeys(_SUPPORTED_EDGES, 200)
-    assert old_checks == dict.fromkeys(_SUPPORTED_EDGES, 401)
-    assert _edge_identities(file_backed_compose_stack) == identities_before
-    _dispatch_rotation_probe(file_backed_compose_stack, latest_token, new_token)
+    _dispatch_rotation_probe(file_backed_compose_stack, cli_token, new_token)
 
 
 def test_step_3_file_backed_token_authenticates_worker_execute(file_backed_compose_stack: ComposeStack) -> None:
