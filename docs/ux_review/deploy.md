@@ -288,7 +288,7 @@ fixed_in: [7c16960, 03deac0, 72dcbb8, e5f338a]
 verified_in: [CURRENT_HEAD]
 last_verified_at:
   commit: CURRENT_HEAD
-  tree: 05d842cb3514231ddab1f3591c9a71e23cdd0cb77eaede35f49ec955487ae2fc
+  tree: 6f602eea16a00379657eff2fe3247ddc7bcae52a5799c6cf57a2d499efc8ecf1
   date: "2026-08-02"
 verified_by: "independent:docs/superpowers/review/bundle-01-cert-tls-independent-verification.md"
 ---
