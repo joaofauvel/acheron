@@ -303,7 +303,7 @@ def _remove_project_certs(project: FirstRunProject) -> None:
                 "sh",
                 "certs-init",
                 "-c",
-                "rm -rf /certs/*",
+                "rm -rf /certs/* /certs/.[!.]* /certs/..?*",
             ],
             cwd=project.checkout,
             env=project.env,

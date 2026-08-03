@@ -62,6 +62,7 @@ def test_project_cleanup_removes_certificates_before_teardown(tmp_path: Path, mo
     cleanup_project_best_effort(project)
 
     assert calls[0][0:4] == ["docker", "compose", "run", "--rm"]
+    assert "rm -rf /certs/* /certs/.[!.]* /certs/..?*" in calls[0]
     assert calls[1][0:4] == ["docker", "compose", "down", "--volumes"]
     assert not (tmp_path / "certs").exists()
 
