@@ -8,7 +8,6 @@ import fcntl
 import json
 import logging
 import os
-import secrets
 import shutil
 import tempfile
 import threading
@@ -19,6 +18,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
+
+import httpx
 
 from acheron.core.errors import (
     AcheronError,
@@ -69,9 +70,14 @@ from acheron.shell.retention import CleanupReport, RetentionPolicy, RetentionSer
 from acheron.shell.step_handler import create_step_handler
 from acheron.shell.stores import create_job_store
 from acheron.shell.stores.base import StoreError
+from acheron.shell.token_auth import (
+    RegistrationTokenStatus,
+    RegistrationTokenStore,
+    RolloutResult,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Awaitable, Callable, Collection, Sequence
 
     from acheron.core.interfaces import Executor
     from acheron.core.models import JobRequest
@@ -245,6 +251,56 @@ def _resolve_invalidation_steps(
     return selected
 
 
+class WorkerRotationCoordinator:
+    """Roll out a candidate token across registered remote HTTP workers."""
+
+    def __init__(
+        self,
+        registry: WorkerStore,
+        *,
+        auth_check: Callable[[RegisteredWorker, str], Awaitable[bool]] | None = None,
+    ) -> None:
+        self._registry = registry
+        self._auth_check = auth_check or self._default_auth_check
+
+    async def rollout(self, candidate: str) -> RolloutResult:
+        """Verify a candidate token on every supported remote worker edge."""
+        workers = await self._registry.list_all()
+        unsupported = tuple(worker for worker in workers if worker.transport not in {"http", "local"})
+        if unsupported:
+            return RolloutResult(
+                success=False,
+                worker_ids=tuple(worker.worker_id for worker in unsupported),
+                message="Token rollout requires supported HTTP worker edges",
+            )
+        remote_http = tuple(worker for worker in workers if worker.transport == "http")
+        results = await asyncio.gather(
+            *(self._auth_check(worker, candidate) for worker in remote_http),
+            return_exceptions=True,
+        )
+        failed = tuple(
+            worker.worker_id
+            for worker, result in zip(remote_http, results, strict=True)
+            if isinstance(result, BaseException) or result is not True
+        )
+        return RolloutResult(
+            success=not failed,
+            worker_ids=tuple(worker.worker_id for worker in remote_http),
+            message=None if not failed else "One or more HTTP worker edges rejected the candidate token",
+        )
+
+    @staticmethod
+    async def _default_auth_check(worker: RegisteredWorker, candidate: str) -> bool:
+        """Verify a worker edge through its authenticated health endpoint."""
+        url = f"{worker.endpoint.rstrip('/')}/auth/check"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, headers={"Authorization": f"Bearer {candidate}"})
+        except httpx.HTTPError, OSError:
+            return False
+        return response.is_success
+
+
 class Orchestrator:
     """Service layer wiring together all pipeline components."""
 
@@ -257,6 +313,7 @@ class Orchestrator:
         job_store: JobStore | None = None,
         step_cache: StepCache | InMemoryStepCache | None = None,
         settings: Settings | None = None,
+        worker_rotation_coordinator: WorkerRotationCoordinator | None = None,
     ) -> None:
         if settings is None:
             default = load_settings()
@@ -278,6 +335,8 @@ class Orchestrator:
             update={"orchestrator": settings.orchestrator.model_copy(update={"data_dir": canonical_data_dir})}
         )
         self._registry = registry
+        self._registration_token_store = RegistrationTokenStore(canonical_data_dir)
+        self._worker_rotation_coordinator = worker_rotation_coordinator or WorkerRotationCoordinator(registry)
         self._cache = cache
         self._step_cache = step_cache if step_cache is not None else StepCache(canonical_data_dir)
         self._local_handlers: dict[str, LocalJobHandler] = {}
@@ -574,33 +633,24 @@ class Orchestrator:
         await self._health_monitor.start()
 
     async def _load_or_create_registration_token(self) -> None:
-        """Load a persisted registration token or mint and persist a fresh one.
-
-        The token is written to ``<data_dir>/.registration_token`` (mode 0600)
-        if missing. Only the file path is logged; the token value is never
-        logged at any level (SEC-008).
-        """
-        if self._settings.orchestrator.registration_token:
-            return
-        token_file = self._settings.orchestrator.data_dir / ".registration_token"
-        if token_file.is_file():
-            try:
-                token = token_file.read_text(encoding="utf-8").strip()
-                self._settings.orchestrator.registration_token = token
-                logger.info("Loaded persistent registration token from %s", token_file)
-            except OSError as exc:
-                logger.warning("Failed to read persistent registration token from %s: %s", token_file, exc)
-
-        if self._settings.orchestrator.registration_token:
-            return
-        token = secrets.token_hex(16)
+        """Load an explicit token or initialize the file-backed token store."""
+        configured_token = self._settings.orchestrator.registration_token
+        token = self._registration_token_store.load_or_create(configured_token)
         self._settings.orchestrator.registration_token = token
-        try:
-            token_file.write_text(token, encoding="utf-8")
-            token_file.chmod(0o600)
-            logger.info("Generated and persisted registration token to %s", token_file)
-        except OSError as exc:
-            logger.warning("Generated registration token but failed to persist to %s: %s", token_file, exc)
+
+    def registration_token_status(self) -> RegistrationTokenStatus:
+        """Return secret-free registration-token lifecycle status."""
+        return self._registration_token_store.status()
+
+    async def rotate_registration_token(self, reason: str, request_id: str) -> RegistrationTokenStatus:
+        """Rotate the registration token after all remote HTTP edges accept it."""
+
+        async def rollout(candidate: str) -> RolloutResult:
+            return await self._worker_rotation_coordinator.rollout(candidate)
+
+        status = await self._registration_token_store.rotate(reason, request_id, rollout)
+        self._settings.orchestrator.registration_token = self._registration_token_store.read_current()
+        return status
 
     async def shutdown(self) -> None:
         """Stop the health monitor and drain in-flight ``_execute`` tasks.

@@ -48,9 +48,10 @@ from acheron.shell.cache import InMemoryStepCache, PlanCache, StepCache
 from acheron.shell.config import Settings
 from acheron.shell.job_events import iter_events
 from acheron.shell.job_store import TrackedJob
-from acheron.shell.orchestrator import Orchestrator
+from acheron.shell.orchestrator import Orchestrator, WorkerRotationCoordinator
 from acheron.shell.stores.base import StoreError
 from acheron.shell.stores.memory import InMemoryJobStore, InMemoryWorkerStore
+from acheron.shell.token_auth import TokenRotationError
 from acheron.shell.transports.http import HttpWorker
 from tests.shell.conftest import asr_caps, translation_caps, tts_caps
 
@@ -2384,9 +2385,89 @@ class TestOrchestrator:
         assert token_file.exists()
         mode = token_file.stat().st_mode
         assert stat.S_IMODE(mode) == 0o600, f"token file mode is {oct(stat.S_IMODE(mode))}, expected 0o600"
+        assert orch.registration_token_status().source == "file"
 
         await orch.close()
         await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_start_uses_file_store_when_env_token_is_unset(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from acheron.shell.config import OrchestratorSettings
+
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+
+        token = orch.settings.orchestrator.registration_token
+        assert token is not None
+        assert orch.registration_token_status().source == "file"
+        assert orch.registration_token_status().fingerprint is not None
+        assert (tmp_path / ".registration_token.metadata.json").exists()
+
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_start_preserves_explicit_environment_token(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from acheron.shell.config import OrchestratorSettings
+
+        token = "a" * 64
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=token))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+
+        assert orch.settings.orchestrator.registration_token == token
+        assert orch.registration_token_status().source == "environment"
+        assert not (tmp_path / ".registration_token").exists()
+
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_rotation_rejects_environment_source(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from acheron.shell.config import OrchestratorSettings
+
+        token = "b" * 64
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=token))
+        orch = Orchestrator(InMemoryWorkerStore(), PlanCache(tmp_path), _success_handler, settings=settings)
+        await orch.start()
+
+        with pytest.raises(TokenRotationError, match="cannot rotate"):
+            await orch.rotate_registration_token("test", "request-1")
+
+        await orch.close()
+        await orch.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_rotation_rolls_back_when_worker_rollout_fails(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from acheron.shell.config import OrchestratorSettings
+
+        registry = InMemoryWorkerStore()
+        await registry.register("edge-1", "https://worker.example", "http", tts_caps())
+        settings = Settings(orchestrator=OrchestratorSettings(data_dir=tmp_path, registration_token=None))
+        coordinator = WorkerRotationCoordinator(registry, auth_check=lambda _worker, _token: _reject_auth())
+        orch = Orchestrator(
+            registry,
+            PlanCache(tmp_path),
+            _success_handler,
+            settings=settings,
+            worker_rotation_coordinator=coordinator,
+        )
+        await orch.start()
+        old_token = orch.settings.orchestrator.registration_token
+        assert old_token is not None
+
+        with pytest.raises(TokenRotationError, match="rollout"):
+            await orch.rotate_registration_token("test", "request-2")
+
+        assert (tmp_path / ".registration_token").read_text(encoding="utf-8").strip() == old_token
+        assert orch.registration_token_status().rotation_count == 0
+        await orch.close()
+        await orch.shutdown()
+
+
+async def _reject_auth() -> bool:
+    return False
 
 
 @pytest.mark.asyncio
