@@ -10,6 +10,7 @@ import pytest
 from tests.first_run.helpers import (
     ComposeStack,
     FirstRunProject,
+    cleanup_project_best_effort,
     launch_compose,
     prepare_project,
     stop_compose_best_effort,
@@ -17,19 +18,27 @@ from tests.first_run.helpers import (
 
 
 @pytest.fixture(scope="session")
-def prepared_project(tmp_path_factory: pytest.TempPathFactory) -> FirstRunProject:
+def prepared_project(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstRunProject]:
     """Prepare one temporary checkout for the selected first-run steps."""
     repo_root = Path(__file__).parents[2]
     destination = tmp_path_factory.mktemp("first-run")
-    return prepare_project(repo_root, destination)
+    project = prepare_project(repo_root, destination)
+    try:
+        yield project
+    finally:
+        cleanup_project_best_effort(project)
 
 
 @pytest.fixture(scope="session")
-def file_backed_project(tmp_path_factory: pytest.TempPathFactory) -> FirstRunProject:
+def file_backed_project(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstRunProject]:
     """Prepare a Compose project with no explicit registration token."""
     repo_root = Path(__file__).parents[2]
     destination = tmp_path_factory.mktemp("first-run-file-backed")
-    return prepare_project(repo_root, destination, file_backed_token=True)
+    project = prepare_project(repo_root, destination, file_backed_token=True)
+    try:
+        yield project
+    finally:
+        cleanup_project_best_effort(project)
 
 
 @pytest.fixture
@@ -44,7 +53,7 @@ def compose_stack(prepared_project: FirstRunProject) -> Iterator[ComposeStack]:
             raise AssertionError(message) from exc
         yield stack
     finally:
-        stop_compose_best_effort(stack, remove_certs=False)
+        stop_compose_best_effort(stack)
 
 
 @pytest.fixture(scope="session")

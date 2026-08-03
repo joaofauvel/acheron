@@ -7,6 +7,7 @@ import pytest
 from tests.first_run.helpers import (
     ComposeStack,
     FirstRunProject,
+    cleanup_project_best_effort,
     extract_quick_start_commands,
     stop_compose_best_effort,
 )
@@ -49,6 +50,20 @@ def test_compose_log_text_includes_lines_beyond_the_diagnostic_tail(tmp_path: Pa
     with log_path.open("a") as log_file:
         stack = ComposeStack(project, cast("subprocess.Popen[bytes]", object()), log_file)
         assert stack.log_text().startswith("security warning\n")
+
+
+def test_project_cleanup_removes_certificates_before_teardown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr("tests.first_run.helpers.subprocess.run", lambda command, **_kwargs: calls.append(command))
+    project = FirstRunProject(tmp_path, "token", {}, "project", tmp_path / "compose.log")
+    (tmp_path / "certs").mkdir()
+    (tmp_path / "certs" / "root-owned.crt").write_text("certificate")
+
+    cleanup_project_best_effort(project)
+
+    assert calls[0][0:4] == ["docker", "compose", "run", "--rm"]
+    assert calls[1][0:4] == ["docker", "compose", "down", "--volumes"]
+    assert not (tmp_path / "certs").exists()
 
 
 def test_compose_cleanup_removes_certificates_before_teardown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
