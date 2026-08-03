@@ -54,7 +54,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       ACHERON_STORE_BACKEND: redis
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
       ACHERON_ADMIN_TOKEN: ${ACHERON_ADMIN_TOKEN:-}
       ACHERON_DATA_DIR: /data/jobs
       ACHERON_TLS_CERT_FILE: /certs/orchestrator.crt
@@ -92,9 +92,11 @@ services:
     environment:
       ACHERON_URL: https://orchestrator:8000
       ACHERON_BROWSER_URL: https://localhost:8000
-      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
+      ACHERON_REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     healthcheck:
       test:
@@ -121,11 +123,13 @@ services:
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
       ACHERON_WORKER__WORKER_ID: tts-local-stub
       ACHERON_WORKER__WORKER_HOST: tts-local-stub
-      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
+      ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       ACHERON_WORKER__PRICE_SOURCE: zero
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     command: ["python", "-m", "stubs.tts_local_stub.main"]
     healthcheck: &stub_healthcheck
@@ -156,6 +160,7 @@ services:
       ACHERON_WORKER__WORKER_HOST: asr-local-stub
       ACHERON_WORKER__LISTEN_PORT: "8002"
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     command: ["python", "-m", "stubs.asr_local_stub.main"]
     healthcheck:
@@ -183,6 +188,7 @@ services:
       ACHERON_WORKER__WORKER_HOST: translation-local-stub
       ACHERON_WORKER__LISTEN_PORT: "8003"
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     command: ["python", "-m", "stubs.translation_local_stub.main"]
     healthcheck:
@@ -209,7 +215,8 @@ services:
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
       ACHERON_WORKER__WORKER_ID: ${ACHERON_WORKER__WORKER_ID:-qwen3tts-1}
       ACHERON_WORKER__WORKER_HOST: ${ACHERON_WORKER__WORKER_HOST:-qwen3tts-edge}
-      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
+      ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${QWEN3TTS_RUNPOD_ENDPOINT_ID:-}
       ACHERON_WORKER__PRICE_SOURCE: ${ACHERON_WORKER__PRICE_SOURCE:-runpod}
@@ -219,6 +226,7 @@ services:
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     healthcheck:
       test:
@@ -247,7 +255,8 @@ services:
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
       ACHERON_WORKER__WORKER_ID: ${ACHERON_WORKER__WORKER_ID:-granite-speech-edge}
       ACHERON_WORKER__WORKER_HOST: ${ACHERON_WORKER__WORKER_HOST:-granite-speech-edge}
-      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
+      ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${GRANITE_SPEECH_RUNPOD_ENDPOINT_ID:-}
       ACHERON_WORKER__PRICE_SOURCE: ${GRANITE_SPEECH_PRICE_SOURCE:-runpod}
@@ -255,6 +264,7 @@ services:
       ACHERON_WORKER__LISTEN_PORT: "8001"
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     healthcheck:
       test:
@@ -283,7 +293,8 @@ services:
       ACHERON_WORKER__ORCHESTRATOR_URL: https://orchestrator:8000
       ACHERON_WORKER__WORKER_ID: ${ACHERON_WORKER__WORKER_ID:-translategemma-edge}
       ACHERON_WORKER__WORKER_HOST: ${ACHERON_WORKER__WORKER_HOST:-translategemma-edge}
-      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:?ACHERON_REGISTRATION_TOKEN must be set}
+      ACHERON_WORKER__REGISTRATION_TOKEN: ${ACHERON_REGISTRATION_TOKEN:-}
+      ACHERON_WORKER__REGISTRATION_TOKEN_FILE: /data/jobs/.registration_token
       ACHERON_WORKER__RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       ACHERON_WORKER__RUNPOD_ENDPOINT_ID: ${TRANSLATEGEMMA_RUNPOD_ENDPOINT_ID:-}
       ACHERON_WORKER__PRICE_SOURCE: ${TRANSLATEGEMMA_PRICE_SOURCE:-runpod}
@@ -292,6 +303,7 @@ services:
       ACHERON_WORKER__MODEL_ID: ${TRANSLATEGEMMA_MODEL_ID:-google/translategemma-12b-it}
       SSL_CERT_FILE: /certs/acheron-ca.crt
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     healthcheck:
       test:
@@ -323,6 +335,7 @@ services:
       ACHERON_WORKER__PRICE_SOURCE: static
       ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     command: ["python", "-m", "stubs.tts_runpod_stub.main"]
     healthcheck:
@@ -352,6 +365,7 @@ services:
       ACHERON_WORKER__PRICE_SOURCE: static
       ACHERON_WORKER__DOLLARS_PER_HOUR: "0.69"
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     command: ["python", "-m", "stubs.translation_runpod_stub.main"]
     healthcheck:
@@ -379,6 +393,7 @@ services:
       ACHERON_WORKER__WORKER_HOST: tts-grpc-stub
       ACHERON_WORKER__LISTEN_PORT: "9002"
     volumes:
+      - acheron-data:/data:ro
       - ./certs:/certs:ro
     command: ["python", "-m", "stubs.tts_grpc_stub.main"]
     healthcheck:

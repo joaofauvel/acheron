@@ -63,10 +63,26 @@ def _format_age(timestamp: object) -> str:
 _TEMPLATES.env.globals["format_age"] = _format_age
 
 
+def _registration_token() -> str | None:
+    """Read the explicit token or the mounted token file for one request."""
+    configured = os.environ.get("ACHERON_REGISTRATION_TOKEN", "").strip()
+    if configured:
+        return configured
+    token_file = os.environ.get("ACHERON_REGISTRATION_TOKEN_FILE", "").strip()
+    if not token_file:
+        return None
+    try:
+        token = Path(token_file).read_text(encoding="utf-8").strip()
+    except OSError, UnicodeError:
+        _LOGGER.warning("Dashboard registration token file is unavailable")
+        return None
+    return token or None
+
+
 async def _fetch_orchestrator(orchestrator_url: str, path: str) -> dict[str, object]:
     """GET ``path`` from the orchestrator; return ``{}`` on any fetch failure."""
     try:
-        token = os.environ.get("ACHERON_REGISTRATION_TOKEN")
+        token = _registration_token()
         headers = {"Authorization": f"Bearer {token}"} if token else None
         async with httpx.AsyncClient(base_url=orchestrator_url) as client:
             resp = await client.get(path, headers=headers)

@@ -190,27 +190,37 @@ def create_checkout(repo_root: Path, destination: Path) -> Path:
     return checkout
 
 
-def prepare_project(repo_root: Path, destination: Path) -> FirstRunProject:
+def prepare_project(
+    repo_root: Path,
+    destination: Path,
+    *,
+    file_backed_token: bool = False,
+) -> FirstRunProject:
     """Prepare the README environment in a fresh checkout."""
     checkout = create_checkout(repo_root, destination)
     subprocess.run(["cp", ".env.example", ".env"], cwd=checkout, check=True)
-    token = subprocess.run(
-        ["openssl", "rand", "-hex", "32"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    if len(token) != 64 or any(character not in string.hexdigits for character in token):
-        raise AssertionError("step 1: openssl did not produce a 32-byte hexadecimal token")
+    token = ""
+    if not file_backed_token:
+        token = subprocess.run(
+            ["openssl", "rand", "-hex", "32"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if len(token) != 64 or any(character not in string.hexdigits for character in token):
+            raise AssertionError("step 1: openssl did not produce a 32-byte hexadecimal token")
     compose_project = f"acheron-first-run-{uuid.uuid4().hex[:12]}"
     env = dict(os.environ)
     env.update(
         {
-            "ACHERON_REGISTRATION_TOKEN": token,
             "COMPOSE_PROFILES": "sim",
             "COMPOSE_PROJECT_NAME": compose_project,
         }
     )
+    if token:
+        env["ACHERON_REGISTRATION_TOKEN"] = token
+    else:
+        env.pop("ACHERON_REGISTRATION_TOKEN", None)
     return FirstRunProject(checkout, token, env, compose_project, destination / "compose.log")
 
 
@@ -230,6 +240,23 @@ def launch_compose(project: FirstRunProject) -> ComposeStack:
         log_file.close()
         raise
     return ComposeStack(project, process, log_file)
+
+
+def read_file_backed_token(project: FirstRunProject) -> str:
+    """Read the generated token from the running orchestrator volume."""
+    result = subprocess.run(
+        ["docker", "compose", "exec", "-T", "orchestrator", "cat", "/data/jobs/.registration_token"],
+        cwd=project.checkout,
+        env=project.env,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    token = result.stdout.strip()
+    if not token:
+        raise AssertionError("step 3: file-backed token file was empty")
+    return token
 
 
 def stop_compose_best_effort(stack: ComposeStack) -> None:

@@ -5,15 +5,22 @@ from typing import cast
 
 import pytest
 
-from tests.first_run.helpers import ComposeStack, FirstRunProject
+from tests.first_run.helpers import ComposeStack, FirstRunProject, file_backed_environment
 
 
-def _compose_config(project: FirstRunProject, *profiles: str, **overrides: str) -> dict[str, dict[str, object]]:
+def _compose_config(
+    project: FirstRunProject,
+    *profiles: str,
+    without_registration_token: bool = False,
+    **overrides: str,
+) -> dict[str, dict[str, object]]:
     command = ["docker", "compose"]
     for profile in profiles:
         command.extend(("--profile", profile))
     command.extend(("config", "--format", "json"))
     environment = project.env | overrides
+    if without_registration_token:
+        environment = file_backed_environment(environment)
     result = subprocess.run(command, cwd=project.checkout, env=environment, check=True, capture_output=True, text=True)
     config = json.loads(result.stdout)
     return cast("dict[str, dict[str, object]]", config["services"])
@@ -55,6 +62,44 @@ def test_step_2_compose_initializes_orchestrator_data_volume(prepared_project: F
         "translategemma-edge",
     }
     assert "apt-get install --no-install-recommends --yes ffmpeg" in dockerfile
+
+
+def test_step_2_compose_config_allows_unset_registration_token(prepared_project: FirstRunProject) -> None:
+    services = _compose_config(prepared_project, without_registration_token=True)
+    orchestrator_env = cast("dict[str, str]", services["orchestrator"]["environment"])
+    dashboard_env = cast("dict[str, str]", services["dashboard"]["environment"])
+    assert orchestrator_env.get("ACHERON_REGISTRATION_TOKEN") in {None, ""}
+    assert dashboard_env.get("ACHERON_REGISTRATION_TOKEN") in {None, ""}
+    assert dashboard_env["ACHERON_REGISTRATION_TOKEN_FILE"] == "/data/jobs/.registration_token"
+
+
+def test_step_2_compose_mounts_shared_token_volume_for_workers(prepared_project: FirstRunProject) -> None:
+    services = _compose_config(prepared_project, "sim", "runpod-tts", without_registration_token=True)
+    worker_services = (
+        "tts-local-stub",
+        "asr-local-stub",
+        "translation-local-stub",
+        "qwen3tts-edge",
+        "tts-runpod-stub",
+    )
+    for service_name in worker_services:
+        service = services[service_name]
+        environment = cast("dict[str, str]", service["environment"])
+        volumes = cast("list[dict[str, object]]", service["volumes"])
+        assert environment["ACHERON_WORKER__REGISTRATION_TOKEN_FILE"] == "/data/jobs/.registration_token"
+        assert any(
+            volume.get("source") == "acheron-data"
+            and volume.get("target") == "/data"
+            and volume.get("read_only") is True
+            for volume in volumes
+        )
+    orchestrator_volumes = cast("list[dict[str, object]]", services["orchestrator"]["volumes"])
+    assert any(
+        volume.get("source") == "acheron-data"
+        and volume.get("target") == "/data"
+        and volume.get("read_only") is not True
+        for volume in orchestrator_volumes
+    )
 
 
 def _run_certs_init(project: FirstRunProject) -> subprocess.CompletedProcess[str]:

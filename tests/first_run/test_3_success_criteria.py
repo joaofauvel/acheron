@@ -1,6 +1,28 @@
 import re
 
-from tests.first_run.helpers import ComposeStack
+from tests.first_run.helpers import ComposeStack, read_file_backed_token
+
+
+def test_step_3_first_run_auto_mints_and_registers_all_workers(file_backed_compose_stack: ComposeStack) -> None:
+    token = read_file_backed_token(file_backed_compose_stack.project)
+    auth = {"Authorization": f"Bearer {token}"}
+    worker_payload = file_backed_compose_stack.get_json("https://localhost:8000/workers", headers=auth)
+    workers = worker_payload.get("workers")
+    assert isinstance(workers, list)
+    healthy_ids = {
+        worker["worker_id"]
+        for worker in workers
+        if isinstance(worker, dict) and worker.get("status") == "healthy" and isinstance(worker.get("worker_id"), str)
+    }
+    assert {
+        "tts-local-stub",
+        "asr-local-stub",
+        "translation-local-stub",
+        "tts-runpod-stub",
+        "translation-runpod-stub",
+        "tts-grpc-stub",
+    } <= healthy_ids
+    assert file_backed_compose_stack.log_text().find("ACHERON_REGISTRATION_TOKEN is unset") < 0
 
 
 def test_step_3_first_run_success_criteria(compose_stack: ComposeStack) -> None:

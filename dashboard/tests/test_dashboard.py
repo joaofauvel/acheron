@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 import pytest_asyncio
@@ -87,6 +89,31 @@ class TestEnvConfig:
         assert response.status_code == 200
         assert respx.calls[0].request.headers["authorization"] == "Bearer dashboard-registration-secret"
         assert "dashboard-registration-secret" not in response.text
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_forwards_file_backed_token_per_request(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        token_file = tmp_path / "registration_token"
+        token_file.write_text("dashboard-file-secret\n", encoding="utf-8")
+        monkeypatch.delenv("ACHERON_REGISTRATION_TOKEN", raising=False)
+        monkeypatch.setenv("ACHERON_REGISTRATION_TOKEN_FILE", str(token_file))
+        route = respx.get(f"{_ORCH_URL}/workers").mock(return_value=httpx.Response(200, json={"workers": []}))
+        app = create_app(orchestrator_url=_ORCH_URL)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await client.get("/partials/workers")
+            token_file.write_text("dashboard-file-secret-2\n", encoding="utf-8")
+            second = await client.get("/partials/workers")
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert route.calls[0].request.headers["authorization"] == "Bearer dashboard-file-secret"
+        assert route.calls[1].request.headers["authorization"] == "Bearer dashboard-file-secret-2"
+        assert "dashboard-file-secret" not in first.text
+        assert "dashboard-file-secret-2" not in second.text
 
     def test_explicit_url_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ACHERON_URL", "http://env-host:1111")
